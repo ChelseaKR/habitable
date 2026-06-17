@@ -19,10 +19,10 @@ from .canonical import sha256_file
 from .errors import CaptureError, TimestampError
 from .evidence import CustodyAction
 from .exif import read_metadata
-from .tsa import TimestampAuthority, TimestampInfo, verify_token
+from .tsa import TimestampAuthority, TimestampInfo, retimestamp, verify_token
 from .vault import Vault
 
-__all__ = ["CaptureResult", "capture", "resolve_deferred"]
+__all__ = ["CaptureResult", "capture", "resolve_deferred", "retimestamp_all"]
 
 _MEDIA_TYPES = {
     ".jpg": "image/jpeg",
@@ -140,6 +140,34 @@ def resolve_deferred(vault: Vault, tsa: TimestampAuthority) -> list[CaptureResul
         )
     vault.save()
     return results
+
+
+def retimestamp_all(vault: Vault, tsa: TimestampAuthority) -> int:
+    """Archive-(re)timestamp every timestamped capture, extending proof lifetime.
+
+    Stamps over each capture's most recent token so the proof survives the
+    original authority's certificate or hash algorithm aging out. Returns the
+    number of items archived.
+    """
+    actor = vault.identity.public().fingerprint
+    count = 0
+    for capture_record in vault.document.captures():
+        latest = vault.latest_token(capture_record.capture_id)
+        if latest is None:
+            continue  # nothing to archive (still awaiting its first timestamp)
+        archive = retimestamp(latest, tsa)
+        vault.add_archive_token(capture_record.capture_id, archive)
+        vault.custody.append(
+            CustodyAction.TIMESTAMPED,
+            capture_record.capture_id,
+            actor=actor,
+            hlc=vault.document.clock.now().encode(),
+            details={"kind": "archive", "tsa": archive.tsa_name},
+            identity=vault.identity,
+        )
+        count += 1
+    vault.save()
+    return count
 
 
 def _try_timestamp(

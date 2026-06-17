@@ -41,7 +41,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 from cryptography.x509.oid import NameOID
 
-from .canonical import JSONValue, canonical_json
+from .canonical import JSONValue, canonical_json, sha256_bytes
 from .crypto import Identity, verify
 from .errors import TimestampError
 
@@ -53,6 +53,8 @@ __all__ = [
     "TimestampInfo",
     "TimestampToken",
     "TokenKind",
+    "retimestamp",
+    "verify_archive_chain",
     "verify_token",
 ]
 
@@ -563,6 +565,42 @@ def verify_token(
     if token.kind == TokenKind.RFC3161.value:
         return _verify_rfc3161_token(token, digest_hex, trusted_certs=trusted_certs)
     raise TimestampError(f"unknown token kind: {token.kind!r}")
+
+
+def retimestamp(existing: TimestampToken, tsa: TimestampAuthority) -> TimestampToken:
+    """Produce an *archive* timestamp over an existing token.
+
+    Re-timestamping a token before its authority's certificate (or hash
+    algorithm) ages out keeps the proof verifiable into the future: the new token
+    attests that the old token — and therefore the content it covered — existed by
+    the new time, anchored by an authority that is still trusted. Chains
+    arbitrarily deep (RFC 4998-style).
+    """
+    return tsa.stamp(sha256_bytes(existing.data))
+
+
+def verify_archive_chain(
+    content_hash: str,
+    primary: TimestampToken,
+    archives: list[TimestampToken],
+    *,
+    trusted_certs: list[crypto_x509.Certificate] | None = None,
+) -> list[TimestampInfo]:
+    """Verify a primary token over the content, then each archive over the prior token.
+
+    Returns each link's :class:`TimestampInfo`, earliest first; raises
+    :class:`TimestampError` on the first broken link. The content's provable
+    existence is anchored at ``result[0].gen_time``; later links carry that proof
+    forward in time.
+    """
+    infos = [verify_token(primary, content_hash, trusted_certs=trusted_certs)]
+    previous = primary
+    for archive in archives:
+        infos.append(
+            verify_token(archive, sha256_bytes(previous.data), trusted_certs=trusted_certs)
+        )
+        previous = archive
+    return infos
 
 
 def sha256_raw(data: bytes) -> bytes:

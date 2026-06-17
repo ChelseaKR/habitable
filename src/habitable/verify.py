@@ -28,7 +28,7 @@ from .canonical import JSONValue, sha256_bytes, sha256_file
 from .crypto import verify as verify_signature
 from .errors import VerificationError
 from .evidence import CustodyLog
-from .tsa import TimestampToken, verify_token
+from .tsa import TimestampToken, verify_archive_chain, verify_token
 
 if TYPE_CHECKING:
     from cryptography import x509
@@ -177,9 +177,19 @@ def _verify_item(
             tsa_name = info.tsa_name
             if not info.trusted_chain:
                 notes.append("timestamp valid but authority not chained to a trusted root")
-        except VerificationError as exc:  # pragma: no cover - defensive
-            notes.append(f"timestamp invalid: {exc}")
+            # Archive (re-)timestamps, if present, must chain back to this token.
+            archive_raw = item.get("archive_timestamps")
+            archives = (
+                [TimestampToken.from_dict(a) for a in archive_raw if isinstance(a, dict)]
+                if isinstance(archive_raw, list)
+                else []
+            )
+            if archives:
+                verify_archive_chain(content_hash, token, archives, trusted_certs=trusted_certs)
+                notes.append(f"archive-timestamped ({len(archives)} link(s))")
         except Exception as exc:
+            # A failed primary or archive chain means the item is not timestamp-verified.
+            timestamp_verified = False
             notes.append(f"timestamp check failed: {exc}")
     else:
         notes.append("awaiting timestamp")

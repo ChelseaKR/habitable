@@ -18,7 +18,7 @@ import webbrowser
 from pathlib import Path
 
 from . import __version__
-from .capture import capture, resolve_deferred
+from .capture import capture, resolve_deferred, retimestamp_all
 from .config import TSAConfig
 from .crypto import PublicIdentity
 from .errors import HabitableError
@@ -100,6 +100,13 @@ def _build_parser() -> argparse.ArgumentParser:
     add_vault(p_resolve)
     p_resolve.add_argument("--dev-tsa", action="store_true")
     p_resolve.set_defaults(func=_cmd_resolve)
+
+    p_retime = sub.add_parser(
+        "retimestamp", help="archive-(re)timestamp items (survive cert aging)"
+    )
+    add_vault(p_retime)
+    p_retime.add_argument("--dev-tsa", action="store_true")
+    p_retime.set_defaults(func=_cmd_retimestamp)
 
     p_export = sub.add_parser("export", help="assemble a court/inspector evidence packet")
     add_vault(p_export)
@@ -255,6 +262,16 @@ def _cmd_resolve(args: argparse.Namespace) -> int:
         raise HabitableError("no timestamp authority configured")
     results = resolve_deferred(vault, tsa)
     print(f"habitable: timestamped {len(results)} previously-queued item(s)")
+    return 0
+
+
+def _cmd_retimestamp(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    tsa = _tsa_for(vault, dev=args.dev_tsa)
+    if tsa is None:
+        raise HabitableError("no timestamp authority configured")
+    count = retimestamp_all(vault, tsa)
+    print(f"habitable: archive-timestamped {count} item(s)")
     return 0
 
 

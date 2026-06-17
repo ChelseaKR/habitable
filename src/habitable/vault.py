@@ -235,6 +235,29 @@ class Vault:
             raise VaultError(f"corrupt token record for {capture_id}")
         return TimestampToken.from_dict(raw)
 
+    def add_archive_token(self, capture_id: str, token: TimestampToken) -> None:
+        """Append an archive (re-)timestamp for a capture."""
+        path = self.path / _TOKENS / f"{capture_id}.archive.json"
+        existing = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+        if not isinstance(existing, list):
+            raise VaultError(f"corrupt archive-token record for {capture_id}")
+        existing.append(token.to_dict())
+        path.write_text(json.dumps(existing, indent=2, sort_keys=True), encoding="utf-8")
+
+    def get_archive_tokens(self, capture_id: str) -> list[TimestampToken]:
+        path = self.path / _TOKENS / f"{capture_id}.archive.json"
+        if not path.exists():
+            return []
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(raw, list):
+            raise VaultError(f"corrupt archive-token record for {capture_id}")
+        return [TimestampToken.from_dict(item) for item in raw if isinstance(item, dict)]
+
+    def latest_token(self, capture_id: str) -> TimestampToken | None:
+        """The most recent token for a capture (the last archive, else the primary)."""
+        archives = self.get_archive_tokens(capture_id)
+        return archives[-1] if archives else self.get_token(capture_id)
+
     # --- deferred-timestamp queue ---------------------------------------------
 
     def queue_deferred(self, capture_id: str, digest: str) -> None:

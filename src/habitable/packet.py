@@ -232,6 +232,7 @@ def _build_item(
         (originals_dir / capture_id).write_bytes(original_bytes)
 
     token = vault.get_token(capture_id)
+    archives = vault.get_archive_tokens(capture_id)
     return {
         "capture_id": capture_id,
         "issue_id": issue_id,
@@ -243,6 +244,7 @@ def _build_item(
         "stripped": stripped,
         "has_original": include_originals,
         "timestamp": cast(JSONValue, token.to_dict()) if token is not None else None,
+        "archive_timestamps": cast(JSONValue, [a.to_dict() for a in archives]),
     }
 
 
