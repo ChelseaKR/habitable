@@ -377,7 +377,9 @@ to also makes the packets and the app usable to the legal-aid workers and inspec
 ## Build plan
 
 Phases 1–3 are **implemented** at the library + CLI level and covered by tests; Phase 4 (the
-installable end-user app and localization) is the remaining work.
+installable end-user app and localization) is the remaining work. For the strategic, multi-year
+view beyond these phases — assurance, accessibility, platform, governance, and the v1.0 gate —
+see **[`ROADMAP.md`](ROADMAP.md)**.
 
 - **Phase 1 — capture and evidence core.** ✅ Media capture, content hashing, sealed originals, the
   append-only custody log, and explicit EXIF handling. Local encrypted storage. Definition of done: an
