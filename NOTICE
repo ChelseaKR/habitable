@@ -24,9 +24,13 @@ without disclosure.
 Permissive grant for the verification tool (AGPL section 7)
 -----------------------------------------------------------
 As an additional permission under section 7 of the GNU AGPL, the standalone
-evidence-verification component — the contents of `src/habitable/verify.py` and
-any independently packaged build of it — is ALSO made available under the Apache
-License, Version 2.0, at the recipient's option. This grant exists so that a
+evidence-verification subset is ALSO made available under the Apache License,
+Version 2.0, at the recipient's option. That subset is `src/habitable/verify.py`
+together with the pure, side-effect-free helpers it relies on to do its job:
+`src/habitable/canonical.py` (canonical serialization + SHA-256), the timestamp
+verification routines and token model in `src/habitable/tsa.py`, the
+chain-of-custody verification in `src/habitable/evidence.py`, and the signature
+verification (`verify`) in `src/habitable/crypto.py`. This grant exists so that a
 court, a housing inspector, a legal-aid organization, or an opposing party can
 embed verification of a habitable evidence packet (hashes, RFC 3161 timestamp
 tokens, and the chain-of-custody integrity proof) into their own software and
