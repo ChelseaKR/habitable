@@ -1,0 +1,42 @@
+habitable
+Copyright 2026 Chelsea Kelly-Reif
+
+This product is developed and maintained by Chelsea Kelly-Reif as an independent,
+personal open-source project, on the author's own time and equipment.
+
+It is not affiliated with, sponsored by, endorsed by, or a work product of any
+employer or client of the author. It is not a government system and was not built
+for a government customer. It contains no employer- or client-proprietary or
+confidential code, data, or methods. The techniques are general and publicly
+known (RFC 3161 trusted timestamping, SHA-256 content hashing, CRDT-based
+local-first sync, end-to-end encryption). Any sample cases shipped for tests or
+the demo are synthetic and contain no real tenant data.
+
+License
+-------
+Except where stated below, this project is licensed under the GNU Affero General
+Public License, version 3.0 (AGPL-3.0). See the LICENSE file for the full terms.
+The AGPL is a deliberate part of the safety case: anyone who runs a modified
+relay or a hosted variant for others must publish their changes, so a fork that
+weakens the privacy or tamper-evidence guarantees cannot be offered as a service
+without disclosure.
+
+Permissive grant for the verification tool (AGPL section 7)
+-----------------------------------------------------------
+As an additional permission under section 7 of the GNU AGPL, the standalone
+evidence-verification component — the contents of `src/habitable/verify.py` and
+any independently packaged build of it — is ALSO made available under the Apache
+License, Version 2.0, at the recipient's option. This grant exists so that a
+court, a housing inspector, a legal-aid organization, or an opposing party can
+embed verification of a habitable evidence packet (hashes, RFC 3161 timestamp
+tokens, and the chain-of-custody integrity proof) into their own software and
+redistribute it without the AGPL reaching their code. Merely running the verifier
+never triggers copyleft in any case; this permission is about embedding and
+redistribution. Independent verifiability is of little use if shipping the
+verifier inside another tool is itself encumbered.
+
+Not legal advice
+----------------
+habitable is a documentation tool. It produces evidence packets; it does not
+provide legal advice and does not guarantee that any packet will be admitted or
+relied upon by any court or agency.
