@@ -78,8 +78,11 @@ class VerificationReport:
 
     @property
     def ok(self) -> bool:
-        return self.signature_ok and self.custody_ok and not self.problems and all(
-            item.ok for item in self.items
+        return (
+            self.signature_ok
+            and self.custody_ok
+            and not self.problems
+            and all(item.ok for item in self.items)
         )
 
     @property

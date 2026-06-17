@@ -245,17 +245,11 @@ def _issue_token(
         }
     )
     content = tst_info.dump()
-    asn1_cert = asn1_x509.Certificate.load(
-        certificate.public_bytes(serialization.Encoding.DER)
-    )
+    asn1_cert = asn1_x509.Certificate.load(certificate.public_bytes(serialization.Encoding.DER))
     signed_attrs = cms.CMSAttributes(
         [
-            cms.CMSAttribute(
-                {"type": "content_type", "values": [_ID_CT_TST_INFO]}
-            ),
-            cms.CMSAttribute(
-                {"type": "message_digest", "values": [sha256_raw(content)]}
-            ),
+            cms.CMSAttribute({"type": "content_type", "values": [_ID_CT_TST_INFO]}),
+            cms.CMSAttribute({"type": "message_digest", "values": [sha256_raw(content)]}),
             cms.CMSAttribute(
                 {
                     "type": "signing_time",
@@ -264,9 +258,7 @@ def _issue_token(
             ),
         ]
     )
-    signature = private_key.sign(
-        signed_attrs.dump(), padding.PKCS1v15(), crypto_hashes.SHA256()
-    )
+    signature = private_key.sign(signed_attrs.dump(), padding.PKCS1v15(), crypto_hashes.SHA256())
     signer_info = cms.SignerInfo(
         {
             "version": "v1",
@@ -282,9 +274,7 @@ def _issue_token(
             ),
             "digest_algorithm": algos.DigestAlgorithm({"algorithm": _SHA256}),
             "signed_attrs": signed_attrs,
-            "signature_algorithm": algos.SignedDigestAlgorithm(
-                {"algorithm": "sha256_rsa"}
-            ),
+            "signature_algorithm": algos.SignedDigestAlgorithm({"algorithm": "sha256_rsa"}),
             "signature": signature,
         }
     )
@@ -510,9 +500,7 @@ def _issuer_signed(issuer: crypto_x509.Certificate, cert: crypto_x509.Certificat
     if not isinstance(public_key, rsa.RSAPublicKey) or algorithm is None:
         return False
     try:
-        public_key.verify(
-            cert.signature, cert.tbs_certificate_bytes, padding.PKCS1v15(), algorithm
-        )
+        public_key.verify(cert.signature, cert.tbs_certificate_bytes, padding.PKCS1v15(), algorithm)
     except Exception:
         return False
     return True
@@ -540,5 +528,3 @@ def sha256_raw(data: bytes) -> bytes:
     import hashlib
 
     return hashlib.sha256(data).digest()
-
-

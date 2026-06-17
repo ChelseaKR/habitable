@@ -26,9 +26,7 @@ HASH_ALGORITHM = "sha256"
 _CHUNK = 1024 * 1024
 
 # A JSON-compatible value. Recursive alias (PEP 695) so nested structures are typed.
-type JSONValue = (
-    str | int | float | bool | None | list[JSONValue] | dict[str, JSONValue]
-)
+type JSONValue = str | int | float | bool | None | list[JSONValue] | dict[str, JSONValue]
 
 
 def canonical_json(value: JSONValue) -> bytes:

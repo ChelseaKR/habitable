@@ -109,9 +109,7 @@ def import_messages(vault: Vault, blobs: list[bytes]) -> SyncResult:
     return SyncResult(sent=False, messages_merged=merged, captures_imported=imported)
 
 
-def sync(
-    vault: Vault, peer: PublicIdentity, transport: Transport, *, channel: str
-) -> SyncResult:
+def sync(vault: Vault, peer: PublicIdentity, transport: Transport, *, channel: str) -> SyncResult:
     """Post our state to ``peer`` and merge anything waiting for us."""
     transport.post(channel, export_message(vault, peer))
     result = import_messages(vault, transport.fetch(channel))
@@ -148,9 +146,7 @@ def _verify_envelope(envelope_bytes: bytes) -> tuple[Mapping[str, JSONValue], Pu
     return _as_map(_loads(inner_bytes)), sender
 
 
-def _import_captures(
-    vault: Vault, inner: Mapping[str, JSONValue], sender: PublicIdentity
-) -> int:
+def _import_captures(vault: Vault, inner: Mapping[str, JSONValue], sender: PublicIdentity) -> int:
     imported = 0
     raw_captures = inner.get("captures")
     if not isinstance(raw_captures, list):

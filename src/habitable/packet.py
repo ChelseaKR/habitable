@@ -99,8 +99,14 @@ def build_packet(
             if since is not None and capture.captured_at < since:
                 continue
             item = _build_item(
-                vault, capture, sharing, media_dir, originals_dir, tmp_dir,
-                include_originals=include_originals, actor=actor,
+                vault,
+                capture,
+                sharing,
+                media_dir,
+                originals_dir,
+                tmp_dir,
+                include_originals=include_originals,
+                actor=actor,
             )
             items.append(item)
             if item.get("timestamp") is not None:

@@ -62,6 +62,7 @@ def make_server(host: str, port: int, store: RelayStore | None = None) -> Thread
 
     class Handler(BaseHTTPRequestHandler):
         store = shared_store
+
         # Don't write request lines to stderr; the relay logs only aggregate metrics.
         def log_message(self, _format: str, *_args: object) -> None:
             return
