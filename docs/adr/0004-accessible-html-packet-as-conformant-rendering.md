@@ -55,3 +55,13 @@ in reportlab is not a good use of effort.
   `packet.html`, not a PDF/UA structure tree.
 - If we later adopt a tagging-capable toolchain, this ADR is superseded and the
   PDF can carry a real PDF/UA claim.
+
+## Gate mapping
+
+This ADR **is** the recorded answer to the productionization plan's Phase-1 task 1.3
+("record the PDF/UA decision as an ADR") and to the v1.0 checklist's "tagged (PDF/UA)
+packet" line: the accessible-packet requirement is met by `packet.html` as equivalent
+facilitation, not by a tagged PDF. The implementing change (task 1.4) wires this in —
+the PDF disclaimer points to `packet.html` (`src/habitable/pdf.py`), the axe gate
+treats `packet.html` as the conformant artifact (`.github/workflows/a11y.yml`,
+`tests/test_htmlpacket.py`), and the ACR and manual-testing protocol target it.

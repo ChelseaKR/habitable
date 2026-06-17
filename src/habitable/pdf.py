@@ -91,6 +91,17 @@ def _para(text: str, style: Any) -> Any:
     return Paragraph(escape(text), style)
 
 
+# The PDF is a print/presentation convenience. Per docs/adr/0004, the *conformant*
+# accessible rendering of a packet is packet.html, which ships alongside every export;
+# the disclaimer points a reader who needs an accessible record to it.
+_PACKET_DISCLAIMER = (
+    "This packet documents habitability conditions. It is evidence, not legal advice, "
+    "and it does not guarantee admissibility. Integrity is independently checkable against "
+    "the accompanying <b>bundle.json</b> with the <b>habitable verify</b> tool. "
+    "An accessible version of this packet is provided as <b>packet.html</b>, alongside this PDF."
+)
+
+
 def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path: Path) -> None:
     """Render ``bundle`` to a paginated PDF at ``out_path``."""
     styles = getSampleStyleSheet()
@@ -131,14 +142,7 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
         )
     )
     story.append(Spacer(1, 0.2 * inch))
-    story.append(
-        Paragraph(
-            "This packet documents habitability conditions. It is evidence, not legal advice, "
-            "and it does not guarantee admissibility. Integrity is independently checkable against "
-            "the accompanying <b>bundle.json</b> with the <b>habitable verify</b> tool.",
-            styles["Small"],
-        )
-    )
+    story.append(Paragraph(_PACKET_DISCLAIMER, styles["Small"]))
     story.append(Spacer(1, 0.3 * inch))
 
     items_by_issue = _items_by_issue(bundle)

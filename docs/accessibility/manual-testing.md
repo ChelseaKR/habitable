@@ -54,11 +54,18 @@ Run at least one Windows and one Apple/Linux reader:
 
 ## Exported packet
 
-- Confirm the **PDF** opens with the document *title* shown (not the file name)
-  and the correct language; text is selectable and reads in order.
-- Because full PDF/UA structure tagging is not yet provided (see the ACR), the
-  packet also ships machine-readable `bundle.json`; treat that as the canonical,
-  fully accessible record until tagged-PDF support lands.
+The conformant accessible rendering is **`packet.html`** (ADR 0004); the PDF is a
+print convenience and the `bundle.json` is the canonical machine-verifiable record.
+
+- **`packet.html` — the screen-reader pass.** Open it in a browser with NVDA (Windows)
+  and VoiceOver (macOS/iOS). Confirm: a single `h1`; landmarks/headings let you jump
+  between issues and the evidence appendix; the appendix table announces its column
+  headers with each cell; every evidence image has a meaningful text alternative or an
+  adjacent real-text caption; evidence status is announced in words, never by colour
+  alone; and the page is fully operable and readable in EN and ES.
+- **PDF — convenience check only.** Confirm it opens with the document *title* shown
+  (not the file name) and the correct language, and that text is selectable and reads in
+  order. The PDF makes no PDF/UA claim, so do **not** assess tagged structure against it.
 
 ## Recording results
 

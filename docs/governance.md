@@ -66,7 +66,9 @@ track the code rather than a marketing moment:
 - **Security and accessibility reviews** live under [`docs/audits/`](audits/).
 - The **Accessibility Conformance Report (ACR)** — VPAT 2.5 (Rev 508), covering WCAG 2.x A/AA and
   the Section 508 functional performance criteria — lives at
-  [`docs/accessibility/ACR.md`](accessibility/ACR.md).
+  [`docs/accessibility/ACR.md`](accessibility/ACR.md). The **conformant accessible rendering of an
+  evidence packet is `packet.html`** (axe-gated); the PDF is a print convenience and makes no
+  PDF/UA claim — see [ADR 0004](adr/0004-accessible-html-packet-as-conformant-rendering.md).
 - The threat model lives at [`docs/threat-model.md`](threat-model.md). Accessibility is a
   merge-blocking CI gate; a regression fails the build.
 

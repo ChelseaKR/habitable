@@ -31,4 +31,7 @@ jobs:
       - name: Install Chromium for Playwright
         run: uv run playwright install --with-deps chromium
       - name: Run the axe-core accessibility gate
+        # Gates the two conformant surfaces: the local app and packet.html — the
+        # accessible rendering of an evidence packet (ADR 0004). A WCAG violation in
+        # either fails the build. The PDF is a print convenience and makes no PDF/UA claim.
         run: uv run pytest -m a11y -q

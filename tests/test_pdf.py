@@ -36,6 +36,17 @@ def test_packet_pdf_has_accessibility_markers(
     assert b"/Outlines" in pdf
 
 
+def test_pdf_points_to_the_accessible_html_rendering() -> None:
+    """Per ADR 0004, packet.html is the conformant accessible rendering and the PDF a
+    print convenience; the PDF disclaimer must direct a reader who needs an accessible
+    record to packet.html. (PDF body text is stream-encoded, so we assert the renderer's
+    disclaimer copy rather than searching the compressed bytes.)"""
+    from habitable.pdf import _PACKET_DISCLAIMER
+
+    assert "packet.html" in _PACKET_DISCLAIMER
+    assert "not legal advice" in _PACKET_DISCLAIMER  # the existing copy is preserved
+
+
 def _with_config(vault: Vault, **kwargs: object) -> None:
     from habitable.config import Config
 

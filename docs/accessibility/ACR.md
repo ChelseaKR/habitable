@@ -26,11 +26,18 @@ Based on the **Voluntary Product Accessibility Template (VPAT) version 2.5 (Rev 
 > (landmarks, one `h1`, a captioned appendix table with header scopes, meaningful image
 > `alt`, the document language) that **passes the same axe-core gate**
 > (`tests/test_htmlpacket.py`). The machine-verifiable `bundle.json` remains the
-> canonical record. Full PDF/UA tagging is tracked future work.
+> canonical record.
+>
+> **`packet.html` is the conformant accessible rendering** of a packet, and the PDF is a
+> best-effort print/presentation convenience that makes **no PDF/UA conformance claim**
+> (decided in [ADR 0004](../adr/0004-accessible-html-packet-as-conformant-rendering.md)).
+> A fully tagged PDF/UA file is revisited only if a suitable open-source tagging
+> toolchain becomes available; the PDF rows below describe its current best-effort
+> behaviour, not a conformance target.
 
 ## Name of Product / Version
 
-**habitable** — version **0.1.0** (alpha / concept stage).
+**habitable** — version **0.2.0** (alpha / concept stage).
 
 ## Report Date
 
