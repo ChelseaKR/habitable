@@ -58,3 +58,16 @@ This is the first entry, and it is deliberately modest.
   `pytest` with property-based convergence tests and tamper-detection tests against
   clean, altered, and chain-broken fixtures, at roughly **85% coverage**.
   `pip-audit` and CodeQL run in CI.
+
+## Findings addressed pre-audit
+
+Issues the project found and fixed in its own review, recorded here so the trail is
+honest before external eyes arrive. These predate any third-party audit.
+
+| Date | Severity | Finding | Resolution |
+| --- | --- | --- | --- |
+| 2026-06-17 | Medium (privacy) | A custody-actor identity (an importing peer's fingerprint, `details.from`) and the tenant's original source filename (`details.source`) were carried in the **exported, signed `bundle.json`**, weakening the "exports name no one" guarantee in threat model §4. | Moved both to a **vault-only `private_details`** field that is never hashed and never exported; the union keeps them for its own audit. Previously-produced packets still verify. Regression-guarded by `tests/test_guards.py`; released in v0.2.0. |
+| 2026-06-17 | Low (robustness) | The verifier could crash on hostile input: invalid-UTF-8 bundle bytes, and a malformed custody chain. Found by the fuzz/property harness. | Both are now clean rejections (`VerificationError` / a failed verdict), never a crash. |
+| 2026-06-17 | Low (interop) | The RFC 3161 client assumed SHA-256 and RSA and mis-read a name-form `PKIStatus`, so it failed against some real public authorities. | Follows the token's own digest algorithm, dispatches RSA + ECDSA, accepts int/name `PKIStatus`; verified against DigiCert and FreeTSA in a network-gated CI job. |
+
+The privacy finding post-dates the freeze of [threat-model baseline **B1**](threat-model-baseline.md): the baseline text did not over-claim (§4 promised only that actor/salt/signature are dropped), but the fix strengthens the spirit of that section. The baseline document remains valid as frozen; this fix does not require a new baseline.

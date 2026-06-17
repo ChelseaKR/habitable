@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import base64
 import threading
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -82,6 +83,16 @@ def relay_url() -> Iterator[tuple[str, RelayStore]]:
         thread.join(timeout=5)
 
 
+def _no_content_markers(a: Vault, image_bytes: bytes) -> list[bytes]:
+    """Every plaintext that must NEVER appear in a stored/transmitted blob."""
+    return [
+        SENTINEL.encode(),  # the note text (rides in the CRDT state)
+        image_bytes[:64],  # raw original image bytes (ride in captures[].original_b64)
+        base64.b64encode(image_bytes)[:64],  # ...nor their base64 form
+        a.identity.public().fingerprint.encode(),  # the sender identity (in the envelope)
+    ]
+
+
 def test_relay_sync_is_end_to_end_encrypted(
     make_vault: Callable[..., Vault],
     make_jpeg: Callable[..., Path],
@@ -91,14 +102,52 @@ def test_relay_sync_is_end_to_end_encrypted(
     url, store = relay_url
     a = make_vault("A")
     b = make_vault("B", passphrase="pw-b")
-    _seed(a, make_jpeg, local_tsa)
+    issue = a.document.add_issue(category="mold", room="bath", title=SENTINEL, issue_id="i1")
+    photo = make_jpeg("unique-source.jpg", with_location=True)
+    image_bytes = photo.read_bytes()
+    capture(a, photo, issue_id=issue, tsa=local_tsa)
+
     client = RelayClient(url)
     sync(a, b.identity.public(), client, channel="room-relay")
     result = sync(b, a.identity.public(), client, channel="room-relay")
 
     assert result.captures_imported == 1
     assert b.custody.verify().ok
-    # The relay only ever held ciphertext: a unique plaintext sentinel never appears.
-    for blob in store.fetch("room-relay"):
-        assert SENTINEL.encode() not in blob
+    # "Ciphertext in, ciphertext out": no plaintext of any kind — note text, raw or
+    # base64 image bytes, or the sender's own identity — appears in a stored blob or in
+    # the base64 the relay GET handler serves back.
+    blobs = store.fetch("room-relay")
+    assert blobs
+    served_back = b"".join(base64.b64encode(blob) for blob in blobs)
+    for marker in _no_content_markers(a, image_bytes):
+        for blob in blobs:
+            assert marker not in blob
+        assert marker not in served_back
     assert store.metrics()["posted"] >= 2
+
+
+def test_localdir_mailbox_holds_only_ciphertext(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    a = make_vault("A")
+    b = make_vault("B", passphrase="pw-b")
+    issue = a.document.add_issue(category="mold", room="bath", title=SENTINEL, issue_id="i1")
+    photo = make_jpeg("unique-source.jpg", with_location=True)
+    image_bytes = photo.read_bytes()
+    capture(a, photo, issue_id=issue, tsa=local_tsa)
+
+    mbox_dir = tmp_path / "mbox"
+    transport = LocalDirTransport(mbox_dir)
+    sync(a, b.identity.public(), transport, channel="room")
+
+    # The on-disk mailbox holds only base64 of sealed blobs: assert no plaintext marker
+    # survives in either the raw file bytes or any base64-decoded line.
+    raw = b"".join(p.read_bytes() for p in mbox_dir.glob("*"))
+    decoded = b"".join(base64.b64decode(line) for line in raw.splitlines() if line.strip())
+    assert raw and decoded
+    for marker in _no_content_markers(a, image_bytes):
+        assert marker not in raw
+        assert marker not in decoded

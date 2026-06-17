@@ -22,7 +22,7 @@ from __future__ import annotations
 import base64
 import os
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 
@@ -94,7 +94,14 @@ class CustodyEntry:
     """One link in the chain of custody.
 
     Public fields (exported in a packet) prove integrity; ``actor``/``actor_salt``/
-    ``signature`` are vault-only and blank in the exported form.
+    ``signature``/``private_details`` are vault-only and absent in the exported form.
+
+    ``details`` is bound into the entry hash and travels in a packet, so it must hold
+    only verification-relevant, non-identifying facts (hashes, media type, TSA name).
+    Anything identity- or PII-bearing — the originating peer's fingerprint, the
+    tenant's source filename — goes in ``private_details``, which is **never hashed
+    and never exported**, exactly like the clear ``actor``. This keeps a custody-actor
+    identity from leaking into the signed, shared ``bundle.json``.
     """
 
     seq: int
@@ -108,9 +115,14 @@ class CustodyEntry:
     actor: str = ""
     actor_salt: str = ""
     signature: str = ""
+    private_details: Mapping[str, str] = field(default_factory=dict)
 
     def public_payload(self) -> dict[str, JSONValue]:
-        """The exact structure the entry hash is taken over (no clear identity)."""
+        """The exact structure the entry hash is taken over (no clear identity).
+
+        Deliberately excludes ``private_details`` so identity/PII facts are neither
+        committed to the hash nor reconstructable from an exported entry.
+        """
         return {
             "seq": self.seq,
             "action": self.action,
@@ -125,8 +137,8 @@ class CustodyEntry:
         return sha256_bytes(canonical_json(self.public_payload()))
 
     def redacted(self) -> CustodyEntry:
-        """Drop clear identity, salt, and signature — the form safe to export."""
-        return replace(self, actor="", actor_salt="", signature="")
+        """Drop clear identity, salt, signature, and private details — safe to export."""
+        return replace(self, actor="", actor_salt="", signature="", private_details={})
 
     def to_export_dict(self) -> dict[str, JSONValue]:
         payload = self.public_payload()
@@ -138,14 +150,16 @@ class CustodyEntry:
         payload["actor"] = self.actor
         payload["actor_salt"] = self.actor_salt
         payload["signature"] = self.signature
+        payload["private_details"] = {
+            k: self.private_details[k] for k in sorted(self.private_details)
+        }
         return payload
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, JSONValue]) -> CustodyEntry:
-        details_raw = raw.get("details", {})
-        if not isinstance(details_raw, dict):
-            raise CustodyError("custody entry 'details' must be an object")
-        details = {str(k): str(v) for k, v in details_raw.items()}
+        details = _str_map(raw.get("details", {}), "details")
+        # private_details is vault-only and absent from exported entries; default empty.
+        private_details = _str_map(raw.get("private_details", {}), "private_details")
         return cls(
             seq=_int(raw, "seq"),
             action=_str(raw, "action"),
@@ -158,6 +172,7 @@ class CustodyEntry:
             actor=_str(raw, "actor", ""),
             actor_salt=_str(raw, "actor_salt", ""),
             signature=_str(raw, "signature", ""),
+            private_details=private_details,
         )
 
 
@@ -209,9 +224,15 @@ class CustodyLog:
         actor: str,
         hlc: str,
         details: Mapping[str, str] | None = None,
+        private_details: Mapping[str, str] | None = None,
         identity: Identity | None = None,
     ) -> CustodyEntry:
-        """Append an entry, hash-linked to the current head."""
+        """Append an entry, hash-linked to the current head.
+
+        ``details`` is hashed and exported; ``private_details`` (identity/PII facts
+        such as a peer fingerprint or a source filename) is vault-only — kept for the
+        union's own audit but never hashed and never exported.
+        """
         salt_hex = os.urandom(16).hex()
         commitment = _actor_commitment(salt_hex, actor)
         skeleton = CustodyEntry(
@@ -223,6 +244,7 @@ class CustodyLog:
             details=dict(details or {}),
             prev_hash=self.head_hash,
             entry_hash="",
+            private_details=dict(private_details or {}),
         )
         entry_hash = skeleton.recompute_hash()
         signature = ""
@@ -332,3 +354,9 @@ def _int(raw: Mapping[str, JSONValue], key: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool):
         raise CustodyError(f"custody field {key!r} must be an integer")
     return value
+
+
+def _str_map(value: JSONValue, key: str) -> dict[str, str]:
+    if not isinstance(value, dict):
+        raise CustodyError(f"custody entry {key!r} must be an object")
+    return {str(k): str(v) for k, v in value.items()}

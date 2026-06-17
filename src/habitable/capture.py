@@ -82,7 +82,8 @@ def capture(
         capture_id,
         actor=actor_id,
         hlc=stamp.encode(),
-        details={"media_type": resolved_media_type, "source": src.name},
+        details={"media_type": resolved_media_type},
+        private_details={"source": src.name},  # tenant filename: vault-only, never exported
         identity=vault.identity,
     )
 

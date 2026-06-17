@@ -175,7 +175,9 @@ def _import_captures(vault: Vault, inner: Mapping[str, JSONValue], sender: Publi
             capture_id,
             actor=vault.identity.public().fingerprint,
             hlc=vault.document.clock.now().encode(),
-            details={"from": sender.fingerprint, "content_hash": content_hash},
+            details={"content_hash": content_hash},
+            # sender fingerprint is a custody-actor identity: vault-only, never exported
+            private_details={"from": sender.fingerprint},
             identity=vault.identity,
         )
         imported += 1
