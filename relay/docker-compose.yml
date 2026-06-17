@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# One-command deploy for the optional ciphertext-only sync relay:
+#   docker compose -f relay/docker-compose.yml up -d
+services:
+  relay:
+    build:
+      context: ..
+      dockerfile: relay/Dockerfile
+    image: habitable-relay:latest
+    container_name: habitable-relay
+    ports:
+      - "8787:8787"
+    environment:
+      HABITABLE_RELAY_HOST: "0.0.0.0"
+      HABITABLE_RELAY_PORT: "8787"
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

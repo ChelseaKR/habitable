@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -111,3 +112,19 @@ def serve(host: str = "127.0.0.1", port: int = 8787, store: RelayStore | None = 
         server.serve_forever()
     except KeyboardInterrupt:
         server.shutdown()
+        server.server_close()
+
+
+def _main() -> None:
+    """Entry point for ``python -m habitable.relay`` (used by the container image).
+
+    Host/port come from the environment so the dependency-free relay can run with
+    only the standard library and the source tree on PYTHONPATH.
+    """
+    host = os.environ.get("HABITABLE_RELAY_HOST", "127.0.0.1")
+    port = int(os.environ.get("HABITABLE_RELAY_PORT", "8787"))
+    serve(host, port)
+
+
+if __name__ == "__main__":
+    _main()

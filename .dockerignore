@@ -1,0 +1,20 @@
+# Keep the relay build context tiny — only src/ is copied into the image.
+.git
+.github
+.venv
+.mypy_cache
+.ruff_cache
+.pytest_cache
+.hypothesis
+dist
+build
+htmlcov
+coverage.xml
+.coverage
+app
+site
+tests
+docs
+*.md
+uv.lock
+.claude
