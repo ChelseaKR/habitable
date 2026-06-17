@@ -7,13 +7,16 @@ Based on the **Voluntary Product Accessibility Template (VPAT) version 2.5 (Rev 
 > programmatically labelled controls (the resolve action uses `aria-describedby`),
 > `lang`/`title`/viewport, an `aria-live` status region, visible focus, no positive
 > `tabindex`, and full English/Spanish parity. These are enforced two ways in CI:
-> structural tests (`tests/test_app_accessibility.py`, `tests/test_app_i18n.py`) **and
-> a real `axe-core` scan** of the running app in **both languages**, blocking on any
-> moderate/serious/critical violation (`tests/test_app_axe.py`, the `a11y` workflow).
-> The app currently reports **zero** axe violations. The remaining step for a full
-> conformance *claim* is the **manual** screen-reader/keyboard/zoom pass documented in
-> [`manual-testing.md`](manual-testing.md) — automation cannot certify usability with
-> AT, and no human NVDA/VoiceOver pass has been recorded yet.
+> structural tests (`tests/test_app_accessibility.py`, `tests/test_app_i18n.py`), **a
+> real `axe-core` scan** of the running app in **both languages** (blocking on any
+> moderate/serious/critical violation, `tests/test_app_axe.py`), and **keyboard +
+> reflow tests** that verify the skip link is first in tab order, every major control
+> is reachable without a trap, and the layout reflows at 320px with no horizontal
+> scrolling (`tests/test_app_keyboard.py`; WCAG 2.1.1, 2.4.3, 1.4.10). All run in the
+> `a11y` workflow and the app currently reports **zero** axe violations. The remaining
+> step for a full conformance *claim* is the one part automation cannot do — a
+> **recorded human screen-reader (NVDA/VoiceOver) announcement pass**, per
+> [`manual-testing.md`](manual-testing.md); none has been recorded yet.
 >
 > **Packet accessibility.** ReportLab's open-source API has no marked-content, so a
 > fully tagged **PDF/UA structure tree is not produced**. Instead: (a) the PDF declares
