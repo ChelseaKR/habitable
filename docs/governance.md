@@ -44,11 +44,16 @@ full statement is in [`NOTICE`](../NOTICE).
 
 ## Releases
 
-Releases are **tagged and signed**. Each release is reproducible and provenanced:
+Releases are tagged, built, SBOM'd, and **provenance-attested and signed** by the
+`release` workflow on each tag (see [`releasing.md`](releasing.md)):
 
-- **Pinned, locked dependencies** via [`uv.lock`](../uv.lock).
+- **Pinned, locked dependencies** via [`uv.lock`](../uv.lock); the relay base
+  image is pinned by digest.
 - **GitHub Actions pinned to commit SHAs** (not floating tags).
-- **Build-provenance attestations** published with the artifacts.
+- **Signed build-provenance attestations** (Sigstore) + a **CycloneDX SBOM**
+  published with the artifacts; verify with `gh attestation verify`.
+- Byte-for-byte **reproducible builds** and **PyPI Trusted Publishing** are the
+  remaining release-hardening items, tracked for v1.0.
 - **`make verify` is the merge gate** and the release gate — ruff format + check, `mypy --strict`,
   and the full test suite (including tamper-detection and CRDT-convergence tests) must be green.
   Nothing merges or releases red.
