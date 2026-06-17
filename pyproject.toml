@@ -58,6 +58,8 @@ dev = [
     "mypy>=1.11",
     "ruff>=0.6",
     "pip-audit>=2.7",
+    "playwright>=1.48",
+    "axe-playwright-python>=0.1.7",
 ]
 
 [build-system]
@@ -104,7 +106,7 @@ no_implicit_reexport = true
 files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["piexif.*", "reportlab.*", "PIL.*", "asn1crypto.*"]
+module = ["piexif.*", "reportlab.*", "PIL.*", "asn1crypto.*", "axe_playwright_python.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
@@ -112,6 +114,9 @@ minversion = "8.0"
 addopts = "-ra --strict-markers --strict-config"
 testpaths = ["tests"]
 filterwarnings = ["error"]
+markers = [
+    "a11y: browser-based accessibility (axe-core) checks; needs Playwright + Chromium",
+]
 
 [tool.coverage.run]
 branch = true

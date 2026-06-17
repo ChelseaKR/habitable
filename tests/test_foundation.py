@@ -17,6 +17,7 @@ from habitable.config import Config, default_config_toml
 from habitable.crypto import (
     Identity,
     PublicIdentity,
+    SymmetricKey,
     create_keyfile,
     export_recovery_blob,
     import_recovery_blob,
@@ -151,7 +152,11 @@ class TestCrypto:
         assert PublicIdentity.decode(identity.public().encode()) == identity.public()
 
 
+# One AEAD key for the property test — scrypt key-wrapping is covered above; here
+# we exercise encrypt/decrypt over many payloads without re-deriving a key per example.
+_RT_KEY = SymmetricKey.generate()
+
+
 @given(st.binary(max_size=2048))
 def test_symmetric_round_trip(payload: bytes) -> None:
-    _, dek = create_keyfile("pw")
-    assert dek.decrypt(dek.encrypt(payload, aad=b"a"), aad=b"a") == payload
+    assert _RT_KEY.decrypt(_RT_KEY.encrypt(payload, aad=b"a"), aad=b"a") == payload

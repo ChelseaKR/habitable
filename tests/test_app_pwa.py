@@ -22,6 +22,24 @@ def test_manifest_is_installable() -> None:
     assert manifest.get("theme_color") and manifest.get("background_color")
 
 
+def test_manifest_has_required_png_and_maskable_icons() -> None:
+    """Installability needs raster 192/512 icons and a maskable icon."""
+    manifest = json.loads((_APP / "manifest.webmanifest").read_text(encoding="utf-8"))
+    png = [i for i in manifest["icons"] if i.get("type") == "image/png"]
+    sizes = {i.get("sizes") for i in png}
+    assert "192x192" in sizes and "512x512" in sizes, "need 192 and 512 PNG icons"
+    maskable = any("maskable" in i.get("purpose", "") for i in manifest["icons"])
+    assert maskable, "need a maskable icon"
+
+
+def test_apple_and_standalone_meta_present() -> None:
+    index = (_APP / "index.html").read_text(encoding="utf-8")
+    assert 'rel="apple-touch-icon"' in index
+    assert (_APP / "icons" / "apple-touch-icon.png").is_file()
+    assert "apple-mobile-web-app-capable" in index
+    assert "mobile-web-app-capable" in index
+
+
 def test_service_worker_never_caches_api() -> None:
     sw = (_APP / "service-worker.js").read_text(encoding="utf-8")
     for event in ("install", "activate", "fetch"):

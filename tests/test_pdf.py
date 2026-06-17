@@ -32,6 +32,8 @@ def test_packet_pdf_has_accessibility_markers(
     assert b"/Lang" in pdf
     assert b"/ViewerPreferences" in pdf
     assert b"/DisplayDocTitle" in pdf
+    # A navigable outline (bookmarks) for headings.
+    assert b"/Outlines" in pdf
 
 
 def _with_config(vault: Vault, **kwargs: object) -> None:

@@ -2,7 +2,7 @@
 // habitable — offline shell cache. API responses are never cached.
 "use strict";
 
-var CACHE = "habitable-shell-v1";
+var CACHE = "habitable-shell-v2";
 
 // Relative URLs so the worker matches however the shell is served.
 var SHELL = [
@@ -13,7 +13,11 @@ var SHELL = [
   "i18n/en.json",
   "i18n/es.json",
   "manifest.webmanifest",
-  "icons/icon.svg"
+  "icons/icon.svg",
+  "icons/icon-192.png",
+  "icons/icon-512.png",
+  "icons/icon-maskable-512.png",
+  "icons/apple-touch-icon.png"
 ];
 
 self.addEventListener("install", function (event) {

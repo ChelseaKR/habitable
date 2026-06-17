@@ -34,9 +34,10 @@ verify: lint type cov ## The full merge gate: lint + types + tests with coverage
 audit: ## Dependency vulnerability audit
 	uv run pip-audit
 
-a11y: ## Structural accessibility + i18n + PWA checks (see ACR for the full audit plan)
+a11y: ## Accessibility gate: structural + i18n + PWA, then the axe-core browser scan
 	uv run pytest tests/test_app_accessibility.py tests/test_app_i18n.py tests/test_app_pwa.py
-	@echo "Full audit: run axe/pa11y against 'habitable app' + manual NVDA/VoiceOver (docs/accessibility/ACR.md)."
+	uv run pytest -m a11y
+	@echo "Manual pass: keyboard + NVDA/VoiceOver + zoom per docs/accessibility/manual-testing.md."
 
 demo: ## Walk a synthetic case from capture to a verified packet (no real data)
 	uv run habitable demo

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
@@ -50,6 +50,35 @@ class _AccessibleCanvas(Canvas):  # type: ignore[misc]  # reportlab ships no stu
         super().save()
 
 
+class _PacketDoc(SimpleDocTemplate):  # type: ignore[misc]  # reportlab ships no stubs
+    """A document that records a navigable outline (bookmarks) for its headings.
+
+    A PDF outline lets everyone — especially screen-reader and keyboard users —
+    jump between sections. (reportlab's open-source API has no marked-content, so
+    a full PDF/UA structure tree is not produced; see docs/accessibility/ACR.md.)
+    """
+
+    _HEADING_LEVELS: ClassVar[dict[str, int]] = {
+        "Title": 0,
+        "Heading1": 0,
+        "Heading2": 1,
+        "Heading3": 2,
+    }
+
+    def afterFlowable(self, flowable: Any) -> None:  # noqa: N802 - reportlab override name
+        if not isinstance(flowable, Paragraph):
+            return
+        level = self._HEADING_LEVELS.get(flowable.style.name)
+        text = flowable.getPlainText()
+        if level is None or not text:
+            return
+        counter = getattr(self, "_outline_n", 0)
+        self._outline_n = counter + 1
+        key = f"sec-{counter}"
+        self.canv.bookmarkPage(key)
+        self.canv.addOutlineEntry(text, key, level=level, closed=False)
+
+
 def _para(text: str, style: Any) -> Any:
     """A Paragraph with its text escaped — bundle content is data, not markup.
 
@@ -73,7 +102,7 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
     # Declare the configured language so assistive tech reads the packet correctly.
     lang = _s(bundle, "language") or "en"
 
-    doc = SimpleDocTemplate(
+    doc = _PacketDoc(
         str(out_path),
         pagesize=letter,
         title=title,

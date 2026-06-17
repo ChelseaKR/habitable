@@ -10,9 +10,10 @@
 > The union owns its data.
 
 **Status:** working reference implementation · **alpha** — the evidence core, CLI, peer-to-peer
-sync, standalone verifier, and an accessible bilingual (EN/ES) local web app are implemented and
-tested on Python 3.14 (`make verify` green); a full WCAG 2.2 AA audit and mobile packaging are still
-ahead, so **do not rely on this for real legal matters yet** ·
+sync, standalone verifier, and an accessible bilingual (EN/ES) installable web app are implemented
+and tested on Python 3.14 (`make verify` green; the app is gated by a real `axe-core` scan in both
+languages). A recorded human screen-reader pass and signed native app-store binaries remain, so
+**do not rely on this for real legal matters yet** ·
 independent personal open-source project · AGPL-3.0 ·
 unaffiliated with any employer or client; contains no proprietary or client material; not a
 government system and not built for a government customer.
@@ -373,12 +374,16 @@ installable end-user app and localization) is the remaining work.
 - **Phase 3 — local-first sync.** ✅ The CRDT case model, end-to-end-encrypted peer-to-peer sync, the
   optional ciphertext-only relay, and encrypted backup with key rotation. Concurrent-offline-edit
   convergence tested (property-based).
-- **Phase 4 — accessible app and generalize.** 🚧 An accessible, bilingual (EN/ES) local web app is
-  implemented (`habitable app`), with EN/ES string parity and structural accessibility (lang, skip
-  link, labelled controls, landmarks, no positive tabindex) enforced by tests; configurable packet
-  templates (✅), the threat-model doc (✅ `docs/threat-model.md`), and a "set up your union in an
-  afternoon" guide (✅ `docs/setup-guide.md`) are done. **Remaining:** a full WCAG 2.2 AA audit (axe +
-  manual NVDA/VoiceOver) wired as a merge gate, a tagged (PDF/UA) packet, and mobile packaging.
+- **Phase 4 — accessible app and generalize.** Mostly done: an accessible, bilingual (EN/ES) web app
+  (`habitable app`) gated by a real **axe-core** scan in both languages plus structural + i18n-parity
+  tests (✅); an **installable PWA** with PNG/maskable icons, Apple touch icon, and an offline service
+  worker (✅, see `docs/mobile.md`); an **accessible `packet.html`** rendering that passes the same axe
+  gate, alongside a PDF that declares its language and carries a navigable outline (✅); configurable
+  packet templates (✅), the threat-model doc (✅), the setup guide (✅), and a documented manual
+  screen-reader protocol (✅ `docs/accessibility/manual-testing.md`). **Remaining:** a *recorded* human
+  NVDA/VoiceOver pass; a fully tagged **PDF/UA** structure tree (not available in reportlab's
+  open-source API — the HTML packet is the accessible rendering until then); and signed native
+  app-store binaries (the PWA covers mobile install today).
 
 ---
 

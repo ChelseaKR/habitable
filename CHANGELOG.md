@@ -21,17 +21,29 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 - **Setup guide.** `docs/setup-guide.md` — "set up your union in an afternoon".
 - **Resolve in the app.** A "resolve awaiting timestamps" action (and `/api/resolve`)
   so items captured offline can be timestamped from the UI when back online.
-- **PDF accessibility (toward PDF/UA).** Packet PDFs now declare their language
-  and set `DisplayDocTitle`, so viewers show the document title, not the file name.
-- **More gates.** Tests for the app's PWA installability (manifest, icons,
-  service worker that is network-only for `/api/`) and the PDF accessibility
-  markers; a `make a11y` target. 87 tests total, `make verify` green.
+- **axe-core accessibility gate.** A real WCAG scan of the running app in English
+  and Spanish (via Playwright/Chromium), blocking on any moderate/serious/critical
+  violation, wired into a dedicated `a11y` CI workflow and `make a11y`; the app
+  reports **zero** violations. A manual NVDA/VoiceOver/keyboard/zoom protocol is
+  documented in `docs/accessibility/manual-testing.md`.
+- **Accessible HTML packet.** Every export now also produces `packet.html` — a
+  self-contained WCAG 2.2 AA rendering (landmarks, one `h1`, a captioned appendix
+  table with header scopes, meaningful image `alt`, document language) that passes
+  the same axe gate. It is the accessible human-readable view alongside the PDF.
+- **PDF accessibility.** Packet PDFs declare their (configured) language, set
+  `DisplayDocTitle`, and carry a navigable outline/bookmarks; all bundle-derived
+  text is escaped before rendering.
+- **Mobile / PWA.** PNG icons (192/512) plus a maskable icon and an Apple touch
+  icon, Apple/standalone meta tags, and a service worker that precaches the shell
+  and falls back offline; install guidance in `docs/mobile.md`. Installability is
+  test-gated.
 
 ### Note
 
-A full WCAG 2.2 AA audit (automated axe/pa11y + manual NVDA/VoiceOver review wired
-as a merge gate), a fully tagged (PDF/UA structure tree) packet, and native mobile
-packaging are still ahead — see the ACR and the build plan.
+A *recorded* human screen-reader pass (protocol shipped), a fully tagged PDF/UA
+structure tree (not available in reportlab's open-source API — the HTML packet is
+the accessible rendering until then), and signed native app-store binaries (the
+installable PWA covers mobile today) remain — see the ACR and the build plan.
 
 ## [0.1.0] — 2026-06-17
 

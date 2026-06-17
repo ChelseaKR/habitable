@@ -2,23 +2,28 @@
 
 Based on the **Voluntary Product Accessibility Template (VPAT) version 2.5 (Rev 508)**.
 
-> **Update (2026-06-17): an initial local web app now exists** (`habitable app`).
-> It was built to this report's targets — semantic landmarks, a skip link, a single
-> `h1`, programmatically labelled controls, `lang`/`title`/viewport, an `aria-live`
-> status region, visible focus, no positive `tabindex`, and full English/Spanish
-> string parity — and those *structural* invariants are enforced by automated tests
-> (`tests/test_app_accessibility.py`, `tests/test_app_i18n.py`). What remains before
-> a conformance claim: an automated **axe** scan and **manual NVDA/VoiceOver** review
-> wired as a merge gate, contrast verification against the shipped palette, and a
-> tagged (PDF/UA) packet. Until then the WCAG tables below remain the *target*, now
-> partially substantiated for the app shell rather than fully "Not Evaluated".
+> **Update (2026-06-17): the local web app is built and gated for accessibility.**
+> `habitable app` ships with semantic landmarks, a skip link, a single `h1`,
+> programmatically labelled controls (the resolve action uses `aria-describedby`),
+> `lang`/`title`/viewport, an `aria-live` status region, visible focus, no positive
+> `tabindex`, and full English/Spanish parity. These are enforced two ways in CI:
+> structural tests (`tests/test_app_accessibility.py`, `tests/test_app_i18n.py`) **and
+> a real `axe-core` scan** of the running app in **both languages**, blocking on any
+> moderate/serious/critical violation (`tests/test_app_axe.py`, the `a11y` workflow).
+> The app currently reports **zero** axe violations. The remaining step for a full
+> conformance *claim* is the **manual** screen-reader/keyboard/zoom pass documented in
+> [`manual-testing.md`](manual-testing.md) — automation cannot certify usability with
+> AT, and no human NVDA/VoiceOver pass has been recorded yet.
 >
-> **PDF progress:** exported packet PDFs now declare the document **language**
-> (`/Lang`) and set the **DisplayDocTitle** viewer preference (so assistive tech
-> and viewers announce the title, not the file name); real text remains selectable.
-> A full PDF/UA **structure tree** (tagged headings, table structure, image alt
-> text) is the remaining PDF work and is asserted-against in `tests/test_pdf.py`
-> only at the catalog-hint level today.
+> **Packet accessibility.** ReportLab's open-source API has no marked-content, so a
+> fully tagged **PDF/UA structure tree is not produced**. Instead: (a) the PDF declares
+> its **language** (`/Lang`, matching the configured locale), sets **DisplayDocTitle**,
+> and carries a navigable **outline/bookmarks** with selectable text; and (b) every
+> packet also ships **`packet.html`** — a self-contained WCAG 2.2 AA rendering
+> (landmarks, one `h1`, a captioned appendix table with header scopes, meaningful image
+> `alt`, the document language) that **passes the same axe-core gate**
+> (`tests/test_htmlpacket.py`). The machine-verifiable `bundle.json` remains the
+> canonical record. Full PDF/UA tagging is tracked future work.
 
 ## Name of Product / Version
 

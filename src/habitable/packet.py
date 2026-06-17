@@ -43,6 +43,7 @@ _SIGNATURE = "bundle.sig.json"
 _MEDIA = "media"
 _ORIGINALS = "originals"
 _PDF = "packet.pdf"
+_HTML = "packet.html"
 
 _EXT_BY_TYPE = {
     "image/jpeg": ".jpg",
@@ -59,6 +60,7 @@ class PacketResult:
     out_dir: Path
     bundle_path: Path
     pdf_path: Path | None
+    html_path: Path | None
     item_count: int
     timestamped_count: int
     includes_originals: bool
@@ -156,6 +158,13 @@ def build_packet(
     _write_signature(vault, out_dir, bundle_bytes)
     vault.save()
 
+    # An accessible HTML rendering always accompanies the packet (the conformant
+    # human-readable view; see docs/accessibility/ACR.md).
+    from . import htmlpacket
+
+    html_path = out_dir / _HTML
+    htmlpacket.render_packet_html(bundle, media_dir, html_path)
+
     pdf_path: Path | None = None
     if make_pdf:
         from . import pdf as pdf_module
@@ -168,6 +177,7 @@ def build_packet(
         out_dir=out_dir,
         bundle_path=bundle_path,
         pdf_path=pdf_path,
+        html_path=html_path,
         item_count=len(items),
         timestamped_count=timestamped,
         includes_originals=include_originals,
