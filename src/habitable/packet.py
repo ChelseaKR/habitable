@@ -135,6 +135,10 @@ def build_packet(
         "generated_at": generated_at or _now_iso(),
         "producer_fingerprint": actor,
         "hash_algorithm": "sha256",
+        "template": {
+            "header": vault.config.packet_template.header,
+            "footer": vault.config.packet_template.footer,
+        },
         "issues": cast(JSONValue, [_issue_json(issue) for issue in selected_issues]),
         "timeline": cast(JSONValue, [_timeline_json(e) for e in _timeline(vault, issue_ids)]),
         "items": cast(JSONValue, items),

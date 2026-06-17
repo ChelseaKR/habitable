@@ -57,6 +57,10 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
     )
 
     story: list[Any] = [Paragraph(title, styles["Title"])]
+    template = _map(bundle, "template")
+    if _s(template, "header"):
+        story.append(Paragraph(_s(template, "header"), styles["Normal"]))
+        story.append(Spacer(1, 0.1 * inch))
     appendix = _map(bundle, "appendix")
     story.append(
         Paragraph(
@@ -94,6 +98,10 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
     )
     story.append(Spacer(1, 0.15 * inch))
     story.append(_appendix_table(bundle, styles))
+
+    if _s(template, "footer"):
+        story.append(Spacer(1, 0.2 * inch))
+        story.append(Paragraph(_s(template, "footer"), styles["Small"]))
 
     doc.build(story)
 

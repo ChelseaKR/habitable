@@ -14,6 +14,7 @@ import argparse
 import getpass
 import os
 import sys
+import webbrowser
 from pathlib import Path
 
 from . import __version__
@@ -125,6 +126,15 @@ def _build_parser() -> argparse.ArgumentParser:
     p_relay.add_argument("--host", default="127.0.0.1")
     p_relay.add_argument("--port", type=int, default=8787)
     p_relay.set_defaults(func=_cmd_relay)
+
+    p_app = sub.add_parser("app", help="run the local web app (accessible, EN/ES)")
+    add_vault(p_app)
+    p_app.add_argument("--host", default="127.0.0.1")
+    p_app.add_argument("--port", type=int, default=8765)
+    p_app.add_argument("--dev-tsa", action="store_true", help="use the offline dev TSA")
+    p_app.add_argument("--no-timestamp", action="store_true", help="defer timestamping")
+    p_app.add_argument("--no-browser", action="store_true", help="do not open a browser")
+    p_app.set_defaults(func=_cmd_app)
 
     p_demo = sub.add_parser("demo", help="walk a synthetic case end to end (no real data)")
     p_demo.set_defaults(func=_cmd_demo)
@@ -279,6 +289,25 @@ def _cmd_relay(args: argparse.Namespace) -> int:
     from .relay import serve
 
     serve(args.host, args.port)
+    return 0
+
+
+def _cmd_app(args: argparse.Namespace) -> int:
+    from .appserver import make_app_server
+
+    vault = _open(args)
+    tsa = None if args.no_timestamp else _tsa_for(vault, dev=args.dev_tsa)
+    server = make_app_server(args.host, args.port, vault, tsa=tsa)
+    url = f"http://{args.host}:{args.port}"
+    print(f"habitable: local app running at {url}  (Ctrl-C to stop)")
+    print("           loopback only — your case stays on this device.")
+    if not args.no_browser:
+        webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        server.shutdown()
+        server.server_close()
     return 0
 
 

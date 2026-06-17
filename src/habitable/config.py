@@ -21,6 +21,7 @@ from .errors import ConfigError
 __all__ = [
     "CONFIG_SCHEMA_VERSION",
     "Config",
+    "PacketTemplate",
     "PeerConfig",
     "SharingPolicy",
     "TSAConfig",
@@ -79,6 +80,18 @@ class SharingPolicy:
 
 
 @dataclass(frozen=True, slots=True)
+class PacketTemplate:
+    """Jurisdiction-specific wording for exported packets (presentation only).
+
+    Adapting wording to a jurisdiction must never change the verification
+    protocol — these strings appear in the PDF and the bundle, nothing more.
+    """
+
+    header: str = ""
+    footer: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class Config:
     """Resolved habitable configuration for one device."""
 
@@ -88,6 +101,7 @@ class Config:
     timestamp_authorities: Sequence[TSAConfig] = field(default_factory=tuple)
     sync_peers: Sequence[PeerConfig] = field(default_factory=tuple)
     sharing: SharingPolicy = field(default_factory=SharingPolicy)
+    packet_template: PacketTemplate = field(default_factory=PacketTemplate)
 
     @classmethod
     def default(cls, node_id: str, *, language: str = "en") -> Config:
@@ -151,6 +165,15 @@ class Config:
                     sharing_raw, "export_custody_identities", False
                 ),
             )
+        template_raw = raw.get("packet_template")
+        template = PacketTemplate()
+        if template_raw is not None:
+            if not isinstance(template_raw, Mapping):
+                raise ConfigError("[packet_template] must be a table")
+            template = PacketTemplate(
+                header=_opt_str(template_raw, "header", ""),
+                footer=_opt_str(template_raw, "footer", ""),
+            )
         return cls(
             node_id=node_id,
             schema_version=version,
@@ -158,6 +181,7 @@ class Config:
             timestamp_authorities=tsas,
             sync_peers=peers,
             sharing=sharing,
+            packet_template=template,
         )
 
 
@@ -193,6 +217,12 @@ def default_config_toml(node_id: str, *, language: str = "en") -> str:
         '# transport = "relay"      # or "local"',
         '# location = "https://relay.example.org"',
         '# room = "<shared-room-id>"',
+        "",
+        "# Optional packet wording for your jurisdiction (presentation only;",
+        "# it never changes how a packet verifies). Example:",
+        "# [packet_template]",
+        '# header = "Submitted under <your state> habitability law"',
+        '# footer = "Prepared by <your tenant union>. Not legal advice."',
         "",
     ]
     return "\n".join(lines)
