@@ -197,15 +197,18 @@ def _cmd_status(args: argparse.Namespace) -> int:
     issues = vault.document.issues()
     captures = vault.document.captures()
     timeline = vault.document.timeline()
-    print(f"habitable: unit {unit} — {len(issues)} issue(s), {len(captures)} capture(s), "
-          f"{len(timeline)} timeline entr{'y' if len(timeline) == 1 else 'ies'}")
+    print(
+        f"habitable: unit {unit} — {len(issues)} issue(s), {len(captures)} capture(s), "
+        f"{len(timeline)} timeline entr{'y' if len(timeline) == 1 else 'ies'}"
+    )
     for issue in issues:
         n = len(vault.document.captures(issue.issue_id))
-        print(f"  · {issue.issue_id}: {issue.title or issue.category} "
-              f"[{issue.status}] — {n} capture(s)")
+        print(
+            f"  · {issue.issue_id}: {issue.title or issue.category} "
+            f"[{issue.status}] — {n} capture(s)"
+        )
     timestamped = sum(1 for c in captures if vault.get_token(c.capture_id) is not None)
-    print(f"  timestamps: {timestamped}/{len(captures)} present; "
-          f"{len(vault.deferred())} awaiting")
+    print(f"  timestamps: {timestamped}/{len(captures)} present; {len(vault.deferred())} awaiting")
     custody = vault.custody.verify()
     print(f"  chain of custody: {'intact' if custody.ok else 'BROKEN'} ({custody.length} entries)")
     return 0
@@ -234,10 +237,14 @@ def _cmd_export(args: argparse.Namespace) -> int:
     unit = vault.document.get_meta("unit") or vault.document.case_id
     issues = vault.document.issues() if args.issue is None else [args.issue]
     timeline = len(vault.document.timeline())
-    print(f"habitable: unit {unit} — {len(issues)} issue(s), {result.item_count} capture(s), "
-          f"{timeline} timeline entr{'y' if timeline == 1 else 'ies'}")
-    print(f"           {result.timestamped_count}/{result.item_count} media items: "
-          f"content hash present, trusted timestamp attached")
+    print(
+        f"habitable: unit {unit} — {len(issues)} issue(s), {result.item_count} capture(s), "
+        f"{timeline} timeline entr{'y' if timeline == 1 else 'ies'}"
+    )
+    print(
+        f"           {result.timestamped_count}/{result.item_count} media items: "
+        f"content hash present, trusted timestamp attached"
+    )
     for note in result.disclosures:
         print(f"           {note}")
     print(f"           packet written to {result.out_dir}")
@@ -261,8 +268,10 @@ def _cmd_sync(args: argparse.Namespace) -> int:
     peer = PublicIdentity.decode(args.peer)
     transport = _transport(args)
     result = sync(vault, peer, transport, channel=args.channel)
-    print(f"habitable: synced — merged {result.messages_merged} message(s), "
-          f"imported {result.captures_imported} capture(s)")
+    print(
+        f"habitable: synced — merged {result.messages_merged} message(s), "
+        f"imported {result.captures_imported} capture(s)"
+    )
     return 0
 
 

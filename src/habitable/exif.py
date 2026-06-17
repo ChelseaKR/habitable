@@ -72,9 +72,7 @@ def read_metadata(path: Path) -> MediaMetadata:
     return _read_metadata_pillow(path)
 
 
-def make_shared_copy(
-    source: Path, destination: Path, policy: SharingPolicy
-) -> StripReport:
+def make_shared_copy(source: Path, destination: Path, policy: SharingPolicy) -> StripReport:
     """Write a sanitized copy of ``source`` to ``destination`` per ``policy``.
 
     The original is never touched. By default all metadata is removed; if only
@@ -201,7 +199,7 @@ def _read_metadata_pillow(path: Path) -> MediaMetadata:
                 capture_time=None,
                 fields_present=tuple(present),
             )
-    except (UnidentifiedImageError, OSError, ValueError):
+    except UnidentifiedImageError, OSError, ValueError:
         return MediaMetadata(
             media_format=path.suffix.lstrip(".").upper() or "UNKNOWN",
             has_location=False,

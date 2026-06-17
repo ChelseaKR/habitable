@@ -11,8 +11,22 @@ import piexif
 import pytest
 from PIL import Image
 
+from habitable.tsa import DevTSA, LocalRfc3161TSA
+from habitable.vault import Vault
+
 # A fixed instant (2026-01-02T00:00:00Z) so timestamped output is reproducible.
 FIXED_EPOCH_SECONDS = 1_767_312_000
+
+
+def counter_clock(start_ms: int) -> Callable[[], int]:
+    """A deterministic millisecond clock advancing 1ms per call."""
+    state = {"t": start_ms}
+
+    def tick() -> int:
+        state["t"] += 1
+        return state["t"]
+
+    return tick
 
 
 @pytest.fixture
@@ -59,5 +73,37 @@ def make_jpeg(tmp_path: Path) -> Callable[..., Path]:
         payload = {"0th": {}, "Exif": exif, "GPS": gps, "1st": {}, "thumbnail": None}
         image.save(path, "jpeg", exif=piexif.dump(payload))
         return path
+
+    return _make
+
+
+@pytest.fixture
+def local_tsa() -> LocalRfc3161TSA:
+    """A real RFC 3161 issuer with a fixed gen-time (offline, deterministic)."""
+    return LocalRfc3161TSA("test-rfc3161", time_source=lambda: FIXED_EPOCH_SECONDS)
+
+
+@pytest.fixture
+def dev_tsa() -> DevTSA:
+    return DevTSA("test-dev-tsa", time_source=lambda: FIXED_EPOCH_SECONDS)
+
+
+@pytest.fixture
+def make_vault(tmp_path: Path) -> Callable[..., Vault]:
+    """Factory for vaults with deterministic clocks under the test's tmp_path."""
+    seq = {"n": 0}
+
+    def _make(
+        name: str = "vault",
+        *,
+        case_id: str = "case-4B",
+        unit: str = "4B",
+        passphrase: str = "test-passphrase",
+    ) -> Vault:
+        seq["n"] += 1
+        clock = counter_clock(FIXED_EPOCH_SECONDS * 1000 + seq["n"] * 1_000_000)
+        return Vault.create(
+            tmp_path / name, passphrase, case_id=case_id, unit=unit, time_source=clock
+        )
 
     return _make

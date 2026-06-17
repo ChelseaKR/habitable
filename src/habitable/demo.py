@@ -53,8 +53,10 @@ def run_demo() -> int:
 
     out = work / "4B-packet"
     packet = build_packet(vault, out)
-    print(f"4. exported packet to {out.name}/  ({packet.item_count} items, "
-          f"{packet.timestamped_count} timestamped)")
+    print(
+        f"4. exported packet to {out.name}/  ({packet.item_count} items, "
+        f"{packet.timestamped_count} timestamped)"
+    )
     for note in packet.disclosures:
         print(f"     · {note}")
 

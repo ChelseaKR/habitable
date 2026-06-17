@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import base64
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
@@ -238,9 +238,7 @@ class CustodyLog:
         self._entries.append(entry)
         return entry
 
-    def verify(
-        self, *, signer_keys: Mapping[str, bytes] | None = None
-    ) -> CustodyVerification:
+    def verify(self, *, signer_keys: Mapping[str, bytes] | None = None) -> CustodyVerification:
         """Walk the chain; raise :class:`CustodyError` on any break.
 
         If ``signer_keys`` maps an actor commitment to an Ed25519 public key, each
@@ -313,7 +311,7 @@ class CustodyLog:
         return [entry.redacted().to_export_dict() for entry in self._entries]
 
     @classmethod
-    def from_records(cls, records: list[Mapping[str, JSONValue]]) -> CustodyLog:
+    def from_records(cls, records: Sequence[Mapping[str, JSONValue]]) -> CustodyLog:
         return cls([CustodyEntry.from_dict(record) for record in records])
 
 
