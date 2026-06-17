@@ -135,6 +135,7 @@ def build_packet(
         "generated_at": generated_at or _now_iso(),
         "producer_fingerprint": actor,
         "hash_algorithm": "sha256",
+        "language": vault.config.language,
         "template": {
             "header": vault.config.packet_template.header,
             "footer": vault.config.packet_template.footer,

@@ -23,6 +23,9 @@
   "custody_intact": "Intact",
   "custody_broken": "Broken — verify the record",
   "custody_links_prefix": "links",
+  "resolve_deferred": "Resolve awaiting timestamps",
+  "resolve_help": "Fetch trusted timestamps for items captured offline (needs a connection).",
+  "msg_resolved": "Awaiting timestamps resolved.",
 
   "issues_heading": "Issues",
   "issues_empty": "No issues recorded yet.",

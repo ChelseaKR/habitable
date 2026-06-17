@@ -522,6 +522,20 @@
     });
   }
 
+  function wireResolve() {
+    var btn = document.getElementById("resolve-btn");
+    if (!btn) { return; }
+    btn.addEventListener("click", function () {
+      withBusy(btn, function () {
+        return apiPost("/api/resolve", {});
+      }).then(function (res) {
+        var n = (res && typeof res.resolved === "number") ? res.resolved : 0;
+        announce(t("msg_resolved") + " (" + n + ")", "ok");
+        return refreshStatus();
+      }, announceError);
+    });
+  }
+
   // ---- Service worker ------------------------------------------------------
 
   function registerServiceWorker() {
@@ -552,6 +566,7 @@
     announcer = document.getElementById("announcer");
     wireLang();
     wireRefresh();
+    wireResolve();
     wireAddIssue();
     wireCapture();
     wireTimeline();

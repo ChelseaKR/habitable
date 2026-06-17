@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # habitable — developer entry points. `make verify` reproduces the full CI gate.
 .DEFAULT_GOAL := help
-.PHONY: help install fmt lint type test cov verify audit demo build clean
+.PHONY: help install fmt lint type test cov verify audit a11y demo build clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -33,6 +33,10 @@ verify: lint type cov ## The full merge gate: lint + types + tests with coverage
 
 audit: ## Dependency vulnerability audit
 	uv run pip-audit
+
+a11y: ## Structural accessibility + i18n + PWA checks (see ACR for the full audit plan)
+	uv run pytest tests/test_app_accessibility.py tests/test_app_i18n.py tests/test_app_pwa.py
+	@echo "Full audit: run axe/pa11y against 'habitable app' + manual NVDA/VoiceOver (docs/accessibility/ACR.md)."
 
 demo: ## Walk a synthetic case from capture to a verified packet (no real data)
 	uv run habitable demo

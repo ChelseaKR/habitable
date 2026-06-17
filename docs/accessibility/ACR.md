@@ -12,6 +12,13 @@ Based on the **Voluntary Product Accessibility Template (VPAT) version 2.5 (Rev 
 > wired as a merge gate, contrast verification against the shipped palette, and a
 > tagged (PDF/UA) packet. Until then the WCAG tables below remain the *target*, now
 > partially substantiated for the app shell rather than fully "Not Evaluated".
+>
+> **PDF progress:** exported packet PDFs now declare the document **language**
+> (`/Lang`) and set the **DisplayDocTitle** viewer preference (so assistive tech
+> and viewers announce the title, not the file name); real text remains selectable.
+> A full PDF/UA **structure tree** (tagged headings, table structure, image alt
+> text) is the remaining PDF work and is asserted-against in `tests/test_pdf.py`
+> only at the catalog-hint level today.
 
 ## Name of Product / Version
 

@@ -119,3 +119,15 @@ def test_images_have_alt_and_no_positive_tabindex() -> None:
     p = _parse()
     assert p.img_missing_alt == 0, "every <img> needs an alt attribute (empty if decorative)"
     assert p.positive_tabindex == 0, "no positive tabindex values allowed"
+
+
+def test_aria_describedby_targets_exist() -> None:
+    """Any aria-describedby must point at an element that actually exists."""
+    html = _INDEX.read_text(encoding="utf-8")
+    p = _parse()
+    import re
+
+    referenced = re.findall(r'aria-describedby="([^"]+)"', html)
+    for group in referenced:
+        for ident in group.split():
+            assert ident in p.ids, f"aria-describedby points at missing id: {ident}"

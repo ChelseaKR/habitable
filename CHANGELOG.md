@@ -19,11 +19,19 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 - **Configurable packet templates.** Per-jurisdiction header/footer wording
   (presentation only — it never changes how a packet verifies).
 - **Setup guide.** `docs/setup-guide.md` — "set up your union in an afternoon".
+- **Resolve in the app.** A "resolve awaiting timestamps" action (and `/api/resolve`)
+  so items captured offline can be timestamped from the UI when back online.
+- **PDF accessibility (toward PDF/UA).** Packet PDFs now declare their language
+  and set `DisplayDocTitle`, so viewers show the document title, not the file name.
+- **More gates.** Tests for the app's PWA installability (manifest, icons,
+  service worker that is network-only for `/api/`) and the PDF accessibility
+  markers; a `make a11y` target. 87 tests total, `make verify` green.
 
 ### Note
 
-A full WCAG 2.2 AA audit (axe + manual screen-reader review), a tagged (PDF/UA)
-packet, and mobile packaging are still ahead — see the ACR and the build plan.
+A full WCAG 2.2 AA audit (automated axe/pa11y + manual NVDA/VoiceOver review wired
+as a merge gate), a fully tagged (PDF/UA structure tree) packet, and native mobile
+packaging are still ahead — see the ACR and the build plan.
 
 ## [0.1.0] — 2026-06-17
 

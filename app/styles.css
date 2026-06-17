@@ -155,6 +155,19 @@ h2 { font-size: 1.3rem; margin: 0; }
   margin-bottom: 0.75rem;
 }
 
+.card-actions {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.card-actions .muted {
+  margin: 0;
+  flex: 1 1 16rem;
+}
+
 /* --- Status grid --- */
 .status-grid {
   display: grid;

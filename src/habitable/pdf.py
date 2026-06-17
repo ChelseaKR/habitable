@@ -14,11 +14,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
+from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (
     Image,
     PageBreak,
@@ -34,6 +36,32 @@ from .canonical import JSONValue
 __all__ = ["render_packet_pdf"]
 
 
+class _AccessibleCanvas(Canvas):  # type: ignore[misc]  # reportlab ships no stubs
+    """A canvas that adds PDF/UA-friendly catalog hints.
+
+    Declares the document language (also set via SimpleDocTemplate) and asks
+    viewers to show the document *title* rather than the file name — small but
+    real steps toward an accessible packet. Full PDF/UA tagging (a structure
+    tree) is tracked in the ACR.
+    """
+
+    def save(self) -> None:
+        self.setViewerPreference("DisplayDocTitle", "true")
+        super().save()
+
+
+def _para(text: str, style: Any) -> Any:
+    """A Paragraph with its text escaped — bundle content is data, not markup.
+
+    ReportLab parses inline markup inside a Paragraph (including ``<img src=...>``,
+    which it will read from a local path or fetch over the network at build time).
+    Every dynamic, bundle-derived string is therefore escaped before it reaches a
+    Paragraph, so a hostile packet template or a tenant's own text cannot trigger a
+    file read or an outbound request.
+    """
+    return Paragraph(escape(text), style)
+
+
 def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path: Path) -> None:
     """Render ``bundle`` to a paginated PDF at ``out_path``."""
     styles = getSampleStyleSheet()
@@ -42,6 +70,8 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
     title = "habitability evidence packet"
     if unit:
         title = f"{title} — unit {unit}"
+    # Declare the configured language so assistive tech reads the packet correctly.
+    lang = _s(bundle, "language") or "en"
 
     doc = SimpleDocTemplate(
         str(out_path),
@@ -49,21 +79,21 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
         title=title,
         author="habitable",
         subject="Tenant habitability evidence with trusted timestamps and chain of custody",
-        lang="en",
+        lang=lang,
         leftMargin=0.9 * inch,
         rightMargin=0.9 * inch,
         topMargin=0.9 * inch,
         bottomMargin=0.9 * inch,
     )
 
-    story: list[Any] = [Paragraph(title, styles["Title"])]
+    story: list[Any] = [_para(title, styles["Title"])]
     template = _map(bundle, "template")
     if _s(template, "header"):
-        story.append(Paragraph(_s(template, "header"), styles["Normal"]))
+        story.append(_para(_s(template, "header"), styles["Normal"]))
         story.append(Spacer(1, 0.1 * inch))
     appendix = _map(bundle, "appendix")
     story.append(
-        Paragraph(
+        _para(
             f"Generated {_s(bundle, 'generated_at')} · "
             f"{_i(appendix, 'item_count')} media item(s), "
             f"{_i(appendix, 'timestamped_count')} trusted-timestamped · "
@@ -101,9 +131,9 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
 
     if _s(template, "footer"):
         story.append(Spacer(1, 0.2 * inch))
-        story.append(Paragraph(_s(template, "footer"), styles["Small"]))
+        story.append(_para(_s(template, "footer"), styles["Small"]))
 
-    doc.build(story)
+    doc.build(story, canvasmaker=_AccessibleCanvas)
 
 
 def _render_issue(
@@ -116,16 +146,16 @@ def _render_issue(
 ) -> None:
     issue_id = _s(issue, "issue_id")
     heading = _s(issue, "title") or _s(issue, "category") or issue_id
-    story.append(Paragraph(f"Issue: {heading}", styles["Heading2"]))
+    story.append(_para(f"Issue: {heading}", styles["Heading2"]))
     story.append(
-        Paragraph(
+        _para(
             f"Category: {_s(issue, 'category')} · Room: {_s(issue, 'room') or '—'} · "
             f"Severity: {_s(issue, 'severity') or '—'} · Status: {_s(issue, 'status')}",
             styles["Normal"],
         )
     )
     if _s(issue, "description"):
-        story.append(Paragraph(_s(issue, "description"), styles["Normal"]))
+        story.append(_para(_s(issue, "description"), styles["Normal"]))
     story.append(Spacer(1, 0.1 * inch))
 
     timeline = [
@@ -137,9 +167,10 @@ def _render_issue(
         story.append(Paragraph("Timeline", styles["Heading3"]))
         for entry in timeline:
             if isinstance(entry, dict):
-                story.append(
-                    Paragraph(f"· <b>{_s(entry, 'kind')}</b>: {_s(entry, 'text')}", styles["Small"])
-                )
+                # Keep the literal <b> formatting, but escape the dynamic parts.
+                kind = escape(_s(entry, "kind"))
+                text = escape(_s(entry, "text"))
+                story.append(Paragraph(f"· <b>{kind}</b>: {text}", styles["Small"]))
         story.append(Spacer(1, 0.1 * inch))
 
     for item in items_by_issue.get(issue_id, []):
@@ -156,7 +187,7 @@ def _render_issue(
                 )
             except Exception:
                 story.append(Paragraph("[image could not be rendered]", styles["Small"]))
-        story.append(Paragraph(caption, styles["Small"]))
+        story.append(_para(caption, styles["Small"]))
         story.append(Spacer(1, 0.12 * inch))
 
 
@@ -170,10 +201,10 @@ def _appendix_table(bundle: Mapping[str, JSONValue], styles: Any) -> Any:
         authority = _s(token, "tsa_name") if isinstance(token, dict) else "—"
         rows.append(
             [
-                Paragraph(_s(item, "capture_id"), styles["Small"]),
-                Paragraph(_s(item, "content_hash"), styles["Small"]),
-                Paragraph(timestamp_status, styles["Small"]),
-                Paragraph(authority, styles["Small"]),
+                _para(_s(item, "capture_id"), styles["Small"]),
+                _para(_s(item, "content_hash"), styles["Small"]),
+                _para(timestamp_status, styles["Small"]),
+                _para(authority, styles["Small"]),
             ]
         )
     table = Table(rows, colWidths=[1.4 * inch, 3.2 * inch, 1.0 * inch, 1.1 * inch], repeatRows=1)

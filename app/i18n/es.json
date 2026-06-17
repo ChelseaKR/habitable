@@ -23,6 +23,9 @@
   "custody_intact": "Intacta",
   "custody_broken": "Rota: verifica el registro",
   "custody_links_prefix": "enlaces",
+  "resolve_deferred": "Resolver marcas de tiempo pendientes",
+  "resolve_help": "Obtener marcas de tiempo confiables para los elementos capturados sin conexión (requiere conexión).",
+  "msg_resolved": "Marcas de tiempo pendientes resueltas.",
 
   "issues_heading": "Problemas",
   "issues_empty": "Aún no hay problemas registrados.",
