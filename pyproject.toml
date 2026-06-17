@@ -116,6 +116,7 @@ testpaths = ["tests"]
 filterwarnings = ["error"]
 markers = [
     "a11y: browser-based accessibility (axe-core) checks; needs Playwright + Chromium",
+    "integration: hits a real external service (e.g. a public RFC 3161 TSA); needs network",
 ]
 
 [tool.coverage.run]

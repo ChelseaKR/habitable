@@ -23,6 +23,7 @@ This module provides:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import secrets
 import urllib.request
@@ -37,7 +38,7 @@ from asn1crypto import x509 as asn1_x509
 from cryptography import x509 as crypto_x509
 from cryptography.hazmat.primitives import hashes as crypto_hashes
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 from cryptography.x509.oid import NameOID
 
 from .canonical import JSONValue, canonical_json
@@ -57,6 +58,29 @@ __all__ = [
 
 _ID_CT_TST_INFO = "tst_info"
 _SHA256 = "sha256"
+
+# RFC 3161 tokens in the wild use a range of digests; verification must follow the
+# token's own algorithms rather than assuming SHA-256.
+_CRYPTO_HASH: dict[str, type[crypto_hashes.HashAlgorithm]] = {
+    "sha1": crypto_hashes.SHA1,
+    "sha224": crypto_hashes.SHA224,
+    "sha256": crypto_hashes.SHA256,
+    "sha384": crypto_hashes.SHA384,
+    "sha512": crypto_hashes.SHA512,
+}
+
+
+def _digest(data: bytes, algo_name: str) -> bytes:
+    if algo_name not in _CRYPTO_HASH:
+        raise TimestampError(f"unsupported digest algorithm: {algo_name!r}")
+    return hashlib.new(algo_name, data).digest()
+
+
+def _crypto_hash(algo_name: str) -> crypto_hashes.HashAlgorithm:
+    cls = _CRYPTO_HASH.get(algo_name)
+    if cls is None:
+        raise TimestampError(f"unsupported signature hash algorithm: {algo_name!r}")
+    return cls()
 
 
 class TokenKind(StrEnum):
@@ -378,9 +402,12 @@ class Rfc3161HttpTSA:
 def _extract_token_from_response(body: bytes) -> bytes:
     try:
         response = tsp.TimeStampResp.load(body)
-        status = int(response["status"]["status"].native)
-        if status not in (0, 1):  # granted / grantedWithMods
-            raise TimestampError(f"timestamp authority rejected the request (status {status})")
+        # asn1crypto renders PKIStatus as its name (e.g. "granted"), not an int;
+        # accept granted / granted-with-mods in either rendering.
+        status = response["status"]["status"].native
+        granted = {0, 1, "granted", "granted_with_mods", "grantedWithMods"}
+        if status not in granted:
+            raise TimestampError(f"timestamp authority rejected the request (status {status!r})")
         return bytes(response["time_stamp_token"].dump())
     except TimestampError:
         raise
@@ -458,20 +485,35 @@ def _verify_signed_attrs(
     signed_attrs = signer_info["signed_attrs"]
     if not signed_attrs:
         raise TimestampError("token signer has no signed attributes")
+    digest_algo = signer_info["digest_algorithm"]["algorithm"].native
     found_digest: bytes | None = None
     for attr in signed_attrs:
         if attr["type"].native == "message_digest":
             found_digest = attr["values"][0].native
-    expected = sha256_raw(content_der)
-    if found_digest != expected:
+    if found_digest != _digest(content_der, digest_algo):
         raise TimestampError("signed message-digest attribute does not match TSTInfo")
     data_to_verify = signed_attrs.untag().dump()
     signature = signer_info["signature"].native
     public_key = signer_cert.public_key()
-    if not isinstance(public_key, rsa.RSAPublicKey):
-        raise TimestampError("only RSA timestamp signatures are supported")
+    # Follow the token's own signature algorithm + hash — public TSAs use both RSA
+    # (e.g. DigiCert) and ECDSA (e.g. FreeTSA), with SHA-256/384/512.
+    sig_alg = signer_info["signature_algorithm"]
     try:
-        public_key.verify(signature, data_to_verify, padding.PKCS1v15(), crypto_hashes.SHA256())
+        sig_hash = _crypto_hash(sig_alg.hash_algo)
+    except ValueError, KeyError, TimestampError:
+        sig_hash = _crypto_hash(digest_algo)
+    signature_algo = sig_alg.signature_algo
+    try:
+        if signature_algo == "rsassa_pkcs1v15" and isinstance(public_key, rsa.RSAPublicKey):
+            public_key.verify(signature, data_to_verify, padding.PKCS1v15(), sig_hash)
+        elif signature_algo == "ecdsa" and isinstance(public_key, ec.EllipticCurvePublicKey):
+            public_key.verify(signature, data_to_verify, ec.ECDSA(sig_hash))
+        else:
+            raise TimestampError(
+                f"unsupported signature algorithm: {signature_algo} with this key type"
+            )
+    except TimestampError:
+        raise
     except Exception as exc:
         raise TimestampError("token signature is invalid") from exc
 

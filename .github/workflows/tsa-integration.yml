@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: tsa-integration
+
+on:
+  schedule:
+    - cron: "23 5 * * 1" # weekly, Monday 05:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-tsa:
+    name: stamp + verify against real public RFC 3161 authorities
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.19"
+          enable-cache: true
+      - name: Sync environment
+        run: uv sync --frozen
+      - name: Stamp + verify against public TSAs (only a hash is sent, never content)
+        run: make integration

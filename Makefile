@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # habitable — developer entry points. `make verify` reproduces the full CI gate.
 .DEFAULT_GOAL := help
-.PHONY: help install fmt lint type test cov verify audit a11y demo build clean
+.PHONY: help install fmt lint type test cov verify audit a11y integration demo build clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -22,11 +22,14 @@ lint: ## Lint (no changes)
 type: ## Strict type-check
 	uv run mypy
 
-test: ## Run the test suite
-	uv run pytest
+test: ## Run the test suite (excludes network integration tests)
+	uv run pytest -m "not integration"
 
-cov: ## Run tests with coverage (enforces a floor)
-	uv run pytest --cov=habitable --cov-report=term-missing --cov-report=xml --cov-fail-under=85
+cov: ## Run tests with coverage (enforces a floor; excludes network integration tests)
+	uv run pytest -m "not integration" --cov=habitable --cov-report=term-missing --cov-report=xml --cov-fail-under=85
+
+integration: ## Run the network integration tests (real public TSAs)
+	uv run pytest -m integration -v
 
 verify: lint type cov ## The full merge gate: lint + types + tests with coverage
 	@echo "habitable: full gate green on Python $$(uv run python -c 'import sys;print(sys.version.split()[0])')"
