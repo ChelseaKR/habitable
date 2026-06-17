@@ -7,6 +7,24 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+### Added
+
+- **Local app (Phase 4, in progress).** `habitable app` runs a loopback-only HTTP
+  server that holds the unlocked vault and serves an accessible, bilingual
+  (English/Spanish) web client — capture, timeline, status, and export-and-verify
+  over a small JSON API; nothing leaves the device. EN/ES string parity and
+  structural accessibility (lang, skip link, labelled controls, landmarks, alt
+  text, no positive tabindex) are enforced by tests; an installable PWA manifest
+  and a service worker (network-only for `/api/`) are included.
+- **Configurable packet templates.** Per-jurisdiction header/footer wording
+  (presentation only — it never changes how a packet verifies).
+- **Setup guide.** `docs/setup-guide.md` — "set up your union in an afternoon".
+
+### Note
+
+A full WCAG 2.2 AA audit (axe + manual screen-reader review), a tagged (PDF/UA)
+packet, and mobile packaging are still ahead — see the ACR and the build plan.
+
 ## [0.1.0] — 2026-06-17
 
 First working reference implementation of the evidence spine. Alpha,

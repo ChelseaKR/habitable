@@ -10,8 +10,9 @@
 > The union owns its data.
 
 **Status:** working reference implementation · **alpha** — the evidence core, CLI, peer-to-peer
-sync, and standalone verifier are implemented and tested on Python 3.14 (`make verify` green); the
-installable end-user app is not built yet, so **do not rely on this for real legal matters yet** ·
+sync, standalone verifier, and an accessible bilingual (EN/ES) local web app are implemented and
+tested on Python 3.14 (`make verify` green); a full WCAG 2.2 AA audit and mobile packaging are still
+ahead, so **do not rely on this for real legal matters yet** ·
 independent personal open-source project · AGPL-3.0 ·
 unaffiliated with any employer or client; contains no proprietary or client material; not a
 government system and not built for a government customer.
@@ -372,9 +373,12 @@ installable end-user app and localization) is the remaining work.
 - **Phase 3 — local-first sync.** ✅ The CRDT case model, end-to-end-encrypted peer-to-peer sync, the
   optional ciphertext-only relay, and encrypted backup with key rotation. Concurrent-offline-edit
   convergence tested (property-based).
-- **Phase 4 — accessible app and generalize.** ⬜ The installable client meeting WCAG 2.2 AA and gated;
-  Spanish parity; configurable packet templates so a union can match its jurisdiction; a threat-model
-  doc (✅ `docs/threat-model.md`) and a "set up your union in an afternoon" guide.
+- **Phase 4 — accessible app and generalize.** 🚧 An accessible, bilingual (EN/ES) local web app is
+  implemented (`habitable app`), with EN/ES string parity and structural accessibility (lang, skip
+  link, labelled controls, landmarks, no positive tabindex) enforced by tests; configurable packet
+  templates (✅), the threat-model doc (✅ `docs/threat-model.md`), and a "set up your union in an
+  afternoon" guide (✅ `docs/setup-guide.md`) are done. **Remaining:** a full WCAG 2.2 AA audit (axe +
+  manual NVDA/VoiceOver) wired as a merge gate, a tagged (PDF/UA) packet, and mobile packaging.
 
 ---
 

@@ -2,6 +2,17 @@
 
 Based on the **Voluntary Product Accessibility Template (VPAT) version 2.5 (Rev 508)**.
 
+> **Update (2026-06-17): an initial local web app now exists** (`habitable app`).
+> It was built to this report's targets — semantic landmarks, a skip link, a single
+> `h1`, programmatically labelled controls, `lang`/`title`/viewport, an `aria-live`
+> status region, visible focus, no positive `tabindex`, and full English/Spanish
+> string parity — and those *structural* invariants are enforced by automated tests
+> (`tests/test_app_accessibility.py`, `tests/test_app_i18n.py`). What remains before
+> a conformance claim: an automated **axe** scan and **manual NVDA/VoiceOver** review
+> wired as a merge gate, contrast verification against the shipped palette, and a
+> tagged (PDF/UA) packet. Until then the WCAG tables below remain the *target*, now
+> partially substantiated for the app shell rather than fully "Not Evaluated".
+
 ## Name of Product / Version
 
 **habitable** — version **0.1.0** (alpha / concept stage).
