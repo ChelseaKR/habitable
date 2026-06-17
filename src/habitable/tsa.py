@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import secrets
 import urllib.request
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -81,7 +82,7 @@ class TimestampToken:
         }
 
     @classmethod
-    def from_dict(cls, raw: dict[str, object]) -> TimestampToken:
+    def from_dict(cls, raw: Mapping[str, object]) -> TimestampToken:
         import base64
 
         kind = raw.get("kind")
