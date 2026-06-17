@@ -83,9 +83,6 @@ ehthumbs.db
 Thumbs.db
 desktop.ini
 
-# ---- Docs site build ----
-site/
-
 # ---- Agent / local scratch (not part of the project) ----
 .claude/
 /tmp/

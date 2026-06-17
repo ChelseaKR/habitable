@@ -86,6 +86,20 @@ $ make verify             # the full gate: ruff + mypy --strict + pytest (proper
 builds a packet (location stripped from the shared copies), and independently verifies it — with no
 network and no real tenant data. From there: `uv run habitable --help`.
 
+**Just want to look?** There is deliberately no hosted app (it runs on `localhost` so your case never
+leaves the device), but a static **[landing page + live sample packet](https://chelseakr.github.io/habitable/)**
+shows what it produces. To document a real case on a phone, see [`docs/mobile.md`](docs/mobile.md);
+to run the optional sync relay, see [`docs/relay-deploy.md`](docs/relay-deploy.md).
+
+## Screenshots
+
+| The local app (English / Español) | An exported, verifiable packet |
+| --- | --- |
+| ![The habitable local web app showing case status, issues, and an add-issue form](site/img/app-en.png) | ![An accessible habitability evidence packet with an issue, a captured photo, and an evidence appendix table](site/img/packet.png) |
+
+The app is bilingual (EN/ES), accessible (WCAG 2.2 AA, axe-gated), and runs entirely on your device.
+Every export ships an accessible `packet.html`, a paginated PDF, and a verifiable `bundle.json`.
+
 ---
 
 ## Hard rules (enforced, not aspirational)

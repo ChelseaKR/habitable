@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="habitable">
+  <title>habitable</title>
+  <rect width="512" height="512" rx="96" fill="#16424f"/>
+  <!-- Shield outline enclosing a house: protection + home -->
+  <path d="M256 96 L400 152 V288 C400 372 332 420 256 448 C180 420 112 372 112 288 V152 Z"
+        fill="#1f5d6e" stroke="#e9f4ec" stroke-width="14" stroke-linejoin="round"/>
+  <!-- House roof -->
+  <path d="M256 176 L336 244 H312 V332 H200 V244 H176 Z"
+        fill="#f5f3ee" stroke="#0f3540" stroke-width="8" stroke-linejoin="round"/>
+  <!-- Door -->
+  <rect x="240" y="276" width="32" height="56" rx="4" fill="#16424f"/>
+</svg>

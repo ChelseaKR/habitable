@@ -1,0 +1,157 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#16424f" />
+    <title>habitable — court-ready habitability evidence for tenant unions</title>
+    <meta
+      name="description"
+      content="A privacy-first, offline-capable, end-to-end-encrypted tool that turns tenant photos
+      into court-ready evidence: trusted timestamps, content hashing, chain of custody, and
+      independently verifiable packets. Local-first; no server holds your data."
+    />
+    <style>
+      :root { color-scheme: light dark; }
+      * { box-sizing: border-box; }
+      body { max-width: 56rem; margin: 0 auto; padding: 1.5rem;
+        font: 17px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        color: #14201f; background: #f7f5f0; }
+      a { color: #155160; }
+      a:focus-visible, button:focus-visible { outline: 3px solid #155160; outline-offset: 2px; }
+      .skip { position: absolute; left: -999px; }
+      .skip:focus { position: static; }
+      header.hero { padding: 1rem 0 0.5rem; }
+      .brand { display: flex; align-items: center; gap: .6rem; }
+      .brand img { width: 44px; height: 44px; }
+      h1 { font-size: 2rem; margin: .8rem 0 .2rem; }
+      .tagline { font-size: 1.2rem; color: #2c3b3a; margin-top: 0; }
+      .alpha { border: 2px solid #7a4a12; background: #fdf3e0;
+        color: #5a3508; padding: .6rem .9rem; border-radius: 8px; font-weight: 600; }
+      .cta { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0 1.5rem; }
+      .btn { display: inline-block; padding: .55rem .9rem; border-radius: 8px;
+        text-decoration: none; font-weight: 600; border: 2px solid #155160; }
+      .btn-primary { background: #155160; color: #fff; }
+      .btn-secondary { background: transparent; color: #155160; }
+      section { margin: 2rem 0; }
+      h2 { font-size: 1.4rem; border-bottom: 2px solid #d8d2c4; padding-bottom: .3rem; }
+      ul.checks { list-style: none; padding: 0; }
+      ul.checks li { padding: .15rem 0 .15rem 1.6rem; position: relative; }
+      ul.checks li::before { content: "✓"; position: absolute; left: 0; color: #1c6b4a;
+        font-weight: 700; }
+      figure { margin: 1rem 0; }
+      figure img { max-width: 100%; height: auto; border: 1px solid #cfc9bb; border-radius: 10px; }
+      figcaption { color: #3a4847; font-size: .95rem; margin-top: .4rem; }
+      .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; }
+      pre { background: #11201f; color: #eaf3f1; padding: 1rem; border-radius: 10px;
+        overflow-x: auto; font-size: .95rem; }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      footer { margin-top: 2.5rem; border-top: 1px solid #d8d2c4; padding-top: 1rem;
+        color: #3a4847; font-size: .95rem; }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="hero">
+      <div class="brand">
+        <img src="img/icon.svg" alt="" width="44" height="44" />
+        <strong>habitable</strong>
+      </div>
+      <h1>Court-ready habitability evidence for tenant unions</h1>
+      <p class="tagline">
+        Turn a phone photo into evidence that holds up — trusted-timestamped, content-hashed, and
+        independently verifiable — without handing anyone your data.
+      </p>
+      <p class="alpha">
+        <strong>Alpha software.</strong> This is a working reference implementation; do not rely on
+        it for real legal matters yet.
+      </p>
+      <div class="cta">
+        <a class="btn btn-primary" href="https://github.com/ChelseaKR/habitable">View on GitHub</a>
+        <a class="btn btn-secondary" href="sample-packet/packet.html">See a sample packet</a>
+      </div>
+    </header>
+
+    <main id="main">
+      <section aria-labelledby="what-h">
+        <h2 id="what-h">What it is</h2>
+        <p>
+          habitable is a privacy-first, offline-capable, end-to-end-encrypted tool that lets tenants
+          and their unions document repair and habitability problems as evidence: dated photos,
+          condition notes, and a timeline, each captured with a trusted timestamp
+          (<abbr title="Internet X.509 trusted timestamping">RFC&nbsp;3161</abbr>), a SHA-256 content
+          hash, and an append-only chain of custody — then assembled into a packet a court or
+          inspector can independently verify.
+        </p>
+        <ul class="checks">
+          <li>Local-first: everything lives on the device, encrypted; no server holds personal data.</li>
+          <li>Tamper-evident: any edit to a sealed photo, the custody chain, or a timestamp is detectable.</li>
+          <li>Independently verifiable: recipients run <code>habitable verify</code> — trust the math, not the project.</li>
+          <li>Peer-to-peer sync, end-to-end encrypted; an optional relay only ever sees ciphertext.</li>
+          <li>Accessible (WCAG 2.2 AA, axe-gated) and bilingual (English / Español).</li>
+        </ul>
+      </section>
+
+      <section aria-labelledby="see-h">
+        <h2 id="see-h">See it</h2>
+        <div class="shots">
+          <figure>
+            <img src="img/app-en.png" alt="The habitable app: a Case status panel showing unit 4B,
+              device fingerprint, issue and capture counts, and an intact chain of custody, above an
+              Issues list and an Add issue form." />
+            <figcaption>The local app (English) — runs on your device, not a server.</figcaption>
+          </figure>
+          <figure>
+            <img src="img/app-es.png" alt="The same habitable app shown in Spanish, with all labels
+              and buttons translated." />
+            <figcaption>Bilingual: the full interface in Español.</figcaption>
+          </figure>
+        </div>
+        <figure>
+          <img src="img/packet.png" alt="A habitability evidence packet rendered as an accessible
+            web page: title, generated date and counts, an issue with its timeline and a captured
+            photo, and an evidence appendix table of content hashes and timestamp status." />
+          <figcaption>
+            An exported packet (synthetic data). Open the
+            <a href="sample-packet/packet.html">live sample packet</a> — it is the actual accessible
+            HTML export, alongside a verifiable <a href="sample-packet/bundle.json">bundle.json</a>
+            and a <a href="sample-packet/packet.pdf">PDF</a>.
+          </figcaption>
+        </figure>
+      </section>
+
+      <section aria-labelledby="try-h">
+        <h2 id="try-h">Try it</h2>
+        <p>Requires <a href="https://docs.astral.sh/uv/">uv</a>; the right Python (3.14) is fetched for you.</p>
+        <pre><code>git clone https://github.com/ChelseaKR/habitable &amp;&amp; cd habitable
+uv sync
+uv run habitable demo     # capture → seal+hash → RFC 3161 → packet → verify, offline
+uv run habitable app      # the accessible local web app (English / Español)</code></pre>
+        <p>
+          There is deliberately <strong>no hosted app</strong>: habitable runs on
+          <code>localhost</code> so your case never leaves your device. This page and the sample
+          packet are static previews of what the tool produces.
+        </p>
+      </section>
+
+      <section aria-labelledby="learn-h">
+        <h2 id="learn-h">Learn more</h2>
+        <ul>
+          <li><a href="https://github.com/ChelseaKR/habitable#readme">Project README</a></li>
+          <li><a href="https://github.com/ChelseaKR/habitable/blob/main/docs/threat-model.md">Threat model</a>
+            and <a href="https://github.com/ChelseaKR/habitable/blob/main/docs/evidence-method.md">evidence method</a></li>
+          <li><a href="https://github.com/ChelseaKR/habitable/blob/main/docs/setup-guide.md">Set up your union in an afternoon</a></li>
+          <li><a href="https://github.com/ChelseaKR/habitable/blob/main/docs/accessibility/ACR.md">Accessibility Conformance Report</a></li>
+        </ul>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        habitable — an independent, personal open-source project. AGPL-3.0 (the standalone verifier
+        also under Apache-2.0). Not legal advice.
+      </p>
+    </footer>
+  </body>
+</html>
