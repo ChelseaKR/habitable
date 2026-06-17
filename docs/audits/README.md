@@ -21,6 +21,13 @@ read them, diff them across releases, and see when something changed.
   [`../accessibility/ACR.md`](../accessibility/ACR.md) (VPAT 2.5, Rev 508), covering
   the WCAG 2.2 A/AA success criteria, the Revised Section 508 software and
   support-documentation criteria, and the Functional Performance Criteria.
+- **Threat-model baselines** — content-pinned freezes of
+  [`../threat-model.md`](../threat-model.md) handed to external reviewers, each with a
+  maintainer re-review and the residual risks to confirm. See
+  [`threat-model-baseline.md`](threat-model-baseline.md) (current: **B1**).
+
+How to start a review of habitable — scope, run instructions, and synthetic data —
+is in [`onboarding.md`](onboarding.md).
 
 These artifacts are **regenerated and re-committed on each release**, so a given
 tag carries the audit state that was true for it. `pip-audit` and CodeQL also run

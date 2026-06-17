@@ -177,7 +177,7 @@ habitable/
 ├── tests/
 │   ├── fixtures/                  # sample cases, tampered items, broken chains for verify tests
 │   └── ...                        # unit, property-based, and tamper-detection tests
-├── docs/                          # ARCHITECTURE, threat-model.md, evidence-method.md, governance.md, ADRs, audits/, accessibility/
+├── docs/                          # ARCHITECTURE, threat-model.md, privacy.md, sustainability.md, evidence-method.md, governance.md, ADRs, audits/ (+ onboarding, baseline), accessibility/
 └── pyproject.toml
 ```
 
