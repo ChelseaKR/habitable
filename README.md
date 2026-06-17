@@ -9,7 +9,9 @@
 > authority over a union's records, and no third party who can be subpoenaed for what the union holds.
 > The union owns its data.
 
-**Status:** reference-implementation spec · concept stage (design documented, build not yet started) ·
+**Status:** working reference implementation · **alpha** — the evidence core, CLI, peer-to-peer
+sync, and standalone verifier are implemented and tested on Python 3.14 (`make verify` green); the
+installable end-user app is not built yet, so **do not rely on this for real legal matters yet** ·
 independent personal open-source project · AGPL-3.0 ·
 unaffiliated with any employer or client; contains no proprietary or client material; not a
 government system and not built for a government customer.
@@ -65,6 +67,22 @@ habitable: 27/27 items verify against their sealed originals and timestamp token
 
 The verification command is the point: a packet is not "trust me," it is a set of claims a third
 party can independently check against the timestamp authority and the hashes.
+
+---
+
+## Try it
+
+Requires [uv](https://docs.astral.sh/uv/); the right Python (3.14) is fetched automatically.
+
+```console
+$ uv sync                 # create the env and install habitable + dev tools
+$ uv run habitable demo   # capture → seal+hash → RFC 3161 → packet → verify, on synthetic data, offline
+$ make verify             # the full gate: ruff + mypy --strict + pytest (property-based + tamper-detection)
+```
+
+`habitable demo` fabricates a couple of photos with embedded location, captures them as evidence,
+builds a packet (location stripped from the shared copies), and independently verifies it — with no
+network and no real tenant data. From there: `uv run habitable --help`.
 
 ---
 
@@ -342,18 +360,21 @@ to also makes the packets and the app usable to the legal-aid workers and inspec
 
 ## Build plan
 
-- **Phase 1 — capture and evidence core.** Media capture, content hashing, sealed originals, the
+Phases 1–3 are **implemented** at the library + CLI level and covered by tests; Phase 4 (the
+installable end-user app and localization) is the remaining work.
+
+- **Phase 1 — capture and evidence core.** ✅ Media capture, content hashing, sealed originals, the
   append-only custody log, and explicit EXIF handling. Local encrypted storage. Definition of done: an
   issue can be captured offline and an item's fixity and metadata handling verified locally.
-- **Phase 2 — timestamps, packets, and verification.** RFC 3161 timestamping over hashes; the
+- **Phase 2 — timestamps, packets, and verification.** ✅ RFC 3161 timestamping over hashes; the
   court/inspector PDF with an evidence appendix; the standalone `verify` tool. Tamper-detection tests
   against fixtures of altered and chain-broken items.
-- **Phase 3 — local-first sync.** The CRDT case model, end-to-end-encrypted peer-to-peer sync, the
+- **Phase 3 — local-first sync.** ✅ The CRDT case model, end-to-end-encrypted peer-to-peer sync, the
   optional ciphertext-only relay, and encrypted backup with key rotation. Concurrent-offline-edit
-  convergence tested.
-- **Phase 4 — accessible app and generalize.** The installable client meeting WCAG 2.2 AA and gated;
+  convergence tested (property-based).
+- **Phase 4 — accessible app and generalize.** ⬜ The installable client meeting WCAG 2.2 AA and gated;
   Spanish parity; configurable packet templates so a union can match its jurisdiction; a threat-model
-  doc and a "set up your union in an afternoon" guide.
+  doc (✅ `docs/threat-model.md`) and a "set up your union in an afternoon" guide.
 
 ---
 
