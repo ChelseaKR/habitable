@@ -40,6 +40,12 @@ _SIGNATURE = "bundle.sig.json"
 _MEDIA = "media"
 _ORIGINALS = "originals"
 
+# The newest packet format this verifier understands. The contract: every version
+# from 1..SUPPORTED_PACKET_VERSION still verifies (guarded by the golden-packet
+# corpus in tests/), and a newer-than-supported packet is rejected with a clear,
+# non-crashing error rather than mis-verified.
+SUPPORTED_PACKET_VERSION = 1
+
 
 @dataclass(frozen=True, slots=True)
 class ItemVerdict:
@@ -110,6 +116,18 @@ def verify_packet(
     packet_dir = Path(packet_dir)
     bundle_bytes = _read_bundle_bytes(packet_dir)
     bundle = _parse_bundle(bundle_bytes)
+
+    # Enforce the version contract before trusting the rest of the structure.
+    version_problem = _check_packet_version(bundle)
+    if version_problem is not None:
+        return VerificationReport(
+            packet_dir=packet_dir,
+            signature_ok=_verify_signature(packet_dir, bundle_bytes),
+            custody_ok=False,
+            custody_length=0,
+            items=(),
+            problems=(version_problem,),
+        )
 
     signature_ok = _verify_signature(packet_dir, bundle_bytes)
     custody_ok, custody_length, custody = _verify_custody(bundle)
@@ -207,37 +225,53 @@ def _verify_item(
     )
 
 
+def _check_packet_version(bundle: Mapping[str, JSONValue]) -> str | None:
+    """Return a problem string if the packet version is missing or too new, else None."""
+    version = bundle.get("packet_version")
+    if not isinstance(version, int) or isinstance(version, bool):
+        return "bundle has no integer packet_version"
+    if version > SUPPORTED_PACKET_VERSION:
+        return (
+            f"packet_version {version} is newer than supported "
+            f"{SUPPORTED_PACKET_VERSION}; upgrade habitable to verify this packet"
+        )
+    return None
+
+
 def _verify_signature(packet_dir: Path, bundle_bytes: bytes) -> bool:
     sig_path = packet_dir / _SIGNATURE
     if not sig_path.exists():
         return False
     try:
         doc = json.loads(sig_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+        if not isinstance(doc, dict):
+            return False
+        bundle_hash = sha256_bytes(bundle_bytes)
+        if doc.get("bundle_sha256") != bundle_hash:
+            return False
+        public = doc.get("sign_public")
+        signature = doc.get("signature")
+        if not isinstance(public, str) or not isinstance(signature, str):
+            return False
+        return verify_signature(
+            base64.b64decode(public), bundle_hash.encode("ascii"), base64.b64decode(signature)
+        )
+    except json.JSONDecodeError, UnicodeDecodeError, ValueError, OSError:
+        # Any malformed signature file is a failed signature, never a crash.
         return False
-    if not isinstance(doc, dict):
-        return False
-    bundle_hash = sha256_bytes(bundle_bytes)
-    if doc.get("bundle_sha256") != bundle_hash:
-        return False
-    public = doc.get("sign_public")
-    signature = doc.get("signature")
-    if not isinstance(public, str) or not isinstance(signature, str):
-        return False
-    return verify_signature(
-        base64.b64decode(public), bundle_hash.encode("ascii"), base64.b64decode(signature)
-    )
 
 
 def _verify_custody(bundle: Mapping[str, JSONValue]) -> tuple[bool, int, CustodyLog]:
     proof = _map(bundle, "custody_proof")
     raw_entries = _list(proof, "entries")
     records: list[Mapping[str, JSONValue]] = [e for e in raw_entries if isinstance(e, dict)]
-    custody = CustodyLog.from_records(records)
     try:
+        # from_records can reject malformed entries (CustodyError); treat any
+        # failure to parse or walk the chain as a broken chain, never a crash.
+        custody = CustodyLog.from_records(records)
         result = custody.verify()
     except Exception:
-        return False, len(records), custody
+        return False, len(records), CustodyLog([])
     declared_head = proof.get("head_hash")
     head_ok = declared_head == result.head_hash
     return (result.ok and head_ok), result.length, custody
@@ -267,7 +301,9 @@ def _read_bundle_bytes(packet_dir: Path) -> bytes:
 def _parse_bundle(bundle_bytes: bytes) -> Mapping[str, JSONValue]:
     try:
         parsed = json.loads(bundle_bytes)
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        # Hostile bytes may be malformed JSON *or* invalid UTF-8 (json.loads on
+        # bytes raises UnicodeDecodeError). Both are a clean rejection, not a crash.
         raise VerificationError(f"bundle is not valid JSON: {exc}") from exc
     if not isinstance(parsed, dict):
         raise VerificationError("bundle must be a JSON object")

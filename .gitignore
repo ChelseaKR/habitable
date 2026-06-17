@@ -88,3 +88,6 @@ desktop.ini
 /tmp/
 scratch/
 *.local
+
+# Local productionization plan (working doc — intentionally not published)
+docs/productionization.md
