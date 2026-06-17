@@ -159,10 +159,19 @@ class Vault:
         raw = source.read_bytes()
         if sha256_bytes(raw) != content_hash:
             raise FixityError(f"source {source.name} changed during capture")
+        return self.store_original_bytes(capture_id, raw, content_hash)
+
+    def store_original_bytes(self, capture_id: str, raw: bytes, content_hash: str) -> str:
+        """Seal already-in-memory original bytes (e.g. received over sync)."""
+        if sha256_bytes(raw) != content_hash:
+            raise FixityError(f"received bytes for {capture_id} do not match content hash")
         sealed_name = f"{capture_id}.enc"
         aad = f"original:{capture_id}:{content_hash}".encode()
         (self.path / _ORIGINALS / sealed_name).write_bytes(self._dek.encrypt(raw, aad=aad))
         return sealed_name
+
+    def has_original(self, capture_id: str) -> bool:
+        return (self.path / _ORIGINALS / f"{capture_id}.enc").exists()
 
     def read_original(self, capture_id: str, content_hash: str) -> bytes:
         """Decrypt a sealed original and re-verify its fixity before returning it."""
