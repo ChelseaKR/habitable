@@ -1,0 +1,123 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright 2026 Chelsea Kelly-Reif
+[project]
+name = "habitable"
+version = "0.1.0"
+description = "Court-ready, offline-first, end-to-end-encrypted habitability evidence for tenant unions."
+readme = "README.md"
+requires-python = ">=3.14"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Chelsea Kelly-Reif" }]
+keywords = [
+    "tenant-rights",
+    "evidence",
+    "rfc3161",
+    "trusted-timestamping",
+    "local-first",
+    "crdt",
+    "end-to-end-encryption",
+    "chain-of-custody",
+    "civic-tech",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Legal Industry",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security :: Cryptography",
+    "Typing :: Typed",
+]
+dependencies = [
+    "cryptography>=44",
+    "asn1crypto>=1.5",
+    "reportlab>=4.2",
+    "pillow>=11",
+    "piexif>=1.1.3",
+]
+
+[project.optional-dependencies]
+# The standalone verifier deliberately depends on as little as possible, so a
+# court or legal-aid group can run it without pulling the whole stack. It is also
+# offered under Apache-2.0 (see NOTICE) for embedding.
+verify = ["cryptography>=44", "asn1crypto>=1.5"]
+
+[project.scripts]
+habitable = "habitable.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ChelseaKR/habitable"
+Source = "https://github.com/ChelseaKR/habitable"
+Issues = "https://github.com/ChelseaKR/habitable/issues"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=5",
+    "hypothesis>=6.100",
+    "mypy>=1.11",
+    "ruff>=0.6",
+    "pip-audit>=2.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/habitable"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "W",    # pycodestyle warnings
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+    "PTH",  # flake8-use-pathlib
+    "RUF",  # ruff-specific
+    "S",    # flake8-bandit (security)
+]
+ignore = [
+    "S101", # assert is fine in tests and internal invariants
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "N802", "N803"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_unreachable = true
+warn_redundant_casts = true
+disallow_any_generics = true
+no_implicit_reexport = true
+files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["piexif.*", "reportlab.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --strict-markers --strict-config"
+testpaths = ["tests"]
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+branch = true
+source = ["habitable"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
