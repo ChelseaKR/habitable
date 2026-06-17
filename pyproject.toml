@@ -2,7 +2,7 @@
 # Copyright 2026 Chelsea Kelly-Reif
 [project]
 name = "habitable"
-version = "0.1.0"
+version = "0.2.0"
 description = "Court-ready, offline-first, end-to-end-encrypted habitability evidence for tenant unions."
 readme = "README.md"
 requires-python = ">=3.14"

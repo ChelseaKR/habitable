@@ -7,6 +7,73 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-06-17
+
+Alpha hardening and reviewer-handoff release. Still alpha — do not rely on it for a
+real legal matter yet. This release closes out the maintainer-only "Phase 0" work:
+durable proofs, a frozen threat-model baseline, automated assurance, and the
+materials an external auditor, accessibility tester, or pilot partner needs.
+
+### Added
+
+- **Archive (re-)timestamping.** `habitable retimestamp` re-stamps each capture's
+  most recent token before the issuing authority's certificate or hash algorithm
+  ages out (RFC 4998-style chaining). Existence stays anchored at the primary
+  token's time; packets carry `archive_timestamps` per item and the standalone
+  verifier walks the chain, failing closed on any break. (`tsa.retimestamp`,
+  `tsa.verify_archive_chain`, `capture.retimestamp_all`.)
+- **Vault key lifecycle.** `habitable key rotate | backup | restore` — passphrase
+  rotation and an independent-passphrase recovery blob, with a non-technical-organizer
+  walkthrough in `docs/key-management.md`.
+- **Backward-compatibility guard.** A versioned packet/protocol contract in the
+  verifier plus a committed golden-packet corpus, so every format version ever
+  emitted must keep verifying and a newer-than-supported packet is rejected cleanly,
+  never mis-verified.
+- **Assurance automation.** A verifier fuzz/property harness; a scheduled,
+  network-gated public-TSA integration job (DigiCert + FreeTSA); and a signed
+  build-provenance + CycloneDX SBOM release pipeline.
+- **Invariant guard tests.** `tests/test_guards.py` and hardened sync tests pin two
+  promises: no plaintext (note text, image bytes, or a sender identity) reaches a
+  relay or on-disk mailbox, and importing `habitable.verify` pulls in only the
+  Apache-2.0 verification subset — no AGPL-only/heavy modules.
+- **Frozen threat-model baseline B1.** A content-pinned (`SHA-256`) freeze of the
+  threat model for external review, with a section-by-section re-review and an
+  append-only baseline trail (`docs/audits/threat-model-baseline.md`, tag
+  `threat-model-baseline-B1`).
+- **Reviewer/pilot handoff docs.** `docs/audits/onboarding.md`, a DPIA-style
+  `docs/privacy.md`, `docs/sustainability.md` (incl. bus-factor minimum), and a
+  multi-year `ROADMAP.md`.
+- **Accessibility.** Automated keyboard-navigation and 320 px reflow checks added to
+  the a11y gate.
+
+### Changed
+
+- The verification subset (`verify`/`tsa`/`exif`) now writes its multi-type `except`
+  clauses with explicit parentheses — behaviour-identical, but valid on every
+  Python 3 and unambiguous to auditors and legal-aid embedders of the Apache-2.0
+  verifier (no reliance on the PEP 758 syntax that 3.14 newly accepts).
+- `docs/governance.md` "Releases" reconciled with the actual signed/provenanced
+  pipeline.
+
+### Fixed
+
+- **RFC 3161 interoperability with real public authorities.** The client now reads
+  `PKIStatus` whether rendered as an int or a name, follows the token's own digest
+  algorithm instead of assuming SHA-256, and dispatches signature verification for
+  both RSA (PKCS#1 v1.5) and ECDSA — verified against DigiCert and FreeTSA.
+- Two verifier robustness bugs found by the fuzz harness: invalid-UTF-8 bundle bytes
+  and a malformed custody chain are now clean rejections, never a crash.
+
+### Security
+
+- **Custody-actor identity and tenant filename no longer leak into exported packets.**
+  The importing peer's fingerprint (`details.from`) and the original source filename
+  (`details.source`) were being carried in the signed, shared `bundle.json`,
+  weakening the "exports name no one" guarantee. They now live in a **vault-only
+  `private_details`** field that is never hashed and never exported, while the union
+  keeps them for its own audit. Previously-produced packets still verify unchanged.
+  Regression-guarded by `tests/test_guards.py`.
+
 ## [0.1.0] — 2026-06-17
 
 First public release. Alpha — a working reference implementation; do not rely on
