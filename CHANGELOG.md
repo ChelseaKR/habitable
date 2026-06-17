@@ -7,50 +7,44 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
-### Added
+## [0.1.0] — 2026-06-17
 
-- **Local app (Phase 4, in progress).** `habitable app` runs a loopback-only HTTP
-  server that holds the unlocked vault and serves an accessible, bilingual
-  (English/Spanish) web client — capture, timeline, status, and export-and-verify
-  over a small JSON API; nothing leaves the device. EN/ES string parity and
-  structural accessibility (lang, skip link, labelled controls, landmarks, alt
-  text, no positive tabindex) are enforced by tests; an installable PWA manifest
-  and a service worker (network-only for `/api/`) are included.
-- **Configurable packet templates.** Per-jurisdiction header/footer wording
-  (presentation only — it never changes how a packet verifies).
-- **Setup guide.** `docs/setup-guide.md` — "set up your union in an afternoon".
-- **Resolve in the app.** A "resolve awaiting timestamps" action (and `/api/resolve`)
-  so items captured offline can be timestamped from the UI when back online.
+First public release. Alpha — a working reference implementation; do not rely on
+it for real legal matters yet. It pairs the evidence spine with a local app,
+accessibility gates, mobile/PWA install, an optional relay deploy, and a static
+preview site.
+
+### Added — app, accessibility, and operations
+
+- **Local app.** `habitable app` runs a loopback-only HTTP server that holds the
+  unlocked vault and serves an accessible, bilingual (English/Spanish) web client —
+  capture, timeline, status, resolve, and export-and-verify over a small JSON API;
+  nothing leaves the device. Installable PWA (manifest, maskable/Apple icons, and
+  an offline service worker that is network-only for `/api/`).
 - **axe-core accessibility gate.** A real WCAG scan of the running app in English
-  and Spanish (via Playwright/Chromium), blocking on any moderate/serious/critical
-  violation, wired into a dedicated `a11y` CI workflow and `make a11y`; the app
-  reports **zero** violations. A manual NVDA/VoiceOver/keyboard/zoom protocol is
-  documented in `docs/accessibility/manual-testing.md`.
-- **Accessible HTML packet.** Every export now also produces `packet.html` — a
-  self-contained WCAG 2.2 AA rendering (landmarks, one `h1`, a captioned appendix
-  table with header scopes, meaningful image `alt`, document language) that passes
-  the same axe gate. It is the accessible human-readable view alongside the PDF.
-- **PDF accessibility.** Packet PDFs declare their (configured) language, set
-  `DisplayDocTitle`, and carry a navigable outline/bookmarks; all bundle-derived
-  text is escaped before rendering.
-- **Mobile / PWA.** PNG icons (192/512) plus a maskable icon and an Apple touch
-  icon, Apple/standalone meta tags, and a service worker that precaches the shell
-  and falls back offline; install guidance in `docs/mobile.md`. Installability is
-  test-gated.
+  and Spanish (Playwright/Chromium), blocking on any moderate/serious/critical
+  violation, in a dedicated `a11y` CI workflow and `make a11y`; the app reports
+  **zero** violations. Manual NVDA/VoiceOver/keyboard/zoom protocol documented in
+  `docs/accessibility/manual-testing.md`.
+- **Accessible HTML packet.** Every export also produces `packet.html` — a
+  self-contained WCAG 2.2 AA rendering that passes the same axe gate — alongside a
+  PDF that declares its language, sets `DisplayDocTitle`, and carries a navigable
+  outline; all bundle-derived text is escaped before rendering.
+- **Configurable packet templates** (per-jurisdiction wording, presentation only).
+- **Optional relay deploy.** A dependency-free, non-root, read-only container and a
+  one-command `docker compose` for the ciphertext-only sync relay
+  (`docs/relay-deploy.md`).
+- **Docs & preview.** Setup guide, mobile guide, and a static landing page with a
+  live sample packet (GitHub Pages).
 
-### Note
+### Limitations
 
 A *recorded* human screen-reader pass (protocol shipped), a fully tagged PDF/UA
 structure tree (not available in reportlab's open-source API — the HTML packet is
 the accessible rendering until then), and signed native app-store binaries (the
 installable PWA covers mobile today) remain — see the ACR and the build plan.
 
-## [0.1.0] — 2026-06-17
-
-First working reference implementation of the evidence spine. Alpha,
-concept-stage: do not rely on it for real legal matters yet.
-
-### Added
+### Added — evidence core
 
 - **Evidence core.** Streaming SHA-256 fixity and an append-only, hash-linked
   chain of custody whose entry hashes commit to *salted actor commitments*, so an
