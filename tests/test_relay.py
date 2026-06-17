@@ -71,3 +71,20 @@ def test_http_post_then_get(server_url: str) -> None:
     status, body = _get(f"{server_url}/rooms/abc")
     assert status == 200
     assert json.loads(body)["messages"]  # one base64 message present
+
+
+def test_healthz_exposes_only_aggregate_counts(server_url: str) -> None:
+    """The relay must leak no room names or message contents — only counts."""
+    room = "room-SECRETNAME-123"
+    blob = b"SECRET-CIPHERTEXT-PAYLOAD"
+    request = urllib.request.Request(f"{server_url}/rooms/{room}", data=blob, method="POST")
+    with urllib.request.urlopen(request, timeout=5) as response:
+        assert response.status == 200
+    status, body = _get(f"{server_url}/healthz")
+    assert status == 200
+    payload = json.loads(body)
+    assert set(payload) <= {"status", "rooms", "posted", "fetched", "bytes_relayed"}
+    text = body.decode("utf-8")
+    assert "SECRETNAME" not in text  # no room identifiers
+    assert "SECRET-CIPHERTEXT" not in text  # no message contents
+    assert payload["rooms"] == 1 and payload["posted"] == 1

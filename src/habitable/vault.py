@@ -22,7 +22,14 @@ from pathlib import Path
 from .canonical import JSONValue, canonical_json, sha256_bytes
 from .clock import HybridLogicalClock, wall_clock_ms
 from .config import Config, default_config_toml
-from .crypto import Identity, SymmetricKey, create_keyfile, open_keyfile
+from .crypto import (
+    Identity,
+    SymmetricKey,
+    create_keyfile,
+    export_recovery_blob,
+    import_recovery_blob,
+    open_keyfile,
+)
 from .errors import FixityError, VaultError
 from .evidence import CustodyLog
 from .model import CaseDocument
@@ -140,6 +147,35 @@ class Vault:
             for item in _as_record_list(deferred_raw)
         ]
         return cls(path, config, dek, identity, document, custody, deferred)
+
+    # --- key management -------------------------------------------------------
+
+    def rotate_passphrase(self, new_passphrase: str) -> None:
+        """Re-wrap the in-memory data key under a new passphrase.
+
+        Cheap by design: the bulk data is never re-encrypted — only the small
+        passphrase-wrapped key is replaced.
+        """
+        (self.path / _KEYFILE).write_text(
+            export_recovery_blob(self._dek, new_passphrase), encoding="utf-8"
+        )
+
+    def export_recovery(self, recovery_passphrase: str) -> str:
+        """Return an encrypted recovery backup of the data key.
+
+        Store this somewhere safe and separate. With it (and its passphrase) the
+        vault can be reopened even if the main passphrase is lost; without any
+        backup, a lost passphrase means the data is unrecoverable — by design.
+        """
+        return export_recovery_blob(self._dek, recovery_passphrase)
+
+    @staticmethod
+    def restore_keyfile(
+        path: Path, recovery_blob: str, recovery_passphrase: str, new_passphrase: str
+    ) -> None:
+        """Rebuild a vault's keyfile from a recovery backup, under a new passphrase."""
+        dek = import_recovery_blob(recovery_blob, recovery_passphrase)
+        (path / _KEYFILE).write_text(export_recovery_blob(dek, new_passphrase), encoding="utf-8")
 
     def save(self) -> None:
         """Persist the document, custody log, and deferred queue (encrypted)."""

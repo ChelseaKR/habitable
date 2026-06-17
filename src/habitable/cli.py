@@ -136,6 +136,30 @@ def _build_parser() -> argparse.ArgumentParser:
     p_app.add_argument("--no-browser", action="store_true", help="do not open a browser")
     p_app.set_defaults(func=_cmd_app)
 
+    p_key = sub.add_parser("key", help="manage vault keys: rotate, backup, restore")
+    key_sub = p_key.add_subparsers(dest="key_action")
+    p_key_rotate = key_sub.add_parser("rotate", help="change the vault passphrase")
+    add_vault(p_key_rotate)
+    p_key_rotate.add_argument("--new-passphrase", help="new passphrase (else prompt)")
+    p_key_rotate.set_defaults(func=_cmd_key_rotate)
+    p_key_backup = key_sub.add_parser(
+        "backup", help="write an encrypted recovery backup of the key"
+    )
+    add_vault(p_key_backup)
+    p_key_backup.add_argument("--out", required=True, type=Path, help="recovery file to write")
+    p_key_backup.add_argument(
+        "--recovery-passphrase", help="passphrase for the backup (else prompt)"
+    )
+    p_key_backup.set_defaults(func=_cmd_key_backup)
+    p_key_restore = key_sub.add_parser(
+        "restore", help="rebuild a vault keyfile from a recovery backup"
+    )
+    p_key_restore.add_argument("vault", type=Path)
+    p_key_restore.add_argument("--recovery-file", required=True, type=Path)
+    p_key_restore.add_argument("--recovery-passphrase", help="backup passphrase (else prompt)")
+    p_key_restore.add_argument("--new-passphrase", help="new vault passphrase (else prompt)")
+    p_key_restore.set_defaults(func=_cmd_key_restore)
+
     p_demo = sub.add_parser("demo", help="walk a synthetic case end to end (no real data)")
     p_demo.set_defaults(func=_cmd_demo)
 
@@ -311,6 +335,33 @@ def _cmd_app(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_key_rotate(args: argparse.Namespace) -> int:
+    vault = _open(args)  # validates the current passphrase
+    new = _new_passphrase(args.new_passphrase)
+    vault.rotate_passphrase(new)
+    print("habitable: vault passphrase rotated. Update any recovery backups accordingly.")
+    return 0
+
+
+def _cmd_key_backup(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    recovery = _new_passphrase(args.recovery_passphrase, label="Recovery passphrase: ")
+    args.out.write_text(vault.export_recovery(recovery), encoding="utf-8")
+    print(f"habitable: recovery backup written to {args.out}")
+    print("           keep it AND its passphrase safe and separate; without a backup,")
+    print("           a lost passphrase means the data is unrecoverable (by design).")
+    return 0
+
+
+def _cmd_key_restore(args: argparse.Namespace) -> int:
+    recovery = args.recovery_passphrase or getpass.getpass("Recovery passphrase: ")
+    new = _new_passphrase(args.new_passphrase)
+    blob = args.recovery_file.read_text(encoding="utf-8")
+    Vault.restore_keyfile(args.vault, blob, recovery, new)
+    print(f"habitable: keyfile restored for {args.vault}; open it with the new passphrase.")
+    return 0
+
+
 def _cmd_demo(_args: argparse.Namespace) -> int:
     from .demo import run_demo
 
@@ -334,6 +385,16 @@ def _passphrase(args: argparse.Namespace, *, confirm: bool = False) -> str:
     if confirm and passphrase != getpass.getpass("Confirm passphrase: "):
         raise HabitableError("passphrases did not match")
     return passphrase
+
+
+def _new_passphrase(value: str | None, *, label: str = "New passphrase: ") -> str:
+    """A passphrase from a flag, or prompted twice for confirmation."""
+    if value:
+        return value
+    chosen = getpass.getpass(label)
+    if chosen != getpass.getpass("Confirm: "):
+        raise HabitableError("passphrases did not match")
+    return chosen
 
 
 def _tsa_for(vault: Vault, *, dev: bool) -> TimestampAuthority | None:

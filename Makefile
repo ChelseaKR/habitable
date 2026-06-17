@@ -25,8 +25,8 @@ type: ## Strict type-check
 test: ## Run the test suite
 	uv run pytest
 
-cov: ## Run tests with coverage
-	uv run pytest --cov=habitable --cov-report=term-missing --cov-report=xml
+cov: ## Run tests with coverage (enforces a floor)
+	uv run pytest --cov=habitable --cov-report=term-missing --cov-report=xml --cov-fail-under=85
 
 verify: lint type cov ## The full merge gate: lint + types + tests with coverage
 	@echo "habitable: full gate green on Python $$(uv run python -c 'import sys;print(sys.version.split()[0])')"

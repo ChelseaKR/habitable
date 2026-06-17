@@ -44,8 +44,26 @@ contract. Reports that undermine any of these are highest priority:
 - The bundled development TSA (`DevTSA`) is explicitly **non-production** and is
   not a trusted timestamp source; that is by design, not a vulnerability.
 
+## Severity tiers and response targets
+
+Severity is judged against the security contract above (confidentiality,
+tamper-evidence, unintended disclosure, verifier soundness). Targets are for a
+small volunteer project and are goals, not guarantees.
+
+| Severity | Examples | Acknowledge | Fix / mitigation target |
+| --- | --- | --- | --- |
+| **Critical** | Read vault contents without the key; verifier accepts tampered/backdated evidence as intact; plaintext recoverable from a relay | 2 business days | 14 days (or a documented interim mitigation) |
+| **High** | Packet leaks location/identities contrary to policy; signing/verification bypass under realistic conditions | 3 business days | 30 days |
+| **Medium** | DoS of the relay/verifier; metadata exposure beyond what the threat model documents | 5 business days | 90 days |
+| **Low** | Hardening gaps, defense-in-depth, doc/UX issues with a security angle | best effort | next release |
+
+A fix ships with a regression test and a published advisory (crediting the
+reporter unless they prefer anonymity). The coordinated-disclosure flow is
+exercised end to end (report → ack → fix → advisory) before v1.0.
+
 ## Supply chain
 
 Dependencies are pinned and locked (`uv.lock`); GitHub Actions are pinned to
-commit SHAs; CI runs `pip-audit` and CodeQL. Reports about the build or release
-path are welcome.
+commit SHAs; the relay base image is pinned by digest; CI runs `pip-audit` and
+CodeQL. Signed releases with build provenance and an SBOM are tracked for v1.0
+(see the roadmap). Reports about the build or release path are welcome.
