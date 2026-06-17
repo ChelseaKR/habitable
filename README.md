@@ -177,7 +177,7 @@ habitable/
 ├── tests/
 │   ├── fixtures/                  # sample cases, tampered items, broken chains for verify tests
 │   └── ...                        # unit, property-based, and tamper-detection tests
-├── docs/                          # ARCHITECTURE, threat-model.md, privacy.md, sustainability.md, evidence-method.md, governance.md, ADRs, audits/ (+ onboarding, baseline), accessibility/
+├── docs/                          # ARCHITECTURE, threat-model.md, privacy.md, sustainability.md, evidence-method.md, governance.md, ADRs, audits/ (+ onboarding, baseline), accessibility/, recruitment/ (call for reviewers)
 └── pyproject.toml
 ```
 
@@ -429,6 +429,24 @@ and NOTICE points to it. (Merely *running* the verifier never triggers copyleft 
 exception is about embedding and redistribution.)
 
 ---
+
+## Get involved — the project needs outside eyes
+
+habitable stays labelled **alpha** until independent reviewers have checked its claims —
+that is the whole bargain of a *verify, don't trust* tool, and it is the current priority.
+If you can help, the **[call for reviewers](docs/recruitment/README.md)** has scoped briefs,
+the funding paths, and one-click intake for each role:
+
+- **[Security + cryptographic auditor](docs/recruitment/role-auditor.md)** — with an
+  [audit-funding playbook](docs/recruitment/audit-funding.md) (grant / pro-bono / paid).
+- **[Accessibility tester](docs/recruitment/role-accessibility-tester.md)** who uses
+  assistive technology, for a recorded NVDA + VoiceOver pass (paid/stipended).
+- **[Housing/tenant lawyer](docs/recruitment/role-legal-reviewer.md)** and a
+  **[tenant-union / legal-aid pilot partner](docs/recruitment/role-pilot-partner.md)**
+  (currently scoped to California).
+
+Offers go through the [reviewer intake form](https://github.com/ChelseaKR/habitable/issues/new?template=reviewer-intake.yml);
+**security vulnerabilities** go privately through [`SECURITY.md`](SECURITY.md), never a public issue.
 
 ## Definition of done
 

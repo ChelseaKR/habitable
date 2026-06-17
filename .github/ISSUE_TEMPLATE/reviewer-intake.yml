@@ -1,0 +1,148 @@
+name: Reviewer / tester intake
+description: Offer to review or test habitable (security, accessibility, threat model, legal framing, or pilot). NOT for reporting vulnerabilities.
+title: "[Reviewer] "
+labels: ["review", "help wanted"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for offering to help. habitable is an alpha, bus-factor-1, unfunded personal
+        project, and the **alpha "do not rely on this yet" caveat only comes off when independent
+        reviews land** — so outside eyes are the single most valuable contribution right now.
+
+        This form is to **OFFER a review or test**, so the maintainer can say yes/no async with no
+        meeting. It is **not** the place to submit findings.
+
+        > [!CAUTION]
+        > **Do NOT describe a security or privacy vulnerability here.** This is a public issue.
+        > An actual unfixed vulnerability must go through **GitHub private vulnerability reporting**
+        > per [`SECURITY.md`](https://github.com/ChelseaKR/habitable/blob/main/SECURITY.md)
+        > (Security tab → *Report a vulnerability*) — never a public issue or form.
+
+        Before filing, skim the onboarding doc
+        ([`docs/audits/onboarding.md`](https://github.com/ChelseaKR/habitable/blob/main/docs/audits/onboarding.md)),
+        the frozen threat-model baseline B1
+        ([`docs/audits/threat-model-baseline.md`](https://github.com/ChelseaKR/habitable/blob/main/docs/audits/threat-model-baseline.md)),
+        and the threat model §5 out-of-scope list
+        ([`docs/threat-model.md`](https://github.com/ChelseaKR/habitable/blob/main/docs/threat-model.md)).
+        **Evaluate using synthetic `habitable demo` data only — never real tenant data.**
+  - type: dropdown
+    id: role
+    attributes:
+      label: Which role are you offering for?
+      description: Pick the closest fit. Use "Other" if none match and explain below.
+      options:
+        - Security + cryptographic auditor (code / protocol review)
+        - Accessibility tester (recorded NVDA + VoiceOver pass, EN and ES)
+        - Threat-model reviewer (read docs/threat-model.md against baseline B1)
+        - Legal reviewer (housing/tenant law — "not legal advice / no admissibility" framing)
+        - Pilot partner (tenant union / legal-aid org)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: background
+    attributes:
+      label: Relevant background and lived experience
+      description: |
+        What makes you a fit for the role above? Examples by role:
+        - Security/crypto: applied crypto, Python, RFC 3161, AEAD-at-rest, sealed-box / ECIES, tamper-evident logs.
+        - Accessibility: the assistive technology you rely on day to day and your lived experience using it.
+        - Threat model: threat modeling for at-risk / surveilled communities or evidence-integrity systems.
+        - Legal / pilot: your housing-law or tenant-organizing context.
+        Links to prior public reports, reviews, or relevant work are welcome (no exploit detail for unfixed issues).
+    validations:
+      required: true
+  - type: input
+    id: prior-work
+    attributes:
+      label: Links to prior published reviews, audits, or relevant work
+      description: Optional. GitHub, a published report, an ACR, an org page, etc.
+    validations:
+      required: false
+  - type: dropdown
+    id: funding-model
+    attributes:
+      label: Engagement / funding model
+      description: |
+        There is **no payment and no paid bounty** (see SECURITY.md and docs/sustainability.md).
+        How would this review be resourced on your side?
+      options:
+        - Pro-bono / volunteer
+        - Security clinic or academic program
+        - OSS-audit program
+        - Grant- or mutual-aid-funded
+        - Pro-bono legal clinic / law-school clinic
+        - Other (explain in "how you'd like to engage")
+    validations:
+      required: true
+  - type: input
+    id: availability
+    attributes:
+      label: Rough availability / time you can commit
+      description: |
+        Scope is small and fixed by design, to respect volunteer time. e.g. "a fixed-scope
+        mini-engagement over ~2 weeks" or "one recorded session in the next month".
+      placeholder: e.g. a fixed-scope mini-engagement over ~2 weeks
+    validations:
+      required: true
+  - type: textarea
+    id: how-engage
+    attributes:
+      label: How you'd like to engage
+      description: |
+        What you'd actually focus on and how you prefer to work. Examples:
+        - Security/crypto: which areas — vault at rest (scrypt-KEK + ChaCha20-Poly1305 DEK),
+          X25519 sealed-box sync, Ed25519 signing, custody commitments + fixity in evidence.py,
+          the RFC 3161 path in tsa.py, the standalone verify.py.
+        - Accessibility: screen readers + browsers (NVDA+Firefox, VoiceOver+Safari/iOS, Orca),
+          languages (note **both EN and ES are needed**), surfaces (the local `habitable app`
+          and the exported `packet.html`), and that the v1.0 gate requires a recording (screen + AT audio).
+        - Threat model: which documented residual risks / boundaries you most want to stress-test
+          (relay metadata, duress-state limits, lost-key data loss, what an RFC 3161 timestamp does
+          and does not prove, hostile-keyholder local-chain rewrite, "exports name no one").
+        Async-first is fine; a call is opt-in after scope is agreed in-thread.
+    validations:
+      required: true
+  - type: dropdown
+    id: conflict
+    attributes:
+      label: Conflict-of-interest check
+      description: Any landlord-side, surveillance-vendor, or adversary-aligned ties?
+      options:
+        - "No"
+        - Yes — I will disclose in "how you'd like to engage" above
+    validations:
+      required: true
+  - type: dropdown
+    id: credit
+    attributes:
+      label: Credit preference
+      description: |
+        Default is public, diffable credit (audit-as-artifact). Reviews land in docs/audits/
+        (or the ACR for accessibility) and the release notes; anonymity on request.
+      options:
+        - Credit me in docs/audits (or the ACR) and the release notes
+        - Keep me anonymous
+    validations:
+      required: true
+  - type: checkboxes
+    id: ground-rules
+    attributes:
+      label: Ground rules
+      options:
+        - label: I understand this form is to OFFER a review, not to submit findings.
+          required: true
+        - label: I have read SECURITY.md and will report any actual unfixed vulnerability privately (GitHub private vulnerability reporting), not in this or any other public issue.
+          required: true
+        - label: I will evaluate using synthetic `habitable demo` data only and will not handle real tenant data.
+          required: true
+        - label: I have skimmed the frozen threat-model baseline B1 and the threat model §5 out-of-scope list.
+          required: false
+  - type: input
+    id: contact
+    attributes:
+      label: Preferred async contact handle
+      description: Optional. A GitHub @handle is fine; this issue thread also works.
+    validations:
+      required: false
