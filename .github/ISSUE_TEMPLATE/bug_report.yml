@@ -1,0 +1,39 @@
+name: Bug report
+description: Report a defect. Use synthetic data only — never real tenant data.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping. **Do not paste real tenant data, addresses, photos, or keys.**
+        If this is a security or privacy vulnerability, stop and follow `SECURITY.md` instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduce on sample data
+      description: Steps to reproduce, ideally starting from `habitable demo` or synthetic fixtures.
+      placeholder: |
+        1. uv run habitable init ...
+        2. uv run habitable capture ...
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `uv run habitable --version` and your OS.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output / traceback
+      render: text
