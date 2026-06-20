@@ -29,6 +29,29 @@ def _doc(node: str, start_ms: int) -> CaseDocument:
     return CaseDocument("case", HybridLogicalClock(node, time_source=_counter_clock(start_ms)))
 
 
+def test_record_recurrence_marks_timeline_and_status() -> None:
+    doc = _doc("n", 1000)
+    issue = doc.add_issue(category="mold", room="bathroom", issue_id="i1")
+    entry_id = doc.record_recurrence(issue, "mold came back this winter")
+
+    recurrences = [e for e in doc.timeline(issue) if e.kind == "recurrence"]
+    assert len(recurrences) == 1
+    assert recurrences[0].entry_id == entry_id
+    assert recurrences[0].text == "mold came back this winter"
+    # The issue now reads as one persisting condition, not separate small problems.
+    assert next(i for i in doc.issues() if i.issue_id == issue).status == "recurring"
+
+
+def test_record_recurrence_rejects_unknown_issue() -> None:
+    doc = _doc("n", 1000)
+    try:
+        doc.record_recurrence("nope")
+    except Exception as exc:  # HabitableError
+        assert "unknown issue" in str(exc)
+    else:  # pragma: no cover - must raise
+        raise AssertionError("expected record_recurrence to reject an unknown issue")
+
+
 def _apply(doc: CaseDocument, ops: Sequence[Op]) -> None:
     for op in ops:
         kind = op[0]

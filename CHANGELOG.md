@@ -7,6 +7,15 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+### Added
+
+- **Recurrence tracking.** `habitable recur --issue <id>` records that a documented
+  problem has come back: it appends a `recurrence` timeline entry and marks the issue
+  status `recurring`, so a relapsing condition reads as one persisting problem on the
+  timeline (`CaseDocument.record_recurrence`). This strengthens the notice-and-
+  persistence narrative that drives habitability disputes, rather than scattering a
+  recurring issue across separate small entries.
+
 ### Fixed
 
 - **Verifier subset now imports on Python < 3.14 again.** Three multi-type `except`

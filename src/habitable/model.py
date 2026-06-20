@@ -282,6 +282,20 @@ class CaseDocument:
         )
         return entry_id
 
+    def record_recurrence(self, issue_id: str, note: str = "") -> str:
+        """Record that a previously-documented problem has recurred.
+
+        Appends a ``recurrence`` timeline entry and marks the issue status
+        ``recurring``, so the case timeline shows one persisting/relapsing condition
+        (which strengthens the notice-and-persistence narrative that decides
+        habitability disputes) instead of looking like separate, smaller problems.
+        """
+        if issue_id not in self._issues.elements():
+            raise HabitableError(f"unknown issue: {issue_id!r}")
+        entry_id = self.add_timeline_entry(issue_id, "recurrence", note or "Problem recurred")
+        self.update_issue(issue_id, status="recurring")
+        return entry_id
+
     def add_capture(
         self,
         *,

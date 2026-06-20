@@ -100,6 +100,24 @@ def test_cli_verify_json_is_structured(
         assert key in item
 
 
+def test_cli_recur_records_recurrence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("HABITABLE_PASSPHRASE", "pw")
+    vault = tmp_path / "vault"
+    assert main(["init", str(vault), "--case", "c"]) == 0
+    assert main(["issue", "--vault", str(vault), "--category", "mold", "--title", "Mold"]) == 0
+    issue_id = next(t for t in capsys.readouterr().out.split() if t.startswith("issue-"))
+    assert main(["recur", "--vault", str(vault), "--issue", issue_id, "--note", "came back"]) == 0
+    assert "recorded recurrence" in capsys.readouterr().out
+
+    from habitable.vault import Vault
+
+    doc = Vault.open(vault, "pw").document
+    assert [e for e in doc.timeline(issue_id) if e.kind == "recurrence"]
+    assert next(i for i in doc.issues() if i.issue_id == issue_id).status == "recurring"
+
+
 def test_no_command_prints_help() -> None:
     assert main([]) == 2
 
