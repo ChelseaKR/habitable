@@ -12,10 +12,13 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import json
 import os
 import sys
 import webbrowser
 from pathlib import Path
+
+from cryptography import x509
 
 from . import __version__
 from .capture import capture, resolve_deferred, retimestamp_all
@@ -119,6 +122,20 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_verify = sub.add_parser("verify", help="independently verify a packet")
     p_verify.add_argument("packet", type=Path)
+    p_verify.add_argument(
+        "--json",
+        action="store_true",
+        help="emit a structured JSON report (for scripts, integrators, and screen readers)",
+    )
+    p_verify.add_argument(
+        "--trusted-cert",
+        action="append",
+        type=Path,
+        metavar="PEM",
+        help="a trusted RFC 3161 TSA root certificate (PEM); repeatable. Asserts each "
+        "timestamp chains to a root you trust. Omit to verify token signatures without "
+        "anchoring to a specific authority.",
+    )
     p_verify.set_defaults(func=_cmd_verify)
 
     p_sync = sub.add_parser("sync", help="sync the case with a peer")
@@ -211,7 +228,8 @@ def _cmd_issue(args: argparse.Namespace) -> int:
 def _cmd_capture(args: argparse.Namespace) -> int:
     vault = _open(args)
     tsa = None if args.no_timestamp else _tsa_for(vault, dev=args.dev_tsa)
-    result = capture(vault, args.media, issue_id=args.issue, tsa=tsa)
+    extra_tsas = [] if args.no_timestamp else _extra_tsas_for(vault, dev=args.dev_tsa)
+    result = capture(vault, args.media, issue_id=args.issue, tsa=tsa, extra_tsas=extra_tsas)
     status = (
         f"timestamped ({result.timestamp_info.gen_time})"
         if result.timestamped and result.timestamp_info
@@ -219,6 +237,9 @@ def _cmd_capture(args: argparse.Namespace) -> int:
     )
     print(f"habitable: captured {result.capture_id}")
     print(f"           content hash {result.content_hash[:16]}… · {status}")
+    if result.extra_authorities:
+        also = ", ".join(result.extra_authorities)
+        print(f"           also timestamped by {len(result.extra_authorities)} more: {also}")
     if result.had_location:
         print("           note: original retains location; shared copies will strip it")
     return 0
@@ -302,8 +323,49 @@ def _cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_trusted_certs(paths: list[Path] | None) -> list[x509.Certificate] | None:
+    if not paths:
+        return None
+    certs: list[x509.Certificate] = []
+    for path in paths:
+        try:
+            certs.append(x509.load_pem_x509_certificate(path.read_bytes()))
+        except (OSError, ValueError) as exc:
+            raise HabitableError(f"could not load trusted certificate {path}: {exc}") from exc
+    return certs
+
+
 def _cmd_verify(args: argparse.Namespace) -> int:
-    report = verify_packet(args.packet)
+    report = verify_packet(args.packet, trusted_certs=_load_trusted_certs(args.trusted_cert))
+    if args.json:
+        payload = {
+            "ok": report.ok,
+            "summary": report.summary(),
+            "signature_ok": report.signature_ok,
+            "custody_ok": report.custody_ok,
+            "custody_length": report.custody_length,
+            "verified_items": report.verified_items,
+            "item_count": len(report.items),
+            "problems": list(report.problems),
+            "items": [
+                {
+                    "capture_id": item.capture_id,
+                    "content_hash": item.content_hash,
+                    "ok": item.ok,
+                    "timestamp_verified": item.timestamp_verified,
+                    "gen_time": item.gen_time,
+                    "tsa_name": item.tsa_name,
+                    "shared_media_ok": item.shared_media_ok,
+                    "custody_binding_ok": item.custody_binding_ok,
+                    "original_fixity_ok": item.original_fixity_ok,
+                    "verified_authorities": list(item.verified_authorities),
+                    "notes": list(item.notes),
+                }
+                for item in report.items
+            ],
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if report.ok else 1
     print(f"habitable: {report.summary()}")
     if not report.ok:
         for item in report.items:
@@ -419,6 +481,13 @@ def _tsa_for(vault: Vault, *, dev: bool) -> TimestampAuthority | None:
         return DevTSA("dev-tsa")
     authorities = vault.config.timestamp_authorities
     return _build_authority(authorities[0]) if authorities else None
+
+
+def _extra_tsas_for(vault: Vault, *, dev: bool) -> list[TimestampAuthority]:
+    """Every configured authority beyond the primary, for redundant stamping (R-16)."""
+    if dev:
+        return []
+    return [_build_authority(t) for t in vault.config.timestamp_authorities[1:]]
 
 
 def _build_authority(config: TSAConfig) -> TimestampAuthority:

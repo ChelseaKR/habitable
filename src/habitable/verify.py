@@ -46,6 +46,12 @@ _ORIGINALS = "originals"
 # non-crashing error rather than mis-verified.
 SUPPORTED_PACKET_VERSION = 1
 
+# Referenced by name (not an inline `except (...)`) so the formatter cannot rewrite it
+# to the parenthesis-free PEP 758 form, a SyntaxError on Python < 3.14. verify.py is
+# the entry point of the Apache-2.0 verifier subset, kept portable for embedders who
+# vendor it onto older interpreters (see docs/embedding-the-verifier.md).
+_SIGNATURE_READ_ERRORS = (json.JSONDecodeError, UnicodeDecodeError, ValueError, OSError)
+
 
 @dataclass(frozen=True, slots=True)
 class ItemVerdict:
@@ -60,6 +66,7 @@ class ItemVerdict:
     custody_binding_ok: bool
     original_fixity_ok: bool | None  # None when the sealed original is not included
     notes: tuple[str, ...] = field(default_factory=tuple)
+    verified_authorities: tuple[str, ...] = field(default_factory=tuple)
 
     @property
     def ok(self) -> bool:
@@ -163,10 +170,14 @@ def _verify_item(
     shared_hash = _s(item, "shared_hash")
     notes: list[str] = []
 
-    # 1. Trusted timestamp over the original content hash.
+    # 1. Trusted timestamp(s) over the original content hash. The primary token plus any
+    #    independent "additional" authorities give redundancy: the item counts as
+    #    timestamped if AT LEAST ONE authority verifies, so the proof never rests on a
+    #    single TSA (item R-16). With no additional tokens this is identical to before.
     timestamp_verified = False
     gen_time = ""
     tsa_name = ""
+    verified_authorities: list[str] = []
     token_raw = item.get("timestamp")
     if isinstance(token_raw, dict):
         try:
@@ -175,6 +186,7 @@ def _verify_item(
             timestamp_verified = True
             gen_time = info.gen_time
             tsa_name = info.tsa_name
+            verified_authorities.append(info.tsa_name)
             if not info.trusted_chain:
                 notes.append("timestamp valid but authority not chained to a trusted root")
             # Archive (re-)timestamps, if present, must chain back to this token.
@@ -188,11 +200,34 @@ def _verify_item(
                 verify_archive_chain(content_hash, token, archives, trusted_certs=trusted_certs)
                 notes.append(f"archive-timestamped ({len(archives)} link(s))")
         except Exception as exc:
-            # A failed primary or archive chain means the item is not timestamp-verified.
-            timestamp_verified = False
-            notes.append(f"timestamp check failed: {exc}")
+            # A failed primary does not, by itself, condemn the item if a redundant
+            # authority below still verifies the same content hash.
+            notes.append(f"primary timestamp check failed: {exc}")
     else:
         notes.append("awaiting timestamp")
+
+    # 1b. Independent redundant authorities over the same content hash.
+    additional_raw = item.get("additional_timestamps")
+    if isinstance(additional_raw, list):
+        for extra_raw in additional_raw:
+            if not isinstance(extra_raw, dict):
+                continue
+            try:
+                extra = TimestampToken.from_dict(extra_raw)
+                extra_info = verify_token(extra, content_hash, trusted_certs=trusted_certs)
+            except Exception as exc:
+                notes.append(f"additional timestamp check failed: {exc}")
+                continue
+            verified_authorities.append(extra_info.tsa_name)
+            notes.append(f"also timestamped by {extra_info.tsa_name}")
+            if not extra_info.trusted_chain:
+                notes.append(
+                    f"additional authority {extra_info.tsa_name} not chained to a trusted root"
+                )
+            if not timestamp_verified:
+                timestamp_verified = True
+                gen_time = extra_info.gen_time
+                tsa_name = extra_info.tsa_name
 
     # 2. Shared media hashes to its recorded shared_hash.
     shared_media_ok = True
@@ -232,6 +267,7 @@ def _verify_item(
         custody_binding_ok=custody_binding_ok,
         original_fixity_ok=original_fixity_ok,
         notes=tuple(notes),
+        verified_authorities=tuple(verified_authorities),
     )
 
 
@@ -266,7 +302,7 @@ def _verify_signature(packet_dir: Path, bundle_bytes: bytes) -> bool:
         return verify_signature(
             base64.b64decode(public), bundle_hash.encode("ascii"), base64.b64decode(signature)
         )
-    except json.JSONDecodeError, UnicodeDecodeError, ValueError, OSError:
+    except _SIGNATURE_READ_ERRORS:
         # Any malformed signature file is a failed signature, never a crash.
         return False
 

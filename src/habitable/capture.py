@@ -11,7 +11,8 @@ shown as *awaiting-timestamp* until connectivity lets the token be fetched with
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -47,6 +48,7 @@ class CaptureResult:
     timestamp_info: TimestampInfo | None
     had_location: bool
     media_type: str
+    extra_authorities: tuple[str, ...] = field(default_factory=tuple)
 
 
 def capture(
@@ -56,9 +58,16 @@ def capture(
     issue_id: str,
     actor: str | None = None,
     tsa: TimestampAuthority | None = None,
+    extra_tsas: Sequence[TimestampAuthority] = (),
     media_type: str | None = None,
 ) -> CaptureResult:
-    """Capture a media file into the vault as an evidence-grade record."""
+    """Capture a media file into the vault as an evidence-grade record.
+
+    ``tsa`` is the primary timestamp authority; ``extra_tsas`` are additional,
+    independent authorities stamped for redundancy so the proof does not rest on a
+    single TSA (item R-16). Extra authorities are stamped only when the primary
+    succeeds (i.e. the device is online); offline, the item is queued and resolved
+    later against the primary."""
     src = Path(source)
     if not src.is_file():
         raise CaptureError(f"no such media file: {src}")
@@ -101,6 +110,11 @@ def capture(
     # 4. Trusted timestamp now if possible, else queue it.
     info = _try_timestamp(vault, capture_id, digest, actor_id, tsa)
 
+    # 4b. Redundant authorities (only meaningful once the primary stamped, i.e. online).
+    extra_authorities: tuple[str, ...] = ()
+    if info is not None and extra_tsas:
+        extra_authorities = _stamp_additional(vault, capture_id, digest, actor_id, extra_tsas)
+
     # 5. Add the capture to the case document.
     captured_at = _exif_to_iso(metadata.capture_time) or _ms_to_iso(stamp.wall_ms)
     vault.document.add_capture(
@@ -119,6 +133,7 @@ def capture(
         timestamp_info=info,
         had_location=metadata.has_location,
         media_type=resolved_media_type,
+        extra_authorities=extra_authorities,
     )
 
 
@@ -187,6 +202,42 @@ def _try_timestamp(
         # Offline or authority unreachable: queue and carry on. Never block capture.
         vault.queue_deferred(capture_id, digest)
         return None
+
+
+def _stamp_additional(
+    vault: Vault,
+    capture_id: str,
+    digest: str,
+    actor_id: str,
+    tsas: Sequence[TimestampAuthority],
+) -> tuple[str, ...]:
+    """Stamp ``digest`` against each redundant authority; return those that succeeded.
+
+    A redundant authority that is unreachable is skipped (never blocks capture); the
+    primary token already proves existence and others can be added later."""
+    stamped: list[str] = []
+    for tsa in tsas:
+        try:
+            token = tsa.stamp(digest)
+            info = verify_token(token, digest)
+        except TimestampError:
+            continue
+        vault.add_additional_token(capture_id, token)
+        vault.custody.append(
+            CustodyAction.TIMESTAMPED,
+            capture_id,
+            actor=actor_id,
+            hlc=vault.document.clock.now().encode(),
+            details={
+                "tsa": token.tsa_name,
+                "kind": token.kind,
+                "gen_time": info.gen_time,
+                "role": "additional",
+            },
+            identity=vault.identity,
+        )
+        stamped.append(token.tsa_name)
+    return tuple(stamped)
 
 
 def _stamp_and_record(

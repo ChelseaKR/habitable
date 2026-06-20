@@ -82,6 +82,24 @@ def test_cli_verify_detects_tamper(
     assert main(["verify", str(packet)]) == 1
 
 
+def test_cli_verify_json_is_structured(
+    tmp_path: Path,
+    make_jpeg: Callable[..., Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    packet = _init_capture_export(tmp_path, make_jpeg, monkeypatch, capsys)
+    capsys.readouterr()  # drop prior output
+    assert main(["verify", str(packet), "--json"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["ok"] is True
+    assert report["signature_ok"] and report["custody_ok"]
+    assert report["item_count"] >= 1 and report["verified_items"] == report["item_count"]
+    item = report["items"][0]
+    for key in ("capture_id", "content_hash", "ok", "timestamp_verified", "notes"):
+        assert key in item
+
+
 def test_no_command_prints_help() -> None:
     assert main([]) == 2
 

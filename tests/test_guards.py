@@ -10,6 +10,7 @@ modules (verify.py docstring, NOTICE)."""
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from collections.abc import Callable
@@ -91,4 +92,39 @@ def test_verifier_imports_stay_within_apache_subset() -> None:
     )
     assert result.returncode == 0, (
         f"verifier pulled in non-subset modules: {result.stdout.strip()} {result.stderr.strip()}"
+    )
+
+
+# The import closure of habitable.verify — the source an embedder vendors and must be
+# able to run on Python < 3.14 (verify.py docstring, NOTICE, docs/embedding-the-verifier.md).
+_VERIFIER_SUBSET_FILES = (
+    "canonical.py",
+    "crypto.py",
+    "errors.py",
+    "evidence.py",
+    "tsa.py",
+    "verify.py",
+)
+_EXCEPT_CLAUSE = re.compile(r"^\s*except\s+([^\n:]+):")
+
+
+def test_verifier_subset_avoids_py314_only_except_syntax() -> None:
+    """The Apache-2.0 verifier subset must avoid PEP 758 parenthesis-free multi-type
+    `except A, B:` — valid only on Python >= 3.14 and a SyntaxError before it, which would
+    break legal-aid embedders who vendor the subset onto older interpreters. The ruff
+    formatter targets py314 and will try to reintroduce it, so this guard fails the gate
+    if it does; reference a named tuple (e.g. `except _SOME_ERRORS:`) instead."""
+    src = Path(__file__).resolve().parent.parent / "src" / "habitable"
+    offenders: list[str] = []
+    for name in _VERIFIER_SUBSET_FILES:
+        for lineno, line in enumerate(src.joinpath(name).read_text("utf-8").splitlines(), 1):
+            match = _EXCEPT_CLAUSE.match(line)
+            if match is None:
+                continue
+            clause = match.group(1).strip()
+            # `except (A, B):` is portable; `except A, B:` is the 3.14-only form.
+            if "," in clause and not clause.startswith("("):
+                offenders.append(f"{name}:{lineno}: {line.strip()}")
+    assert not offenders, "parenthesis-free multi-type except in verifier subset:\n" + "\n".join(
+        offenders
     )

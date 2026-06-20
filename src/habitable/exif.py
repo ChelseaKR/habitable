@@ -34,6 +34,13 @@ __all__ = [
 ]
 
 _JPEG_SUFFIXES = {".jpg", ".jpeg"}
+
+# A named tuple of the errors a corrupt/unreadable image raises. Referenced by name
+# (not an inline `except (...)`) so the formatter cannot rewrite it to the
+# parenthesis-free PEP 758 form, which is a SyntaxError on Python < 3.14 — this file
+# is part of the Apache-2.0 verifier subset, kept portable for embedders. See
+# docs/embedding-the-verifier.md.
+_IMAGE_READ_ERRORS = (UnidentifiedImageError, OSError, ValueError)
 _TIFF_SUFFIXES = {".tif", ".tiff"}
 
 
@@ -199,7 +206,7 @@ def _read_metadata_pillow(path: Path) -> MediaMetadata:
                 capture_time=None,
                 fields_present=tuple(present),
             )
-    except UnidentifiedImageError, OSError, ValueError:
+    except _IMAGE_READ_ERRORS:
         return MediaMetadata(
             media_format=path.suffix.lstrip(".").upper() or "UNKNOWN",
             has_location=False,
