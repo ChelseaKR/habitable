@@ -1,0 +1,170 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later OR Apache-2.0 -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verify a habitable evidence packet</title>
+<meta name="description" content="Check a habitable evidence packet's integrity in your browser. Nothing is uploaded.">
+<style>
+  :root { color-scheme: light dark; }
+  body { max-width: 52rem; margin: 0 auto; padding: 1.5rem;
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #111; background: #fff; }
+  a.skip { position: absolute; left: -999px; } a.skip:focus { position: static; }
+  :focus-visible { outline: 3px solid #1f4e5f; outline-offset: 2px; }
+  h1, h2 { line-height: 1.25; }
+  .lede { color: #333; }
+  .panel { border: 2px dashed #1f4e5f; border-radius: 8px; padding: 1.2rem; margin: 1rem 0; }
+  .verdict { padding: .8rem 1rem; border-radius: 6px; font-weight: 700; font-size: 1.1rem; }
+  .verdict.ok { border: 2px solid #14532d; background: #e7f6ec; color: #0b3d20; }
+  .verdict.bad { border: 2px solid #7a1f1f; background: #fdecec; color: #5a1414; }
+  .verdict.pending { border: 2px solid #7a5a14; background: #fdf6e3; color: #5a4414; }
+  table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+  th, td { border: 1px solid #999; padding: .4rem .55rem; text-align: left; vertical-align: top; font-size: .92rem; }
+  th { background: #1f4e5f; color: #fff; }
+  .note { color: #333; font-size: .9rem; }
+  code { background: #f0f0f0; padding: 0 .2em; border-radius: 3px; }
+  ul { margin: .3rem 0; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header>
+  <h1>Verify a habitable evidence packet</h1>
+  <p class="lede">Choose a packet folder below to check that it has not been altered. Everything runs
+  in your browser — <strong>nothing is uploaded or sent anywhere</strong>. You do not need to install
+  anything or trust this site: the checks are standard SHA-256 hashing and an Ed25519 signature, and
+  the code is open source.</p>
+</header>
+<main id="main">
+  <div class="panel">
+    <p><label for="picker"><strong>Select the packet folder</strong> (the folder containing
+    <code>bundle.json</code>):</label></p>
+    <input id="picker" type="file" webkitdirectory directory multiple
+      aria-describedby="picker-help">
+    <p id="picker-help" class="note">Your files stay on your device. You can also drag a packet folder
+    onto this box.</p>
+  </div>
+
+  <section aria-labelledby="result-heading">
+    <h2 id="result-heading">Result</h2>
+    <div id="result" role="status" aria-live="polite">
+      <p class="note">No packet checked yet.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="what-heading">
+    <h2 id="what-heading">What this checks — and what it does not</h2>
+    <ul>
+      <li><strong>Checks here, in your browser:</strong> each photo is unchanged since capture
+      (content-hash fixity), the producer's digital signature over the record, and the append-only
+      chain of custody.</li>
+      <li><strong>Not checked here:</strong> the full RFC&nbsp;3161 trusted-timestamp certificate
+      chain. Timestamps are shown as present; to confirm them cryptographically, run
+      <code>habitable verify</code> or use standard RFC&nbsp;3161 / OpenSSL tooling.</li>
+      <li><strong>This page never proves</strong> who took a photo, that it depicts a particular home,
+      the underlying condition, or admissibility. It proves the record was not altered after the fact.</li>
+    </ul>
+  </section>
+</main>
+
+<script type="module">
+import { verifyPacket } from "./verifier.js";
+
+const resultEl = document.getElementById("result");
+const picker = document.getElementById("picker");
+const panel = document.querySelector(".panel");
+
+picker.addEventListener("change", (e) => loadFiles([...e.target.files]));
+panel.addEventListener("dragover", (e) => { e.preventDefault(); });
+panel.addEventListener("drop", async (e) => {
+  e.preventDefault();
+  const files = await filesFromDrop(e.dataTransfer);
+  if (files.length) loadFiles(files);
+});
+
+function relPath(file) {
+  return file.webkitRelativePath || file._relPath || file.name;
+}
+
+async function loadFiles(files) {
+  try {
+    const byPath = files.map((f) => ({ f, path: relPath(f) }));
+    const bundleEntry = byPath.find((x) => x.path.replace(/\\/g, "/").endsWith("bundle.json") && !x.path.endsWith("sig.json"));
+    if (!bundleEntry) { render({ error: "No bundle.json found in the selected folder." }); return; }
+    const sigEntry = byPath.find((x) => x.path.replace(/\\/g, "/").endsWith("bundle.sig.json"));
+
+    const bundleBytes = new Uint8Array(await bundleEntry.f.arrayBuffer());
+    const bundle = JSON.parse(new TextDecoder().decode(bundleBytes));
+    const sig = sigEntry ? JSON.parse(await sigEntry.f.text()) : null;
+
+    const find = (segment, name) =>
+      byPath.find((x) => x.path.replace(/\\/g, "/").endsWith(`/${segment}/${name}`) || x.path.replace(/\\/g, "/") === `${segment}/${name}`);
+    const bytesOf = async (entry) => (entry ? new Uint8Array(await entry.f.arrayBuffer()) : null);
+    const getMedia = (name) => bytesOf(find("media", name));
+    const getOriginal = (captureId) => bytesOf(find("originals", captureId));
+
+    const report = await verifyPacket({ bundleBytes, bundle, sig, getMedia, getOriginal });
+    render({ report });
+  } catch (err) {
+    render({ error: `Could not read this packet: ${err && err.message ? err.message : err}` });
+  }
+}
+
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+function render({ report, error }) {
+  if (error) { resultEl.innerHTML = `<p class="verdict bad">${esc(error)}</p>`; return; }
+  const r = report;
+  let verdict, cls;
+  if (r.ok && r.allTimestamped) { verdict = "Packet intact — integrity, signature, and chain of custody all verify."; cls = "ok"; }
+  else if (r.ok && !r.allTimestamped) { verdict = "Integrity, signature, and custody verify — but some items are still awaiting a timestamp."; cls = "pending"; }
+  else { verdict = "Packet NOT intact — see the details below."; cls = "bad"; }
+
+  const rows = r.items.map((it) => `<tr>
+      <td>${esc(it.capture_id)}</td>
+      <td>${it.sharedOk ? "unchanged" : "FAILED"}</td>
+      <td>${it.originalOk === null ? "not included" : it.originalOk ? "unchanged" : "FAILED"}</td>
+      <td>${it.timestampPresent ? esc(it.timestampAuthorities.join(", ") || "present") : "awaiting"}</td>
+      <td>${it.notes.length ? esc(it.notes.join("; ")) : "—"}</td>
+    </tr>`).join("");
+
+  const problems = [...r.problems, ...r.custody.problems].map((p) => `<li>${esc(p)}</li>`).join("");
+
+  resultEl.innerHTML = `
+    <p class="verdict ${cls}">${esc(verdict)}</p>
+    <ul>
+      <li>Producer signature: <strong>${r.signature.ok ? "verified" : "FAILED"}</strong>${r.signature.ok ? ` (producer ${esc(r.signature.fingerprint)})` : ` — ${esc(r.signature.reason || "")}`}</li>
+      <li>Chain of custody: <strong>${r.custody.ok ? "intact" : "BROKEN"}</strong> (${r.custody.length} entries)</li>
+    </ul>
+    ${problems ? `<p>Problems found:</p><ul>${problems}</ul>` : ""}
+    <table>
+      <caption>Per-item verification</caption>
+      <thead><tr>
+        <th scope="col">Capture</th><th scope="col">Shared photo</th><th scope="col">Sealed original</th>
+        <th scope="col">Timestamp authorities</th><th scope="col">Notes</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p class="note">${esc(r.note)}</p>`;
+}
+
+// Recurse a dropped folder into a flat file list (carrying relative paths).
+async function filesFromDrop(dt) {
+  const items = [...(dt.items || [])].map((i) => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if (!items.length) return [...(dt.files || [])];
+  const out = [];
+  const walk = (entry, prefix) => new Promise((resolve) => {
+    if (entry.isFile) {
+      entry.file((f) => { f._relPath = prefix + entry.name; out.push(f); resolve(); });
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      reader.readEntries(async (entries) => { for (const e of entries) await walk(e, prefix + entry.name + "/"); resolve(); });
+    } else resolve();
+  });
+  for (const entry of items) await walk(entry, "");
+  return out;
+}
+</script>
+</body>
+</html>

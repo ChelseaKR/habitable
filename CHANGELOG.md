@@ -9,6 +9,16 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **Zero-install recipient verifier** (`site/verify/`). A self-contained, fully
+  client-side web page that lets a recipient (court clerk, inspector, opposing
+  attorney) confirm a packet's integrity with **nothing installed and nothing
+  uploaded** — every byte stays in the browser. It re-expresses the Apache-2.0
+  verification subset using the platform Web Crypto API: SHA-256 content-hash
+  fixity, the producer's Ed25519 signature, and the append-only chain of custody
+  (with a canonical-JSON hash walk that matches the Python verifier, validated
+  against the sample packet). Full RFC 3161 timestamp-chain verification is honestly
+  scoped out (reported as present; confirm with `habitable verify`). Linked from the
+  landing page.
 - **Recurrence tracking.** `habitable recur --issue <id>` records that a documented
   problem has come back: it appends a `recurrence` timeline entry and marks the issue
   status `recurring`, so a relapsing condition reads as one persisting problem on the
