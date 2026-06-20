@@ -67,6 +67,7 @@
 | R-40 | Point recipients to the accessible HTML packet | The disclosure's "how to verify" line names `packet.html` as the accessible reading and `habitable verify` / standard-tool cross-check. |
 | R-27 | Tell recipients shared copies strip location; flag residual PII | Localized "what this packet discloses" block in `packet.html`/`packet.pdf` (location removed; and, when sealed originals are embedded, a residual-metadata warning); the machine-readable `disclosures` list is now in the signed `bundle.json` (schema updated). |
 | R-08 | Structured, AT-/script-friendly verifier output | `habitable verify --json` emits a full structured report (overall + per-item verdicts, notes); covered by `tests/test_cli_demo.py`. |
+| R-31 | Assert the TSA trust chain from the CLI | `habitable verify --trusted-cert PEM` (repeatable) anchors each timestamp to a trusted root (the verifier already supported `trusted_certs`; this exposes it); covered by `tests/test_packet_verify.py`. |
 | BUG-01 | Verifier-subset cross-Python portability | Named-tuple `except` form + regression guard test (see above). |
 
 ## Spec written, code deferred (📝)

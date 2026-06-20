@@ -100,6 +100,13 @@ Then a token whose authority does not chain to one of `roots` will carry the not
 item can still be `ok` on the other checks; decide your own policy on whether to require a trusted
 chain).
 
+From the command line, the same anchoring is available without writing code:
+
+```console
+$ habitable verify 4B-packet --trusted-cert freetsa-root.pem --trusted-cert digicert-root.pem
+$ habitable verify 4B-packet --json          # structured report (per-item verdicts + notes)
+```
+
 ## Verifying the bundle against the published schema (optional)
 
 You can additionally validate structure against [`packet-bundle.schema.json`](packet-bundle.schema.json)

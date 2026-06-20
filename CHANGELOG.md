@@ -35,6 +35,9 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 - **`habitable verify --json`.** A structured verification report (overall verdict
   plus per-item content hash, timestamp, custody, fixity, and notes) for scripts,
   downstream integrators, and screen-reader users.
+- **`habitable verify --trusted-cert PEM`** (repeatable). Anchors each RFC 3161
+  timestamp to a TSA root certificate the verifier trusts, so a court or auditor can
+  assert the authority chain rather than only the token signature.
 
 - **Synthetic-persona research and derived backlog** in `docs/research/`
   (`synthetic-personas-feedback.md`, `execution-log.md`): a broad persona study,

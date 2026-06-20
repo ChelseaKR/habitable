@@ -8,6 +8,9 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
+from cryptography.hazmat.primitives.serialization import Encoding
+
 from habitable.capture import capture
 from habitable.exif import read_metadata
 from habitable.packet import build_packet
@@ -88,6 +91,37 @@ def test_packet_html_has_proof_and_disclosure(
         assert stmt.privacy_heading in html  # "what this discloses"
         # The embedded-originals residual-PII warning appears only when originals ship.
         assert (stmt.privacy_originals_warning in html) is include_originals
+
+
+def test_cli_verify_trusted_cert_anchors_chain(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from habitable.cli import main
+
+    vault = _case_with_two_captures(make_vault, make_jpeg, local_tsa)
+    out = tmp_path / "packet"
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
+
+    def all_notes(argv: list[str]) -> str:
+        assert main(argv) == 0
+        report = json.loads(capsys.readouterr().out)
+        return " ".join(note for item in report["items"] for note in item["notes"])
+
+    # Without a trusted root, a valid token is flagged as not chained to one.
+    assert "not chained to a trusted root" in all_notes(["verify", str(out), "--json"])
+
+    # With the issuer's own cert as a trusted root, that note is gone.
+    pem = tmp_path / "root.pem"
+    pem.write_bytes(local_tsa.certificate.public_bytes(Encoding.PEM))
+    anchored = all_notes(["verify", str(out), "--json", "--trusted-cert", str(pem)])
+    assert "not chained to a trusted root" not in anchored
+
+    # A bad cert path is a clean error, never a crash.
+    assert main(["verify", str(out), "--trusted-cert", str(tmp_path / "nope.pem")]) == 1
 
 
 def test_media_tamper_detected(
