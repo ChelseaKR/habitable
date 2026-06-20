@@ -267,6 +267,15 @@ def _cmd_recur(args: argparse.Namespace) -> int:
     return 0
 
 
+def _human_bytes(n: int) -> str:
+    size = float(n)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} GB"
+
+
 def _cmd_status(args: argparse.Namespace) -> int:
     vault = _open(args)
     unit = vault.document.get_meta("unit") or vault.document.case_id
@@ -287,6 +296,7 @@ def _cmd_status(args: argparse.Namespace) -> int:
     print(f"  timestamps: {timestamped}/{len(captures)} present; {len(vault.deferred())} awaiting")
     custody = vault.custody.verify()
     print(f"  chain of custody: {'intact' if custody.ok else 'BROKEN'} ({custody.length} entries)")
+    print(f"  storage on this device: {_human_bytes(vault.disk_usage_bytes())}")
     return 0
 
 

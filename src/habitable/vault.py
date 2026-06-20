@@ -291,6 +291,14 @@ class Vault:
     def clear_deferred(self, capture_id: str) -> None:
         self._deferred = [item for item in self._deferred if item.capture_id != capture_id]
 
+    def disk_usage_bytes(self) -> int:
+        """Total on-disk size of this vault (sealed originals, tokens, state).
+
+        Lets a tenant on a low-storage phone see what a case is costing, since the
+        sealed-original-plus-shared-copy model roughly doubles media footprint.
+        """
+        return sum(p.stat().st_size for p in self.path.rglob("*") if p.is_file())
+
     # --- internals ------------------------------------------------------------
 
     def _write_blob(self, name: str, plaintext: bytes) -> None:
