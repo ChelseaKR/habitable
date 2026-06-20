@@ -1,0 +1,95 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright 2026 Chelsea Kelly-Reif
+"""Plain-language statement of what an evidence packet proves — and what it does not.
+
+A packet is handed to people who are not cryptographers — a housing-court clerk, an
+inspector, an opposing attorney. The recipient needs the *upper-bound* semantics of a
+trusted timestamp, and the difference between "this record was not altered" and "this
+condition was as described", stated plainly and up front. This module is the single,
+localized source of that framing so the HTML and PDF renderers cannot drift apart.
+
+Realizes the recipient-facing disclosure (items R-26 / R-29 / R-40) from
+``docs/research/synthetic-personas-feedback.md``; the verbatim legal reasoning is in
+``docs/legal/foundation-guidance.md``.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+__all__ = ["ProofStatement", "proof_statement"]
+
+_DEFAULT_LANG = "en"
+
+
+@dataclass(frozen=True, slots=True)
+class ProofStatement:
+    """The localized 'what this proves / what it does not' text for a packet."""
+
+    heading: str
+    proves_heading: str
+    proves: tuple[str, ...]
+    not_heading: str
+    not_proves: tuple[str, ...]
+    verify_line: str
+
+
+_STATEMENTS: dict[str, ProofStatement] = {
+    "en": ProofStatement(
+        heading="What this packet proves — and what it does not",
+        proves_heading="What this packet proves",
+        proves=(
+            "Each photo's content has not been altered since it was captured "
+            "(a SHA-256 content hash that can be re-checked against the file).",
+            "Each item existed no later than the date on its trusted timestamp "
+            "(an RFC 3161 token over the hash) — an upper bound on when it was created.",
+            "The record of events was not reordered or edited after the fact "
+            "(an append-only, hash-linked chain of custody).",
+        ),
+        not_heading="What this packet does not prove",
+        not_proves=(
+            "Who took a photo, or that it depicts a particular home or unit.",
+            "That the underlying condition was as described — that rests on the "
+            "tenant's own account, not on the cryptography.",
+            "That a timestamp is the exact moment of capture — it is only an upper "
+            "bound (the content existed by then).",
+            "Admissibility or any legal outcome. This is documentation, not legal advice.",
+        ),
+        verify_line=(
+            "How to verify: run `habitable verify` against the accompanying bundle.json, "
+            "or cross-check the hashes and RFC 3161 tokens with standard tools. The "
+            "accessible reading of this packet is packet.html."
+        ),
+    ),
+    "es": ProofStatement(
+        heading="Lo que este expediente demuestra y lo que no",
+        proves_heading="Lo que este expediente demuestra",
+        proves=(
+            "Que el contenido de cada foto no se ha modificado desde que se capturó "
+            "(un hash SHA-256 que se puede volver a comprobar contra el archivo).",
+            "Que cada elemento existía a más tardar en la fecha de su sello de tiempo "
+            "confiable (un token RFC 3161 sobre el hash): un límite máximo de cuándo se creó.",
+            "Que el registro de los hechos no se reordenó ni se editó después "
+            "(una cadena de custodia enlazada por hash y de solo anexar).",
+        ),
+        not_heading="Lo que este expediente no demuestra",
+        not_proves=(
+            "Quién tomó una foto, ni que muestre una vivienda o unidad en particular.",
+            "Que la condición fuera tal como se describe: eso depende del testimonio "
+            "de la persona inquilina, no de la criptografía.",
+            "Que el sello de tiempo sea el momento exacto de la captura: es solo un "
+            "límite máximo (el contenido ya existía para entonces).",
+            "Admisibilidad ni ningún resultado legal. Esto es documentación, no asesoría legal.",
+        ),
+        verify_line=(
+            "Cómo verificar: ejecute `habitable verify` con el archivo bundle.json, o "
+            "compruebe los hashes y los tokens RFC 3161 con herramientas estándar. La "
+            "versión accesible de este expediente es packet.html."
+        ),
+    ),
+}
+
+
+def proof_statement(lang: str) -> ProofStatement:
+    """Return the proof statement for ``lang``, falling back to English."""
+    return _STATEMENTS.get(lang, _STATEMENTS[_DEFAULT_LANG])

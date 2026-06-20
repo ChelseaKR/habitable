@@ -9,14 +9,25 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
-- **Verifier subset now imports on Python ≤ 3.13.** Three multi-type `except`
+- **Verifier subset now imports on Python < 3.14 again.** Three multi-type `except`
   clauses in the Apache-2.0 verification subset (`verify.py`, `tsa.py`, `exif.py`)
-  were missing parentheses — syntax valid only under PEP 758 (Python 3.14), which
-  contradicted the 0.2.0 note that the subset was made portable for legal-aid
-  embedders on any Python 3. Parenthesized; behaviour-identical on 3.14 and now
-  parses/compiles on older interpreters.
+  used the PEP 758 parenthesis-free form, a `SyntaxError` before Python 3.14 — which
+  contradicted the 0.2.0 note that the subset is portable for legal-aid embedders.
+  The root cause is that the ruff formatter targets `py314` and strips the
+  parentheses, so the clauses now reference a **named exception tuple** (e.g.
+  `except _SIGNATURE_READ_ERRORS:`), which is formatter-stable and portable. A new
+  guard test (`test_verifier_subset_avoids_py314_only_except_syntax`) fails the gate
+  if the 3.14-only form is reintroduced.
 
 ### Added
+
+- **Packet "what this proves — and what it does not" disclosure.** Every exported
+  `packet.html` and `packet.pdf` now carries a plain-language, localized (EN/ES)
+  statement of the upper-bound timestamp semantics and the limits of the evidence
+  (it does not prove authorship, depiction, the underlying condition, or
+  admissibility), with how to verify. Single source in `src/habitable/disclosure.py`
+  so the HTML and PDF cannot drift. (Recipient personas: housing-court clerk,
+  opposing counsel.)
 
 - **Synthetic-persona research and derived backlog** in `docs/research/`
   (`synthetic-personas-feedback.md`, `execution-log.md`): a broad persona study,

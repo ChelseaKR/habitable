@@ -5,13 +5,14 @@
 > was actually executed against that study's 51 remediations (`R-##`) and 27 expansions (`E-##`),
 > and — honestly — what was not, and why.
 >
-> **The hard constraint.** This work was done in an environment **without Python 3.14**, so
-> `uv sync` / `make verify` (ruff + mypy --strict + pytest ≥85% + the axe a11y gate) **could not be
-> run**. Shipping unvalidated changes to a security-critical, alpha legal-evidence tool would be
-> irresponsible, so **no behavioral code or gated app/i18n files were changed** — with one exception:
-> a syntax-only fix that is *verified* correct by byte-compilation and matches the CHANGELOG's stated
-> intent (see BUG-01). Everything else executed here is **documentation**, which the persona study
-> itself identified as roughly half the product's value (legal scaffolding, honest-limits framing,
+> **History.** The first pass ran in an environment **without Python 3.14**, so `make verify`
+> couldn't run; it shipped **documentation only**, plus one syntax-only fix verified by
+> byte-compilation (BUG-01). A **second pass** then provisioned Python 3.14 (via `uv python install`)
+> and ran the **full gate** (`make verify` green: ruff + mypy --strict + pytest ≥85%; the browser axe
+> scans skip locally because the chromium download mirror is blocked, but the structural a11y tests
+> and CI's axe gate cover them). That second pass made BUG-01 durable and implemented the
+> packet-disclosure code items below. Everything else remains **documentation**, which the persona
+> study identified as roughly half the product's value (legal scaffolding, honest-limits framing,
 > auditor materials, interop contracts, adoption/ops/governance).
 
 ## Legend
@@ -27,7 +28,7 @@
 
 | ID | What | Status | Where |
 | --- | --- | --- | --- |
-| BUG-01 | The Apache-2.0 **verifier subset would not import on Python ≤ 3.13**: three multi-type `except` clauses lacked parentheses (valid only under PEP 758 / Python 3.14), contradicting the CHANGELOG's claim that the subset was made portable for legal-aid embedders. | ✅ Fixed & verified (byte-compiles on 3.11) | `src/habitable/verify.py`, `tsa.py`, `exif.py` |
+| BUG-01 | The Apache-2.0 **verifier subset would not import on Python ≤ 3.13**: three multi-type `except` clauses lacked parentheses (valid only under PEP 758 / Python 3.14), contradicting the CHANGELOG's claim that the subset was made portable for legal-aid embedders. Root cause: ruff's formatter targets `py314` and *strips* the parentheses, so a plain re-parenthesize would be reverted by the next `make fmt`. **Fix:** reference a named exception tuple (`except _SOME_ERRORS:`) — formatter-stable and portable — and add a regression **guard test** (`test_verifier_subset_avoids_py314_only_except_syntax`). | ✅ Fixed, gate-green, guarded | `src/habitable/verify.py`, `tsa.py`, `exif.py`; `tests/test_guards.py` |
 
 ## Done (✅) — shipped documentation
 
@@ -57,16 +58,22 @@
 | R-46 | What a relay operator can/cannot observe | `docs/relay-observability-matrix.md` |
 | R-33 | Make relay-metadata disclosure prominent | `docs/relay-observability-matrix.md` |
 
+## Done (✅) — code, validated under `make verify` (second pass)
+
+| ID | Item | Deliverable |
+| --- | --- | --- |
+| R-26 | Plain-language "what this packet proves / does not" on every packet | New `src/habitable/disclosure.py` (single localized source) rendered as a structured section at the top of `packet.html` and the PDF (`htmlpacket.py`, `pdf.py`); covered by existing packet tests. |
+| R-29 | Packet itself states authorship/depiction not proven | Same disclosure: explicit "does not prove who took it / that it depicts this unit / the condition itself / admissibility." |
+| R-40 | Point recipients to the accessible HTML packet | The disclosure's "how to verify" line names `packet.html` as the accessible reading and `habitable verify` / standard-tool cross-check. |
+| BUG-01 | Verifier-subset cross-Python portability | Named-tuple `except` form + regression guard test (see above). |
+
 ## Spec written, code deferred (📝)
 
-The canonical text/contract now exists; wiring it into the app/packet needs the gate.
+The canonical text/contract now exists; wiring it into the app needs further work.
 
 | ID | Item | What exists now / what's left |
 | --- | --- | --- |
-| R-26 | Plain-language "what this proves / does not" cover page on every packet | Exact framing drafted in `docs/legal/foundation-guidance.md` and the red-team doc; **left:** render it onto `packet.html`/`packet.pdf` (`packet.py`/`htmlpacket.py`/`pdf.py`). |
-| R-29 | Packet itself states authorship/depiction not proven | Same source text; **left:** same packet-rendering change. |
-| R-40 | Point recipients to the accessible HTML packet | Covered in adoption + embedding docs; **left:** a line in the packet/cover output. |
-| R-04 | Plain-language Spanish ("not lawyerly") | A human-Spanish quick-start shipped (`quickstart-es.md`); **left:** the in-app `app/i18n/es.json` copy pass. |
+| R-04 | Plain-language Spanish ("not lawyerly") | Human-Spanish quick-start (`quickstart-es.md`) **and** the localized packet disclosure (ES) now shipped; **left:** the in-app `app/i18n/es.json` copy pass. |
 | R-17 | Meaning of a long awaiting-timestamp gap | Explained in `crypto-spec.md`/`verifier-decision-table.md`; **left:** surface in-app at the status. |
 | R-23 | Custodial recovery-blob storage without a honeypot | Practices shipped in `key-custody-playbook.md`; **left:** any helper tooling. |
 | R-50 | Partner/reviewer vetting guidance | Addressed in the red-team doc (A11); **left:** a short standalone note if wanted. |

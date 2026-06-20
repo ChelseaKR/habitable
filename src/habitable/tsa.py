@@ -61,6 +61,11 @@ __all__ = [
 _ID_CT_TST_INFO = "tst_info"
 _SHA256 = "sha256"
 
+# Referenced by name (not an inline `except (...)`) so the formatter cannot rewrite
+# it to the parenthesis-free PEP 758 form, a SyntaxError on Python < 3.14. This file
+# is part of the Apache-2.0 verifier subset, kept portable for embedders.
+_SIG_HASH_ERRORS = (ValueError, KeyError, TimestampError)
+
 # RFC 3161 tokens in the wild use a range of digests; verification must follow the
 # token's own algorithms rather than assuming SHA-256.
 _CRYPTO_HASH: dict[str, type[crypto_hashes.HashAlgorithm]] = {
@@ -502,7 +507,7 @@ def _verify_signed_attrs(
     sig_alg = signer_info["signature_algorithm"]
     try:
         sig_hash = _crypto_hash(sig_alg.hash_algo)
-    except (ValueError, KeyError, TimestampError):
+    except _SIG_HASH_ERRORS:
         sig_hash = _crypto_hash(digest_algo)
     signature_algo = sig_alg.signature_algo
     try:

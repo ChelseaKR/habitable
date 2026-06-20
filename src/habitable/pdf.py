@@ -32,6 +32,7 @@ from reportlab.platypus import (
 )
 
 from .canonical import JSONValue
+from .disclosure import proof_statement
 
 __all__ = ["render_packet_pdf"]
 
@@ -143,6 +144,8 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
     )
     story.append(Spacer(1, 0.2 * inch))
     story.append(Paragraph(_PACKET_DISCLAIMER, styles["Small"]))
+    story.append(Spacer(1, 0.2 * inch))
+    _render_proof_statement(story, lang, styles)
     story.append(Spacer(1, 0.3 * inch))
 
     items_by_issue = _items_by_issue(bundle)
@@ -167,6 +170,19 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
         story.append(_para(_s(template, "footer"), styles["Small"]))
 
     doc.build(story, canvasmaker=_AccessibleCanvas)
+
+
+def _render_proof_statement(story: list[Any], lang: str, styles: Any) -> None:
+    """Append the plain-language 'what this proves / what it does not' block."""
+    stmt = proof_statement(lang)
+    story.append(_para(stmt.heading, styles["Heading2"]))
+    story.append(_para(stmt.proves_heading, styles["Heading3"]))
+    for line in stmt.proves:
+        story.append(_para(f"- {line}", styles["Small"]))
+    story.append(_para(stmt.not_heading, styles["Heading3"]))
+    for line in stmt.not_proves:
+        story.append(_para(f"- {line}", styles["Small"]))
+    story.append(_para(stmt.verify_line, styles["Small"]))
 
 
 def _render_issue(

@@ -46,6 +46,12 @@ _ORIGINALS = "originals"
 # non-crashing error rather than mis-verified.
 SUPPORTED_PACKET_VERSION = 1
 
+# Referenced by name (not an inline `except (...)`) so the formatter cannot rewrite it
+# to the parenthesis-free PEP 758 form, a SyntaxError on Python < 3.14. verify.py is
+# the entry point of the Apache-2.0 verifier subset, kept portable for embedders who
+# vendor it onto older interpreters (see docs/embedding-the-verifier.md).
+_SIGNATURE_READ_ERRORS = (json.JSONDecodeError, UnicodeDecodeError, ValueError, OSError)
+
 
 @dataclass(frozen=True, slots=True)
 class ItemVerdict:
@@ -266,7 +272,7 @@ def _verify_signature(packet_dir: Path, bundle_bytes: bytes) -> bool:
         return verify_signature(
             base64.b64decode(public), bundle_hash.encode("ascii"), base64.b64decode(signature)
         )
-    except (json.JSONDecodeError, UnicodeDecodeError, ValueError, OSError):
+    except _SIGNATURE_READ_ERRORS:
         # Any malformed signature file is a failed signature, never a crash.
         return False
 
