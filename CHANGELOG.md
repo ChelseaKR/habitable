@@ -7,6 +7,40 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+### Fixed
+
+- **Verifier subset now imports on Python ≤ 3.13.** Three multi-type `except`
+  clauses in the Apache-2.0 verification subset (`verify.py`, `tsa.py`, `exif.py`)
+  were missing parentheses — syntax valid only under PEP 758 (Python 3.14), which
+  contradicted the 0.2.0 note that the subset was made portable for legal-aid
+  embedders on any Python 3. Parenthesized; behaviour-identical on 3.14 and now
+  parses/compiles on older interpreters.
+
+### Added
+
+- **Synthetic-persona research and derived backlog** in `docs/research/`
+  (`synthetic-personas-feedback.md`, `execution-log.md`): a broad persona study,
+  interviews, and a prioritized list of remediations/expansions checked against the
+  project's invariants.
+- **Reviewer & integrator documentation** realizing backlog items from that study:
+  a standalone cryptographic design spec (`docs/crypto-spec.md`), a verifier
+  decision table + independent cross-check procedure
+  (`docs/verifier-decision-table.md`), a documented, versioned packet/bundle format
+  (`docs/bundle-schema.md` + `docs/packet-bundle.schema.json`), a verifier-embedding
+  cookbook (`docs/embedding-the-verifier.md`), and a "how to attack a packet"
+  red-team document (`docs/audits/packet-attack-redteam.md`).
+- **Legal-scaffolding docs** (`docs/legal/`): tenant/custodian declaration
+  templates, foundation guidance for counsel, and California-scoped evidence notes
+  (all explicitly not legal advice).
+- **Adoption kit** (`docs/adoption/`): a train-the-trainer workshop guide, printable
+  EN/ES quick-starts, and a board-level risk/benefit briefing.
+- **Community, sustainability & ops docs**: a funder impact brief
+  (`docs/funding-impact-brief.md`), a newcomer/good-first-issues guide
+  (`docs/good-first-issues.md`), a localization-contributor guide
+  (`docs/localization-guide.md`), a union key-custody playbook
+  (`docs/key-custody-playbook.md`), and relay operator self-audit + observability
+  docs (`docs/relay-operator-self-audit.md`, `docs/relay-observability-matrix.md`).
+
 ## [0.2.0] — 2026-06-17
 
 Alpha hardening and reviewer-handoff release. Still alpha — do not rely on it for a

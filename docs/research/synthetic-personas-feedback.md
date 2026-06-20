@@ -21,6 +21,10 @@
 >
 > **Status:** working document · generated for the `claude/synthetic-personas-feedback`
 > workstream · cross-referenced to `ROADMAP.md` (v0.2.0) and `docs/threat-model.md`.
+>
+> **What was acted on:** see [`execution-log.md`](execution-log.md) for an honest, per-ID ledger of
+> which backlog items were executed (shipped as documentation), which are deferred pending the test
+> gate (code/UX), and which need real people (audit, pilot, recorded AT pass, funding).
 
 ## Contents
 

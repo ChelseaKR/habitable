@@ -199,7 +199,7 @@ def _read_metadata_pillow(path: Path) -> MediaMetadata:
                 capture_time=None,
                 fields_present=tuple(present),
             )
-    except UnidentifiedImageError, OSError, ValueError:
+    except (UnidentifiedImageError, OSError, ValueError):
         return MediaMetadata(
             media_format=path.suffix.lstrip(".").upper() or "UNKNOWN",
             has_location=False,

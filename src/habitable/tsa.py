@@ -502,7 +502,7 @@ def _verify_signed_attrs(
     sig_alg = signer_info["signature_algorithm"]
     try:
         sig_hash = _crypto_hash(sig_alg.hash_algo)
-    except ValueError, KeyError, TimestampError:
+    except (ValueError, KeyError, TimestampError):
         sig_hash = _crypto_hash(digest_algo)
     signature_algo = sig_alg.signature_algo
     try:

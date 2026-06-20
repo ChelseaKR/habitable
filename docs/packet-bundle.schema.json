@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chelseakr.github.io/habitable/schema/packet-bundle-v1.schema.json",
+  "title": "habitable evidence packet — bundle.json (v1)",
+  "description": "The machine-readable contract for the bundle.json at the root of a habitable evidence packet. Stable per the compatibility policy in docs/bundle-schema.md: additive within a major packet_version; a breaking change is a major bump. The signed sibling file bundle.sig.json is described by $defs/signature. Hashes are lowercase hex SHA-256 (64 chars); the chain-of-custody genesis prev_hash is 64 zeros.",
+  "type": "object",
+  "required": [
+    "packet_version",
+    "case_id",
+    "generated_at",
+    "producer_fingerprint",
+    "hash_algorithm",
+    "items",
+    "custody_proof",
+    "appendix"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "packet_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Packet format version. A verifier accepts 1..SUPPORTED_PACKET_VERSION and rejects newer-than-supported packets rather than mis-verifying."
+    },
+    "case_id": { "type": "string" },
+    "unit": { "type": "string", "description": "Unit label; may be empty." },
+    "scope": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["issue", "unit"] },
+        "issue_id": { "type": "string" },
+        "since": { "type": "string", "description": "Lower bound on capture time; may be empty." }
+      },
+      "additionalProperties": true
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "Packet generation time, ISO 8601 UTC, e.g. 2026-01-02T00:00:00Z."
+    },
+    "producer_fingerprint": {
+      "type": "string",
+      "description": "Producing device's identity fingerprint (xxxx-xxxx-xxxx-xxxx)."
+    },
+    "hash_algorithm": { "type": "string", "const": "sha256" },
+    "language": { "type": "string", "description": "BCP 47-ish language tag of the rendered packet, e.g. en, es." },
+    "template": {
+      "type": "object",
+      "properties": {
+        "header": { "type": "string" },
+        "footer": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "issues": { "type": "array", "items": { "$ref": "#/$defs/issue" } },
+    "timeline": { "type": "array", "items": { "$ref": "#/$defs/timelineEntry" } },
+    "items": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+    "custody_proof": { "$ref": "#/$defs/custodyProof" },
+    "appendix": {
+      "type": "object",
+      "required": ["item_count", "timestamped_count", "includes_originals"],
+      "properties": {
+        "item_count": { "type": "integer", "minimum": 0 },
+        "timestamped_count": { "type": "integer", "minimum": 0 },
+        "includes_originals": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "hexSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Lowercase hex SHA-256 digest (64 chars). The custody genesis prev_hash is 64 zeros."
+    },
+    "issue": {
+      "type": "object",
+      "required": ["issue_id", "category", "room", "title", "status", "severity", "description"],
+      "properties": {
+        "issue_id": { "type": "string" },
+        "category": { "type": "string", "description": "e.g. heat, mold, pests, water, electrical, structural." },
+        "room": { "type": "string" },
+        "title": { "type": "string" },
+        "status": { "type": "string" },
+        "severity": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "timelineEntry": {
+      "type": "object",
+      "required": ["entry_id", "issue_id", "kind", "text", "hlc"],
+      "properties": {
+        "entry_id": { "type": "string" },
+        "issue_id": { "type": "string" },
+        "kind": { "type": "string" },
+        "text": { "type": "string" },
+        "hlc": { "type": "string", "description": "Hybrid logical clock stamp." }
+      },
+      "additionalProperties": true
+    },
+    "item": {
+      "type": "object",
+      "required": ["capture_id", "content_hash", "media_type", "captured_at", "shared_name", "shared_hash", "has_original", "archive_timestamps"],
+      "properties": {
+        "capture_id": { "type": "string" },
+        "issue_id": { "type": "string" },
+        "content_hash": { "$ref": "#/$defs/hexSha256", "description": "SHA-256 of the sealed original; the value the RFC 3161 token is taken over." },
+        "media_type": { "type": "string", "description": "MIME type, e.g. image/jpeg." },
+        "captured_at": { "type": "string" },
+        "shared_name": { "type": "string", "description": "Filename under media/ of the location-stripped shared copy; empty if none." },
+        "shared_hash": {
+          "oneOf": [{ "$ref": "#/$defs/hexSha256" }, { "type": "string", "maxLength": 0 }],
+          "description": "SHA-256 of the shared copy; empty when no shared media for this item."
+        },
+        "stripped": { "type": "string", "description": "Human-readable note of which metadata was removed from the shared copy (e.g. 'gps', 'none', 'skipped')." },
+        "has_original": { "type": "boolean", "description": "Whether the sealed original is embedded under originals/." },
+        "timestamp": {
+          "oneOf": [{ "$ref": "#/$defs/timestampToken" }, { "type": "null" }],
+          "description": "RFC 3161 (or dev) token over content_hash; null while awaiting timestamp."
+        },
+        "archive_timestamps": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/timestampToken" },
+          "description": "Ordered archive (re-)timestamps chaining back to the primary token."
+        }
+      },
+      "additionalProperties": true
+    },
+    "timestampToken": {
+      "type": "object",
+      "required": ["kind", "tsa_name", "token_b64"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["rfc3161", "dev"], "description": "'dev' is a non-production offline authority; production packets use 'rfc3161'." },
+        "tsa_name": { "type": "string" },
+        "token_b64": { "type": "string", "contentEncoding": "base64", "description": "DER (rfc3161) or canonical-JSON (dev) token, base64-encoded." }
+      },
+      "additionalProperties": true
+    },
+    "custodyProof": {
+      "type": "object",
+      "required": ["algorithm", "length", "head_hash", "entries"],
+      "description": "Identity-stripped, independently checkable proof the chain of custody is intact. Actor identities, salts, signatures, and private_details are NOT present (they stay in the union's vault).",
+      "properties": {
+        "algorithm": { "type": "string", "const": "sha256" },
+        "length": { "type": "integer", "minimum": 0 },
+        "head_hash": {
+          "oneOf": [{ "$ref": "#/$defs/hexSha256" }, { "type": "string", "pattern": "^0{64}$" }],
+          "description": "entry_hash of the last entry, or 64 zeros for an empty chain."
+        },
+        "items": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "entries": { "type": "integer", "minimum": 0 },
+              "last_action": { "type": "string" },
+              "head_hash": { "$ref": "#/$defs/hexSha256" }
+            },
+            "additionalProperties": true
+          }
+        },
+        "entries": { "type": "array", "items": { "$ref": "#/$defs/custodyEntry" } }
+      },
+      "additionalProperties": true
+    },
+    "custodyEntry": {
+      "type": "object",
+      "description": "Exported (redacted) custody entry. entry_hash = SHA-256(canonical_json of {seq, action, item_id, hlc, actor_commitment, details(sorted), prev_hash}).",
+      "required": ["seq", "action", "item_id", "hlc", "actor_commitment", "details", "prev_hash", "entry_hash"],
+      "properties": {
+        "seq": { "type": "integer", "minimum": 1, "description": "1-based, strictly increasing position in the chain." },
+        "action": {
+          "type": "string",
+          "enum": ["captured", "imported", "fixity_checked", "timestamped", "viewed", "copied_for_sharing", "included_in_packet", "note_added"]
+        },
+        "item_id": { "type": "string" },
+        "hlc": { "type": "string" },
+        "actor_commitment": { "$ref": "#/$defs/hexSha256", "description": "Salted commitment SHA-256(salt:actor); the clear actor and salt are vault-only." },
+        "details": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Verification-relevant, non-identifying facts only (hashes, media_type, tsa, etc.). A copied_for_sharing entry carries content_hash + shared_hash + stripped."
+        },
+        "prev_hash": {
+          "oneOf": [{ "$ref": "#/$defs/hexSha256" }, { "type": "string", "pattern": "^0{64}$" }],
+          "description": "entry_hash of the previous entry; 64 zeros for the genesis link."
+        },
+        "entry_hash": { "$ref": "#/$defs/hexSha256" }
+      },
+      "additionalProperties": false
+    },
+    "signature": {
+      "type": "object",
+      "description": "Contents of the sibling file bundle.sig.json. The producer's Ed25519 key signs the ASCII hex of bundle_sha256.",
+      "required": ["sign_public", "bundle_sha256", "signature"],
+      "properties": {
+        "producer_fingerprint": { "type": "string" },
+        "sign_public": { "type": "string", "contentEncoding": "base64", "description": "Raw Ed25519 public key, base64." },
+        "bundle_sha256": { "$ref": "#/$defs/hexSha256", "description": "SHA-256 of the exact bundle.json bytes." },
+        "signature": { "type": "string", "contentEncoding": "base64", "description": "Ed25519 signature over the ASCII of bundle_sha256." }
+      },
+      "additionalProperties": true
+    }
+  }
+}

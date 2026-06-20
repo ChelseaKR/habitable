@@ -266,7 +266,7 @@ def _verify_signature(packet_dir: Path, bundle_bytes: bytes) -> bool:
         return verify_signature(
             base64.b64decode(public), bundle_hash.encode("ascii"), base64.b64decode(signature)
         )
-    except json.JSONDecodeError, UnicodeDecodeError, ValueError, OSError:
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError, OSError):
         # Any malformed signature file is a failed signature, never a crash.
         return False
 
