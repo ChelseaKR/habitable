@@ -24,8 +24,8 @@
   "custody_broken": "Rota: verifica el registro",
   "custody_links_prefix": "enlaces",
   "resolve_deferred": "Resolver marcas de tiempo pendientes",
-  "resolve_help": "Obtener marcas de tiempo confiables para los elementos capturados sin conexión (requiere conexión).",
-  "msg_resolved": "Marcas de tiempo pendientes resueltas.",
+  "resolve_help": "Tus fotos ya quedan guardadas y selladas en el momento en que las tomas. Esto solo agrega el sello de tiempo confiable a los elementos capturados sin conexión, una vez que tengas conexión: no se pierde nada mientras esperas.",
+  "msg_resolved": "Listo: tus elementos sin conexión ya tienen su sello de tiempo confiable.",
 
   "issues_heading": "Problemas",
   "issues_empty": "Aún no hay problemas registrados.",

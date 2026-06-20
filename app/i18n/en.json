@@ -24,8 +24,8 @@
   "custody_broken": "Broken — verify the record",
   "custody_links_prefix": "links",
   "resolve_deferred": "Resolve awaiting timestamps",
-  "resolve_help": "Fetch trusted timestamps for items captured offline (needs a connection).",
-  "msg_resolved": "Awaiting timestamps resolved.",
+  "resolve_help": "Your photos are already saved and sealed the moment you take them. This just adds the trusted timestamp to items captured offline, once you have a connection — nothing is lost while you wait.",
+  "msg_resolved": "Done — your offline items now have their trusted timestamps.",
 
   "issues_heading": "Issues",
   "issues_empty": "No issues recorded yet.",
