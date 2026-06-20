@@ -48,6 +48,7 @@ re-serialize `bundle.json` before checking the signature.
 | `timeline` | array | Timeline entries for the selected issues. |
 | `items` | array | The media items — the evidentiary core (see below). |
 | `custody_proof` | object | Identity-stripped chain-of-custody proof (see below). |
+| `disclosures` | array | Human-readable notes of what the packet reveals (location stripped, custody identities not exported, originals embedded). Also rendered, localized, in `packet.html`/`packet.pdf`. |
 | `appendix` | object | `{item_count, timestamped_count, includes_originals}`. |
 
 ### `items[]` — the evidentiary core

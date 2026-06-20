@@ -28,6 +28,13 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   admissibility), with how to verify. Single source in `src/habitable/disclosure.py`
   so the HTML and PDF cannot drift. (Recipient personas: housing-court clerk,
   opposing counsel.)
+- **Recipient-facing disclosures.** Packets now carry a localized (EN/ES) "what
+  this packet discloses" note (shared copies have location removed; sealed
+  originals, when embedded, retain full metadata), and the machine-readable
+  `disclosures` list is included in the signed `bundle.json` (schema documented).
+- **`habitable verify --json`.** A structured verification report (overall verdict
+  plus per-item content hash, timestamp, custody, fixity, and notes) for scripts,
+  downstream integrators, and screen-reader users.
 
 - **Synthetic-persona research and derived backlog** in `docs/research/`
   (`synthetic-personas-feedback.md`, `execution-log.md`): a broad persona study,

@@ -146,6 +146,8 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
     story.append(Paragraph(_PACKET_DISCLAIMER, styles["Small"]))
     story.append(Spacer(1, 0.2 * inch))
     _render_proof_statement(story, lang, styles)
+    story.append(Spacer(1, 0.15 * inch))
+    _render_disclosures(story, lang, _bool(appendix, "includes_originals"), styles)
     story.append(Spacer(1, 0.3 * inch))
 
     items_by_issue = _items_by_issue(bundle)
@@ -183,6 +185,15 @@ def _render_proof_statement(story: list[Any], lang: str, styles: Any) -> None:
     for line in stmt.not_proves:
         story.append(_para(f"- {line}", styles["Small"]))
     story.append(_para(stmt.verify_line, styles["Small"]))
+
+
+def _render_disclosures(story: list[Any], lang: str, includes_originals: bool, styles: Any) -> None:
+    """Append the localized 'what this packet discloses' (location handling) block."""
+    stmt = proof_statement(lang)
+    story.append(_para(stmt.privacy_heading, styles["Heading3"]))
+    story.append(_para(f"- {stmt.privacy_stripped}", styles["Small"]))
+    if includes_originals:
+        story.append(_para(f"- {stmt.privacy_originals_warning}", styles["Small"]))
 
 
 def _render_issue(
@@ -290,6 +301,10 @@ def _s(mapping: Mapping[str, JSONValue], key: str) -> str:
 def _i(mapping: Mapping[str, JSONValue], key: str) -> int:
     value = mapping.get(key)
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _bool(mapping: Mapping[str, JSONValue], key: str) -> bool:
+    return mapping.get(key) is True
 
 
 def _list(mapping: Mapping[str, JSONValue], key: str) -> list[JSONValue]:

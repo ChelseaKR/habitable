@@ -83,6 +83,7 @@ def render_packet_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_pat
     parts.append("</header>")
     parts.append('<main id="main">')
     parts.extend(_proof_section(lang))
+    parts.extend(_disclosure_section(lang, _bool(appendix, "includes_originals")))
 
     for issue in _list(bundle, "issues"):
         if isinstance(issue, dict):
@@ -119,6 +120,22 @@ def _proof_section(lang: str) -> list[str]:
         "</section>",
     ]
     return out
+
+
+def _disclosure_section(lang: str, includes_originals: bool) -> list[str]:
+    """A short, localized note of what the packet reveals (location handling)."""
+    stmt = proof_statement(lang)
+    notes = [stmt.privacy_stripped]
+    if includes_originals:
+        notes.append(stmt.privacy_originals_warning)
+    return [
+        '<section aria-labelledby="discloses-heading">',
+        f'<h2 id="discloses-heading">{escape(stmt.privacy_heading)}</h2>',
+        "<ul>",
+        *(f"<li>{escape(note)}</li>" for note in notes),
+        "</ul>",
+        "</section>",
+    ]
 
 
 def _issue_section(
@@ -223,6 +240,10 @@ def _s(mapping: Mapping[str, JSONValue], key: str) -> str:
 def _i(mapping: Mapping[str, JSONValue], key: str) -> int:
     value = mapping.get(key)
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _bool(mapping: Mapping[str, JSONValue], key: str) -> bool:
+    return mapping.get(key) is True
 
 
 def _list(mapping: Mapping[str, JSONValue], key: str) -> list[JSONValue]:

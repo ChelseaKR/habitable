@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import json
 import os
 import sys
 import webbrowser
@@ -119,6 +120,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_verify = sub.add_parser("verify", help="independently verify a packet")
     p_verify.add_argument("packet", type=Path)
+    p_verify.add_argument(
+        "--json",
+        action="store_true",
+        help="emit a structured JSON report (for scripts, integrators, and screen readers)",
+    )
     p_verify.set_defaults(func=_cmd_verify)
 
     p_sync = sub.add_parser("sync", help="sync the case with a peer")
@@ -304,6 +310,34 @@ def _cmd_export(args: argparse.Namespace) -> int:
 
 def _cmd_verify(args: argparse.Namespace) -> int:
     report = verify_packet(args.packet)
+    if args.json:
+        payload = {
+            "ok": report.ok,
+            "summary": report.summary(),
+            "signature_ok": report.signature_ok,
+            "custody_ok": report.custody_ok,
+            "custody_length": report.custody_length,
+            "verified_items": report.verified_items,
+            "item_count": len(report.items),
+            "problems": list(report.problems),
+            "items": [
+                {
+                    "capture_id": item.capture_id,
+                    "content_hash": item.content_hash,
+                    "ok": item.ok,
+                    "timestamp_verified": item.timestamp_verified,
+                    "gen_time": item.gen_time,
+                    "tsa_name": item.tsa_name,
+                    "shared_media_ok": item.shared_media_ok,
+                    "custody_binding_ok": item.custody_binding_ok,
+                    "original_fixity_ok": item.original_fixity_ok,
+                    "notes": list(item.notes),
+                }
+                for item in report.items
+            ],
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if report.ok else 1
     print(f"habitable: {report.summary()}")
     if not report.ok:
         for item in report.items:

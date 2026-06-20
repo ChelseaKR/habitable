@@ -65,6 +65,8 @@
 | R-26 | Plain-language "what this packet proves / does not" on every packet | New `src/habitable/disclosure.py` (single localized source) rendered as a structured section at the top of `packet.html` and the PDF (`htmlpacket.py`, `pdf.py`); covered by existing packet tests. |
 | R-29 | Packet itself states authorship/depiction not proven | Same disclosure: explicit "does not prove who took it / that it depicts this unit / the condition itself / admissibility." |
 | R-40 | Point recipients to the accessible HTML packet | The disclosure's "how to verify" line names `packet.html` as the accessible reading and `habitable verify` / standard-tool cross-check. |
+| R-27 | Tell recipients shared copies strip location; flag residual PII | Localized "what this packet discloses" block in `packet.html`/`packet.pdf` (location removed; and, when sealed originals are embedded, a residual-metadata warning); the machine-readable `disclosures` list is now in the signed `bundle.json` (schema updated). |
+| R-08 | Structured, AT-/script-friendly verifier output | `habitable verify --json` emits a full structured report (overall + per-item verdicts, notes); covered by `tests/test_cli_demo.py`. |
 | BUG-01 | Verifier-subset cross-Python portability | Named-tuple `except` form + regression guard test (see above). |
 
 ## Spec written, code deferred (📝)
@@ -82,13 +84,13 @@ The canonical text/contract now exists; wiring it into the app needs further wor
 
 App/library/UX work, not safe to ship unvalidated here. Grouped by the persona study's themes.
 
-- **Status legibility & a11y copy:** R-01, R-02, R-07, R-08, R-10, R-41.
+- **Status legibility & a11y copy:** R-01, R-02, R-07, R-10, R-41.
 - **Tenant capture/recurrence/storage:** R-03, R-05, R-18, R-19, E-01, E-02.
 - **Safety / shared-device / duress:** R-12, R-13, R-14, R-15, R-49, E-06.
 - **Recovery & key lifecycle UX:** R-09, R-11, R-24, E-05, E-13.
 - **Defaults & integrity surfacing:** R-16, R-22.
 - **Organizer/sync:** R-21, E-11, E-12.
-- **Recipient verification & packet:** R-25→**E-15** (zero-install recipient verifier), R-27.
+- **Recipient verification & packet:** R-25→**E-15** (zero-install recipient verifier).
 - **Jurisdiction/recipient rendering:** R-28, E-16, E-17.
 - **Disclosure scoping:** R-35.
 - **Localization/RTL code:** R-48.

@@ -51,6 +51,45 @@ def test_export_and_verify_intact(
         assert not read_metadata(media).has_location
 
 
+def test_bundle_records_disclosures(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    vault = _case_with_two_captures(make_vault, make_jpeg, local_tsa)
+    out = tmp_path / "packet"
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
+    bundle = json.loads((out / "bundle.json").read_text())
+    disclosures = bundle["disclosures"]
+    assert any("location" in note for note in disclosures)
+
+
+def test_packet_html_has_proof_and_disclosure(
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    from habitable.disclosure import proof_statement
+
+    for lang, include_originals in (("en", False), ("es", True)):
+        vault = Vault.create(
+            tmp_path / f"vault-{lang}", "pw", case_id="c", unit="4B", language=lang
+        )
+        issue = vault.document.add_issue(category="mold", title="Mold", issue_id="i1")
+        capture(vault, make_jpeg(f"{lang}.jpg", with_location=True), issue_id=issue, tsa=local_tsa)
+        out = tmp_path / f"packet-{lang}"
+        build_packet(
+            vault, out, generated_at="2026-01-02T00:10:00Z", include_originals=include_originals
+        )
+        html = (out / "packet.html").read_text(encoding="utf-8")
+        stmt = proof_statement(lang)
+        assert stmt.heading in html  # "what this proves — and does not"
+        assert stmt.privacy_heading in html  # "what this discloses"
+        # The embedded-originals residual-PII warning appears only when originals ship.
+        assert (stmt.privacy_originals_warning in html) is include_originals
+
+
 def test_media_tamper_detected(
     make_vault: Callable[..., Vault],
     make_jpeg: Callable[..., Path],

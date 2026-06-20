@@ -54,6 +54,11 @@
     "timeline": { "type": "array", "items": { "$ref": "#/$defs/timelineEntry" } },
     "items": { "type": "array", "items": { "$ref": "#/$defs/item" } },
     "custody_proof": { "$ref": "#/$defs/custodyProof" },
+    "disclosures": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Human-readable notes of what the packet reveals (e.g. location stripped from shared copies; custody identities not exported; sealed originals embedded with full metadata). Also rendered, localized, in packet.html/packet.pdf."
+    },
     "appendix": {
       "type": "object",
       "required": ["item_count", "timestamped_count", "includes_originals"],

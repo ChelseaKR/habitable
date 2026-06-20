@@ -32,6 +32,9 @@ class ProofStatement:
     not_heading: str
     not_proves: tuple[str, ...]
     verify_line: str
+    privacy_heading: str
+    privacy_stripped: str
+    privacy_originals_warning: str
 
 
 _STATEMENTS: dict[str, ProofStatement] = {
@@ -60,6 +63,15 @@ _STATEMENTS: dict[str, ProofStatement] = {
             "or cross-check the hashes and RFC 3161 tokens with standard tools. The "
             "accessible reading of this packet is packet.html."
         ),
+        privacy_heading="What this packet discloses",
+        privacy_stripped=(
+            "The shared photos in this packet have had location (GPS) removed, so they "
+            "do not reveal where the tenant lives."
+        ),
+        privacy_originals_warning=(
+            "This packet also embeds the sealed original files, which retain their full "
+            "metadata (including any location). Handle and file accordingly."
+        ),
     ),
     "es": ProofStatement(
         heading="Lo que este expediente demuestra y lo que no",
@@ -85,6 +97,16 @@ _STATEMENTS: dict[str, ProofStatement] = {
             "Cómo verificar: ejecute `habitable verify` con el archivo bundle.json, o "
             "compruebe los hashes y los tokens RFC 3161 con herramientas estándar. La "
             "versión accesible de este expediente es packet.html."
+        ),
+        privacy_heading="Lo que este expediente revela",
+        privacy_stripped=(
+            "A las fotos compartidas de este expediente se les quitó la ubicación (GPS), "
+            "por lo que no revelan dónde vive la persona inquilina."
+        ),
+        privacy_originals_warning=(
+            "Este expediente también incluye los archivos originales sellados, que "
+            "conservan todos sus metadatos (incluida cualquier ubicación). Manéjelo y "
+            "preséntelo en consecuencia."
         ),
     ),
 }
