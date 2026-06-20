@@ -137,6 +137,30 @@ def test_cli_key_drill_passes(capsys: pytest.CaptureFixture[str]) -> None:
     assert "recovery drill passed" in capsys.readouterr().out
 
 
+def test_cli_metered_defers_timestamp(
+    tmp_path: Path,
+    make_jpeg: Callable[..., Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("HABITABLE_PASSPHRASE", "pw")
+    vault = tmp_path / "vault"
+    assert main(["init", str(vault), "--case", "c"]) == 0
+    assert main(["issue", "--vault", str(vault), "--category", "mold"]) == 0
+    issue_id = next(t for t in capsys.readouterr().out.split() if t.startswith("issue-"))
+    config = vault / "config.toml"
+    config.write_text(config.read_text().replace("metered = false", "metered = true"))
+
+    photo = make_jpeg("m.jpg")
+    assert main(["capture", str(photo), "--vault", str(vault), "--issue", issue_id]) == 0
+    out = capsys.readouterr().out
+    assert "metered connection" in out and "awaiting timestamp" in out
+
+    from habitable.vault import Vault
+
+    assert len(Vault.open(vault, "pw").deferred()) == 1
+
+
 def test_no_command_prints_help() -> None:
     assert main([]) == 2
 

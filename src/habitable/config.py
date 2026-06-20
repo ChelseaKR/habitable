@@ -130,6 +130,7 @@ class Config:
     sync_peers: Sequence[PeerConfig] = field(default_factory=tuple)
     sharing: SharingPolicy = field(default_factory=SharingPolicy)
     packet_template: PacketTemplate = field(default_factory=PacketTemplate)
+    metered: bool = False  # a data-limited connection: defer network timestamps by default
 
     @classmethod
     def default(cls, node_id: str, *, language: str = "en") -> Config:
@@ -210,6 +211,7 @@ class Config:
             sync_peers=peers,
             sharing=sharing,
             packet_template=template,
+            metered=_opt_bool(raw, "metered", False),
         )
 
 
@@ -221,6 +223,9 @@ def default_config_toml(node_id: str, *, language: str = "en") -> str:
         f"schema_version = {CONFIG_SCHEMA_VERSION}",
         f'node_id = "{node_id}"',
         f'language = "{language}"',
+        "# Set metered = true on a data-limited phone: captures defer the network",
+        "# timestamp by default (run `habitable resolve` on Wi-Fi). --online overrides.",
+        "metered = false",
         "",
         "[sharing]",
         "# Shared/exported copies minimize disclosure by default.",

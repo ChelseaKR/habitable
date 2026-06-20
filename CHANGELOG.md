@@ -9,6 +9,20 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **Metered-connection mode (R-18/R-19).** A `metered = true` config option makes
+  capture defer the network timestamp by default on a data-limited phone (the hash +
+  seal still happen instantly offline); `capture --online` overrides, and the user is
+  told to run `habitable resolve` on Wi-Fi.
+- **Jurisdiction packet templates (R-28/E-16).** A built-in, presentation-only
+  template registry selectable via `export --template ca|generic`.
+- **Inspector room-by-room rollup (E-17).** `habitable rollup` groups issues by room.
+- **Recovery drill (E-13).** `habitable key drill` rehearses backup + restore on
+  throwaway data and confirms a wrong passphrase is rejected.
+- **Storage footprint (R-03).** `habitable status` reports on-device vault size.
+- **Sync receipt (R-21).** `habitable sync` prints "in sync as of <time>"; the `--dir`
+  transport is documented for USB/SD sneakernet sync (E-09).
+- **Developer experience (R-43).** A `.devcontainer/` for a one-command dev setup, and
+  a local-path latency-budget test for offline capture.
 - **Zero-install recipient verifier** (`site/verify/`). A self-contained, fully
   client-side web page that lets a recipient (court clerk, inspector, opposing
   attorney) confirm a packet's integrity with **nothing installed and nothing

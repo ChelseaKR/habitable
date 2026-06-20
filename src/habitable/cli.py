@@ -88,6 +88,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_capture.add_argument("--issue", required=True)
     p_capture.add_argument("--dev-tsa", action="store_true", help="use the offline dev TSA")
     p_capture.add_argument("--no-timestamp", action="store_true", help="defer timestamping")
+    p_capture.add_argument(
+        "--online", action="store_true", help="fetch the timestamp now even on a metered connection"
+    )
     p_capture.set_defaults(func=_cmd_capture)
 
     p_tl = sub.add_parser("timeline", help="add a timeline entry")
@@ -254,8 +257,13 @@ def _cmd_issue(args: argparse.Namespace) -> int:
 
 def _cmd_capture(args: argparse.Namespace) -> int:
     vault = _open(args)
-    tsa = None if args.no_timestamp else _tsa_for(vault, dev=args.dev_tsa)
-    extra_tsas = [] if args.no_timestamp else _extra_tsas_for(vault, dev=args.dev_tsa)
+    # On a metered (data-limited) connection, defer the network timestamp by default so
+    # capture costs no data; the hash + seal still happen instantly offline. --online or
+    # --dev-tsa overrides. (R-18/R-19)
+    metered_defer = vault.config.metered and not args.online and not args.dev_tsa
+    defer = args.no_timestamp or metered_defer
+    tsa = None if defer else _tsa_for(vault, dev=args.dev_tsa)
+    extra_tsas = [] if defer else _extra_tsas_for(vault, dev=args.dev_tsa)
     result = capture(vault, args.media, issue_id=args.issue, tsa=tsa, extra_tsas=extra_tsas)
     status = (
         f"timestamped ({result.timestamp_info.gen_time})"
@@ -269,6 +277,9 @@ def _cmd_capture(args: argparse.Namespace) -> int:
         print(f"           also timestamped by {len(result.extra_authorities)} more: {also}")
     if result.had_location:
         print("           note: original retains location; shared copies will strip it")
+    if metered_defer:
+        print("           metered connection: timestamp deferred (no data used) —")
+        print("           run `habitable resolve` on Wi-Fi to fetch it.")
     return 0
 
 
