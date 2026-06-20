@@ -98,6 +98,14 @@ ECDSA), so real public-TSA tokens verify, not just SHA-256/RSA ones. Pass `trust
 the TSA chains to a root you trust; without it, a structurally valid token still verifies but is
 flagged as not-chained (the item can still be `ok`, but a reviewer/court should supply roots).
 
+**Multiple-authority redundancy.** An item may also carry `additional_timestamps`: independent
+tokens from *other* authorities over the **same** `content_hash` (not a chain). The verifier checks
+each, lists every authority that verified in `verified_authorities`, and treats the item as
+timestamped if **at least one** authority (primary *or* additional) verifies — so the proof never
+rests on a single TSA. With no `additional_timestamps`, behaviour is identical to a single-authority
+packet: a failed/absent primary leaves the item not timestamp-verified. A token over a *different*
+hash never satisfies the item.
+
 ### 4.2 Shared media (`shared_media_ok`)
 
 | Condition | `shared_media_ok` | note |

@@ -38,6 +38,14 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 - **`habitable verify --trusted-cert PEM`** (repeatable). Anchors each RFC 3161
   timestamp to a TSA root certificate the verifier trusts, so a court or auditor can
   assert the authority chain rather than only the token signature.
+- **Multiple-authority timestamp redundancy by default.** Capture now stamps every
+  configured timestamp authority (the default config ships more than one), recording
+  the primary token in `timestamp` and independent tokens over the same content hash
+  in `additional_timestamps`. The verifier checks all of them, reports
+  `verified_authorities` per item (and in `verify --json`), and counts an item as
+  timestamped if at least one authority verifies — so no packet's proof rests on a
+  single TSA. Additive and backward-compatible: existing single-authority packets
+  verify exactly as before.
 
 - **Synthetic-persona research and derived backlog** in `docs/research/`
   (`synthetic-personas-feedback.md`, `execution-log.md`): a broad persona study,

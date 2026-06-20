@@ -126,6 +126,11 @@
           "type": "array",
           "items": { "$ref": "#/$defs/timestampToken" },
           "description": "Ordered archive (re-)timestamps chaining back to the primary token."
+        },
+        "additional_timestamps": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/timestampToken" },
+          "description": "Independent redundant timestamps from other authorities over the SAME content_hash (not a chain). Provides multiple-authority redundancy: the verifier treats the item as timestamped if at least one authority (primary or additional) verifies. Absent in single-authority packets."
         }
       },
       "additionalProperties": true

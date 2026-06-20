@@ -228,7 +228,8 @@ def _cmd_issue(args: argparse.Namespace) -> int:
 def _cmd_capture(args: argparse.Namespace) -> int:
     vault = _open(args)
     tsa = None if args.no_timestamp else _tsa_for(vault, dev=args.dev_tsa)
-    result = capture(vault, args.media, issue_id=args.issue, tsa=tsa)
+    extra_tsas = [] if args.no_timestamp else _extra_tsas_for(vault, dev=args.dev_tsa)
+    result = capture(vault, args.media, issue_id=args.issue, tsa=tsa, extra_tsas=extra_tsas)
     status = (
         f"timestamped ({result.timestamp_info.gen_time})"
         if result.timestamped and result.timestamp_info
@@ -236,6 +237,9 @@ def _cmd_capture(args: argparse.Namespace) -> int:
     )
     print(f"habitable: captured {result.capture_id}")
     print(f"           content hash {result.content_hash[:16]}… · {status}")
+    if result.extra_authorities:
+        also = ", ".join(result.extra_authorities)
+        print(f"           also timestamped by {len(result.extra_authorities)} more: {also}")
     if result.had_location:
         print("           note: original retains location; shared copies will strip it")
     return 0
@@ -354,6 +358,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
                     "shared_media_ok": item.shared_media_ok,
                     "custody_binding_ok": item.custody_binding_ok,
                     "original_fixity_ok": item.original_fixity_ok,
+                    "verified_authorities": list(item.verified_authorities),
                     "notes": list(item.notes),
                 }
                 for item in report.items
@@ -476,6 +481,13 @@ def _tsa_for(vault: Vault, *, dev: bool) -> TimestampAuthority | None:
         return DevTSA("dev-tsa")
     authorities = vault.config.timestamp_authorities
     return _build_authority(authorities[0]) if authorities else None
+
+
+def _extra_tsas_for(vault: Vault, *, dev: bool) -> list[TimestampAuthority]:
+    """Every configured authority beyond the primary, for redundant stamping (R-16)."""
+    if dev:
+        return []
+    return [_build_authority(t) for t in vault.config.timestamp_authorities[1:]]
 
 
 def _build_authority(config: TSAConfig) -> TimestampAuthority:

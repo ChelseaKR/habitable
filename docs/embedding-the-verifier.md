@@ -80,7 +80,8 @@ except VerificationError as exc:
 
 `ItemVerdict` (per media item): `capture_id`, `content_hash`, `timestamp_verified`, `gen_time`,
 `tsa_name`, `shared_media_ok`, `custody_binding_ok`, `original_fixity_ok` (`True`/`False`/`None`),
-`notes` (tuple of strings), and `ok`. The `notes` carry the human reasons (e.g. `awaiting
+`verified_authorities` (tuple of every TSA whose token verified — one per authority when redundant
+timestamps are used), `notes` (tuple of strings), and `ok`. The `notes` carry the human reasons (e.g. `awaiting
 timestamp`, `shared media does not match its recorded hash`).
 
 ## Asserting trusted timestamp roots

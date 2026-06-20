@@ -68,6 +68,7 @@
 | R-27 | Tell recipients shared copies strip location; flag residual PII | Localized "what this packet discloses" block in `packet.html`/`packet.pdf` (location removed; and, when sealed originals are embedded, a residual-metadata warning); the machine-readable `disclosures` list is now in the signed `bundle.json` (schema updated). |
 | R-08 | Structured, AT-/script-friendly verifier output | `habitable verify --json` emits a full structured report (overall + per-item verdicts, notes); covered by `tests/test_cli_demo.py`. |
 | R-31 | Assert the TSA trust chain from the CLI | `habitable verify --trusted-cert PEM` (repeatable) anchors each timestamp to a trusted root (the verifier already supported `trusted_certs`; this exposes it); covered by `tests/test_packet_verify.py`. |
+| R-16 | Multiple-TSA redundancy by default | Capture stamps every configured authority (`extra_tsas`); the primary token stays in `timestamp`, independent tokens go in `additional_timestamps`; the verifier accepts an item if ≥1 authority verifies and reports `verified_authorities`. Backward-compatible (additive; old single-authority packets unchanged). Covered by `tests/test_packet_verify.py`. |
 | BUG-01 | Verifier-subset cross-Python portability | Named-tuple `except` form + regression guard test (see above). |
 
 ## Spec written, code deferred (📝)
@@ -89,7 +90,7 @@ App/library/UX work, not safe to ship unvalidated here. Grouped by the persona s
 - **Tenant capture/recurrence/storage:** R-03, R-05, R-18, R-19, E-01, E-02.
 - **Safety / shared-device / duress:** R-12, R-13, R-14, R-15, R-49, E-06.
 - **Recovery & key lifecycle UX:** R-09, R-11, R-24, E-05, E-13.
-- **Defaults & integrity surfacing:** R-16, R-22.
+- **Defaults & integrity surfacing:** R-22.
 - **Organizer/sync:** R-21, E-11, E-12.
 - **Recipient verification & packet:** R-25→**E-15** (zero-install recipient verifier).
 - **Jurisdiction/recipient rendering:** R-28, E-16, E-17.

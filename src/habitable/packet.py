@@ -234,6 +234,7 @@ def _build_item(
 
     token = vault.get_token(capture_id)
     archives = vault.get_archive_tokens(capture_id)
+    additional = vault.get_additional_tokens(capture_id)
     return {
         "capture_id": capture_id,
         "issue_id": issue_id,
@@ -246,6 +247,7 @@ def _build_item(
         "has_original": include_originals,
         "timestamp": cast(JSONValue, token.to_dict()) if token is not None else None,
         "archive_timestamps": cast(JSONValue, [a.to_dict() for a in archives]),
+        "additional_timestamps": cast(JSONValue, [a.to_dict() for a in additional]),
     }
 
 

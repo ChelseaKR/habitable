@@ -7,16 +7,18 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import pytest
 from cryptography.hazmat.primitives.serialization import Encoding
 
+from habitable.canonical import JSONValue, sha256_bytes
 from habitable.capture import capture
 from habitable.exif import read_metadata
 from habitable.packet import build_packet
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
-from habitable.verify import verify_packet
+from habitable.verify import _verify_item, verify_packet
 
 
 def _case_with_two_captures(
@@ -122,6 +124,63 @@ def test_cli_verify_trusted_cert_anchors_chain(
 
     # A bad cert path is a clean error, never a crash.
     assert main(["verify", str(out), "--trusted-cert", str(tmp_path / "nope.pem")]) == 1
+
+
+def test_multi_authority_capture_and_verify(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    second = LocalRfc3161TSA("second-tsa")
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", title="Mold", issue_id="i1")
+    result = capture(
+        vault,
+        make_jpeg("a.jpg", with_location=True),
+        issue_id=issue,
+        tsa=local_tsa,
+        extra_tsas=[second],
+    )
+    assert result.extra_authorities == ("second-tsa",)
+
+    out = tmp_path / "packet"
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
+    item = json.loads((out / "bundle.json").read_text())["items"][0]
+    assert len(item["additional_timestamps"]) == 1
+
+    report = verify_packet(out)
+    assert report.ok
+    authorities = set(report.items[0].verified_authorities)
+    assert {"test-rfc3161", "second-tsa"} <= authorities  # both authorities verified
+
+
+def test_redundant_authority_satisfies_when_primary_absent(
+    local_tsa: LocalRfc3161TSA, tmp_path: Path
+) -> None:
+    token = local_tsa.stamp(sha256_bytes(b"some sealed bytes"))
+
+    def item_for(content_hash: str) -> dict[str, JSONValue]:
+        return cast(
+            "dict[str, JSONValue]",
+            {
+                "capture_id": "cap-x",
+                "shared_name": "",
+                "shared_hash": "",
+                "timestamp": None,
+                "content_hash": content_hash,
+                "additional_timestamps": [token.to_dict()],
+            },
+        )
+
+    # No primary token, but a valid independent authority over the same hash → verified.
+    verdict = _verify_item(item_for(sha256_bytes(b"some sealed bytes")), tmp_path, {}, None)
+    assert verdict.timestamp_verified and verdict.ok
+    assert verdict.verified_authorities == ("test-rfc3161",)
+
+    # An additional token over a *different* hash does not satisfy the item.
+    other = _verify_item(item_for(sha256_bytes(b"other")), tmp_path, {}, None)
+    assert not other.timestamp_verified and not other.ok
 
 
 def test_media_tamper_detected(

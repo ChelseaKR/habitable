@@ -195,7 +195,10 @@ SHA-256, checks the signature and certificate, and reports `trusted_chain` if th
 supplied trusted root. **Archive (re-)timestamping** chains a new token over an existing one before a
 TSA cert ages out; `verify_archive_chain` walks it and fails closed on any break. The `dev` token
 kind is a non-production Ed25519 "authority" used only offline for tests/demos and labels itself as
-such.
+such. **Multiple-authority redundancy:** a capture may be stamped by several authorities (the default
+config ships more than one); the primary token is in `timestamp` and independent tokens over the same
+hash are in `additional_timestamps`, so the existence proof does not rest on a single TSA. The
+verifier accepts an item if at least one authority verifies and reports all that did.
 
 ## 7. Review focus / known tradeoffs
 

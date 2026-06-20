@@ -66,6 +66,7 @@ re-serialize `bundle.json` before checking the signature.
 | `has_original` | bool | Whether the sealed original is embedded under `originals/`. |
 | `timestamp` | object \| null | RFC 3161/dev token over `content_hash`; `null` while **awaiting timestamp**. |
 | `archive_timestamps` | array | Archive (re-)timestamps chaining back to the primary token. |
+| `additional_timestamps` | array | Independent redundant tokens from **other** authorities over the same `content_hash` (not a chain). The verifier counts the item as timestamped if ≥1 authority verifies — no proof rests on a single TSA. Absent in single-authority packets. |
 
 A **timestamp token** is `{kind: "rfc3161"|"dev", tsa_name, token_b64}` where `token_b64` is base64
 of the DER token (`rfc3161`) or a canonical-JSON token (`dev`, non-production/offline only).
