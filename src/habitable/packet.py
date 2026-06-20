@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import cast
 
 from .canonical import JSONValue, canonical_json, sha256_bytes, sha256_file
-from .config import SharingPolicy
+from .config import PacketTemplate, SharingPolicy
 from .errors import PacketError
 from .evidence import CustodyAction
 from .exif import make_shared_copy
@@ -77,9 +77,11 @@ def build_packet(
     make_pdf: bool = True,
     generated_at: str | None = None,
     policy: SharingPolicy | None = None,
+    template: PacketTemplate | None = None,
 ) -> PacketResult:
     """Assemble an evidence packet for one issue or a whole unit."""
     sharing = policy or vault.config.sharing
+    packet_template = template or vault.config.packet_template
     out_dir.mkdir(parents=True, exist_ok=True)
     media_dir = out_dir / _MEDIA
     media_dir.mkdir(exist_ok=True)
@@ -140,8 +142,8 @@ def build_packet(
         "hash_algorithm": "sha256",
         "language": vault.config.language,
         "template": {
-            "header": vault.config.packet_template.header,
-            "footer": vault.config.packet_template.footer,
+            "header": packet_template.header,
+            "footer": packet_template.footer,
         },
         "issues": cast(JSONValue, [_issue_json(issue) for issue in selected_issues]),
         "timeline": cast(JSONValue, [_timeline_json(e) for e in _timeline(vault, issue_ids)]),

@@ -16,15 +16,17 @@ import json
 import os
 import sys
 import webbrowser
+from datetime import UTC, datetime
 from pathlib import Path
 
 from cryptography import x509
 
 from . import __version__
 from .capture import capture, resolve_deferred, retimestamp_all
-from .config import TSAConfig
+from .config import TSAConfig, jurisdiction_template
 from .crypto import PublicIdentity
-from .errors import HabitableError
+from .errors import CryptoError, HabitableError
+from .model import Issue
 from .packet import build_packet
 from .sync import LocalDirTransport, RelayClient, Transport, sync
 from .tsa import DevTSA, Rfc3161HttpTSA, TimestampAuthority
@@ -101,6 +103,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_recur.add_argument("--note", default="", help="what recurred (optional)")
     p_recur.set_defaults(func=_cmd_recur)
 
+    p_rollup = sub.add_parser("rollup", help="room-by-room summary of issues (for inspectors)")
+    add_vault(p_rollup)
+    p_rollup.set_defaults(func=_cmd_rollup)
+
     p_status = sub.add_parser("status", help="show the state of the case")
     add_vault(p_status)
     p_status.set_defaults(func=_cmd_status)
@@ -124,6 +130,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p_export.add_argument("--since", help="only items captured on/after this ISO date")
     p_export.add_argument("--include-originals", action="store_true")
     p_export.add_argument("--no-pdf", action="store_true")
+    p_export.add_argument(
+        "--template",
+        metavar="NAME",
+        help="a built-in jurisdiction template for the packet wording (e.g. 'ca', 'generic'); "
+        "presentation only, never changes the evidence",
+    )
     p_export.set_defaults(func=_cmd_export)
 
     p_verify = sub.add_parser("verify", help="independently verify a packet")
@@ -149,7 +161,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p_sync.add_argument("--peer", required=True, help="peer public identity (from `habitable id`)")
     p_sync.add_argument("--channel", required=True, help="shared room/channel id")
     p_sync.add_argument("--relay", help="relay base URL (https://...)")
-    p_sync.add_argument("--dir", type=Path, help="shared directory transport")
+    p_sync.add_argument(
+        "--dir",
+        type=Path,
+        help="sync via a shared directory — e.g. a USB stick or SD card for offline "
+        "'sneakernet' sync with no relay and no data plan",
+    )
     p_sync.set_defaults(func=_cmd_sync)
 
     p_relay = sub.add_parser("relay", help="run an optional ciphertext-only sync relay")
@@ -189,6 +206,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_key_restore.add_argument("--recovery-passphrase", help="backup passphrase (else prompt)")
     p_key_restore.add_argument("--new-passphrase", help="new vault passphrase (else prompt)")
     p_key_restore.set_defaults(func=_cmd_key_restore)
+    p_key_drill = key_sub.add_parser(
+        "drill", help="rehearse backup + restore on throwaway data to confirm recovery works"
+    )
+    p_key_drill.set_defaults(func=_cmd_key_drill)
 
     p_demo = sub.add_parser("demo", help="walk a synthetic case end to end (no real data)")
     p_demo.set_defaults(func=_cmd_demo)
@@ -267,6 +288,50 @@ def _cmd_recur(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_rollup(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    issues = vault.document.issues()
+    by_room: dict[str, list[Issue]] = {}
+    for issue in issues:
+        by_room.setdefault(issue.room or "(unspecified room)", []).append(issue)
+    unit = vault.document.get_meta("unit") or vault.document.case_id
+    print(f"habitable: unit {unit} — room-by-room rollup ({len(issues)} issue(s))")
+    for room in sorted(by_room):
+        print(f"  {room}:")
+        for issue in by_room[room]:
+            caps = len(vault.document.captures(issue.issue_id))
+            tl = len(vault.document.timeline(issue.issue_id))
+            title = issue.title or issue.category or issue.issue_id
+            print(
+                f"    · {issue.category}: {title} [{issue.status}] "
+                f"severity={issue.severity or '—'} — {caps} photo(s), "
+                f"{tl} timeline entr{'y' if tl == 1 else 'ies'}"
+            )
+    return 0
+
+
+def _cmd_key_drill(args: argparse.Namespace) -> int:
+    from .crypto import create_keyfile, export_recovery_blob, import_recovery_blob
+
+    _keyfile, dek = create_keyfile("drill-passphrase")
+    blob = export_recovery_blob(dek, "drill-recovery-passphrase")
+    recovered = import_recovery_blob(blob, "drill-recovery-passphrase")
+    token = recovered.encrypt(b"recovery-drill")
+    if recovered.decrypt(token) != b"recovery-drill":
+        raise HabitableError("recovery drill FAILED — backup/restore round-trip did not match")
+    try:
+        import_recovery_blob(blob, "wrong-passphrase")
+    except CryptoError:
+        pass  # expected: a wrong recovery passphrase must be rejected
+    else:
+        raise HabitableError("recovery drill FAILED — a wrong passphrase was wrongly accepted")
+    print("habitable: recovery drill passed — backup + restore round-trips on this device,")
+    print("           and a wrong recovery passphrase is correctly rejected.")
+    print("           Next: run a real `key backup`, store the file AND its passphrase safely")
+    print("           and separately, then practice `key restore` on a throwaway copy first.")
+    return 0
+
+
 def _human_bytes(n: int) -> str:
     size = float(n)
     for unit in ("B", "KB", "MB", "GB"):
@@ -322,6 +387,7 @@ def _cmd_retimestamp(args: argparse.Namespace) -> int:
 
 def _cmd_export(args: argparse.Namespace) -> int:
     vault = _open(args)
+    template = jurisdiction_template(args.template) if args.template else None
     result = build_packet(
         vault,
         args.out,
@@ -329,6 +395,7 @@ def _cmd_export(args: argparse.Namespace) -> int:
         since=args.since,
         include_originals=args.include_originals,
         make_pdf=not args.no_pdf,
+        template=template,
     )
     unit = vault.document.get_meta("unit") or vault.document.case_id
     issues = vault.document.issues() if args.issue is None else [args.issue]
@@ -409,6 +476,7 @@ def _cmd_sync(args: argparse.Namespace) -> int:
         f"habitable: synced — merged {result.messages_merged} message(s), "
         f"imported {result.captures_imported} capture(s)"
     )
+    print(f"           in sync as of {datetime.now(tz=UTC).strftime('%Y-%m-%dT%H:%M:%SZ')}")
     return 0
 
 

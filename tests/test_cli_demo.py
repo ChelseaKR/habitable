@@ -118,6 +118,25 @@ def test_cli_recur_records_recurrence(
     assert next(i for i in doc.issues() if i.issue_id == issue_id).status == "recurring"
 
 
+def test_cli_rollup_groups_by_room(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("HABITABLE_PASSPHRASE", "pw")
+    vault = tmp_path / "vault"
+    assert main(["init", str(vault), "--case", "c", "--unit", "4B"]) == 0
+    assert main(["issue", "--vault", str(vault), "--category", "mold", "--room", "bathroom"]) == 0
+    assert main(["issue", "--vault", str(vault), "--category", "heat", "--room", "bedroom"]) == 0
+    capsys.readouterr()
+    assert main(["rollup", "--vault", str(vault)]) == 0
+    out = capsys.readouterr().out
+    assert "bathroom:" in out and "bedroom:" in out and "room-by-room" in out
+
+
+def test_cli_key_drill_passes(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["key", "drill"]) == 0
+    assert "recovery drill passed" in capsys.readouterr().out
+
+
 def test_no_command_prints_help() -> None:
     assert main([]) == 2
 

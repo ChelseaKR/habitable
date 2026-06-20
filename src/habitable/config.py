@@ -91,6 +91,34 @@ class PacketTemplate:
     footer: str = ""
 
 
+# Starter, presentation-only jurisdiction templates a union can select without
+# hand-writing wording. They change only the header/footer text in the packet — never
+# the evidence or the verification protocol — and are meant to be grown by the
+# community (see ROADMAP, jurisdiction template library). Not legal advice.
+JURISDICTION_TEMPLATES: dict[str, PacketTemplate] = {
+    "generic": PacketTemplate(
+        header="Habitability evidence packet",
+        footer="Documentation only. Not legal advice; no guarantee of admissibility.",
+    ),
+    "ca": PacketTemplate(
+        header="Habitability evidence packet — California",
+        footer=(
+            "Prepared to document residential habitability conditions in California. "
+            "Documentation only — not legal advice and no guarantee of admissibility."
+        ),
+    ),
+}
+
+
+def jurisdiction_template(name: str) -> PacketTemplate:
+    """Return a built-in jurisdiction template by name (e.g. 'ca', 'generic')."""
+    try:
+        return JURISDICTION_TEMPLATES[name]
+    except KeyError:
+        known = ", ".join(sorted(JURISDICTION_TEMPLATES))
+        raise ConfigError(f"unknown jurisdiction template {name!r}; known: {known}") from None
+
+
 @dataclass(frozen=True, slots=True)
 class Config:
     """Resolved habitable configuration for one device."""

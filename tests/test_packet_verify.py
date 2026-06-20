@@ -183,6 +183,29 @@ def test_redundant_authority_satisfies_when_primary_absent(
     assert not other.timestamp_verified and not other.ok
 
 
+def test_jurisdiction_template_sets_packet_wording(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    from habitable.config import jurisdiction_template
+    from habitable.errors import ConfigError
+
+    vault = _case_with_two_captures(make_vault, make_jpeg, local_tsa)
+    out = tmp_path / "packet"
+    build_packet(
+        vault, out, generated_at="2026-01-02T00:10:00Z", template=jurisdiction_template("ca")
+    )
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert "California" in bundle["template"]["header"]
+    assert "not legal advice" in bundle["template"]["footer"].lower()
+    # Presentation only: the packet still verifies unchanged.
+    assert verify_packet(out).ok
+    with pytest.raises(ConfigError):
+        jurisdiction_template("atlantis")
+
+
 def test_media_tamper_detected(
     make_vault: Callable[..., Vault],
     make_jpeg: Callable[..., Path],
