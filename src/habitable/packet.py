@@ -125,6 +125,7 @@ def build_packet(
             identity=vault.identity,
         )
 
+    disclosures = _disclosures(items, sharing, include_originals=include_originals)
     bundle: dict[str, JSONValue] = {
         "packet_version": PACKET_VERSION,
         "case_id": vault.document.case_id,
@@ -151,6 +152,7 @@ def build_packet(
             "timestamped_count": timestamped,
             "includes_originals": include_originals,
         },
+        "disclosures": cast(JSONValue, list(disclosures)),
     }
     bundle_bytes = canonical_json(bundle)
     bundle_path = out_dir / _BUNDLE
@@ -172,7 +174,6 @@ def build_packet(
         pdf_path = out_dir / _PDF
         pdf_module.render_packet_pdf(bundle, media_dir, pdf_path)
 
-    disclosures = _disclosures(items, sharing, include_originals=include_originals)
     return PacketResult(
         out_dir=out_dir,
         bundle_path=bundle_path,
@@ -233,6 +234,7 @@ def _build_item(
 
     token = vault.get_token(capture_id)
     archives = vault.get_archive_tokens(capture_id)
+    additional = vault.get_additional_tokens(capture_id)
     return {
         "capture_id": capture_id,
         "issue_id": issue_id,
@@ -245,6 +247,7 @@ def _build_item(
         "has_original": include_originals,
         "timestamp": cast(JSONValue, token.to_dict()) if token is not None else None,
         "archive_timestamps": cast(JSONValue, [a.to_dict() for a in archives]),
+        "additional_timestamps": cast(JSONValue, [a.to_dict() for a in additional]),
     }
 
 

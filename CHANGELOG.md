@@ -7,6 +7,69 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+### Fixed
+
+- **Verifier subset now imports on Python < 3.14 again.** Three multi-type `except`
+  clauses in the Apache-2.0 verification subset (`verify.py`, `tsa.py`, `exif.py`)
+  used the PEP 758 parenthesis-free form, a `SyntaxError` before Python 3.14 — which
+  contradicted the 0.2.0 note that the subset is portable for legal-aid embedders.
+  The root cause is that the ruff formatter targets `py314` and strips the
+  parentheses, so the clauses now reference a **named exception tuple** (e.g.
+  `except _SIGNATURE_READ_ERRORS:`), which is formatter-stable and portable. A new
+  guard test (`test_verifier_subset_avoids_py314_only_except_syntax`) fails the gate
+  if the 3.14-only form is reintroduced.
+
+### Added
+
+- **Packet "what this proves — and what it does not" disclosure.** Every exported
+  `packet.html` and `packet.pdf` now carries a plain-language, localized (EN/ES)
+  statement of the upper-bound timestamp semantics and the limits of the evidence
+  (it does not prove authorship, depiction, the underlying condition, or
+  admissibility), with how to verify. Single source in `src/habitable/disclosure.py`
+  so the HTML and PDF cannot drift. (Recipient personas: housing-court clerk,
+  opposing counsel.)
+- **Recipient-facing disclosures.** Packets now carry a localized (EN/ES) "what
+  this packet discloses" note (shared copies have location removed; sealed
+  originals, when embedded, retain full metadata), and the machine-readable
+  `disclosures` list is included in the signed `bundle.json` (schema documented).
+- **`habitable verify --json`.** A structured verification report (overall verdict
+  plus per-item content hash, timestamp, custody, fixity, and notes) for scripts,
+  downstream integrators, and screen-reader users.
+- **`habitable verify --trusted-cert PEM`** (repeatable). Anchors each RFC 3161
+  timestamp to a TSA root certificate the verifier trusts, so a court or auditor can
+  assert the authority chain rather than only the token signature.
+- **Multiple-authority timestamp redundancy by default.** Capture now stamps every
+  configured timestamp authority (the default config ships more than one), recording
+  the primary token in `timestamp` and independent tokens over the same content hash
+  in `additional_timestamps`. The verifier checks all of them, reports
+  `verified_authorities` per item (and in `verify --json`), and counts an item as
+  timestamped if at least one authority verifies — so no packet's proof rests on a
+  single TSA. Additive and backward-compatible: existing single-authority packets
+  verify exactly as before.
+
+- **Synthetic-persona research and derived backlog** in `docs/research/`
+  (`synthetic-personas-feedback.md`, `execution-log.md`): a broad persona study,
+  interviews, and a prioritized list of remediations/expansions checked against the
+  project's invariants.
+- **Reviewer & integrator documentation** realizing backlog items from that study:
+  a standalone cryptographic design spec (`docs/crypto-spec.md`), a verifier
+  decision table + independent cross-check procedure
+  (`docs/verifier-decision-table.md`), a documented, versioned packet/bundle format
+  (`docs/bundle-schema.md` + `docs/packet-bundle.schema.json`), a verifier-embedding
+  cookbook (`docs/embedding-the-verifier.md`), and a "how to attack a packet"
+  red-team document (`docs/audits/packet-attack-redteam.md`).
+- **Legal-scaffolding docs** (`docs/legal/`): tenant/custodian declaration
+  templates, foundation guidance for counsel, and California-scoped evidence notes
+  (all explicitly not legal advice).
+- **Adoption kit** (`docs/adoption/`): a train-the-trainer workshop guide, printable
+  EN/ES quick-starts, and a board-level risk/benefit briefing.
+- **Community, sustainability & ops docs**: a funder impact brief
+  (`docs/funding-impact-brief.md`), a newcomer/good-first-issues guide
+  (`docs/good-first-issues.md`), a localization-contributor guide
+  (`docs/localization-guide.md`), a union key-custody playbook
+  (`docs/key-custody-playbook.md`), and relay operator self-audit + observability
+  docs (`docs/relay-operator-self-audit.md`, `docs/relay-observability-matrix.md`).
+
 ## [0.2.0] — 2026-06-17
 
 Alpha hardening and reviewer-handoff release. Still alpha — do not rely on it for a

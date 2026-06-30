@@ -235,6 +235,28 @@ class Vault:
             raise VaultError(f"corrupt token record for {capture_id}")
         return TimestampToken.from_dict(raw)
 
+    def add_additional_token(self, capture_id: str, token: TimestampToken) -> None:
+        """Append a redundant primary timestamp from another authority.
+
+        Unlike an archive token (which chains *over* the primary token), an additional
+        token is an independent RFC 3161 token over the same content hash, so the proof
+        does not rest on a single authority (see docs/research, item R-16)."""
+        path = self.path / _TOKENS / f"{capture_id}.additional.json"
+        existing = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+        if not isinstance(existing, list):
+            raise VaultError(f"corrupt additional-token record for {capture_id}")
+        existing.append(token.to_dict())
+        path.write_text(json.dumps(existing, indent=2, sort_keys=True), encoding="utf-8")
+
+    def get_additional_tokens(self, capture_id: str) -> list[TimestampToken]:
+        path = self.path / _TOKENS / f"{capture_id}.additional.json"
+        if not path.exists():
+            return []
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(raw, list):
+            raise VaultError(f"corrupt additional-token record for {capture_id}")
+        return [TimestampToken.from_dict(item) for item in raw if isinstance(item, dict)]
+
     def add_archive_token(self, capture_id: str, token: TimestampToken) -> None:
         """Append an archive (re-)timestamp for a capture."""
         path = self.path / _TOKENS / f"{capture_id}.archive.json"
