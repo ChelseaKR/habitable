@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+cff-version: 1.2.0
+title: habitable
+message: "If you use this work, please cite it."
+type: software
+authors:
+  - family-names: Kelly-Reif
+    given-names: Chelsea
+version: 0.2.0
+date-released: 2026-06-17
+license: AGPL-3.0-or-later
+repository-code: "https://github.com/ChelseaKR/habitable"
+url: "https://github.com/ChelseaKR/habitable"
+abstract: "Court-ready, offline-first, end-to-end-encrypted habitability evidence for tenant unions."
+keywords:
+  - tenant-rights
+  - evidence
+  - rfc3161
+  - trusted-timestamping
+  - local-first
+  - end-to-end-encryption
+  - chain-of-custody
+  - civic-tech
