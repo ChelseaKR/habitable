@@ -25,6 +25,7 @@
   "custody_links_prefix": "enlaces",
   "resolve_deferred": "Resolver marcas de tiempo pendientes",
   "resolve_help": "Obtener marcas de tiempo confiables para los elementos capturados sin conexión (requiere conexión).",
+  "status_awaiting_help": "Los elementos pendientes de sello de tiempo ya están guardados y protegidos por un hash de contenido. Reciben un sello de tiempo confiable automáticamente la próxima vez que este dispositivo tenga conexión: no se pierde nada mientras esperas.",
   "msg_resolved": "Marcas de tiempo pendientes resueltas.",
 
   "issues_heading": "Problemas",
@@ -62,7 +63,8 @@
   "capture_hash_label": "Hash del contenido",
   "capture_timestamp_label": "Sello de tiempo",
   "capture_timestamped_yes": "con sello de tiempo",
-  "capture_timestamped_no": "sin sello de tiempo",
+  "capture_timestamped_no": "pendiente de un sello de tiempo confiable",
+  "capture_awaiting_reassure": "Tu foto ya está guardada y protegida por su hash de contenido. Recibirá un sello de tiempo confiable la próxima vez que tengas conexión: usa “Resolver marcas de tiempo pendientes” arriba. No se pierde nada mientras tanto.",
 
   "timeline_heading": "Agregar una entrada a la cronología",
   "timeline_legend": "Entrada de cronología",

@@ -80,13 +80,17 @@
           </div>
           <div class="status-item">
             <dt data-i18n="status_awaiting">Awaiting timestamp</dt>
-            <dd id="st-awaiting">—</dd>
+            <dd id="st-awaiting" aria-describedby="awaiting-help">—</dd>
           </div>
           <div class="status-item status-item-wide">
             <dt data-i18n="status_custody">Chain of custody</dt>
             <dd id="st-custody">—</dd>
           </div>
         </dl>
+        <p class="muted" id="awaiting-help" data-i18n="status_awaiting_help">Items
+          awaiting a timestamp are already saved and protected by a content hash. They
+          get a trusted timestamp automatically the next time this device is online —
+          nothing is lost while you wait.</p>
         <div class="card-actions">
           <button type="button" id="resolve-btn" class="btn btn-quiet"
                   aria-describedby="resolve-help"

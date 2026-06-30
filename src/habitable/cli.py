@@ -360,6 +360,14 @@ def _cmd_export(args: argparse.Namespace) -> int:
     )
     for note in result.disclosures:
         print(f"           {note}")
+    # Keep the honest framing unmissable: a timestamp is an upper bound, not proof of
+    # authorship/depiction, and this is documentation, not legal advice. The full
+    # "what this proves / does not" statement travels in packet.html and bundle.json.
+    print(
+        "           what this proves / does not: a trusted timestamp is an upper bound "
+        "(content existed no later than that time), not proof of who took a photo or what "
+        "it depicts; this is documentation, not legal advice and no guarantee of admissibility"
+    )
     print(f"           packet written to {result.out_dir}")
     return 0
 

@@ -34,6 +34,21 @@ def test_no_empty_translations() -> None:
             assert value.strip(), f"{path.name}: empty translation for {key!r}"
 
 
+def test_awaiting_timestamp_copy_is_reassuring() -> None:
+    """RR-01: the offline 'awaiting timestamp' state must read as already-safe, not a
+    dead-end, and must say what to do next — in both languages."""
+    en, es = _load(_EN), _load(_ES)
+    for bundle in (en, es):
+        assert "status_awaiting_help" in bundle, "missing reassuring status help copy"
+        assert "capture_awaiting_reassure" in bundle, "missing capture reassurance copy"
+    # English reassurance names the protection and the concrete next step.
+    assert "protected" in en["status_awaiting_help"].lower()
+    assert "Resolve awaiting timestamps" in en["capture_awaiting_reassure"]
+    # Spanish reassurance is genuinely translated and names the protection + next step.
+    assert "protegid" in es["status_awaiting_help"].lower()
+    assert "Resolver marcas de tiempo pendientes" in es["capture_awaiting_reassure"]
+
+
 def test_spanish_is_actually_translated() -> None:
     """A sanity check that es is not just a copy of en (most strings differ)."""
     en, es = _load(_EN), _load(_ES)

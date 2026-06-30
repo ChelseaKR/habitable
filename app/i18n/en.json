@@ -25,6 +25,7 @@
   "custody_links_prefix": "links",
   "resolve_deferred": "Resolve awaiting timestamps",
   "resolve_help": "Fetch trusted timestamps for items captured offline (needs a connection).",
+  "status_awaiting_help": "Items awaiting a timestamp are already saved and protected by a content hash. They get a trusted timestamp automatically the next time this device is online — nothing is lost while you wait.",
   "msg_resolved": "Awaiting timestamps resolved.",
 
   "issues_heading": "Issues",
@@ -62,7 +63,8 @@
   "capture_hash_label": "Content hash",
   "capture_timestamp_label": "Timestamp",
   "capture_timestamped_yes": "timestamped",
-  "capture_timestamped_no": "not timestamped",
+  "capture_timestamped_no": "awaiting a trusted timestamp",
+  "capture_awaiting_reassure": "Your photo is already saved and protected by its content hash. It will receive a trusted timestamp the next time you are online — choose “Resolve awaiting timestamps” above. Nothing is lost in the meantime.",
 
   "timeline_heading": "Add a timeline entry",
   "timeline_legend": "Timeline entry",

@@ -83,6 +83,30 @@ def test_full_api_flow(app: str, make_jpeg: Callable[..., Path]) -> None:
     assert status == 200 and export["verified"] is True and export["item_count"] == 1
 
 
+def test_export_carries_honest_proof_statement(app: str, make_jpeg: Callable[..., Path]) -> None:
+    """RR-02: the export response surfaces the packet's 'what this proves / does not'
+    framing, so the upper-bound/limits honesty is unmissable in-app, not only in the
+    packet output."""
+    _, issue = _call(app, "POST", "/api/issues", {"category": "mold", "title": "Mold"})
+    media_b64 = base64.b64encode(make_jpeg().read_bytes()).decode()
+    _call(
+        app,
+        "POST",
+        "/api/capture",
+        {"issue_id": issue["issue_id"], "filename": "p.jpg", "media_b64": media_b64},
+    )
+    status, export = _call(app, "POST", "/api/export", {})
+    assert status == 200
+    proof = export["proof"]
+    assert isinstance(proof, dict)
+    assert proof["heading"]
+    not_proves = proof["not_proves"]
+    assert isinstance(not_proves, list) and not_proves
+    # The honest limits are present: an upper-bound timestamp and "not legal advice".
+    assert any("upper bound" in line for line in not_proves)
+    assert any("not legal advice" in line.lower() for line in not_proves)
+
+
 def test_missing_field_is_400(app: str) -> None:
     status, payload = _call(app, "POST", "/api/issues", {"room": "bath"})  # no category
     assert status == 400 and "error" in payload

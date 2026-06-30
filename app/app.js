@@ -379,12 +379,16 @@
         var stamp = res.timestamped
           ? (t("capture_timestamped_yes") + (res.gen_time ? " (" + res.gen_time + ")" : ""))
           : t("capture_timestamped_no");
-        announce(
+        var message =
           t("msg_capture_done") + " " +
           t("capture_hash_label") + ": " + res.content_hash + ". " +
-          t("capture_timestamp_label") + ": " + stamp,
-          "ok"
-        );
+          t("capture_timestamp_label") + ": " + stamp + ".";
+        // No dead-ends: an offline (not-yet-timestamped) capture is already safe; say so
+        // and say what to do next, rather than leaving an alarming "not timestamped".
+        if (!res.timestamped) {
+          message += " " + t("capture_awaiting_reassure");
+        }
+        announce(message, "ok");
         return refreshStatus();
       }, announceError);
     });
@@ -477,6 +481,10 @@
     }
     box.appendChild(ul);
 
+    // Surface the honest "what this proves / does not" framing at the moment it matters —
+    // the same upper-bound semantics the packet itself carries (see disclosure.py).
+    renderProof(box, res.proof);
+
     var disclosures = res.disclosures || [];
     if (disclosures.length) {
       var dh = document.createElement("p");
@@ -495,6 +503,56 @@
     var li = document.createElement("li");
     li.textContent = text;
     return li;
+  }
+
+  function bulletList(items) {
+    var ul = document.createElement("ul");
+    var arr = items || [];
+    for (var i = 0; i < arr.length; i++) {
+      ul.appendChild(line(String(arr[i])));
+    }
+    return ul;
+  }
+
+  // The localized "what this packet proves — and what it does not" statement, supplied
+  // by the server (the very text the exported packet carries). Showing it in-app at
+  // export time keeps the upper-bound/limits framing unmissable, never overstated.
+  function renderProof(box, proof) {
+    if (!proof || typeof proof !== "object") {
+      return;
+    }
+    var sec = document.createElement("section");
+    sec.className = "proof";
+
+    if (proof.heading) {
+      var h = document.createElement("h4");
+      h.textContent = proof.heading;
+      sec.appendChild(h);
+    }
+    if (proof.proves_heading) {
+      sec.appendChild(strongLine(proof.proves_heading));
+    }
+    sec.appendChild(bulletList(proof.proves));
+    if (proof.not_heading) {
+      sec.appendChild(strongLine(proof.not_heading));
+    }
+    sec.appendChild(bulletList(proof.not_proves));
+    if (proof.verify_line) {
+      var v = document.createElement("p");
+      v.className = "muted";
+      v.textContent = proof.verify_line;
+      sec.appendChild(v);
+    }
+    box.appendChild(sec);
+  }
+
+  function strongLine(text) {
+    var p = document.createElement("p");
+    p.className = "proof-sub";
+    var s = document.createElement("strong");
+    s.textContent = text;
+    p.appendChild(s);
+    return p;
   }
 
   function wireLang() {
