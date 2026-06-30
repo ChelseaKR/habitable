@@ -16,7 +16,9 @@ __all__ = [
     "CustodyError",
     "FixityError",
     "HabitableError",
+    "LetterError",
     "PacketError",
+    "ShareError",
     "SyncError",
     "TimestampError",
     "VaultError",
@@ -75,3 +77,11 @@ class VerificationError(HabitableError):
 
 class SyncError(HabitableError):
     """Peer-to-peer synchronization failed."""
+
+
+class ShareError(HabitableError):
+    """A case (or a redactable subset of one) could not be shared or received."""
+
+
+class LetterError(HabitableError):
+    """A repair-request / notice letter could not be generated."""
