@@ -21,6 +21,30 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **Court-ready evidence bundle.** Every exported `packet.html` and `packet.pdf` now
+  opens with a **cover sheet** (case, scope, counts, producer device, date range of the
+  evidence), a single **chronological evidence timeline** that interleaves logged notes
+  with captured photos across every issue in time order, and a **chain-of-custody /
+  integrity summary** (per-item content hashes, RFC 3161 timestamp authorities and archive
+  counts, and the append-only custody-chain head). The sections are derived purely from the
+  already-signed `bundle.json` (no schema change, no `packet_version` bump, golden packets
+  unaffected) by a new shared `bundleview` module, so the HTML and PDF cannot drift. The
+  accessible HTML remains the conformant rendering (ADR 0004); the PDF keeps its
+  accessibility hygiene.
+- **E2E-encrypted, redactable case sharing (`habitable share` / `habitable receive`).** A
+  tenant can hand a case — or a chosen subset of issues, optionally with the unit label
+  redacted — to a tenant-union organizer who was not previously on the case, preserving
+  end-to-end encryption: the payload is a CRDT subset plus sealed originals, **signed** by
+  the tenant and **sealed** to the organizer's verified public key, so a relay/courier sees
+  only ciphertext. Reuses the existing crypto + CRDT primitives; trust is direct and
+  out-of-band (verify the short fingerprint), with no key directory. Trust/key-exchange
+  model documented in `docs/sharing-trust-model.md`.
+- **Repair-request letter generator (`habitable letter`).** Generates a dated repair-request
+  / notice letter from the logged evidence (issues, dates, photo/timestamp counts),
+  rendered as an accessible HTML letter and a PDF. Jurisdiction-aware *framing only*: a
+  small set of built-in profiles (`generic`, `us_habitability`) that make **no
+  statute-specific claim**, overridable via a new `[letter]` config block, with a standing
+  "not legal advice" disclaimer. Assumptions documented in `docs/letter-generator.md`.
 - **Packet "what this proves — and what it does not" disclosure.** Every exported
   `packet.html` and `packet.pdf` now carries a plain-language, localized (EN/ES)
   statement of the upper-bound timestamp semantics and the limits of the evidence

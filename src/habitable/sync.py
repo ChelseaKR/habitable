@@ -61,10 +61,26 @@ class Transport(Protocol):
 # --- message construction -----------------------------------------------------
 
 
-def export_message(vault: Vault, recipient: PublicIdentity) -> bytes:
-    """Build a signed, sealed sync message carrying state + sealed originals."""
+def export_message(
+    vault: Vault,
+    recipient: PublicIdentity,
+    *,
+    state: Mapping[str, JSONValue] | None = None,
+    capture_ids: set[str] | None = None,
+) -> bytes:
+    """Build a signed, sealed sync message carrying CRDT state + sealed originals.
+
+    By default the whole case is sent. ``state`` overrides the CRDT state (e.g. a
+    redacted subset from :meth:`CaseDocument.subset_state` for a scoped share), and
+    ``capture_ids`` restricts which sealed originals travel — anything outside the
+    set is omitted, so a subset share never ships evidence for issues it excludes.
+    The message is signed by the sender and sealed to ``recipient`` (an ECIES sealed
+    box), so a relay or any third party only ever sees ciphertext.
+    """
     captures: list[JSONValue] = []
     for capture in vault.document.captures():
+        if capture_ids is not None and capture.capture_id not in capture_ids:
+            continue
         raw = vault.read_original(capture.capture_id, capture.content_hash)
         token = vault.get_token(capture.capture_id)
         captures.append(
@@ -78,7 +94,7 @@ def export_message(vault: Vault, recipient: PublicIdentity) -> bytes:
         )
     inner: dict[str, JSONValue] = {
         "case_id": vault.document.case_id,
-        "state": vault.document.to_state(),
+        "state": dict(state) if state is not None else vault.document.to_state(),
         "captures": captures,
     }
     inner_bytes = canonical_json(inner)
@@ -91,8 +107,15 @@ def export_message(vault: Vault, recipient: PublicIdentity) -> bytes:
     return seal_to(recipient, canonical_json(envelope))
 
 
-def import_messages(vault: Vault, blobs: list[bytes]) -> SyncResult:
-    """Open, verify, and merge every message addressed to this device."""
+def import_messages(
+    vault: Vault, blobs: list[bytes], *, require_case_id: str | None = None
+) -> SyncResult:
+    """Open, verify, and merge every message addressed to this device.
+
+    If ``require_case_id`` is set, a message whose ``case_id`` does not match is
+    rejected with :class:`SyncError` rather than merged — so a share addressed to one
+    case can never be folded into a different case's vault by mistake.
+    """
     merged = 0
     imported = 0
     for blob in blobs:
@@ -101,6 +124,10 @@ def import_messages(vault: Vault, blobs: list[bytes]) -> SyncResult:
             # Not addressed to us (or not a sealed message): skip.
             continue
         inner, sender = _verify_envelope(envelope_bytes)
+        if require_case_id is not None and inner.get("case_id") != require_case_id:
+            raise SyncError(
+                f"message is for case {inner.get('case_id')!r}, not {require_case_id!r}"
+            )
         vault.document.merge(_as_map(inner.get("state")))
         imported += _import_captures(vault, inner, sender)
         merged += 1
