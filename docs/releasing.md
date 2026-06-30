@@ -19,7 +19,22 @@ was built from this source by this repository's CI.
    - generates a runtime **SBOM** (CycloneDX) into `dist/sbom.cdx.json`;
    - produces a **signed build-provenance attestation** for the artifacts
      (`actions/attest-build-provenance`, Sigstore);
-   - creates/updates the GitHub release and uploads `dist/*`.
+   - creates/updates the GitHub release and uploads `dist/*`;
+   - in a separate `pypi-publish` job (scoped to `id-token: write` only),
+     rebuilds the wheel + sdist from the tagged source and **publishes to PyPI
+     via Trusted Publishing** (`pypa/gh-action-pypi-publish`, OIDC — no stored
+     token), which also attaches PEP 740 provenance to the PyPI artifacts.
+
+### One-time PyPI setup (before the first tag)
+
+Trusted Publishing needs a **pending publisher** registered on PyPI once, which
+CI cannot do for itself:
+
+- project `habitable`, owner `ChelseaKR`, repository `habitable`,
+  workflow `release.yml`, environment `pypi`;
+- a matching GitHub Environment named `pypi` on this repo.
+
+After that, every `vX.Y.Z` tag publishes with no API token.
 
 ## Verifying a downloaded artifact
 
@@ -41,7 +56,8 @@ prose.
 
 ## Not yet wired (tracked for v1.0)
 
-- **PyPI Trusted Publishing (OIDC):** once a PyPI project and trusted publisher
-  are configured, add a publish step to `release.yml` (no stored tokens).
 - **Reproducible-build verification:** document and verify a byte-identical
-  rebuild of the wheel.
+  rebuild of the wheel. Until then, note that the GitHub-release artifacts and
+  the PyPI artifacts are produced by two independent `uv build` invocations of
+  the same tagged source, each independently attested (Sigstore build-provenance
+  for the release artifacts, PEP 740 for the PyPI artifacts).
