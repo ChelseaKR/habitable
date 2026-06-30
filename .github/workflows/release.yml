@@ -44,5 +44,26 @@ jobs:
           gh release view "$TAG" >/dev/null 2>&1 \
             || gh release create "$TAG" --title "habitable $TAG" --generate-notes
           gh release upload "$TAG" dist/* --clobber
-      # Note: PyPI publishing via Trusted Publishing (OIDC) is the next step once a
-      # PyPI project + trusted publisher are configured; see docs/releasing.md.
+  pypi-publish:
+    name: publish to PyPI (Trusted Publishing)
+    needs: release
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/habitable
+    permissions:
+      id-token: write # OIDC token for PyPI Trusted Publishing (no long-lived secret)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.19"
+      - name: Build wheel + sdist
+        run: uv build
+      # Trusted Publishing: requires a one-time PyPI "pending publisher" for project
+      # "habitable" (repo ChelseaKR/habitable, workflow release.yml, environment pypi).
+      # See docs/releasing.md. No API token needed once configured.
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # v1.14.0
