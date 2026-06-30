@@ -12,6 +12,7 @@ import pytest
 from habitable.capture import capture
 from habitable.errors import LetterError
 from habitable.letter import (
+    PROFILES,
     LetterOptions,
     build_letter,
     render_letter_html,
@@ -110,10 +111,14 @@ def test_jurisdiction_profiles_and_fallback() -> None:
     assert resolve_profile("us_habitability").key == "us_habitability"
     assert resolve_profile("US Habitability").key == "us_habitability"  # normalized
     assert resolve_profile("narnia").key == "generic"  # unknown → generic, never refuses
-    # Built-in profiles never assert a specific statute/code section.
-    for profile in (resolve_profile("generic"), resolve_profile("us_habitability")):
-        assert "§" not in profile.legal_reference
-        assert "U.S.C" not in profile.legal_reference
+    # Built-in profiles never assert a specific statute/code section — in *any*
+    # reader-visible field (the framing and legal reference both render into the
+    # letter), not just the legal-reference line.
+    for profile in PROFILES.values():
+        for text in (profile.label, profile.framing, profile.legal_reference):
+            assert "§" not in text
+            assert "U.S.C" not in text
+            assert "U. S. C" not in text
 
 
 def test_cure_period_precedence(
