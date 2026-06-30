@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: container-scan
+
+# Builds the optional ciphertext-only sync relay image and scans it for known
+# OS/library CVEs with Trivy. The relay carries no third-party dependencies, so
+# any finding here comes from the base image — keeping it on the gate means a
+# newly-disclosed CVE in python:slim blocks the merge (and the weekly run catches
+# CVEs disclosed against an already-merged image). Threshold is CRITICAL,HIGH per
+# docs/standards/SECURITY-AND-SUPPLY-CHAIN-STANDARD.md §6.3.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "41 4 * * 1" # weekly, Monday 04:41 UTC (DB-freshness re-scan)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Trivy image scan (relay)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Build the relay image
+        run: docker build -f relay/Dockerfile -t habitable-relay:scan .
+      - name: Scan the image (Trivy — fail on HIGH,CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: habitable-relay:scan
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          format: table
