@@ -132,14 +132,22 @@ jobs:
       name: pypi
       url: https://pypi.org/p/habitable
     permissions:
+      contents: read # checkout the tagged source
       id-token: write # OIDC token for PyPI Trusted Publishing (no long-lived secret)
     steps:
+      - name: Harden Runner (audit mode)
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           version: "0.11.19"
+          enable-cache: false
       - name: Build wheel + sdist
         run: uv build
       # Trusted Publishing: requires a one-time PyPI "pending publisher" for project
