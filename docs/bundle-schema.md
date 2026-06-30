@@ -21,7 +21,10 @@
 ```
 
 `bundle.json` is the source of truth a verifier reads. The other rendered files (`packet.html`,
-`packet.pdf`) are presentation; they are not what verification trusts.
+`packet.pdf`) are presentation; they are not what verification trusts. Those renderings present a
+court-ready layout — a cover sheet, a single chronological timeline interleaving notes and photos,
+the per-issue detail, and a chain-of-custody / integrity summary — all **derived from the fields
+below** (no extra bundle fields, no `packet_version` change); see `src/habitable/bundleview.py`.
 
 ## Canonical bytes
 
