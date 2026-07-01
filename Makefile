@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # habitable — developer entry points. `make verify` reproduces the full CI gate.
 .DEFAULT_GOAL := help
-.PHONY: help install fmt lint type test cov verify audit a11y integration demo build clean
+.PHONY: help install fmt lint type test cov i18n verify audit a11y integration demo build clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -31,7 +31,10 @@ cov: ## Run tests with coverage (enforces a floor; excludes network integration 
 integration: ## Run the network integration tests (real public TSAs)
 	uv run pytest -m integration -v
 
-verify: lint type cov ## The full merge gate: lint + types + tests with coverage
+i18n: ## Locale key-parity gate: EN and ES bundles must stay in lockstep (offline, stdlib-only)
+	uv run python scripts/check_i18n_parity.py
+
+verify: lint type cov i18n ## The full merge gate: lint + types + tests with coverage + i18n parity
 	@echo "habitable: full gate green on Python $$(uv run python -c 'import sys;print(sys.version.split()[0])')"
 
 audit: ## Dependency vulnerability audit
