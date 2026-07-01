@@ -31,10 +31,12 @@ cov: ## Run tests with coverage (enforces a floor; excludes network integration 
 integration: ## Run the network integration tests (real public TSAs)
 	uv run pytest -m integration -v
 
-i18n: ## Locale key-parity gate: EN and ES bundles must stay in lockstep (offline, stdlib-only)
+i18n: ## Mechanical i18n gates: UTF-8 (G1), BCP 47 validity (G3), EN/ES key-parity (G6) — offline, stdlib-only
+	uv run python scripts/check_i18n_utf8.py
+	uv run python scripts/check_bcp47.py
 	uv run python scripts/check_i18n_parity.py
 
-verify: lint type cov i18n ## The full merge gate: lint + types + tests with coverage + i18n parity
+verify: lint type cov i18n ## The full merge gate: lint + types + tests with coverage + mechanical i18n gates (G1/G3/G6)
 	@echo "habitable: full gate green on Python $$(uv run python -c 'import sys;print(sys.version.split()[0])')"
 
 audit: ## Dependency vulnerability audit
