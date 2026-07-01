@@ -238,6 +238,24 @@ and outcomes*, never by watching users:
 
 If a metric would require instrumenting users, it is the wrong metric.
 
+## Observability
+
+Per the portfolio **OBSERVABILITY-STANDARD** (which is tiered by deployment shape). This
+records habitable's *values*; the gates themselves live in the standard.
+
+- **CLI / library surface — Tier C.** OTel tracing/metrics/SLOs are **N/A: no network
+  surface** (offline-first, local-only). Opt-in `--log-format json` is future work.
+- **Optional sync relay (`src/habitable/relay.py`) — Tier A**, with deliberate
+  N/A-with-reason carve-outs driven by two hard project rules — *no telemetry / no
+  phone-home* and a *dependency-free relay image* (stdlib only, small attack surface):
+
+| Control (standard §) | habitable value |
+| --- | --- |
+| Structured JSON logs (§3) | **Implemented**, stdlib `logging` (no structlog dep). One JSON object per line: `ts`, `level`, `msg`, `request_id`, `method`, `path`, `status`, `latency_ms`. Per-request access log is opt-in (`HABITABLE_RELAY_LOG=json`), off by default. |
+| **PII/secrets-in-logs gate (§3, never N/A)** | **Enforced.** Logs are metadata-only: no bodies, no keys, no peer IPs, and the room id is redacted to the route template `/rooms/{room}`. Pinned by `tests/test_relay.py` (`test_access_log_never_leaks_room_id_key_or_payload`) and the E2E-encryption guard in `tests/test_sync.py`. |
+| `/livez` + `/readyz` (§6) | **Implemented.** `/livez` → 200 (no dep calls); `/readyz` fails **closed** (503) when the in-memory store is unhealthy; existing `/healthz` kept for aggregate counts. Probes excluded from the access log. |
+| OTel traces (§1), RED/USE metrics (§2), SLOs (§4), burn-rate alerts (§5), collector/LGTM compose (§7) | **N/A-with-reason:** the relay must stay dependency-free and telemetry-free; adding OTel/OTLP exporters would contradict the *no phone-home* rule and enlarge the attack surface of a component whose whole point is that it can observe as little as possible. Trace correlation fields are omitted for the same reason. |
+
 ## Non-goals
 
 habitable will deliberately **never**:
