@@ -79,18 +79,21 @@ class RelayStore:
 
 ## 3. What the relay does NOT store or log
 
-- **No request logging.** Python's `BaseHTTPRequestHandler` normally prints a request
-  line (`"GET /rooms/... 200"`) to stderr for every request. The relay **suppresses
-  this** by overriding `log_message` to a no-op (`relay.py`):
+- **No request logging by default.** Python's `BaseHTTPRequestHandler` normally prints
+  a request line (`"GET /rooms/... 200"`) to stderr for every request. The relay
+  **suppresses this** by overriding `log_message` to a no-op (`relay.py`):
 
   ```python
-  # Don't write request lines to stderr; the relay logs only aggregate metrics.
+  # Don't write BaseHTTPRequestHandler's ad-hoc request lines to stderr; the
+  # relay does its own structured, metadata-only logging instead.
   def log_message(self, _format: str, *_args: object) -> None:
       return
   ```
 
   So out of the box the relay does **not** emit per-request log lines, peer IPs, room
-  ids, or sizes to its own logs.
+  ids, or sizes to its own logs. A structured, **metadata-only** per-request access
+  log is available but **opt-in and off by default** (`HABITABLE_RELAY_LOG=json`); see
+  §4.3 for exactly what it does and does not contain.
 
 - **No contents, ever.** No note text, no image bytes (raw or base64), no sender
   fingerprint. These never reach the relay in cleartext; they are inside the sealed
@@ -143,15 +146,28 @@ Room ids are the keys; the **count** of rooms (`len(self.rooms)`) is exposed via
 
 ### 4.3 Application logs
 
-**Empty by default.** `log_message` is a no-op (§3). The relay prints exactly one line
-at startup (`serve()` in `relay.py`):
+**Structured JSON, metadata-only, and free of request lines by default.** The relay
+logs through the Python standard-library `logging` module (no third-party logging
+dependency), emitting one JSON object per line. There are two kinds of line:
 
-```
-habitable relay listening on http://<host>:<port> (ciphertext passthrough only)
-```
+- **Lifecycle lines — always emitted.** One at startup and one at shutdown. The
+  startup line (`serve()` in `relay.py`) carries only the bind host/port you
+  configured and nothing about any peer or message:
 
-That line contains the bind host/port you configured and nothing about any peer or
-message. That is the whole of what the application writes.
+  ```json
+  {"ts":"2026-01-02T00:00:00+00:00","level":"info","msg":"relay listening (ciphertext passthrough only)","host":"0.0.0.0","port":8787,"access_log":false}
+  ```
+
+- **Per-request access lines — opt-in and OFF by default.** `log_message` is a no-op
+  (§3), so `BaseHTTPRequestHandler`'s own request lines stay suppressed. A structured
+  access line is emitted per request **only** when you set `HABITABLE_RELAY_LOG=json`.
+  When enabled, each line carries **only metadata** — a random per-request id, the
+  HTTP method, a **redacted** route (`/rooms/{room}`, **never** the actual room id),
+  the response status, and the latency in milliseconds. It **never** contains peer IP
+  addresses, room ids, or message contents, and the health probes (`/livez`,
+  `/readyz`, `/healthz`) are excluded from it. Leave it off (the default) to preserve
+  the "no request lines" property this audit attests; the guarantee that no room id,
+  IP, or content ever reaches the logs holds whether it is on or off.
 
 ---
 
@@ -213,17 +229,24 @@ $ git -C <repo> rev-parse HEAD
 
 ### Step 1 — Confirm no application request logging
 
-Drive a request and show the container logs contain no request lines or peer data:
+With access logging left at its default (off — do **not** set `HABITABLE_RELAY_LOG`),
+drive a request and show the container logs contain no request lines or peer data:
 
 ```console
 $ curl -s http://localhost:8787/healthz >/dev/null
 $ curl -s -X POST --data-binary 'AUDIT-PROBE-PLAINTEXT' \
     http://localhost:8787/rooms/audit-probe-room
 $ docker logs habitable-relay
-# Expect ONLY the startup line:
-#   habitable relay listening on http://0.0.0.0:8787 (ciphertext passthrough only)
-# Expect NO "POST /rooms/..." lines, NO IPs, NO "audit-probe-room", NO "AUDIT-PROBE-PLAINTEXT".
+# Expect ONLY the structured JSON startup line, e.g.:
+#   {"ts":"...","level":"info","msg":"relay listening (ciphertext passthrough only)",
+#    "host":"0.0.0.0","port":8787,"access_log":false}
+# Expect NO per-request lines, NO IPs, NO "audit-probe-room", NO "AUDIT-PROBE-PLAINTEXT".
 ```
+
+If you deliberately enable access logging (`HABITABLE_RELAY_LOG=json`), you will see one
+`{"msg":"request",...}` line per request — but still only metadata: method, status,
+latency, a random request id, and the **redacted** route `/rooms/{room}` (never the room
+id `audit-probe-room`), and never `AUDIT-PROBE-PLAINTEXT`.
 
 If you put a reverse proxy in front (you should, for TLS — see `relay-deploy.md`), audit
 **that proxy's** access/error logs too: by default nginx/Caddy/Traefik log client IPs,
