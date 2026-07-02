@@ -311,7 +311,7 @@ def _cmd_resolve(args: argparse.Namespace) -> int:
     tsa = _tsa_for(vault, dev=args.dev_tsa)
     if tsa is None:
         raise HabitableError("no timestamp authority configured")
-    results = resolve_deferred(vault, tsa)
+    results = resolve_deferred(vault, tsa, extra_tsas=_extra_tsas_for(vault, dev=args.dev_tsa))
     locale = resolve_locale(vault.config.language)
     print(f"habitable: {cli_text('resolve_done', locale, count=len(results))}")
     return 0
@@ -322,7 +322,7 @@ def _cmd_retimestamp(args: argparse.Namespace) -> int:
     tsa = _tsa_for(vault, dev=args.dev_tsa)
     if tsa is None:
         raise HabitableError("no timestamp authority configured")
-    count = retimestamp_all(vault, tsa)
+    count = retimestamp_all(vault, tsa, extra_tsas=_extra_tsas_for(vault, dev=args.dev_tsa))
     locale = resolve_locale(vault.config.language)
     print(f"habitable: {cli_text('retimestamp_done', locale, count=count)}")
     return 0
@@ -445,7 +445,8 @@ def _cmd_app(args: argparse.Namespace) -> int:
 
     vault = _open(args)
     tsa = None if args.no_timestamp else _tsa_for(vault, dev=args.dev_tsa)
-    server = make_app_server(args.host, args.port, vault, tsa=tsa)
+    extra_tsas = [] if args.no_timestamp else _extra_tsas_for(vault, dev=args.dev_tsa)
+    server = make_app_server(args.host, args.port, vault, tsa=tsa, extra_tsas=extra_tsas)
     url = f"http://{args.host}:{args.port}"
     print(f"habitable: local app running at {url}  (Ctrl-C to stop)")
     print("           loopback only — your case stays on this device.")
