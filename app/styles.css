@@ -319,6 +319,13 @@ textarea { resize: vertical; }
 
 .muted { color: var(--ink-soft); }
 
+/* Short in-context help under a form control (paired via aria-describedby). */
+.field-help {
+  margin: 0.35rem 0 0;
+  font-size: 0.9rem;
+  max-width: 42rem;
+}
+
 /* --- Footer --- */
 .site-footer {
   border-top: 1px solid var(--line);

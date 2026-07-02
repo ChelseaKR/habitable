@@ -176,8 +176,16 @@ The courtroom rests on this; it gets the most scrutiny.
 - **Languages beyond EN/ES.** *Objective:* serve more communities. *Exit:* a documented
   localization-contributor process and ≥1 added language with string parity enforced (the
   i18n parity test already guards this).
-- **Plain-language & cognitive review.** *Objective:* usable under stress and across
-  reading levels. *Exit:* a reviewed plain-language pass of UI copy and the setup guide.
+- *Shipped (R-41/R-04):* **Plain-language & cognitive review.** A reviewed plain-language
+  pass (target ~grade 6–8) over the in-app EN/ES copy (`app/i18n/`) and the setup guide:
+  jargon such as "Device fingerprint," "Chain of custody," "Awaiting timestamp," and
+  "Content hash" replaced or glossed with in-context help; the Spanish de-lawyered and its
+  timestamp term (`sello de tiempo`) made consistent. Honest-limits strings were kept at full
+  strength and key parity held (`tests/test_app_i18n.py`, `scripts/check_i18n_parity.py`). The
+  dated review record — target, method, every term changed, and what remains for a
+  native-speaker / stressed-user pass — is at `docs/audits/plain-language-review.md`.
+  *Remaining (documented there):* a native-speaker ES review, a measured readability score,
+  and a cognitive walk-through.
 - *Shipped:* **Low-end-device performance budget.** A documented latency budget for the
   local path — per-operation targets for content hashing, seal/store, custody append,
   CRDT merge, and packet assembly — tied to a reference low-end device modeled as ~10×
