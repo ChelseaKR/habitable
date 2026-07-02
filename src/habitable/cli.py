@@ -150,6 +150,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p_relay = sub.add_parser("relay", help="run an optional ciphertext-only sync relay")
     p_relay.add_argument("--host", default="127.0.0.1")
     p_relay.add_argument("--port", type=int, default=8787)
+    p_relay.add_argument(
+        "--persist-dir",
+        type=Path,
+        help="opt-in on-disk ciphertext journal (default: memory-only, nothing on disk)",
+    )
     p_relay.set_defaults(func=_cmd_relay)
 
     p_app = sub.add_parser("app", help="run the local web app (accessible, EN/ES)")
@@ -436,7 +441,7 @@ def _cmd_sync(args: argparse.Namespace) -> int:
 def _cmd_relay(args: argparse.Namespace) -> int:
     from .relay import serve
 
-    serve(args.host, args.port)
+    serve(args.host, args.port, persist_dir=args.persist_dir)
     return 0
 
 
