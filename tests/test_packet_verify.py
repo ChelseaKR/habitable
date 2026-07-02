@@ -13,7 +13,7 @@ import pytest
 from cryptography.hazmat.primitives.serialization import Encoding
 
 from habitable.canonical import JSONValue, sha256_bytes
-from habitable.capture import capture
+from habitable.capture import capture, resolve_deferred
 from habitable.exif import read_metadata
 from habitable.packet import build_packet
 from habitable.tsa import LocalRfc3161TSA
@@ -149,6 +149,30 @@ def test_multi_authority_capture_and_verify(
     item = json.loads((out / "bundle.json").read_text())["items"][0]
     assert len(item["additional_timestamps"]) == 1
 
+    report = verify_packet(out)
+    assert report.ok
+    authorities = set(report.items[0].verified_authorities)
+    assert {"test-rfc3161", "second-tsa"} <= authorities  # both authorities verified
+
+
+def test_deferred_then_resolved_reports_both_authorities(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    second = LocalRfc3161TSA("second-tsa")
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", title="Mold", issue_id="i1")
+    # Capture offline: the item is queued rather than stamped.
+    capture(vault, make_jpeg("a.jpg", with_location=True), issue_id=issue, tsa=None)
+    assert len(vault.deferred()) == 1
+
+    resolved = resolve_deferred(vault, local_tsa, extra_tsas=[second])
+    assert resolved[0].extra_authorities == ("second-tsa",)
+
+    out = tmp_path / "packet"
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
     report = verify_packet(out)
     assert report.ok
     authorities = set(report.items[0].verified_authorities)

@@ -135,9 +135,10 @@ The courtroom rests on this; it gets the most scrutiny.
 - **Archive / re-timestamping.** *Objective:* keep old packets verifiable after a TSA
   signing cert expires. *Exit:* `habitable` can re-timestamp an existing token and the
   verifier accepts the archive chain; covered by a test with an expired-cert fixture.
-- **Multiple-authority redundancy by default.** *Objective:* no packet's proof rests on a
-  single TSA. *Exit:* capture can stamp against N configured authorities and the verifier
-  reports per-authority status.
+- *Shipped (R-16):* **Multiple-authority redundancy by default.** *Objective:* no packet's
+  proof rests on a single TSA. Both the online capture path and deferred-capture resolution
+  stamp against N configured authorities (best-effort extras that never block), and the
+  verifier reports per-authority status.
 - **Fuzz & property-harden the verifier.** *Objective:* the verifier never accepts altered
   evidence and never crashes on hostile input. *Exit:* a fuzzing target over packets/tokens
   runs in CI with no accept-on-tamper and no crash.
