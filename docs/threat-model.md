@@ -150,11 +150,13 @@ courtroom fails the people relying on it.
 - **Relay metadata is not hidden.** Even a no-log relay observes who syncs with whom and when, and
   roughly how much moves. habitable does not implement traffic-analysis resistance, padding, or
   mixing. The only way to remove this exposure entirely is to not use a relay (pure peer-to-peer).
-- **The duress-safe state hides contents; it is not a guarantee.** Opening the app to a duress-safe
-  state hides case contents from someone glancing at the screen or coercing a quick unlock. It is
-  **not** a guarantee against a sufficiently capable coercing adversary (who can compel the real
-  passphrase) or a forensic adversary (who images the device and analyzes storage at rest). It is a
-  harm-reduction mitigation with documented limits, not a safe.
+- **The duress-safe state is planned, not implemented.** It is described here as a future mitigation;
+  a `grep` for `duress`/`panic`/`decoy` across `src/` and `app/` returns nothing today. When built,
+  opening the app to a duress-safe state will hide case contents from someone glancing at the screen or
+  coercing a quick unlock. Even then it will **not** be a guarantee against a sufficiently capable
+  coercing adversary (who can compel the real passphrase) or a forensic adversary (who images the
+  device and analyzes storage at rest). It is planned as a harm-reduction mitigation with documented
+  limits, not a safe.
 - **Lost keys with no backup mean lost data.** There is no operator, no account recovery, and no
   one who can read or reset a union's data. A lost passphrase with no recovery blob (`crypto.py`
   `export_recovery_blob`) and no surviving synced peer means the data is **unrecoverable** —
@@ -178,7 +180,7 @@ courtroom fails the people relying on it.
 | Threat | Mitigation | Residual risk |
 | --- | --- | --- |
 | Device seized while **locked** | ChaCha20-Poly1305 at rest under a scrypt-wrapped DEK; contents and identity are ciphertext. | Offline guessing of a weak passphrase; future cryptographic breaks; the keyfile and ciphertext are in the adversary's hands for as long as they keep the device. |
-| Device seized while **unlocked**, or passphrase **coerced** | Duress-safe open state hides case contents; passphrase rotation; recovery blob under an independent passphrase. | Not a guarantee against coercion or forensic imaging; an unlocked vault exposes plaintext; a compelled passphrase reveals everything. |
+| Device seized while **unlocked**, or passphrase **coerced** | Passphrase rotation; recovery blob under an independent passphrase. *(A duress-safe open state to hide case contents is planned, not yet implemented.)* | Not a guarantee against coercion or forensic imaging; an unlocked vault exposes plaintext; a compelled passphrase reveals everything. |
 | Relay operator or its subpoena | Messages sealed to recipient keys before leaving the sender; no-log, self-hostable relay; pure peer-to-peer option removes the party entirely. | Connection **metadata** (who/when/how-much) is visible to any relay; only peer-to-peer sync avoids it. |
 | Timestamp authority compromised, colluding, or subpoenaed | Authority sees only a SHA-256 hash; multiple authorities configurable; tokens verified offline against their certificate chain. | A single TSA could backdate or refuse; a hash leak still reveals nothing about contents; trust in *any one* TSA is reduced, not eliminated, by using several. |
 | Evidence altered after capture | SHA-256 fixity re-checked on every read; append-only hash-linked custody; RFC 3161 upper-bound timestamps, kept durable by archive re-timestamping before an authority ages out; standalone verifier. | Custody is tamper-*evident* only: a hostile keyholder can rewrite the whole local chain before any external anchor exists; detection needs a counterpart or a timestamp over the head. |
@@ -196,8 +198,9 @@ connection metadata, and shows the **timestamp authority** only a hash. It prote
 at rest, end-to-end encryption in sync, content and sequence tamper-evidence, location stripping,
 and custody-identity minimization, with no telemetry. It does **not** protect against a hostile
 keyholder rewriting the local chain before any external anchor, relay metadata, a coercing or
-forensic adversary defeating the duress state, lost keys with no backup, or an endpoint that is
-already compromised — and a timestamp proves only *when*, never *who* or *what*.
+forensic adversary with the unlocked device (the duress-safe state that would blunt this is planned,
+not yet implemented), lost keys with no backup, or an endpoint that is already compromised — and a
+timestamp proves only *when*, never *who* or *what*.
 
 **This is alpha / concept-stage software. It must not be relied on for a real legal matter yet.**
 When that changes, this document and the README will say so explicitly.

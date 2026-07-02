@@ -80,7 +80,7 @@ frozen [audit baseline](audits/threat-model-baseline.md).
 | Risk to the data subject | Mitigation | Residual risk |
 | --- | --- | --- |
 | Home address / identity leaked through a shared copy | Location stripped from shared/exported copies by default; pre-export disclosure summary | A screenshot or forwarded *original* taken outside habitable can still leak; stripping covers habitable's own outputs only |
-| Device seized | Vault encrypted at rest; passphrase rotation; duress-safe open state | A coerced passphrase or forensic imaging of an unlocked device defeats it |
+| Device seized | Vault encrypted at rest; passphrase rotation (a duress-safe open state is planned, not yet implemented) | A coerced passphrase or forensic imaging of an unlocked device defeats it |
 | Organizer re-identified from an exported record | Custody actor exported only as nothing (dropped); salted commitment in-vault | Correlation across packets or out-of-band knowledge can still re-identify; in-vault clear identity exposed if the vault itself is breached |
 | Network party (relay/TSA) sees something | Relay gets ciphertext + metadata only; TSA gets a hash only; self-host / peer-to-peer options | Relay connection **metadata** is observable; only peer-to-peer removes it |
 | Data loss harms the subject | Encrypted recovery blob; multi-peer sync replicates the case | No operator recovery: lost passphrase + no blob + no peer = permanent loss, by design |
