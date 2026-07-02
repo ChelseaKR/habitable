@@ -598,23 +598,23 @@ broadest dividend:
 
 | ID | Remediation | Sources | Sev | Effort | WS | Roadmap | Invariant check |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| R-01 | Rewrite evidence-status labels in plain, reassuring language (EN+ES): what "awaiting timestamp" means, that the photo is *already safe*, what to do next | P-01,P-06,P-16 | critical | S | B | implied | clean |
-| R-02 | Eliminate dead-end screens: every state shows a clear next action; no screen leaves a stressed user stuck | P-01,P-16 | high | S | B | implied | clean |
+| R-01 | Rewrite evidence-status labels in plain, reassuring language (EN+ES): what "awaiting timestamp" means, that the photo is *already safe*, what to do next — **✅ shipped in-app** | P-01,P-06,P-16 | critical | S | B | implied | clean |
+| R-02 | Eliminate dead-end screens: every state shows a clear next action; no screen leaves a stressed user stuck — **✅ shipped in-app** | P-01,P-16 | high | S | B | implied | clean |
 | R-03 | Storage-footprint UX on low-end devices: show case size; document sealed-original + shared-copy doubling; safe offload path | P-01 | high | M | C | net-new | clean |
 | R-04 | Plain-language Spanish pass — correct but human, not "lawyerly"; reading-level target | P-01,P-16 | high | M | B | planned | clean |
 | R-05 | Fix recurrence modeling so a relapse links to the *same* issue's timeline, not a new orphan issue | P-01 | critical | M | C | net-new | clean |
 | R-06 | Audited AT walkthrough of the *capture* moment (photo fired + sealed announced), not just static pages | P-02,P-15 | critical | M | B | planned | clean |
-| R-07 | ARIA live-region announcements for awaiting-timestamp→timestamped and all async transitions; test with AT | P-02,P-15 | high | S | B | implied | clean |
+| R-07 | ARIA live-region announcements for awaiting-timestamp→timestamped and all async transitions; test with AT — **✅ shipped in-app** | P-02,P-15 | high | S | B | implied | clean |
 | R-08 | Structure `habitable verify` output (and a summary line) so it's parseable and AT-readable | P-02 | medium | S | A | implied | clean |
 | R-09 | Confirm + **undo** on all destructive actions; tolerate imprecise pointers (verify the stated goal holds) | P-03,P-16 | high | M | B/C | implied | clean |
-| R-10 | Non-auditory equivalents (haptic/visual) for every sound cue (shutter/success) | P-03 | medium | S | B | implied | clean |
+| R-10 | Non-auditory equivalents (haptic/visual) for every sound cue (shutter/success) — **✅ shipped in-app** (success cue) | P-03 | medium | S | B | implied | clean |
 | R-11 | Recovery UX: communicate by-design unrecoverability *before* it bites; guided backup at setup | P-03,P-08 | high | M | C | planned | clean (no server) |
 | R-12 | Reduce discreet-presence leakage on shared phones: review app name/icon visibility; document limits | P-04 | high | M | C | net-new | clean |
 | R-13 | Per-case/per-user separation on a shared device so a roommate can't see another's case | P-04 | high | L | C | net-new | clean |
 | R-14 | Audit notification + recents/app-switcher surfaces for case-name leakage | P-04 | high | S | C | net-new | clean |
 | R-15 | Surface duress-mode's forensic/coercion limits *in plain language at the moment it's enabled* | P-04,P-22 | critical | S | B/C | implied | clean (honesty) |
 | R-16 | Make multiple-TSA redundancy a sane **default**, not opt-in-if-you-know | P-05 | high | M | A | planned | clean |
-| R-17 | Document the integrity meaning of a long awaiting-timestamp gap; reassure the hash anchors content at capture | P-06 | medium | S | A | implied | clean |
+| R-17 | Document the integrity meaning of a long awaiting-timestamp gap; reassure the hash anchors content at capture — **✅ shipped in-app** (status reassurance copy) | P-06 | medium | S | A | implied | clean |
 | R-18 | Data-cost transparency for sync/timestamp over cellular | P-06 | medium | S | C | net-new | clean |
 | R-19 | Wi-Fi-only / metered-connection options for sync and timestamp fetch | P-06 | medium | S | C | net-new | clean |
 | R-20 | Turn the setup guide into a workshop-ready quick-start (printable, EN/ES) | P-07,P-13 | high | M | D | planned | clean |

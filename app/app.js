@@ -239,6 +239,33 @@
     announce(msg ? t("error_prefix") + " " + msg : t("error_fallback"), "error");
   }
 
+  // Non-auditory equivalents for the "success" cue (R-10): a short haptic buzz
+  // where the device supports it, plus a brief visual pulse on the announcer.
+  // Both are supplementary — the aria-live text stays the primary signal, so a
+  // user who has neither vibration nor sight of the pulse still hears/reads the
+  // announcement. The pulse honours prefers-reduced-motion via CSS.
+  function signalSuccess() {
+    if (navigator.vibrate) {
+      try {
+        navigator.vibrate(35);
+      } catch (e) {
+        /* vibration may be blocked by policy; the visual pulse still fires */
+      }
+    }
+    if (!announcer) {
+      return;
+    }
+    announcer.classList.remove("flash-ok");
+    // Force a reflow so the animation restarts on rapid, repeated successes.
+    void announcer.offsetWidth;
+    announcer.classList.add("flash-ok");
+    window.setTimeout(function () {
+      if (announcer) {
+        announcer.classList.remove("flash-ok");
+      }
+    }, 600);
+  }
+
   // ---- API -----------------------------------------------------------------
 
   function apiGet(path) {
@@ -286,7 +313,19 @@
     setText("st-issues", formatNumber((status.issues || []).length));
     setText("st-captures", formatNumber(status.capture_count || 0));
     setText("st-timestamped", formatNumber(status.timestamped || 0));
-    setText("st-awaiting", formatNumber(status.deferred || 0));
+    var deferred = status.deferred || 0;
+    setText("st-awaiting", formatNumber(deferred));
+
+    // Plain, reassuring status copy (R-01, R-17): when items are still waiting
+    // for a trusted timestamp, explain that the photo is already sealed and the
+    // wait does not weaken the evidence; when nothing is pending, confirm there
+    // is nothing left to do rather than leaving the reader unsure.
+    var awaitingHelp = document.getElementById("st-awaiting-help");
+    if (awaitingHelp) {
+      awaitingHelp.textContent = deferred > 0
+        ? t("status_awaiting_help")
+        : t("status_timestamped_help");
+    }
 
     var custody = document.getElementById("st-custody");
     if (custody) {
@@ -519,6 +558,7 @@
           t("capture_timestamp_label") + ": " + stamp,
           "ok"
         );
+        signalSuccess();
         return refreshStatus();
       }, announceError);
     });
@@ -580,6 +620,9 @@
           res.verified ? t("msg_export_done_ok") : t("msg_export_done_warn"),
           res.verified ? "ok" : "error"
         );
+        if (res.verified) {
+          signalSuccess();
+        }
         return refreshStatus();
       }, announceError);
     });
@@ -665,6 +708,7 @@
       }).then(function (res) {
         var n = (res && typeof res.resolved === "number") ? res.resolved : 0;
         announce(fm("msg_resolved", { count: n }), "ok");
+        signalSuccess();
         return refreshStatus();
       }, announceError);
     });

@@ -138,6 +138,18 @@ h2 { font-size: 1.3rem; margin: 0; }
   color: var(--ok);
 }
 
+/* Non-auditory success cue (R-10): a brief visual pulse on the announcer,
+   paired with a short haptic buzz in JS where the device supports it. The
+   announced aria-live text remains the primary signal; this is supplementary. */
+@keyframes flash-ok {
+  0%   { box-shadow: 0 0 0 0 rgba(28, 90, 46, 0.5); }
+  100% { box-shadow: 0 0 0 0.65rem rgba(28, 90, 46, 0); }
+}
+.announcer.flash-ok { animation: flash-ok 0.6s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .announcer.flash-ok { animation: none; }
+}
+
 /* --- Cards --- */
 .card {
   background: var(--surface);
@@ -188,6 +200,14 @@ h2 { font-size: 1.3rem; margin: 0; }
 .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.95rem; word-break: break-all; }
 .custody-ok { color: var(--ok); }
 .custody-bad { color: var(--bad); }
+
+/* Plain-language reassurance under the awaiting-timestamp count (R-01, R-17). */
+.status-help {
+  color: var(--ink-soft);
+  margin: 0.75rem 0 0;
+  max-width: 44rem;
+  font-size: 0.98rem;
+}
 
 /* --- Issues list --- */
 .issues-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; }
