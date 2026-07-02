@@ -94,6 +94,10 @@ Covered by the existing structural a11y gate (`tests/test_app_accessibility.py`,
 `scripts/check_i18n_parity.py`), and the browser axe/keyboard scans. **Left (R-41):** a full
 reading-level pass and in-app jargon glossary remain deferred.
 
+| ID | Item | Deliverable |
+| --- | --- | --- |
+| E-09 | First-class **sneakernet sync** (USB/SD, no relay, no data plan) | New CLI `sync-export` / `sync-import` reuse the existing sealed CRDT delta (`export_message`/`import_messages`) as a file workflow: write a `.hsync` sealed to one peer, then merge one or more from a stick (a folder glob works). Import is not silent (reports merges/captures, mirroring `sync`) and errors cleanly on a delta sealed to someone else or a forged blob (`SyncError`). `suggested_delta_filename` names files `habitable-delta-<peerfp8>.hsync`. Covered by `tests/test_cli_sync_file.py`; documented in `docs/sneakernet-sync.md` (linked from README + setup guide). |
+
 ## Spec written, code deferred (📝)
 
 The canonical text/contract now exists; wiring it into the app needs further work.
@@ -117,7 +121,7 @@ App/library/UX work, not safe to ship unvalidated here. Grouped by the persona s
 - **Recipient verification & packet:** R-25→**E-15** (zero-install recipient verifier).
 - **Jurisdiction/recipient rendering:** R-28, E-16, E-17.
 - **Localization/RTL code:** R-48.
-- **Platform/interop/relay code:** E-07, E-08, E-09, E-22, E-23.
+- **Platform/interop/relay code:** E-07, E-08, E-22, E-23. (E-09 sneakernet sync now shipped — see the code table above.)
 - **Capture-time alt text:** E-03.
 - **Calm/assisted mode:** R-09-adjacent, E-04.
 - **Dev ergonomics:** R-43 (devcontainer — buildable but unverifiable here).

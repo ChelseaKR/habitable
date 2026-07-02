@@ -48,6 +48,7 @@ __all__ = [
     "Transport",
     "export_message",
     "import_messages",
+    "suggested_delta_filename",
     "sync",
 ]
 
@@ -122,6 +123,18 @@ def export_message(
         "sig": base64.b64encode(signature).decode("ascii"),
     }
     return seal_to(recipient, canonical_json(envelope))
+
+
+def suggested_delta_filename(recipient: PublicIdentity) -> str:
+    """A stable, filesystem-safe name for a sneakernet delta sealed to *recipient*.
+
+    ``habitable-delta-<peerfp8>.hsync`` — ``peerfp8`` is the first eight hex digits
+    of the peer's fingerprint, enough to tell two sticks apart at a glance. The name
+    leaks nothing: the file is end-to-end encrypted and sealed to the peer's key
+    regardless of what it is called.
+    """
+    peerfp8 = recipient.fingerprint.replace("-", "")[:8]
+    return f"habitable-delta-{peerfp8}.hsync"
 
 
 def import_messages(

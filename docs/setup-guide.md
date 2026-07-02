@@ -91,6 +91,18 @@ $ uv run habitable sync --vault ./case-4B --peer <their-public-id> --channel 4B-
 Both sides end up with the same case, and no edits are lost. The relay can read
 nothing.
 
+**No network at all?** Hand the case over on a USB stick or SD card:
+
+```console
+# Write an encrypted delta sealed to your peer onto the stick:
+$ uv run habitable sync-export --vault ./case-4B --peer <their-public-id> --out /Volumes/USB/delta.hsync
+# The recipient merges everything on the stick (a folder glob works too):
+$ uv run habitable sync-import --vault ./case-4B /Volumes/USB/*.hsync
+```
+
+No relay, no data plan; a lost stick leaks nothing. See
+[`docs/sneakernet-sync.md`](sneakernet-sync.md) for the full walkthrough.
+
 ## 5. Export and verify a packet (15 min)
 
 ```console

@@ -105,7 +105,8 @@ network and no real tenant data. From there: `uv run habitable --help`.
 leaves the device), but a static **[landing page + live sample packet](https://chelseakr.github.io/habitable/)**
 shows what it produces. A safe phone package is **not shipped yet**; see the honest
 [`docs/mobile.md`](docs/mobile.md) support boundary. To run the optional sync relay, see
-[`docs/relay-deploy.md`](docs/relay-deploy.md).
+[`docs/relay-deploy.md`](docs/relay-deploy.md); to sync a case with no network at all — an
+encrypted delta on a USB stick or SD card — see [`docs/sneakernet-sync.md`](docs/sneakernet-sync.md).
 
 ## Screenshots
 
