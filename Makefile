@@ -25,8 +25,12 @@ type: ## Strict type-check
 test: ## Run the test suite (excludes network integration tests)
 	uv run pytest -m "not integration"
 
-cov: ## Run tests with coverage (enforces a floor; excludes network integration tests)
+cov: ## Run tests with coverage (85% floor overall, 95% on the evidence-integrity core)
 	uv run pytest -m "not integration" --cov=habitable --cov-report=term-missing --cov-report=xml --cov-fail-under=85
+	# Per-module floor (CODE-QUALITY-STANDARD, security/crypto-critical paths): the
+	# crypto/vault/tsa/verify core must hold >=95% branch coverage, above the 85%
+	# baseline. Scoped re-report over the .coverage data the pytest run just wrote.
+	uv run coverage report --include="src/habitable/crypto.py,src/habitable/vault.py,src/habitable/tsa.py,src/habitable/verify.py" --fail-under=95
 
 integration: ## Run the network integration tests (real public TSAs)
 	uv run pytest -m integration -v

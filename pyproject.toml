@@ -124,6 +124,11 @@ branch = true
 source = ["habitable"]
 
 [tool.coverage.report]
+# Baseline floor: 85% branch coverage (--cov-fail-under in `make cov`). The
+# security/crypto-critical modules — src/habitable/{crypto,vault,tsa,verify}.py —
+# carry a stricter per-module 95% floor, enforced by the scoped
+# `coverage report --include=… --fail-under=95` step in `make cov` (and CI via
+# `make verify`); see CODE-QUALITY-STANDARD "per-module floors".
 show_missing = true
 skip_covered = false
 exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]

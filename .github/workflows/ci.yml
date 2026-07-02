@@ -32,7 +32,10 @@ jobs:
         run: uv sync --frozen
       - name: Show interpreter
         run: uv run python -c "import sys; print('Python', sys.version)"
-      - name: Run the full gate (ruff + mypy --strict + pytest + coverage)
+      # `make verify` includes the coverage gates: 85% overall plus the scoped
+      # 95% per-module floor on the evidence-integrity core (crypto/vault/tsa/
+      # verify.py) — see the `cov` target and CODE-QUALITY-STANDARD.
+      - name: Run the full gate (ruff + mypy --strict + pytest + coverage floors 85%/95%)
         run: make verify
       - name: Upload coverage
         if: always()
