@@ -22,6 +22,7 @@ from .evidence import CustodyAction
 from .exif import MediaMetadata, read_metadata
 from .media import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS
 from .media import probe_metadata as probe_media_metadata
+from .obslog import log_event
 from .tsa import TimestampAuthority, TimestampInfo, TimestampToken, retimestamp, verify_token
 from .vault import Vault
 
@@ -147,6 +148,15 @@ def capture(
         transcript=transcript,
     )
     vault.save()
+    # Metadata-only trace (no-op unless logging is opted in): media_type is a MIME
+    # constant, the rest are booleans/counts. No filename, path, hash, or bytes.
+    log_event(
+        "capture",
+        media_type=resolved_media_type,
+        timestamped=info is not None,
+        had_location=metadata.has_location,
+        extra_authorities=len(extra_authorities),
+    )
     return CaptureResult(
         capture_id=capture_id,
         content_hash=digest,
@@ -191,6 +201,7 @@ def resolve_deferred(
             )
         )
     vault.save()
+    log_event("resolve_deferred", resolved=len(results))
     return results
 
 
@@ -229,6 +240,7 @@ def retimestamp_all(
         _archive_against_extras(vault, capture_record.capture_id, archive, actor, extra_tsas)
         count += 1
     vault.save()
+    log_event("retimestamp", archived=count)
     return count
 
 
