@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Sequence
 
 from hypothesis import given, settings
@@ -80,6 +81,38 @@ class TestConvergence:
         assert ids == {"i1", "i2"}
         i1 = next(i for i in merged.issues() if i.issue_id == "i1")
         assert i1.severity == "high"  # uncontested write from B survives
+
+
+class TestOpaqueIds:
+    def test_same_salt_and_hlc_yield_the_same_id(self) -> None:
+        doc = _doc("A", 1_000_000)
+        doc.ensure_case_salt()
+        hlc = "000000000000001.000000.node-a"
+        # Deterministic per (salt, hlc): the same event always mints the same id.
+        assert doc.opaque_id("issue", hlc) == doc.opaque_id("issue", hlc)
+        # The prefix namespaces ids so an issue and a capture never collide.
+        assert doc.opaque_id("issue", hlc) != doc.opaque_id("cap", hlc)
+
+    def test_id_is_stable_across_devices_sharing_the_case_salt(self) -> None:
+        doc = _doc("A", 1_000_000)
+        doc.ensure_case_salt()
+        hlc = "000000000000009.000004.node-a"
+        # A peer that has synced the case (and thus the salt in meta) mints the
+        # identical id for the same event, even on a different node/clock.
+        peer = CaseDocument.from_state(
+            doc.to_state(), HybridLogicalClock("B", time_source=_counter_clock(5_000_000))
+        )
+        assert peer.opaque_id("cap", hlc) == doc.opaque_id("cap", hlc)
+
+    def test_minted_ids_do_not_encode_wall_clock_or_node_id(self) -> None:
+        doc = _doc("secret-node-id", 1_767_312_000_000)
+        issue = doc.add_issue(category="mold")
+        entry = doc.add_timeline_entry(issue, "note", "leak")
+        for ident in (issue, entry):
+            assert ident.split("-", 1)[0] in {"issue", "tl"}
+            assert "1767312000000" not in ident  # the device wall clock
+            assert "secret-node-id" not in ident  # the HLC node id
+            assert re.search(r"\d{15}\.\d{6}\.", ident) is None  # the raw HLC shape
 
 
 _ISSUE = st.sampled_from(["i1", "i2", "i3"])

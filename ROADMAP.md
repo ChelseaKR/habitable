@@ -117,6 +117,12 @@ The courtroom rests on this; it gets the most scrutiny.
 - *Shipped:* SHA-256 fixity, RFC 3161 timestamps (local issuer + HTTP client + offline dev
   TSA), hash-linked custody with salted actor commitments, the standalone verifier,
   SHA-pinned CI, CodeQL, `pip-audit`, Dependabot.
+- *Shipped (FIX-10):* **No wall-clock/node metadata in exported identifiers.** Every id in a
+  packet (issue, capture, timeline entry, custody item) and the exported `hlc` fields are now
+  opaque, per-case-salted digests that encode neither the device wall clock nor the HLC node id;
+  the hybrid logical clock stays internal for CRDT ordering/merge. Bundle format bumped to
+  `packet_version` 2 (v1 packets still verify, guarded by the golden corpus); a `test_guards`
+  invariant asserts no exported field reveals the wall-clock ms or node id.
 - **Continuous real public-TSA integration.** *Objective:* prove tokens from real
   authorities (e.g. FreeTSA, DigiCert) verify end to end, not just the local issuer.
   *Exit:* a scheduled, network-gated CI job stamps and verifies against ≥2 public TSAs and
