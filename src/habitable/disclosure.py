@@ -35,6 +35,7 @@ class ProofStatement:
     privacy_heading: str
     privacy_stripped: str
     privacy_originals_warning: str
+    awaiting_timestamp_note: str
 
 
 _STATEMENTS: dict[str, ProofStatement] = {
@@ -72,6 +73,12 @@ _STATEMENTS: dict[str, ProofStatement] = {
             "This packet also embeds the sealed original files, which retain their full "
             "metadata (including any location). Handle and file accordingly."
         ),
+        awaiting_timestamp_note=(
+            "{awaiting} of {total} media item(s) are awaiting a trusted timestamp. Their "
+            "content hashes still anchor them at capture (the record has not been altered), "
+            "but no independent authority has yet fixed an upper-bound date. Re-export after "
+            "syncing to attach the timestamps."
+        ),
     ),
     "es": ProofStatement(
         heading="Lo que este expediente demuestra y lo que no",
@@ -107,6 +114,13 @@ _STATEMENTS: dict[str, ProofStatement] = {
             "Este expediente también incluye los archivos originales sellados, que "
             "conservan todos sus metadatos (incluida cualquier ubicación). Manéjelo y "
             "preséntelo en consecuencia."
+        ),
+        awaiting_timestamp_note=(
+            "{awaiting} de {total} elemento(s) multimedia están a la espera de un sello de "
+            "tiempo confiable. Sus hashes de contenido aún los anclan en el momento de la "
+            "captura (el registro no se ha modificado), pero ninguna autoridad independiente "
+            "ha fijado todavía una fecha como límite máximo. Vuelva a exportar tras "
+            "sincronizar para adjuntar los sellos de tiempo."
         ),
     ),
 }
