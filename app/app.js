@@ -435,6 +435,23 @@
     }
     li.appendChild(counts);
 
+    var actions = document.createElement("div");
+    actions.className = "issue-actions";
+    var recurBtn = document.createElement("button");
+    recurBtn.type = "button";
+    recurBtn.className = "btn btn-quiet";
+    recurBtn.textContent = t("issue_recur");
+    recurBtn.addEventListener("click", function () {
+      withBusy(recurBtn, function () {
+        return apiPost("/api/issues/" + encodeURIComponent(issue.issue_id) + "/recur", {});
+      }).then(function () {
+        announce(t("msg_recur_added"), "ok");
+        return refreshStatus();
+      }, announceError);
+    });
+    actions.appendChild(recurBtn);
+    li.appendChild(actions);
+
     return li;
   }
 

@@ -47,6 +47,7 @@
   "issue_timeline_count": "{count, plural, one {# timeline entry} other {# timeline entries}}",
   "issue_all": "All issues",
   "issue_none_available": "No issues yet — add one in 'Add an issue' first",
+  "issue_recur": "This happened again",
 
   "strength_label": "Record strength",
   "strength_level_minimal": "Minimal",
@@ -109,6 +110,7 @@
   "msg_issue_added": "Issue added.",
   "msg_capture_done": "Evidence captured.",
   "msg_timeline_added": "Timeline entry added.",
+  "msg_recur_added": "Recurrence recorded; the issue was reopened.",
   "msg_export_done_ok": "Packet exported and verified intact.",
   "msg_export_done_warn": "Packet exported, but verification did not pass.",
   "msg_export_done_awaiting": "{count, plural, one {Packet exported. # item is still awaiting a trusted timestamp, so the packet does not verify as complete yet.} other {Packet exported. # items are still awaiting a trusted timestamp, so the packet does not verify as complete yet.}}",

@@ -47,6 +47,7 @@
   "issue_timeline_count": "{count, plural, one {# entrada de cronología} other {# entradas de cronología}}",
   "issue_all": "Todos los problemas",
   "issue_none_available": "Aún no hay problemas: agrega uno en 'Agregar un problema' primero",
+  "issue_recur": "Volvió a pasar",
 
   "strength_label": "Solidez del registro",
   "strength_level_minimal": "Mínima",
@@ -109,6 +110,7 @@
   "msg_issue_added": "Problema agregado.",
   "msg_capture_done": "Evidencia capturada.",
   "msg_timeline_added": "Entrada de cronología agregada.",
+  "msg_recur_added": "Recurrencia registrada; el problema se reabrió.",
   "msg_export_done_ok": "Paquete exportado y verificado como íntegro.",
   "msg_export_done_warn": "Paquete exportado, pero la verificación no fue satisfactoria.",
   "msg_export_done_awaiting": "{count, plural, one {Paquete exportado. # elemento sigue pendiente de un sello de tiempo confiable, así que el paquete aún no se verifica como completo.} other {Paquete exportado. # elementos siguen pendientes de un sello de tiempo confiable, así que el paquete aún no se verifica como completo.}}",

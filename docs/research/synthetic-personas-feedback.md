@@ -616,7 +616,7 @@ broadest dividend:
 | R-02 | Eliminate dead-end screens: every state shows a clear next action; no screen leaves a stressed user stuck — **✅ shipped in-app** | P-01,P-16 | high | S | B | implied | clean |
 | R-03 | ✅ **Done.** Storage-footprint UX on low-end devices: show case size; document sealed-original + shared-copy doubling; safe offload path (`Vault.storage_footprint`, `status` storage line, app + docs) | P-01 | high | M | C | done | clean |
 | R-04 | Plain-language Spanish pass — correct but human, not "lawyerly"; reading-level target | P-01,P-16 | high | M | B | planned | clean |
-| R-05 | Fix recurrence modeling so a relapse links to the *same* issue's timeline, not a new orphan issue | P-01 | critical | M | C | net-new | clean |
+| R-05 | Fix recurrence modeling so a relapse links to the *same* issue's timeline, not a new orphan issue — ✅ **shipped 2026-07** (`record_recurrence`; `recur` CLI/API; in-app "This happened again") | P-01 | critical | M | C | net-new | clean |
 | R-06 | Audited AT walkthrough of the *capture* moment (photo fired + sealed announced), not just static pages | P-02,P-15 | critical | M | B | planned | clean |
 | R-07 | ARIA live-region announcements for awaiting-timestamp→timestamped and all async transitions; test with AT — **✅ shipped in-app** | P-02,P-15 | high | S | B | implied | clean |
 | R-08 | Structure `habitable verify` output (and a summary line) so it's parseable and AT-readable | P-02 | medium | S | A | implied | clean |
@@ -670,7 +670,7 @@ broadest dividend:
 
 | ID | Expansion | Sources | Value | Effort | WS | Roadmap | Invariant check |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| E-01 | "This happened again" — link a new capture to an existing issue as a recurrence on one timeline | P-01 | high | M | C | net-new | clean |
+| E-01 | "This happened again" — link a new capture to an existing issue as a recurrence on one timeline — ✅ **shipped 2026-07** (recurrence event on the issue's own timeline + reopen; in-app button, `recur` CLI/API) | P-01 | high | M | C | net-new | clean |
 | E-02 | Picture-based, plain-language in-app help: "what each status means" | P-01,P-16 | high | S | B | net-new | clean |
 | E-03 | Alt-text authoring at capture so tenant-produced packets are accessible downstream | P-02,P-15 | high | M | B | net-new | clean |
 | E-04 | "Assisted / calm mode": large-type, high-contrast, one-task-at-a-time capture for stressed/low-vision/low-dexterity users | P-03,P-16 | high | M | B | net-new | clean |

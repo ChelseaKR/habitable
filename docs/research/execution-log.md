@@ -73,6 +73,7 @@
 | R-35 | Minimal-disclosure export scoping, defensible against over-broad discovery | Each packet now self-documents its scope: `scope_statement()` in `disclosure.py` (single localized EN/ES source) feeds a `scope.statement` + `scope.exclusions` object in the signed `bundle.json` (schema updated) and the English `disclosures` list, and renders — localized — in `packet.html`/`packet.pdf`. New standalone doc `docs/legal/minimal-disclosure.md` (what a packet contains/omits, why minimal, responding to over-broad discovery), linked from `docs/legal/README.md` and the *Discovery caution* section of `foundation-guidance.md`. Issue-scoped exports already excluded other issues' captures and timeline; now asserted in tests. Covered by `tests/test_packet_verify.py`. |
 | BUG-01 | Verifier-subset cross-Python portability | Named-tuple `except` form + regression guard test (see above). |
 | R-04 / R-41 | Plain-language & cognitive review of the in-app copy + setup guide | Grade-6–8 plain-language pass across `app/i18n/en.json`, `app/i18n/es.json`, and `docs/setup-guide.md`: jargon ("Device fingerprint" → "Device ID", "Chain of custody" → "Evidence trail", "Awaiting timestamp" → "Waiting for timestamp", "Content hash" → "Content fingerprint") replaced or glossed with in-context help wired via `aria-describedby`; the Spanish de-lawyered and its timestamp term (`sello de tiempo`) partially made consistent. Honest-limits strings kept at full strength; EN/ES key + placeholder + plural-category parity held (`tests/test_app_i18n.py`, `scripts/check_i18n_parity.py`). Dated review record: `docs/audits/plain-language-review.md`. **Left:** native-speaker ES review, a stressed-user cognitive walk-through, and finishing the `resolve_*` terminology fix alongside its guard test. |
+| R-05 / E-01 | Recurrence modeling — a relapse attaches to the **same** issue's timeline and reopens the issue, instead of forcing a new orphan issue | New `CaseDocument.record_recurrence` (appends a `kind="recurrence"` timeline entry and sets the LWW status register back to `"open"` with a fresh clock stamp — no schema/version change, merge semantics untouched); `recur` CLI subcommand; `POST /api/issues/<id>/recur`; in-app "This happened again" button on each issue (EN/ES strings). Covered by `tests/test_model.py`, `tests/test_appserver.py`, `tests/test_cli_recur.py`. |
 
 ## Done (✅) — in-app status legibility & a11y copy (third pass)
 
@@ -113,7 +114,7 @@ The canonical text/contract now exists; wiring it into the app needs further wor
 App/library/UX work, not safe to ship unvalidated here. Grouped by the persona study's themes.
 
 - **Status legibility & a11y copy:** R-01, R-02, R-07, R-10, R-17, and R-41 are now done in-app (see the ✅ sections above).
-- **Tenant capture/recurrence/storage:** R-03, R-05, R-18, R-19, E-01, E-02.
+- **Tenant capture/recurrence/storage:** R-03, R-18, R-19, E-02. (R-05/E-01 recurrence now shipped — see the code-validated table above.)
 - **Safety / shared-device / duress:** R-12, R-13, R-14, R-15, R-49, E-06.
 - **Recovery & key lifecycle UX:** R-09, R-11, R-24, E-05, E-13.
 - **Defaults & integrity surfacing:** R-22.
@@ -157,5 +158,6 @@ alternatives documented there.
    PEP 695 `type` statements, so 3.9–3.11 cannot parse it), catching any 3.14-only syntax
    before merge. This is the CI counterpart to the `test_verifier_subset_avoids_py314_only_except_syntax`
    guard test.
-3. Validate the high-value ⛔ bets (E-15 recipient verifier, E-01/R-05 recurrence, E-19 in a real
-   forum) with real pilot/legal partners before building.
+3. Validate the high-value bets with real pilot/legal partners: E-15 (recipient verifier) and
+   E-19 (declarations) before building; E-01/R-05 recurrence is now built, so validate that its
+   timeline/reopen model matches courtroom reality in a real forum.

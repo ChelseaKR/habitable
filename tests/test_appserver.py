@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -216,6 +216,30 @@ def test_export_carries_honest_proof_statement(app: str, make_jpeg: Callable[...
     # The honest limits are present: an upper-bound timestamp and "not legal advice".
     assert any("upper bound" in line for line in not_proves)
     assert any("not legal advice" in line.lower() for line in not_proves)
+
+
+def test_recur_reopens_issue_and_logs_on_its_timeline(app: str) -> None:
+    status, issue = _call(app, "POST", "/api/issues", {"category": "mold", "title": "Mold"})
+    assert status == 200
+    issue_id = issue["issue_id"]
+
+    status, recur = _call(app, "POST", f"/api/issues/{issue_id}/recur", {"text": "it came back"})
+    assert status == 200
+    assert recur["entry_id"] and recur["status"] == "open"
+
+    status, state = _call(app, "GET", "/api/status")
+    assert status == 200
+    issues = cast("list[dict[str, Any]]", state["issues"])
+    issue_state = next(i for i in issues if i["issue_id"] == issue_id)
+    assert issue_state["status"] == "open"
+    timeline = cast("list[dict[str, Any]]", issue_state["timeline"])
+    recurrence = next(e for e in timeline if e["kind"] == "recurrence")
+    assert recurrence["text"] == "it came back"
+
+
+def test_recur_unknown_issue_is_4xx(app: str) -> None:
+    status, payload = _call(app, "POST", "/api/issues/does-not-exist/recur", {})
+    assert 400 <= status < 500 and "error" in payload
 
 
 def test_missing_field_is_400(app: str) -> None:

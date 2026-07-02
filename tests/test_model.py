@@ -7,10 +7,12 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Sequence
 
+import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from habitable.clock import HybridLogicalClock
+from habitable.errors import HabitableError
 from habitable.model import CaseDocument, GrowLog, LWWRegister, ORSet
 
 Op = tuple[str, ...]
@@ -113,6 +115,53 @@ class TestOpaqueIds:
             assert "1767312000000" not in ident  # the device wall clock
             assert "secret-node-id" not in ident  # the HLC node id
             assert re.search(r"\d{15}\.\d{6}\.", ident) is None  # the raw HLC shape
+
+
+class TestRecurrence:
+    def _status(self, doc: CaseDocument, issue_id: str) -> str:
+        return next(i for i in doc.issues() if i.issue_id == issue_id).status
+
+    def test_records_recurrence_on_same_issue_and_reopens(self) -> None:
+        doc = _doc("A", 1_000_000)
+        doc.add_issue(category="mold", issue_id="i1")
+        doc.update_issue("i1", status="resolved")
+        assert self._status(doc, "i1") == "resolved"
+
+        entry_id = doc.record_recurrence("i1", "mold is back in the same corner")
+
+        recurrences = [e for e in doc.timeline("i1") if e.kind == "recurrence"]
+        assert len(recurrences) == 1
+        assert recurrences[0].entry_id == entry_id
+        assert recurrences[0].issue_id == "i1"
+        assert recurrences[0].text == "mold is back in the same corner"
+        # No orphan issue was created and the same issue is reopened.
+        assert {i.issue_id for i in doc.issues()} == {"i1"}
+        assert self._status(doc, "i1") == "open"
+
+    def test_unknown_issue_raises(self) -> None:
+        doc = _doc("A", 1_000_000)
+        with pytest.raises(HabitableError):
+            doc.record_recurrence("nope")
+
+    def test_survives_merge_round_trip(self) -> None:
+        doc = _doc("A", 1_000_000)
+        doc.add_issue(category="heat", issue_id="i1")
+        doc.update_issue("i1", status="resolved")
+        entry_id = doc.record_recurrence("i1", "no heat again")
+
+        # to_state/from_state must preserve the recurrence and the reopened status.
+        rebuilt = CaseDocument.from_state(
+            doc.to_state(), HybridLogicalClock("R", time_source=_counter_clock(9_000_000))
+        )
+        rebuilt_recurrences = {e.entry_id for e in rebuilt.timeline("i1") if e.kind == "recurrence"}
+        assert entry_id in rebuilt_recurrences
+        assert self._status(rebuilt, "i1") == "open"
+
+        # Merging that state into a fresh peer converges to the reopened issue too.
+        peer = _doc("P", 2_000_000)
+        peer.merge(doc.to_state())
+        assert {e.entry_id for e in peer.timeline("i1") if e.kind == "recurrence"} == {entry_id}
+        assert self._status(peer, "i1") == "open"
 
 
 _ISSUE = st.sampled_from(["i1", "i2", "i3"])

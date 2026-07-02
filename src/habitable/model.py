@@ -322,6 +322,22 @@ class CaseDocument:
         )
         return entry_id
 
+    def record_recurrence(self, issue_id: str, text: str = "") -> str:
+        """Log a relapse on an existing issue's own timeline and reopen it.
+
+        A recurrence belongs to the *same* issue's history — not a fresh orphan
+        issue. This appends a ``kind="recurrence"`` timeline entry and sets the
+        issue's status register back to ``"open"`` with a new clock stamp.
+        Both writes flow through the existing CRDT shapes (a grow-only timeline
+        log and a last-writer-wins status register), so merge semantics are
+        untouched. Returns the new timeline entry's id.
+        """
+        if issue_id not in self._issues.elements():
+            raise HabitableError(f"unknown issue: {issue_id!r}")
+        entry_id = self.add_timeline_entry(issue_id, "recurrence", text)
+        self.update_issue(issue_id, status="open")
+        return entry_id
+
     def add_capture(
         self,
         *,

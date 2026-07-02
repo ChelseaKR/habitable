@@ -161,6 +161,14 @@ def _build_parser() -> argparse.ArgumentParser:
     p_tl.add_argument("--text", required=True)
     p_tl.set_defaults(func=_cmd_timeline)
 
+    p_recur = sub.add_parser(
+        "recur", help="record a relapse on an existing issue's timeline and reopen it"
+    )
+    add_vault(p_recur)
+    p_recur.add_argument("--issue", required=True)
+    p_recur.add_argument("--text", default="", help="optional note describing the recurrence")
+    p_recur.set_defaults(func=_cmd_recur)
+
     p_status = sub.add_parser("status", help="show the state of the case")
     add_vault(p_status)
     p_status.add_argument(
@@ -571,6 +579,14 @@ def _cmd_timeline(args: argparse.Namespace) -> int:
     entry_id = vault.document.add_timeline_entry(args.issue, args.kind, args.text)
     vault.save()
     print(f"habitable: added timeline entry {entry_id} ({args.kind})")
+    return 0
+
+
+def _cmd_recur(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    entry_id = vault.document.record_recurrence(args.issue, args.text)
+    vault.save()
+    print(f"habitable: recorded recurrence {entry_id}; issue {args.issue} reopened")
     return 0
 
 

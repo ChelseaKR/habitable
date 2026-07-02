@@ -176,6 +176,11 @@ class AppServer:
         self.vault.save()
         return {"entry_id": entry_id}
 
+    def recur(self, issue_id: str, body: dict[str, object]) -> dict[str, object]:
+        entry_id = self.vault.document.record_recurrence(issue_id, _opt_str(body, "text"))
+        self.vault.save()
+        return {"entry_id": entry_id, "status": "open"}
+
     def capture(self, body: dict[str, object]) -> dict[str, object]:
         issue_id = _req_str(body, "issue_id")
         filename = _opt_str(body, "filename") or "upload.jpg"
@@ -275,6 +280,7 @@ _POST_ROUTES: dict[str, Callable[[AppServer, dict[str, object]], dict[str, objec
     "/api/export": lambda app, body: app.export(body),
 }
 _TIMELINE_RE = re.compile(r"^/api/issues/([A-Za-z0-9_.-]+)/timeline$")
+_RECURRENCE_RE = re.compile(r"^/api/issues/([A-Za-z0-9_.-]+)/recur$")
 
 
 class _AppHTTPServer(ThreadingHTTPServer):
@@ -332,6 +338,10 @@ class _AppRequestHandler(BaseHTTPRequestHandler):
             timeline = _TIMELINE_RE.match(self.path)
             if timeline is not None:
                 self._guarded(lambda: app.add_timeline(timeline.group(1), body))
+                return
+            recur = _RECURRENCE_RE.match(self.path)
+            if recur is not None:
+                self._guarded(lambda: app.recur(recur.group(1), body))
                 return
             route = _POST_ROUTES.get(self.path)
             if route is None:
