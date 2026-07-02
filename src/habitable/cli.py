@@ -25,6 +25,7 @@ from .capture import capture, resolve_deferred, retimestamp_all
 from .config import TSAConfig
 from .crypto import PublicIdentity
 from .errors import HabitableError
+from .i18n import cli_text, format_datetime, resolve_locale
 from .packet import build_packet
 from .sync import LocalDirTransport, RelayClient, Transport, sync
 from .tsa import DevTSA, Rfc3161HttpTSA, TimestampAuthority
@@ -230,16 +231,26 @@ def _cmd_capture(args: argparse.Namespace) -> int:
     tsa = None if args.no_timestamp else _tsa_for(vault, dev=args.dev_tsa)
     extra_tsas = [] if args.no_timestamp else _extra_tsas_for(vault, dev=args.dev_tsa)
     result = capture(vault, args.media, issue_id=args.issue, tsa=tsa, extra_tsas=extra_tsas)
+    locale = resolve_locale(vault.config.language)
     status = (
-        f"timestamped ({result.timestamp_info.gen_time})"
+        cli_text(
+            "capture_timestamped",
+            locale,
+            when=format_datetime(result.timestamp_info.gen_time, locale),
+        )
         if result.timestamped and result.timestamp_info
-        else "awaiting timestamp (queued)"
+        else cli_text("capture_awaiting", locale)
     )
     print(f"habitable: captured {result.capture_id}")
     print(f"           content hash {result.content_hash[:16]}… · {status}")
     if result.extra_authorities:
-        also = ", ".join(result.extra_authorities)
-        print(f"           also timestamped by {len(result.extra_authorities)} more: {also}")
+        also = cli_text(
+            "capture_also_timestamped",
+            locale,
+            count=len(result.extra_authorities),
+            names=", ".join(result.extra_authorities),
+        )
+        print(f"           {also}")
     if result.had_location:
         print("           note: original retains location; shared copies will strip it")
     return 0
@@ -255,24 +266,43 @@ def _cmd_timeline(args: argparse.Namespace) -> int:
 
 def _cmd_status(args: argparse.Namespace) -> int:
     vault = _open(args)
+    locale = resolve_locale(vault.config.language)
     unit = vault.document.get_meta("unit") or vault.document.case_id
     issues = vault.document.issues()
     captures = vault.document.captures()
     timeline = vault.document.timeline()
-    print(
-        f"habitable: unit {unit} — {len(issues)} issue(s), {len(captures)} capture(s), "
-        f"{len(timeline)} timeline entr{'y' if len(timeline) == 1 else 'ies'}"
+    summary = cli_text(
+        "status_summary",
+        locale,
+        unit=unit,
+        issues=len(issues),
+        captures=len(captures),
+        timeline=len(timeline),
     )
+    print(f"habitable: {summary}")
     for issue in issues:
         n = len(vault.document.captures(issue.issue_id))
-        print(
-            f"  · {issue.issue_id}: {issue.title or issue.category} "
-            f"[{issue.status}] — {n} capture(s)"
+        line = cli_text(
+            "status_issue_line",
+            locale,
+            issue_id=issue.issue_id,
+            title=issue.title or issue.category,
+            status=issue.status,
+            captures=n,
         )
+        print(f"  · {line}")
     timestamped = sum(1 for c in captures if vault.get_token(c.capture_id) is not None)
-    print(f"  timestamps: {timestamped}/{len(captures)} present; {len(vault.deferred())} awaiting")
+    stamps = cli_text(
+        "status_timestamps",
+        locale,
+        timestamped=timestamped,
+        total=len(captures),
+        awaiting=len(vault.deferred()),
+    )
+    print(f"  {stamps}")
     custody = vault.custody.verify()
-    print(f"  chain of custody: {'intact' if custody.ok else 'BROKEN'} ({custody.length} entries)")
+    verdict = cli_text("custody_intact" if custody.ok else "custody_broken", locale)
+    print(f"  {cli_text('status_custody', locale, verdict=verdict, links=custody.length)}")
     return 0
 
 
@@ -282,7 +312,8 @@ def _cmd_resolve(args: argparse.Namespace) -> int:
     if tsa is None:
         raise HabitableError("no timestamp authority configured")
     results = resolve_deferred(vault, tsa)
-    print(f"habitable: timestamped {len(results)} previously-queued item(s)")
+    locale = resolve_locale(vault.config.language)
+    print(f"habitable: {cli_text('resolve_done', locale, count=len(results))}")
     return 0
 
 
@@ -292,7 +323,8 @@ def _cmd_retimestamp(args: argparse.Namespace) -> int:
     if tsa is None:
         raise HabitableError("no timestamp authority configured")
     count = retimestamp_all(vault, tsa)
-    print(f"habitable: archive-timestamped {count} item(s)")
+    locale = resolve_locale(vault.config.language)
+    print(f"habitable: {cli_text('retimestamp_done', locale, count=count)}")
     return 0
 
 
@@ -306,17 +338,26 @@ def _cmd_export(args: argparse.Namespace) -> int:
         include_originals=args.include_originals,
         make_pdf=not args.no_pdf,
     )
+    locale = resolve_locale(vault.config.language)
     unit = vault.document.get_meta("unit") or vault.document.case_id
     issues = vault.document.issues() if args.issue is None else [args.issue]
     timeline = len(vault.document.timeline())
-    print(
-        f"habitable: unit {unit} — {len(issues)} issue(s), {result.item_count} capture(s), "
-        f"{timeline} timeline entr{'y' if timeline == 1 else 'ies'}"
+    summary = cli_text(
+        "status_summary",
+        locale,
+        unit=unit,
+        issues=len(issues),
+        captures=result.item_count,
+        timeline=timeline,
     )
-    print(
-        f"           {result.timestamped_count}/{result.item_count} media items: "
-        f"content hash present, trusted timestamp attached"
+    print(f"habitable: {summary}")
+    stamped = cli_text(
+        "export_timestamped_line",
+        locale,
+        timestamped=result.timestamped_count,
+        total=result.item_count,
     )
+    print(f"           {stamped}")
     for note in result.disclosures:
         print(f"           {note}")
     print(f"           packet written to {result.out_dir}")
@@ -381,10 +422,14 @@ def _cmd_sync(args: argparse.Namespace) -> int:
     peer = PublicIdentity.decode(args.peer)
     transport = _transport(args)
     result = sync(vault, peer, transport, channel=args.channel)
-    print(
-        f"habitable: synced — merged {result.messages_merged} message(s), "
-        f"imported {result.captures_imported} capture(s)"
+    locale = resolve_locale(vault.config.language)
+    done = cli_text(
+        "sync_done",
+        locale,
+        messages=result.messages_merged,
+        captures=result.captures_imported,
     )
+    print(f"habitable: {done}")
     return 0
 
 

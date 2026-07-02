@@ -22,10 +22,10 @@
   "status_custody": "Cadena de custodia",
   "custody_intact": "Intacta",
   "custody_broken": "Rota: verifica el registro",
-  "custody_links_prefix": "enlaces",
+  "custody_links": "{count, plural, one {# enlace} other {# enlaces}}",
   "resolve_deferred": "Resolver marcas de tiempo pendientes",
   "resolve_help": "Obtener marcas de tiempo confiables para los elementos capturados sin conexión (requiere conexión).",
-  "msg_resolved": "Marcas de tiempo pendientes resueltas.",
+  "msg_resolved": "{count, plural, =0 {No había sellos de tiempo pendientes.} one {Se resolvió # sello de tiempo pendiente.} other {Se resolvieron # sellos de tiempo pendientes.}}",
 
   "issues_heading": "Problemas",
   "issues_empty": "Aún no hay problemas registrados.",
@@ -34,8 +34,8 @@
   "issue_label_room": "Habitación",
   "issue_label_status": "Estado",
   "issue_label_severity": "Gravedad",
-  "issue_captures_count": "Capturas",
-  "issue_timeline_count": "Entradas de cronología",
+  "issue_captures_count": "{count, plural, one {# captura} other {# capturas}}",
+  "issue_timeline_count": "{count, plural, one {# entrada de cronología} other {# entradas de cronología}}",
   "issue_all": "Todos los problemas",
   "issue_none_available": "Aún no hay problemas disponibles",
 
