@@ -146,6 +146,12 @@ The courtroom rests on this; it gets the most scrutiny.
   violations) plus structural, **keyboard-navigation**, and **320px-reflow** tests; an
   accessible `packet.html`; a PDF with language + DisplayDocTitle + outline; a documented
   manual-testing protocol.
+- *Shipped (FIX-12):* **Real pluralization and locale formatting.** CLDR cardinal plural
+  rules for EN/ES in both CLI and web app; ICU-MessageFormat subset (`{name}` placeholders
+  and `{name, plural, ...}`) for plural-aware strings; locale-aware number/date/datetime
+  formatting; `scripts/check_i18n_parity.py` enforces plural-category and placeholder parity
+  across locales; 65 comprehensive tests covering all plural categories and formatting
+  functions.
 - **Recorded human screen-reader pass.** *Objective:* confirm the app is *usable* with AT,
   which automation can't certify. *Exit:* a dated NVDA + VoiceOver pass per
   `docs/accessibility/manual-testing.md` recorded in `docs/audits/`, no open moderate+
