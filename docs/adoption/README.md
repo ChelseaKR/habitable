@@ -33,6 +33,9 @@ hand it to. The reference docs (the [setup guide](../setup-guide.md), the
 - **Adopting, and running your first session?** Use the
   [facilitator guide](workshop-facilitator-guide.md) to run the workshop, and print the
   [quick-start](quickstart-en.md) ([Spanish](quickstart-es.md)) for everyone to take home.
+- **A member leaving mid-case?** The handoff flow — cooperative departure, unreachable
+  member, or a steward change, all on commands that exist today — is
+  [custody transfer & membership churn](../custody-transfer.md).
 - **Want the full technical "why"?** Every claim here traces back to the
   [setup guide](../setup-guide.md), [mobile guide](../mobile.md),
   [key management](../key-management.md), and [threat model](../threat-model.md).

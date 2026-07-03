@@ -146,9 +146,11 @@ Be explicit about who owns what; ambiguity is how cases get lost.
 - Running the relay (if any) so it only ever sees ciphertext, and never becoming
   the place all secrets pile up.
 - **Custody handoff when a member leaves** the union mid-case — who inherits the
-  vault and the recovery responsibility. (A smoother built-in custody-transfer
-  flow is on the backlog; today this is a manual, documented handoff: re-issue a
-  recovery backup to the new custodian and update the map.)
+  vault and the recovery responsibility. There is no built-in transfer command
+  today; it is a manual, documented flow on the commands you already know
+  (`sync`, `key rotate`, `key backup`, `key restore`). The step-by-step for a
+  cooperative departure, an unreachable member, and a steward change lives in
+  [`custody-transfer.md`](custody-transfer.md).
 
 ## Rotating after a suspected compromise
 

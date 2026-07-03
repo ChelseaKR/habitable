@@ -91,6 +91,9 @@ If the board chooses to move forward, do it this way:
 
 - Who in our union will hold recovery backups, and how do we keep that from becoming a single
   point of failure?
+- What happens when a member quits mid-case, goes unreachable, or is expelled — **whose data is
+  it, and how do we hand off the case?** (It is the member's data; the step-by-step handoff flow
+  is [`docs/custody-transfer.md`](../custody-transfer.md).)
 - Do our highest-risk members have a safe way to opt out — or to use it on a non-shared device?
 - Do we have legal-aid or attorney support lined up for what we collect?
 - Are we comfortable piloting an **alpha, unaudited** tool for *practice* while we wait for the
