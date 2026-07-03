@@ -645,7 +645,7 @@ broadest dividend:
 | R-45 | Relay operator no-log self-audit + a documented log schema to attest to the union | P-19 | medium | M | C | net-new | clean |
 | R-46 | Document precisely what a relay operator can/cannot observe; advance metadata resistance | P-19,P-22 | medium | L | C | planned | clean |
 | R-47 | Localization-contributor workflow + flag legally-sensitive strings that must not be casually translated | P-20 | medium | S | B | planned | clean |
-| R-48 | RTL readiness, date/number formats, and text-expansion layout robustness | P-20 | medium | M | B | net-new | clean |
+| R-48 | ✅ **done** — RTL readiness, date/number formats, and text-expansion layout robustness (CSS logical properties only; `dir` flipped per language via `RTL_LANGS`; `Intl`-keyed date/number formatting; wrap-tolerant chrome; static guards in `tests/test_app_i18n.py`) | P-20 | medium | M | B | net-new | clean |
 | R-49 | Harden at-rest defaults against device-forensic recovery; document residual risk | P-22 | high | M | A/C | implied | clean |
 | R-50 | Partner/reviewer vetting guidance; keep security disclosures private; confirm no central access to grant | P-22 | low | S | D | implied | clean |
 | R-51 | Publish the packet/bundle as a documented, versioned schema with a stability contract | P-23 | medium | M | A | implied | clean |
