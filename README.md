@@ -111,7 +111,10 @@ Every export ships an accessible `packet.html`, a paginated PDF, and a verifiabl
    and roughly how much moves — even though it can read none of the contents; the mitigations are a
    no-log, self-hostable relay and pure peer-to-peer sync with no relay at all, detailed in
    `docs/threat-model.md`. Nothing the project operates can be subpoenaed for a tenant's contents,
-   because it never holds them.
+   because it never holds them. Don't take our word for it: `habitable prove-no-plaintext` runs a
+   real sync through an in-process relay, captures every byte on the wire, and greps it for planted
+   plaintext markers — or capture a real relay with `tcpdump` yourself, per
+   [`docs/prove-no-plaintext.md`](docs/prove-no-plaintext.md).
 2. **No central authority over a union's records.** Each union holds its own keys and its own data;
    the project ships no account system, no admin who can read or revoke a union's evidence, and no
    hosted service that owns the records. Forking the code or running the relay yourself changes
