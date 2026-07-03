@@ -26,7 +26,7 @@ from .bundleview import (
     integrity_summary,
 )
 from .canonical import JSONValue
-from .disclosure import proof_statement
+from .disclosure import proof_statement, scope_statement
 
 __all__ = ["render_inspector_html", "render_packet_html"]
 
@@ -103,6 +103,7 @@ def render_packet_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_pat
     awaiting = item_count - _i(appendix, "timestamped_count")
     parts.extend(_cover_section(cover_sheet(bundle)))
     parts.extend(_proof_section(lang))
+    parts.extend(_scope_section(lang, _map(bundle, "scope")))
     parts.extend(
         _disclosure_section(
             lang,
@@ -418,6 +419,25 @@ def _proof_section(lang: str) -> list[str]:
         "</section>",
     ]
     return out
+
+
+def _scope_section(lang: str, scope: Mapping[str, JSONValue]) -> list[str]:
+    """The minimal-disclosure scope block: what this export covers and omits (R-35)."""
+    stmt = scope_statement(
+        lang,
+        scope_type=_s(scope, "type"),
+        issue_id=_s(scope, "issue_id"),
+        since=_s(scope, "since"),
+    )
+    return [
+        '<section aria-labelledby="scope-heading">',
+        f'<h2 id="scope-heading">{escape(stmt.heading)}</h2>',
+        f"<p>{escape(stmt.statement)}</p>",
+        "<ul>",
+        *(f"<li>{escape(line)}</li>" for line in stmt.exclusions),
+        "</ul>",
+        "</section>",
+    ]
 
 
 def _disclosure_section(

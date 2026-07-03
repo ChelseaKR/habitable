@@ -41,7 +41,7 @@ from .bundleview import (
     integrity_summary,
 )
 from .canonical import JSONValue
-from .disclosure import proof_statement
+from .disclosure import proof_statement, scope_statement
 from .letter import RepairLetter, letter_lines
 
 __all__ = ["render_letter_pdf", "render_packet_pdf"]
@@ -150,6 +150,8 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
     story.append(Spacer(1, 0.2 * inch))
     _render_proof_statement(story, lang, styles)
     story.append(Spacer(1, 0.15 * inch))
+    _render_scope(story, lang, _map(bundle, "scope"), styles)
+    story.append(Spacer(1, 0.15 * inch))
     item_count = _i(appendix, "item_count")
     awaiting = item_count - _i(appendix, "timestamped_count")
     _render_disclosures(
@@ -203,6 +205,20 @@ def _render_proof_statement(story: list[Any], lang: str, styles: Any) -> None:
     for line in stmt.not_proves:
         story.append(_para(f"- {line}", styles["Small"]))
     story.append(_para(stmt.verify_line, styles["Small"]))
+
+
+def _render_scope(story: list[Any], lang: str, scope: Mapping[str, JSONValue], styles: Any) -> None:
+    """Append the minimal-disclosure scope block: what this export covers and omits (R-35)."""
+    stmt = scope_statement(
+        lang,
+        scope_type=_s(scope, "type"),
+        issue_id=_s(scope, "issue_id"),
+        since=_s(scope, "since"),
+    )
+    story.append(_para(stmt.heading, styles["Heading3"]))
+    story.append(_para(stmt.statement, styles["Small"]))
+    for line in stmt.exclusions:
+        story.append(_para(f"- {line}", styles["Small"]))
 
 
 def _render_disclosures(

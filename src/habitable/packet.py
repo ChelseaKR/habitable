@@ -30,7 +30,7 @@ from typing import cast
 
 from .canonical import JSONValue, canonical_json, sha256_bytes, sha256_file
 from .config import SharingPolicy
-from .disclosure import proof_statement
+from .disclosure import ScopeStatement, proof_statement, scope_statement
 from .errors import PacketError
 from .evidence import CustodyAction
 from .exif import make_shared_copy
@@ -155,9 +155,14 @@ def build_packet(
     def opaque_hlc(raw: str) -> str:
         return doc.opaque_id("hlc", raw)
 
+    # The export's minimal-disclosure scope, stated in English for the machine-readable
+    # bundle; the renderers localize it independently from the bundle's scope object.
+    scope_type = "issue" if issue_id else "unit"
+    scope = scope_statement("en", scope_type=scope_type, issue_id=issue_id or "", since=since or "")
     disclosures = _disclosures(
         items,
         sharing,
+        scope,
         include_originals=include_originals,
         awaiting=len(items) - timestamped,
         total=len(items),
@@ -167,9 +172,11 @@ def build_packet(
         "case_id": vault.document.case_id,
         "unit": vault.document.get_meta("unit"),
         "scope": {
-            "type": "issue" if issue_id else "unit",
+            "type": scope_type,
             "issue_id": issue_id or "",
             "since": since or "",
+            "statement": scope.statement,
+            "exclusions": cast(JSONValue, list(scope.exclusions)),
         },
         "generated_at": generated_at or _now_iso(),
         "producer_fingerprint": actor,
@@ -397,6 +404,7 @@ def _write_signature(vault: Vault, out_dir: Path, bundle_bytes: bytes) -> None:
 def _disclosures(
     items: list[dict[str, JSONValue]],
     sharing: SharingPolicy,
+    scope: ScopeStatement,
     *,
     include_originals: bool,
     awaiting: int,
@@ -404,7 +412,10 @@ def _disclosures(
 ) -> tuple[str, ...]:
     location = "stripped from shared copies" if sharing.strip_location else "RETAINED"
     identities = "not exported" if not sharing.export_custody_identities else "EXPORTED"
+    # Lead with the scope so an over-broad discovery demand meets an explicit,
+    # on-the-record minimal-disclosure boundary (item R-35).
     notes = [
+        *scope.lines(),
         f"{len(items)} media item(s) included as shared copies",
         f"location {location}",
         f"custody identities {identities}",

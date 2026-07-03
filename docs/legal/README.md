@@ -64,6 +64,10 @@ still must be reviewed by a licensed attorney in your jurisdiction before use.
   California-scoped, **educational** cheat-sheet on authenticating digital photographs and
   records and the objections to anticipate, plus a plain-language "what to expect on
   cross-examination" section for tenants.
+- **[`minimal-disclosure.md`](./minimal-disclosure.md)** — (R-35) what a produced packet
+  contains and, just as importantly, what it deliberately omits; why the export is scoped by
+  design; and guidance on responding to an over-broad discovery demand (scope statement,
+  protective orders, and that the disclosure decision is a legal one).
 
 ## How to use these responsibly
 

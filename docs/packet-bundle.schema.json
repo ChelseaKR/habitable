@@ -28,7 +28,16 @@
       "properties": {
         "type": { "type": "string", "enum": ["issue", "unit"] },
         "issue_id": { "type": "string" },
-        "since": { "type": "string", "description": "Lower bound on capture time; may be empty." }
+        "since": { "type": "string", "description": "Lower bound on capture time; may be empty." },
+        "statement": {
+          "type": "string",
+          "description": "Human-readable minimal-disclosure scope summary (e.g. 'Scope: issue <id> only …' or 'Scope: the whole unit …'). Also rendered, localized, in packet.html/packet.pdf; see docs/legal/minimal-disclosure.md."
+        },
+        "exclusions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Explicit statements of what this export does NOT include (vault contents outside the scope; items captured before 'since' when set). Defensible against over-broad discovery (item R-35)."
+        }
       },
       "additionalProperties": true
     },

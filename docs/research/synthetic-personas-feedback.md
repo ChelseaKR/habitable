@@ -384,7 +384,10 @@ admissibility foundation and what a paralegal can operate.
   good; document the boundary.) [R-34, E-20]
 - ⚠️ "Discovery cuts both ways. If we produce a packet, can opposing counsel demand the
   *whole* union vault? I need the export to be *scoped* and that scoping to be defensible."
-  → minimal-disclosure export scoping + documentation. [R-35]
+  → minimal-disclosure export scoping + documentation. [R-35] ✅ **Done** — each packet now
+  self-documents its scope (`scope.statement`/`scope.exclusions` in the signed bundle, rendered
+  localized in the packet) and ships [`legal/minimal-disclosure.md`](../legal/minimal-disclosure.md)
+  on responding to over-broad discovery.
 
 **On the future.** A jurisdiction pack (CA first): declaration/foundation templates, an
 evidence-rule cheat-sheet, and a "what to expect on cross" guide for the tenant. A

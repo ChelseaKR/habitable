@@ -124,3 +124,10 @@ A produced packet should be **scoped** — to the unit or issue at hand — not 
 union's whole vault. Over-broad production can expose other tenants and other matters. Discuss
 scoping and any protective order with co-counsel; the export is designed to be minimal and
 identity-stripped, but the disclosure decision is a legal one (item R-35).
+
+Each packet now states its own scope on the record: `bundle.json` carries a `scope` object with
+a plain-language `statement` and an `exclusions` list (rendered, localized, in `packet.html` and
+`packet.pdf`) declaring that captures, timeline, and custody records from other issues in the
+vault are not included. Use that self-documenting boundary when meeting an over-broad demand. The
+full treatment — what a packet contains and omits, why the export is minimal, and how to respond
+to over-broad discovery — is in [`minimal-disclosure.md`](./minimal-disclosure.md).

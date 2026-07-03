@@ -41,7 +41,7 @@ re-serialize `bundle.json` before checking the signature.
 | `packet_version` | int | Format version. Verifier accepts `1..SUPPORTED_PACKET_VERSION`; newer is rejected, not mis-verified. |
 | `case_id` | string | Case identifier. |
 | `unit` | string | Unit label; may be empty. |
-| `scope` | object | `{type: "issue"\|"unit", issue_id, since}` — what the packet covers. |
+| `scope` | object | `{type: "issue"\|"unit", issue_id, since, statement, exclusions}` — what the packet covers. `statement` is a human-readable minimal-disclosure summary; `exclusions` is an array of what is deliberately *not* included (vault contents outside the scope; pre-`since` items). Defensible against over-broad discovery (item R-35); see [`legal/minimal-disclosure.md`](./legal/minimal-disclosure.md). Also rendered, localized, in `packet.html`/`packet.pdf`. |
 | `generated_at` | string | ISO 8601 UTC, e.g. `2026-01-02T00:00:00Z`. |
 | `producer_fingerprint` | string | Producing device fingerprint (`xxxx-xxxx-xxxx-xxxx`). |
 | `hash_algorithm` | string | Always `"sha256"`. |
