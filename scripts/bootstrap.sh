@@ -44,6 +44,7 @@ fi
 #    pinned Python (3.14) if needed; re-running is a no-op once the lock is met.
 say "Syncing the environment (uv sync) — fetches Python 3.14 if needed ..."
 uv sync
+uv run python -c "import sys; print('habitable env on Python', sys.version.split()[0])"
 
 # 3. Next steps.
 say "Setup complete. Next steps:"
