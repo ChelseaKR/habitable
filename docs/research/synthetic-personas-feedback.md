@@ -335,8 +335,9 @@ A one-page "for the court" summary at the front of every packet. [E-15, R-26]
 - ⚠️ "Your categories (heat, mold, pests, water, electrical, structural) are close but not my
   *code's* categories. Can the packet speak my jurisdiction's language?" → jurisdiction
   template library extends to category/citation vocabulary, not just layout. [R-28, E-16]
-- ⚠️ Wants a per-room rollup ("unit 4B, bathroom: 3 issues across 4 months") rather than a
-  flat issue list. [E-17]
+- ✅ **Shipped.** Wants a per-room rollup ("unit 4B, bathroom: 3 issues across 4 months") rather
+  than a flat issue list. `habitable export --inspector-view` now writes `inspector.html`
+  organized room → condition → chronological timeline. [E-17]
 
 **On the future.** Templates that emit a jurisdiction's citation taxonomy; an optional
 inspector view organized by room→condition→timeline. [E-16, E-17]
@@ -680,7 +681,7 @@ broadest dividend:
 | E-14 | "Key custody for unions" playbook (threshold/split backups; no single honeypot) | P-08 | high | M | D | net-new | clean |
 | E-15 | **Zero-install recipient verifier**: drag a packet onto an offline-capable static page; project still hosts no case data | P-09,P-11,P-25→R-25 | critical | L | A/C | net-new | shape: must host no case data |
 | E-16 | Jurisdiction template library extended to citation/category taxonomies | P-10,P-12 | high | M | C | planned | clean |
-| E-17 | Inspector view: room → condition → timeline rollup | P-10 | medium | M | C | net-new | clean |
+| E-17 | Inspector view: room → condition → timeline rollup | P-10 | medium | M | C | shipped ✅ | clean |
 | E-18 | Published "how to attack a habitable packet" red-team document (name our own weaknesses first) | P-11,P-22 | high | M | A/D | net-new | clean (honesty) |
 | E-19 | Declaration / witness-foundation templates a tenant signs to move a packet into evidence | P-12 | high | M | D | net-new | clean |
 | E-20 | Jurisdiction pack (CA first): evidence-rule cheat-sheet + "what to expect on cross" tenant guide | P-12,P-13 | high | L | D | planned | clean |

@@ -184,6 +184,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p_export.add_argument("--since", help="only items captured on/after this ISO date")
     p_export.add_argument("--include-originals", action="store_true")
     p_export.add_argument("--no-pdf", action="store_true")
+    p_export.add_argument(
+        "--inspector-view",
+        action="store_true",
+        help="also write inspector.html organized by room → condition → timeline",
+    )
     p_export.set_defaults(func=_cmd_export)
 
     def add_campaign_vaults(p: argparse.ArgumentParser) -> None:
@@ -648,6 +653,7 @@ def _cmd_export(args: argparse.Namespace) -> int:
         since=args.since,
         include_originals=args.include_originals,
         make_pdf=not args.no_pdf,
+        inspector_view=args.inspector_view,
     )
     locale = resolve_locale(vault.config.language)
     unit = vault.document.get_meta("unit") or vault.document.case_id
@@ -687,6 +693,8 @@ def _cmd_export(args: argparse.Namespace) -> int:
         "it depicts; this is documentation, not legal advice and no guarantee of admissibility"
     )
     print(f"           packet written to {result.out_dir}")
+    if result.inspector_path is not None:
+        print(f"           inspector view written to {result.inspector_path.name}")
     return 0
 
 

@@ -13,6 +13,7 @@ record. Every dynamic value is HTML-escaped — bundle content is data, not mark
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
 
@@ -27,7 +28,7 @@ from .bundleview import (
 from .canonical import JSONValue
 from .disclosure import proof_statement
 
-__all__ = ["render_packet_html"]
+__all__ = ["render_inspector_html", "render_packet_html"]
 
 _STYLE = """
 :root { color-scheme: light dark; }
@@ -236,6 +237,167 @@ def _integrity_section(summary: IntegritySummary) -> list[str]:
     out.append("</tbody></table>")
     out.append("</section>")
     return out
+
+
+def render_inspector_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_path: Path) -> None:
+    """Write an accessible ``inspector.html`` organized room → condition → timeline.
+
+    A recipient-oriented (inspector) view of the *same signed bundle* as
+    ``packet.html``: issues are grouped by room, then by condition (issue
+    category), and each issue shows one chronologically merged timeline that
+    interleaves timeline notes and capture events. It reuses the packet's style,
+    proof/disclosure sections, and evidence appendix; it never alters the bundle.
+    """
+    lang = _s(bundle, "language") or "en"
+    unit = _s(bundle, "unit") or _s(bundle, "case_id")
+    title = "Inspector rollup — habitability evidence"
+    if unit:
+        title = f"{title} — unit {unit}"
+    appendix = _map(bundle, "appendix")
+    template = _map(bundle, "template")
+
+    parts: list[str] = [
+        "<!doctype html>",
+        f'<html lang="{escape(lang)}">',
+        "<head>",
+        '<meta charset="utf-8">',
+        '<meta name="viewport" content="width=device-width, initial-scale=1">',
+        f"<title>{escape(title)}</title>",
+        f"<style>{_STYLE}</style>",
+        "</head>",
+        "<body>",
+        '<a class="skip" href="#main">Skip to content</a>',
+        "<header><h1>" + escape(title) + "</h1>",
+        f'<p class="meta">Generated {escape(_s(bundle, "generated_at"))} · '
+        f"{_i(appendix, 'item_count')} item(s), {_i(appendix, 'timestamped_count')} "
+        f"trusted-timestamped · producer {escape(_s(bundle, 'producer_fingerprint'))}</p>",
+        '<p class="meta">Organized by room, then condition, then a chronological '
+        "timeline. This is a derived view of the signed bundle.json.</p>",
+    ]
+    if _s(template, "header"):
+        parts.append(f'<p class="meta">{escape(_s(template, "header"))}</p>')
+    parts.append(
+        '<p class="warning">This packet is evidence, not legal advice, and does not '
+        "guarantee admissibility. Verify integrity with <code>habitable verify</code> "
+        "against the accompanying bundle.json.</p>"
+    )
+    parts.append("</header>")
+    parts.append('<main id="main">')
+    parts.extend(_proof_section(lang))
+    parts.extend(_disclosure_section(lang, _bool(appendix, "includes_originals")))
+    parts.extend(_inspector_rollup(bundle))
+
+    parts.append("<h2>Evidence appendix</h2>")
+    parts.append(_appendix_table(bundle))
+    parts.append("</main>")
+
+    footer = "habitable — local-first, end-to-end-encrypted habitability evidence."
+    if _s(template, "footer"):
+        footer = _s(template, "footer")
+    parts.append(f"<footer><p>{escape(footer)}</p></footer>")
+    parts.append("</body></html>")
+
+    out_path.write_text("\n".join(parts), encoding="utf-8")
+
+
+def _inspector_rollup(bundle: Mapping[str, JSONValue]) -> list[str]:
+    """Group issues by room → condition (category); one merged timeline per issue."""
+    items_by_issue = _items_by_issue(bundle)
+    timeline_by_issue: dict[str, list[Mapping[str, JSONValue]]] = {}
+    for entry in _list(bundle, "timeline"):
+        if isinstance(entry, dict):
+            timeline_by_issue.setdefault(_s(entry, "issue_id"), []).append(entry)
+
+    rooms: dict[str, list[Mapping[str, JSONValue]]] = {}
+    for raw_issue in _list(bundle, "issues"):
+        if isinstance(raw_issue, dict):
+            room = _s(raw_issue, "room") or "Unspecified room"
+            rooms.setdefault(room, []).append(raw_issue)
+
+    out: list[str] = []
+    for room_index, room in enumerate(sorted(rooms)):
+        room_id = f"room-{room_index}"
+        out.append(f'<section aria-labelledby="{room_id}">')
+        out.append(f'<h2 id="{room_id}">Room: {escape(room)}</h2>')
+        conditions: dict[str, list[Mapping[str, JSONValue]]] = {}
+        for room_issue in rooms[room]:
+            condition = _s(room_issue, "category") or "Uncategorized"
+            conditions.setdefault(condition, []).append(room_issue)
+        for condition in sorted(conditions):
+            out.append(f"<h3>Condition: {escape(condition)}</h3>")
+            for condition_issue in conditions[condition]:
+                out.extend(_inspector_issue(condition_issue, timeline_by_issue, items_by_issue))
+        out.append("</section>")
+    return out
+
+
+def _inspector_issue(
+    issue: Mapping[str, JSONValue],
+    timeline_by_issue: dict[str, list[Mapping[str, JSONValue]]],
+    items_by_issue: dict[str, list[Mapping[str, JSONValue]]],
+) -> list[str]:
+    issue_id = _s(issue, "issue_id")
+    label = _s(issue, "title") or _s(issue, "category") or issue_id
+    out = [
+        f'<p class="meta">{escape(label)} — status '
+        f"{escape(_s(issue, 'status') or '—')}, "
+        f"severity {escape(_s(issue, 'severity') or '—')}</p>",
+    ]
+    if _s(issue, "description"):
+        out.append(f"<p>{escape(_s(issue, 'description'))}</p>")
+
+    events = _merged_events(timeline_by_issue.get(issue_id, []), items_by_issue.get(issue_id, []))
+    if not events:
+        out.append("<p>No timeline entries or captures recorded.</p>")
+        return out
+    out.append("<ol>")
+    for when, body in events:
+        stamp = f'<time datetime="{escape(when)}">{escape(when or "undated")}</time>'
+        out.append(f"<li>{stamp} — {body}</li>")
+    out.append("</ol>")
+    return out
+
+
+def _merged_events(
+    timeline: list[Mapping[str, JSONValue]],
+    items: list[Mapping[str, JSONValue]],
+) -> list[tuple[str, str]]:
+    """Merge notes and captures for one issue into a chronologically-sorted list.
+
+    Each element is ``(when_iso, escaped_html_body)``. Timeline notes are placed
+    by their HLC wall time; capture events by the item's ``captured_at``. Both
+    resolve to ``YYYY-MM-DDTHH:MM:SSZ`` strings, so a lexicographic sort is a
+    true chronological order.
+    """
+    events: list[tuple[str, str, str]] = []
+    for entry in timeline:
+        hlc = _s(entry, "hlc")
+        when = _hlc_to_iso(hlc)
+        body = (
+            f"<strong>{escape(_s(entry, 'kind') or 'note')}:</strong> {escape(_s(entry, 'text'))}"
+        )
+        events.append((when, hlc, body))
+    for item in items:
+        when = _s(item, "captured_at")
+        content_hash = _s(item, "content_hash")
+        stamp = "trusted-timestamped" if item.get("timestamp") else "awaiting timestamp"
+        body = (
+            "<strong>Evidence captured:</strong> hash "
+            f"{escape(content_hash[:16])}… · {escape(stamp)}"
+        )
+        events.append((when, content_hash, body))
+    events.sort(key=lambda event: (event[0], event[1]))
+    return [(when, body) for when, _tie, body in events]
+
+
+def _hlc_to_iso(hlc: str) -> str:
+    """The wall-clock instant an HLC timestamp encodes, as an ISO-8601 UTC string."""
+    head = hlc.split(".", 1)[0]
+    try:
+        wall_ms = int(head)
+    except ValueError:
+        return ""
+    return datetime.fromtimestamp(wall_ms / 1000, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _proof_section(lang: str) -> list[str]:
