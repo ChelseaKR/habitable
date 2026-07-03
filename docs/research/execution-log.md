@@ -147,6 +147,11 @@ alternatives documented there.
 ## Suggested next pass (when the gate can run)
 
 1. Wire the 📝 items (small copy/render changes) and run `make verify` + `make a11y`.
-2. Add a CI **cross-Python compile check** for the verifier subset so BUG-01 cannot recur.
+2. ✅ **Done.** Added a CI **cross-Python compile check** for the verifier subset so BUG-01
+   cannot recur — the `verifier-portability` job in `.github/workflows/ci.yml` byte-compiles
+   the Apache-2.0 subset on Python 3.12 and 3.13 (the portability floor: `canonical.py` uses
+   PEP 695 `type` statements, so 3.9–3.11 cannot parse it), catching any 3.14-only syntax
+   before merge. This is the CI counterpart to the `test_verifier_subset_avoids_py314_only_except_syntax`
+   guard test.
 3. Validate the high-value ⛔ bets (E-15 recipient verifier, E-01/R-05 recurrence, E-19 in a real
    forum) with real pilot/legal partners before building.
