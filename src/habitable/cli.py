@@ -34,7 +34,7 @@ from .share import decode_share, encode_share, export_share, import_share
 from .strength import assess_issue
 from .sync import LocalDirTransport, RelayClient, Transport, sync
 from .tsa import DevTSA, Rfc3161HttpTSA, TimestampAuthority
-from .vault import Vault
+from .vault import Vault, human_bytes
 from .verify import verify_packet
 
 __all__ = ["main"]
@@ -63,6 +63,21 @@ def _build_parser() -> argparse.ArgumentParser:
         p.add_argument("--vault", required=True, type=Path, help="path to the case vault")
         p.add_argument(
             "--passphrase", help="vault passphrase (else HABITABLE_PASSPHRASE or prompt)"
+        )
+
+    def add_metered(p: argparse.ArgumentParser) -> None:
+        group = p.add_mutually_exclusive_group()
+        group.add_argument(
+            "--wifi-only",
+            dest="wifi_only",
+            action="store_true",
+            help="refuse network fetches (relay/RFC 3161) — treat this link as metered",
+        )
+        group.add_argument(
+            "--allow-metered",
+            dest="allow_metered",
+            action="store_true",
+            help="allow network fetches even on a possibly-metered link",
         )
 
     p_init = sub.add_parser("init", help="create a new encrypted case vault")
@@ -124,6 +139,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_resolve = sub.add_parser("resolve", help="fetch timestamps for items queued offline")
     add_vault(p_resolve)
     p_resolve.add_argument("--dev-tsa", action="store_true")
+    add_metered(p_resolve)
     p_resolve.set_defaults(func=_cmd_resolve)
 
     p_retime = sub.add_parser(
@@ -131,6 +147,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     add_vault(p_retime)
     p_retime.add_argument("--dev-tsa", action="store_true")
+    add_metered(p_retime)
     p_retime.set_defaults(func=_cmd_retimestamp)
 
     p_export = sub.add_parser("export", help="assemble a court/inspector evidence packet")
@@ -244,6 +261,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_sync.add_argument("--channel", required=True, help="shared room/channel id")
     p_sync.add_argument("--relay", help="relay base URL (https://...)")
     p_sync.add_argument("--dir", type=Path, help="shared directory transport")
+    add_metered(p_sync)
     p_sync.set_defaults(func=_cmd_sync)
 
     p_relay = sub.add_parser("relay", help="run an optional ciphertext-only sync relay")
@@ -546,6 +564,15 @@ def _cmd_status(args: argparse.Namespace) -> int:
     custody = vault.custody.verify()
     verdict = cli_text("custody_intact" if custody.ok else "custody_broken", locale)
     print(f"  {cli_text('status_custody', locale, verdict=verdict, links=custody.length)}")
+    footprint = vault.storage_footprint()
+    storage = cli_text(
+        "status_storage",
+        locale,
+        total=human_bytes(footprint.total_bytes),
+        sealed=human_bytes(footprint.sealed_originals_bytes),
+        shared=human_bytes(footprint.shared_copies_bytes),
+    )
+    print(f"  {storage}")
     if any_issues:
         print(f"  {cli_text('status_strength_caveat', locale)}")
     return 0
@@ -556,9 +583,15 @@ def _cmd_resolve(args: argparse.Namespace) -> int:
     tsa = _tsa_for(vault, dev=args.dev_tsa)
     if tsa is None:
         raise HabitableError("no timestamp authority configured")
-    results = resolve_deferred(vault, tsa, extra_tsas=_extra_tsas_for(vault, dev=args.dev_tsa))
+    extra_tsas = _extra_tsas_for(vault, dev=args.dev_tsa)
+    hits_network = isinstance(tsa, Rfc3161HttpTSA) or any(
+        isinstance(extra, Rfc3161HttpTSA) for extra in extra_tsas
+    )
+    _gate_network(args, vault, hits_network=hits_network)
+    results = resolve_deferred(vault, tsa, extra_tsas=extra_tsas)
     locale = resolve_locale(vault.config.language)
     print(f"habitable: {cli_text('resolve_done', locale, count=len(results))}")
+    _print_network_cost(tsa, locale)
     return 0
 
 
@@ -567,9 +600,15 @@ def _cmd_retimestamp(args: argparse.Namespace) -> int:
     tsa = _tsa_for(vault, dev=args.dev_tsa)
     if tsa is None:
         raise HabitableError("no timestamp authority configured")
-    count = retimestamp_all(vault, tsa, extra_tsas=_extra_tsas_for(vault, dev=args.dev_tsa))
+    extra_tsas = _extra_tsas_for(vault, dev=args.dev_tsa)
+    hits_network = isinstance(tsa, Rfc3161HttpTSA) or any(
+        isinstance(extra, Rfc3161HttpTSA) for extra in extra_tsas
+    )
+    _gate_network(args, vault, hits_network=hits_network)
+    count = retimestamp_all(vault, tsa, extra_tsas=extra_tsas)
     locale = resolve_locale(vault.config.language)
     print(f"habitable: {cli_text('retimestamp_done', locale, count=count)}")
+    _print_network_cost(tsa, locale)
     return 0
 
 
@@ -818,6 +857,7 @@ def _cmd_sync(args: argparse.Namespace) -> int:
     vault = _open(args)
     peer = PublicIdentity.decode(args.peer)
     transport = _transport(args)
+    _gate_network(args, vault, hits_network=isinstance(transport, RelayClient))
     result = sync(vault, peer, transport, channel=args.channel)
     locale = resolve_locale(vault.config.language)
     done = cli_text(
@@ -827,6 +867,13 @@ def _cmd_sync(args: argparse.Namespace) -> int:
         captures=result.captures_imported,
     )
     print(f"habitable: {done}")
+    cost = cli_text(
+        "sync_data_cost",
+        locale,
+        sent=human_bytes(result.bytes_sent),
+        received=human_bytes(result.bytes_received),
+    )
+    print(f"           {cost}")
     return 0
 
 
@@ -1030,6 +1077,42 @@ def _new_passphrase(value: str | None, *, label: str = "New passphrase: ") -> st
     if chosen != getpass.getpass("Confirm: "):
         raise HabitableError("passphrases did not match")
     return chosen
+
+
+def _metered_allowed(args: argparse.Namespace, vault: Vault) -> bool:
+    """Whether a possibly-metered network fetch is permitted (item R-19).
+
+    Explicit CLI flags win over the vault's ``[network] allow_metered`` policy;
+    ``--wifi-only`` forces the gate closed, ``--allow-metered`` forces it open.
+    """
+    if getattr(args, "allow_metered", False):
+        return True
+    if getattr(args, "wifi_only", False):
+        return False
+    return vault.config.network.allow_metered
+
+
+def _gate_network(args: argparse.Namespace, vault: Vault, *, hits_network: bool) -> None:
+    """Refuse a network operation when wifi-only is in effect (item R-19)."""
+    if hits_network and not _metered_allowed(args, vault):
+        raise HabitableError(
+            "network fetch skipped: wifi-only mode; run with --allow-metered or on Wi-Fi"
+        )
+
+
+def _print_network_cost(tsa: TimestampAuthority, locale: str) -> None:
+    """Report the network bytes an RFC 3161 authority used (item R-18)."""
+    sent = getattr(tsa, "bytes_sent", 0)
+    received = getattr(tsa, "bytes_received", 0)
+    if not sent and not received:
+        return  # offline authority (dev/local): no network cost to report
+    cost = cli_text(
+        "network_data_cost",
+        locale,
+        sent=human_bytes(sent),
+        received=human_bytes(received),
+    )
+    print(f"           {cost}")
 
 
 def _tsa_for(vault: Vault, *, dev: bool) -> TimestampAuthority | None:

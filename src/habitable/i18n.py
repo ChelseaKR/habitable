@@ -380,6 +380,12 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "{units, plural, one {# unit} other {# units}} packaged into one "
             "building packet at {out}"
         ),
+        "sync_data_cost": "data: sent {sent}, received {received}",
+        "network_data_cost": "network used: sent {sent}, received {received}",
+        "status_storage": (
+            "storage: {total} total — {sealed} sealed originals + {shared} shared copies "
+            "(originals are kept twice by design)"
+        ),
     },
     "es": {
         "status_summary": (
@@ -471,6 +477,12 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         "campaign_export_done": (
             "{units, plural, one {# vivienda empaquetada} "
             "other {# viviendas empaquetadas}} en un solo paquete del edificio en {out}"
+        ),
+        "sync_data_cost": "datos: enviados {sent}, recibidos {received}",
+        "network_data_cost": "red utilizada: enviados {sent}, recibidos {received}",
+        "status_storage": (
+            "almacenamiento: {total} en total — {sealed} originales sellados + "
+            "{shared} copias compartidas (los originales se guardan por duplicado por diseño)"
         ),
     },
 }

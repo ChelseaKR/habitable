@@ -28,6 +28,54 @@ On a desktop browser that supports installation, the shell may be added to the
 desktop or dock. That convenience does not turn it into a self-contained phone
 app: it still depends on the loopback engine on the same device.
 
+## Storage footprint — why a case is "kept twice" (R-03)
+
+On a low-end phone, storage is scarce, so habitable is explicit about what a case
+costs. `habitable status` prints a `storage:` line, and the app shows the same
+numbers:
+
+```text
+storage: 12.4 MB total — 6.1 MB sealed originals + 6.1 MB shared copies
+         (originals are kept twice by design)
+```
+
+The doubling is deliberate. Every original is **sealed** (encrypted) into the
+vault and kept forever — that is the evidence. When you export a packet, habitable
+also writes a **location-stripped shared copy** of roughly the same size (the file
+you actually hand to an inspector or attorney, with GPS and metadata removed). So
+budget about **twice** the size of your photos and videos for a case you will
+export with originals, plus a small, fixed metadata overhead (the encrypted case
+document, custody log, timestamp tokens, and keyfile). `Vault.storage_footprint()`
+reports the exact bytes, including a per-capture breakdown.
+
+To reclaim space, export finished issues to an external drive and keep the vault
+itself somewhere durable — the sealed originals are the copy that must survive.
+
+## Data cost and metered links (R-18, R-19)
+
+Capture is always free: it hashes and seals on-device with no network. Only two
+operations reach the network, and both now report what they cost:
+
+- **Sync** (`habitable sync`) over a relay prints `data: sent X, received Y` so you
+  can see what an exchange used. A directory/USB sync (`--dir`) is free.
+- **Timestamp fetches** (`habitable resolve`, `habitable retimestamp`) against a
+  public RFC 3161 authority print `network used: sent X, received Y`. A single
+  timestamp is tiny — typically a **few KB** each way.
+
+Because a desktop CLI cannot reliably tell a metered cellular link from free
+Wi-Fi, habitable does not guess. Instead it offers an explicit gate:
+
+- `--wifi-only` refuses any network fetch (relay sync, RFC 3161) and tells you how
+  to proceed: `network fetch skipped: wifi-only mode; run with --allow-metered or
+  on Wi-Fi`.
+- `--allow-metered` permits the fetch for that run.
+- The default is set by `[network] allow_metered` in the case `config.toml`
+  (`true` by default); set it `false` to make wifi-only the standing policy. The
+  app shows the current setting read-only.
+
+Offline authorities used in tests and demos (`--dev-tsa`) never touch the network,
+so the gate does not apply to them.
+
 ## What must exist before a phone pilot
 
 A supported phone build must carry the vault, cryptography, capture, packet, and

@@ -53,11 +53,17 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True)
 class SyncResult:
-    """What a sync exchange did."""
+    """What a sync exchange did, including the data it moved (item R-18).
+
+    ``bytes_sent``/``bytes_received`` count the sealed message payloads posted and
+    fetched, so a tenant on a metered link can see what a sync cost.
+    """
 
     sent: bool
     messages_merged: int
     captures_imported: int
+    bytes_sent: int = 0
+    bytes_received: int = 0
 
 
 class Transport(Protocol):
@@ -128,6 +134,7 @@ def import_messages(
     """
     merged = 0
     imported = 0
+    received = sum(len(blob) for blob in blobs)
     for blob in blobs:
         envelope_bytes = _try_open(vault.identity, blob)
         if envelope_bytes is None:
@@ -143,17 +150,25 @@ def import_messages(
         merged += 1
     if merged:
         vault.save()
-    return SyncResult(sent=False, messages_merged=merged, captures_imported=imported)
+    return SyncResult(
+        sent=False,
+        messages_merged=merged,
+        captures_imported=imported,
+        bytes_received=received,
+    )
 
 
 def sync(vault: Vault, peer: PublicIdentity, transport: Transport, *, channel: str) -> SyncResult:
     """Post our state to ``peer`` and merge anything waiting for us."""
-    transport.post(channel, export_message(vault, peer))
+    posted = export_message(vault, peer)
+    transport.post(channel, posted)
     result = import_messages(vault, transport.fetch(channel))
     return SyncResult(
         sent=True,
         messages_merged=result.messages_merged,
         captures_imported=result.captures_imported,
+        bytes_sent=len(posted),
+        bytes_received=result.bytes_received,
     )
 
 

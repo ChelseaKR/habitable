@@ -82,6 +82,7 @@ class AppServer:
         captures = doc.captures()
         timestamped = sum(1 for c in captures if self.vault.get_token(c.capture_id) is not None)
         custody = self.vault.custody.verify()
+        footprint = self.vault.storage_footprint()
         return {
             "unit": doc.get_meta("unit") or doc.case_id,
             "case_id": doc.case_id,
@@ -92,6 +93,15 @@ class AppServer:
             "deferred": len(self.vault.deferred()),
             "custody_ok": custody.ok,
             "custody_length": custody.length,
+            # Storage footprint (R-03): sealed originals are kept twice by design.
+            "storage": {
+                "sealed_originals_bytes": footprint.sealed_originals_bytes,
+                "shared_copies_bytes": footprint.shared_copies_bytes,
+                "metadata_bytes": footprint.metadata_bytes,
+                "total_bytes": footprint.total_bytes,
+            },
+            # Network policy (R-19), exposed read-only so the app can show it.
+            "allow_metered": self.vault.config.network.allow_metered,
         }
 
     def _issue(self, issue_id: str) -> dict[str, object]:
