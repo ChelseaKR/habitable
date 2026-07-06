@@ -1,0 +1,15 @@
+{
+  "_comment": "P1-2 (habitable-REMEDIATION.md): committed ruleset artifact, NOT yet applied. Apply with: gh api --method POST repos/ChelseaKR/habitable/rulesets --input .github/rulesets/release-tags.json -- closes REL-07 (an unprotected v* tag can otherwise be force-moved or deleted after release).",
+  "name": "release tag protection (v*)",
+  "target": "tag",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": { "include": ["refs/tags/v*"], "exclude": [] }
+  },
+  "rules": [
+    { "type": "deletion" },
+    { "type": "update" },
+    { "type": "required_signatures" }
+  ],
+  "bypass_actors": []
+}

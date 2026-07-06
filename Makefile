@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # habitable — developer entry points. `make verify` reproduces the full CI gate.
 .DEFAULT_GOAL := help
-.PHONY: help install fmt lint type test cov i18n verify audit a11y integration demo build clean
+.PHONY: help install fmt lint type test cov i18n markers verify audit a11y integration demo build clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -36,7 +36,24 @@ i18n: ## Mechanical i18n gates: UTF-8 (G1), BCP 47 validity (G3), EN/ES key-pari
 	uv run python scripts/check_bcp47.py
 	uv run python scripts/check_i18n_parity.py
 
-verify: lint type cov i18n ## The full merge gate: lint + types + tests with coverage + mechanical i18n gates (G1/G3/G6)
+markers: ## No bare TODO/FIXME/HACK (must reference an issue, e.g. TODO(#142)); no un-issued noqa/type:ignore
+	@bad=$$(grep -rnE '(TODO|FIXME|HACK)' --include='*.py' --include='*.js' src tests app scripts 2>/dev/null \
+		| grep -vE '\(#[0-9]+\)' || true); \
+	if [ -n "$$bad" ]; then \
+		echo "$$bad"; \
+		echo "error: bare TODO/FIXME/HACK without a linked issue, e.g. TODO(#142)"; \
+		exit 1; \
+	fi
+	@bad=$$(grep -rnE '# ?noqa|# ?type: ?ignore' --include='*.py' src tests scripts 2>/dev/null \
+		| grep -vE '# ?noqa: ?[A-Z]+[0-9]|# ?type: ?ignore\[' || true); \
+	if [ -n "$$bad" ]; then \
+		echo "$$bad"; \
+		echo "error: noqa / type:ignore without an explicit rule code (e.g. noqa: C901, type: ignore[arg-type])"; \
+		exit 1; \
+	fi
+	@echo "habitable: no bare TODO/FIXME/HACK; no un-issued noqa/type:ignore"
+
+verify: lint type cov i18n markers ## The full merge gate: lint + types + tests with coverage + i18n gates (G1/G3/G6) + marker hygiene
 	@echo "habitable: full gate green on Python $$(uv run python -c 'import sys;print(sys.version.split()[0])')"
 
 audit: ## Dependency vulnerability audit
