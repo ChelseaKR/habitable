@@ -93,9 +93,16 @@ class PacketTemplate:
 
 @dataclass(frozen=True, slots=True)
 class Config:
-    """Resolved habitable configuration for one device."""
+    """Resolved habitable configuration for one device.
 
-    node_id: str
+    Note: the device ``node_id`` deliberately does *not* live here. It is a secret
+    the clock uses as a tiebreaker, and pre-FIX-01 it was derived from the vault
+    passphrase and written to this plaintext file — a brute-force oracle for a
+    seized device. It now lives, random and passphrase-independent, inside the
+    encrypted vault (see ``vault.py``); any legacy ``node_id`` key in a config
+    file is ignored here and migrated out of plaintext on open.
+    """
+
     schema_version: int = CONFIG_SCHEMA_VERSION
     language: str = "en"
     timestamp_authorities: Sequence[TSAConfig] = field(default_factory=tuple)
@@ -104,10 +111,9 @@ class Config:
     packet_template: PacketTemplate = field(default_factory=PacketTemplate)
 
     @classmethod
-    def default(cls, node_id: str, *, language: str = "en") -> Config:
+    def default(cls, *, language: str = "en") -> Config:
         """A sensible default config: public RFC 3161 authorities, strict sharing."""
         return cls(
-            node_id=node_id,
             language=language,
             timestamp_authorities=tuple(
                 TSAConfig(name=n, kind=k, url=u) for n, k, u in _DEFAULT_TSAS
@@ -134,7 +140,8 @@ class Config:
                 f"config schema_version {version} is newer than supported "
                 f"{CONFIG_SCHEMA_VERSION}; upgrade habitable"
             )
-        node_id = _require_str(raw, "node_id")
+        # A legacy ``node_id`` key may still be present in pre-FIX-01 config files;
+        # it is intentionally not read here (see the Config docstring).
 
         tsas = tuple(
             TSAConfig(
@@ -175,7 +182,6 @@ class Config:
                 footer=_opt_str(template_raw, "footer", ""),
             )
         return cls(
-            node_id=node_id,
             schema_version=version,
             language=_opt_str(raw, "language", "en"),
             timestamp_authorities=tsas,
@@ -185,13 +191,13 @@ class Config:
         )
 
 
-def default_config_toml(node_id: str, *, language: str = "en") -> str:
+def default_config_toml(*, language: str = "en") -> str:
     """Render a default config file for ``habitable init`` to write."""
     lines = [
         "# habitable configuration — committed policy a union edits for itself.",
-        "# This file holds no secrets; keys live in the encrypted vault, not here.",
+        "# This file holds no secrets; keys and the device id live in the encrypted",
+        "# vault, not here.",
         f"schema_version = {CONFIG_SCHEMA_VERSION}",
-        f'node_id = "{node_id}"',
         f'language = "{language}"',
         "",
         "[sharing]",
