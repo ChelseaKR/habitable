@@ -265,6 +265,10 @@ textarea { resize: vertical; }
 .result ul { margin: 0.25rem 0 0; padding-left: 1.2rem; }
 .verdict-ok { color: var(--ok); font-weight: 700; }
 .verdict-bad { color: var(--bad); font-weight: 700; }
+/* Degraded-but-honest: sealed items still awaiting a trusted timestamp (FIX-09).
+   Deliberately not the failure red — color alone must not read as an alarm — and
+   never color-only: the verdict text names the state. */
+.verdict-warn { color: var(--ink); font-weight: 700; }
 
 .muted { color: var(--ink-soft); }
 

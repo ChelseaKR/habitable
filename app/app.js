@@ -576,13 +576,32 @@
         });
       }).then(function (res) {
         renderExportResult(res);
-        announce(
-          res.verified ? t("msg_export_done_ok") : t("msg_export_done_warn"),
-          res.verified ? "ok" : "error"
-        );
+        // Three honest outcomes, announced distinctly (FIX-09, R-01/R-17): fully
+        // verified; degraded only because items still await a trusted timestamp
+        // (calm copy + a clear next step, never the integrity alarm); or a real
+        // verification failure (keep the alarm).
+        if (res.verified) {
+          announce(t("msg_export_done_ok"), "ok");
+        } else if (res.awaiting_only) {
+          announce(
+            fm("msg_export_done_awaiting", { count: exportAwaitingCount(res) }) +
+            " " + t("export_awaiting_next")
+          );
+        } else {
+          announce(t("msg_export_done_warn"), "error");
+        }
         return refreshStatus();
       }, announceError);
     });
+  }
+
+  function exportAwaitingCount(res) {
+    if (typeof res.awaiting === "number") {
+      return res.awaiting;
+    }
+    var items = res.item_count != null ? res.item_count : 0;
+    var stamped = res.timestamped_count != null ? res.timestamped_count : 0;
+    return Math.max(items - stamped, 0);
   }
 
   function renderExportResult(res) {
@@ -595,12 +614,23 @@
     h3.textContent = t("export_result_heading");
     box.appendChild(h3);
 
+    var awaitingOnly = !res.verified && !!res.awaiting_only;
     var verdict = document.createElement("p");
     var v = document.createElement("span");
-    v.className = res.verified ? "verdict-ok" : "verdict-bad";
-    v.textContent = res.verified ? t("verify_intact") : t("verify_failed");
+    v.className = res.verified ? "verdict-ok" : (awaitingOnly ? "verdict-warn" : "verdict-bad");
+    v.textContent = res.verified
+      ? t("verify_intact")
+      : (awaitingOnly ? t("verify_awaiting") : t("verify_failed"));
     verdict.appendChild(v);
     box.appendChild(verdict);
+
+    if (awaitingOnly) {
+      var next = document.createElement("p");
+      next.textContent =
+        fm("msg_export_done_awaiting", { count: exportAwaitingCount(res) }) +
+        " " + t("export_awaiting_next");
+      box.appendChild(next);
+    }
 
     var ul = document.createElement("ul");
     ul.appendChild(line(t("export_out_dir") + ": " + (res.out_dir || "—")));
