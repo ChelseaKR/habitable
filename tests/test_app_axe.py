@@ -39,7 +39,8 @@ def served_app(make_vault: Callable[..., Vault]) -> Iterator[str]:
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        yield f"http://127.0.0.1:{port}/"
+        # The token rides in the URL fragment; the app moves it into a request header.
+        yield f"http://127.0.0.1:{port}/#token={server.session_token}"
     finally:
         server.shutdown()
         server.server_close()

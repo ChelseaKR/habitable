@@ -4,6 +4,7 @@
 
 (function () {
   var LANG_KEY = "habitable.lang";
+  var TOKEN_KEY = "habitable.token";
   var SUPPORTED = ["en", "es"];
   var DEFAULT_LANG = "en";
   // Right-to-left scripts. When one of these is active we flip the document
@@ -13,6 +14,7 @@
 
   var strings = {}; // active dictionary
   var lang = DEFAULT_LANG;
+  var sessionToken = ""; // per-session API auth token (FIX-03)
 
   // ---- i18n ----------------------------------------------------------------
 
@@ -293,14 +295,56 @@
 
   // ---- API -----------------------------------------------------------------
 
+  // The server prints an opaque URL whose fragment carries a one-time session token
+  // (e.g. .../#token=abc). Move it into memory + sessionStorage and scrub it from the
+  // address bar, so it is never sent to the server as a query or leaked via Referer.
+  // Every /api/* call then presents it as a header; without it the server returns 401.
+  function captureToken() {
+    var hash = window.location.hash || "";
+    var match = /(?:^#|&)token=([^&]+)/.exec(hash);
+    if (match) {
+      sessionToken = decodeURIComponent(match[1]);
+      try {
+        window.sessionStorage.setItem(TOKEN_KEY, sessionToken);
+      } catch (e) {
+        /* sessionStorage may be unavailable; the in-memory token still works */
+      }
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
+    } else {
+      try {
+        sessionToken = window.sessionStorage.getItem(TOKEN_KEY) || "";
+      } catch (e) {
+        sessionToken = "";
+      }
+    }
+  }
+
+  function apiHeaders(extra) {
+    var headers = { Accept: "application/json" };
+    var key;
+    if (extra) {
+      for (key in extra) {
+        if (Object.prototype.hasOwnProperty.call(extra, key)) {
+          headers[key] = extra[key];
+        }
+      }
+    }
+    if (sessionToken) {
+      headers["X-Habitable-Token"] = sessionToken;
+    }
+    return headers;
+  }
+
   function apiGet(path) {
-    return fetch(path, { headers: { Accept: "application/json" } }).then(handleJson);
+    return fetch(path, { headers: apiHeaders() }).then(handleJson);
   }
 
   function apiPost(path, body) {
     return fetch(path, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: apiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body || {})
     }).then(handleJson);
   }
@@ -1008,6 +1052,7 @@
 
   function init() {
     announcer = document.getElementById("announcer");
+    captureToken();
     wireLang();
     wireRefresh();
     wireResolve();

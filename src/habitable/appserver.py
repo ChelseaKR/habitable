@@ -15,8 +15,10 @@ accessible shell over the same evidence guarantees as the CLI.
 from __future__ import annotations
 
 import base64
+import hmac
 import json
 import re
+import secrets
 import threading
 import time
 from collections.abc import Callable, Sequence
@@ -35,7 +37,7 @@ from .tsa import DevTSA, TimestampAuthority
 from .vault import Vault
 from .verify import VerificationReport, verify_packet
 
-__all__ = ["AppServer", "make_app_server"]
+__all__ = ["AppHTTPServer", "AppServer", "make_app_server"]
 
 _MAX_BODY = 64 * 1024 * 1024
 
@@ -326,13 +328,14 @@ _POST_ROUTES: dict[str, Callable[[AppServer, dict[str, object]], dict[str, objec
 _TIMELINE_RE = re.compile(r"^/api/issues/([A-Za-z0-9_.-]+)/timeline$")
 
 
-class _AppHTTPServer(ThreadingHTTPServer):
-    """Loopback server that carries the shared AppServer for its handlers.
+class AppHTTPServer(ThreadingHTTPServer):
+    """Loopback server that carries the shared AppServer and its per-session token.
 
     Holding ``app`` on the server (rather than closing over it in a handler class
     defined inside ``make_app_server``) is what lets the handler live at module
-    scope. It is also the attachment point for the per-session auth token that the
-    app-server auth pass adds next.
+    scope. ``session_token`` authenticates every ``/api/*`` request so an unlocked
+    vault is not a read/write API open to anyone who can reach the host (FIX-03;
+    see docs/mobile.md). Read it back from ``make_app_server``'s return value.
     """
 
     def __init__(
@@ -341,8 +344,10 @@ class _AppHTTPServer(ThreadingHTTPServer):
         handler_class: type[BaseHTTPRequestHandler],
         *,
         app: AppServer,
+        session_token: str,
     ) -> None:
         self.app = app
+        self.session_token = session_token
         super().__init__(server_address, handler_class)
 
 
@@ -350,10 +355,14 @@ class _AppRequestHandler(BaseHTTPRequestHandler):
     """JSON API plus the static app shell. Behavior mirrors the CLI core."""
 
     @property
-    def _app(self) -> AppServer:
+    def _server(self) -> AppHTTPServer:
         # socketserver sets ``self.server`` to the server instance that owns this
-        # handler; for this server that is always an _AppHTTPServer.
-        return cast(_AppHTTPServer, self.server).app
+        # handler; for this server that is always an AppHTTPServer.
+        return cast(AppHTTPServer, self.server)
+
+    @property
+    def _app(self) -> AppServer:
+        return self._server.app
 
     def log_message(self, _format: str, *_args: object) -> None:
         return
@@ -362,9 +371,14 @@ class _AppRequestHandler(BaseHTTPRequestHandler):
         self._status = 200
         start = time.monotonic()
         try:
-            if self.path == "/api/status":
-                app = self._app
-                self._guarded(lambda: app.status())
+            if self.path.startswith("/api/"):
+                if not self._authorized():
+                    return
+                if self.path == "/api/status":
+                    app = self._app
+                    self._guarded(lambda: app.status())
+                    return
+                self._json(404, {"error": "not found"})
                 return
             self._serve_static(self.path)
         finally:
@@ -374,6 +388,8 @@ class _AppRequestHandler(BaseHTTPRequestHandler):
         self._status = 200
         start = time.monotonic()
         try:
+            if not self._authorized():
+                return
             body = self._read_json()
             if body is None:
                 return
@@ -389,6 +405,26 @@ class _AppRequestHandler(BaseHTTPRequestHandler):
             self._guarded(lambda: route(app, body))
         finally:
             self._access_log("POST", start)
+
+    # --- auth -------------------------------------------------------------
+
+    def _authorized(self) -> bool:
+        """Require the per-session token on API calls; 401 (constant-time) otherwise.
+
+        Accepts ``X-Habitable-Token: <token>`` or ``Authorization: Bearer <token>``.
+        The token travels in a header (never a query string) so it is not leaked via
+        request logs or the ``Referer`` header. The static shell is served without a
+        token so the app can load and read the token from the opaque URL fragment.
+        """
+        presented = self.headers.get("X-Habitable-Token", "")
+        if not presented:
+            auth = self.headers.get("Authorization", "")
+            if auth.startswith("Bearer "):
+                presented = auth[len("Bearer ") :]
+        if presented and hmac.compare_digest(presented, self._server.session_token):
+            return True
+        self._json(401, {"error": "unauthorized: missing or invalid session token"})
+        return False
 
     # --- helpers ----------------------------------------------------------
 
@@ -467,8 +503,15 @@ def make_app_server(
     tsa: TimestampAuthority | None = None,
     extra_tsas: Sequence[TimestampAuthority] = (),
     static_root: Path | None = None,
-) -> ThreadingHTTPServer:
+    token: str | None = None,
+) -> AppHTTPServer:
     """Build (but do not start) the loopback app server.
+
+    A per-session bearer token is generated (unless one is supplied) and required
+    on every ``/api/*`` request. The static shell (HTML/CSS/JS) is served without
+    it so the app can load, then read the token from the opaque URL fragment and
+    present it as a header. Read it back from the returned server's
+    ``session_token``.
 
     ``extra_tsas`` are the case's redundant timestamp authorities (every
     authority beyond the primary, as ``cli._extra_tsas_for`` derives them from
@@ -487,6 +530,7 @@ def make_app_server(
     if enabled_from_env() and not is_configured():
         configure_logging()
 
+    session_token = token or secrets.token_urlsafe(32)
     app = AppServer(
         vault=vault,
         tsa=tsa,
@@ -494,7 +538,7 @@ def make_app_server(
         lock=threading.Lock(),
         extra_tsas=tuple(extra_tsas),
     )
-    return _AppHTTPServer((host, port), _AppRequestHandler, app=app)
+    return AppHTTPServer((host, port), _AppRequestHandler, app=app, session_token=session_token)
 
 
 def _is_loopback_host(host: str) -> bool:
