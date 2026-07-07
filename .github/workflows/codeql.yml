@@ -14,12 +14,23 @@ permissions:
 
 jobs:
   analyze:
-    name: CodeQL (python)
+    name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
     permissions:
       security-events: write
       actions: read
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # P1-3 (CICD-19/20): `actions` scans the workflow YAML itself — a
+        # different query/engine surface than zizmor — alongside the existing
+        # `python` analysis of the application code.
+        include:
+          - language: python
+            queries: security-extended
+          - language: actions
+            queries: "" # security-extended is not a published suite for `actions`; use defaults
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -28,7 +39,9 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
         with:
-          languages: python
-          queries: security-extended
+          languages: ${{ matrix.language }}
+          queries: ${{ matrix.queries }}
       - name: Analyze
         uses: github/codeql-action/analyze@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          category: "/language:${{ matrix.language }}"

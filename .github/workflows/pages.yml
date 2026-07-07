@@ -11,8 +11,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -22,6 +20,12 @@ jobs:
   deploy:
     name: deploy landing + sample preview
     runs-on: ubuntu-latest
+    # P3 (CICD-04): write grants scoped to the job, not the whole workflow —
+    # rewards a tighter blast radius (OpenSSF Scorecard Token-Permissions check).
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
