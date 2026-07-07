@@ -24,6 +24,48 @@ def test_create_open_round_trip(make_vault: Callable[..., Vault], tmp_path: Path
     assert reopened.document.get_meta("unit") == "4B"
 
 
+def test_node_id_is_random_not_passphrase_derived(make_vault: Callable[..., Vault]) -> None:
+    """FIX-01: two vaults with the SAME case_id and passphrase must not share a node_id
+    (the old sha256(case_id+passphrase) derivation made them identical and guessable)."""
+    from habitable.canonical import sha256_bytes
+
+    a = make_vault("a", case_id="case-x", passphrase="pw")
+    b = make_vault("b", case_id="case-x", passphrase="pw")
+    assert a.document.clock.node_id != b.document.clock.node_id
+    leaked = sha256_bytes(("case-x" + "pw").encode())[:16]
+    assert a.document.clock.node_id != leaked
+    assert "node_id" not in (a.path / "config.toml").read_text(encoding="utf-8")
+
+
+def test_legacy_plaintext_node_id_migrates_on_open(
+    make_vault: Callable[..., Vault], tmp_path: Path
+) -> None:
+    """A pre-FIX-01 vault kept node_id in plaintext config.toml. Opening it must migrate
+    the value into the encrypted store (preserving it, so existing ids stay valid) and
+    strip the plaintext line — without breaking the case."""
+    vault = make_vault()
+    vault.document.add_issue(category="mold", issue_id="i1")
+    vault.save()
+    node_id = vault.document.clock.node_id
+
+    # Simulate a legacy on-disk layout: no encrypted node blob, node_id in plaintext.
+    (tmp_path / "vault" / "node.enc").unlink()
+    config = tmp_path / "vault" / "config.toml"
+    config.write_text(
+        f'node_id = "{node_id}"\n' + config.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+
+    reopened = Vault.open(tmp_path / "vault", "test-passphrase")
+    assert reopened.document.clock.node_id == node_id  # value preserved
+    assert [i.issue_id for i in reopened.document.issues()] == ["i1"]
+    assert (tmp_path / "vault" / "node.enc").exists()  # migrated into the encrypted store
+    assert "node_id" not in config.read_text(encoding="utf-8")  # stripped from plaintext
+
+    # A second open now uses the encrypted blob and still works.
+    again = Vault.open(tmp_path / "vault", "test-passphrase")
+    assert again.document.clock.node_id == node_id
+
+
 def test_wrong_passphrase_rejected(make_vault: Callable[..., Vault], tmp_path: Path) -> None:
     make_vault()
     with pytest.raises(HabitableError):

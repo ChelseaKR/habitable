@@ -77,28 +77,35 @@ class TestCanonical:
 
 class TestConfig:
     def test_default_has_rfc3161_authorities(self) -> None:
-        config = Config.default("node-1")
+        config = Config.default()
         assert config.timestamp_authorities
         assert all(a.kind == "rfc3161" for a in config.timestamp_authorities)
         assert config.sharing.strip_location is True
 
     def test_toml_round_trip(self, tmp_path: Path) -> None:
         path = tmp_path / "config.toml"
-        path.write_text(default_config_toml("node-7", language="es"), encoding="utf-8")
+        rendered = default_config_toml(language="es")
+        # FIX-01: the plaintext config must never carry the (secret) device node_id.
+        assert "node_id" not in rendered
+        path.write_text(rendered, encoding="utf-8")
         config = Config.from_toml(path)
-        assert config.node_id == "node-7"
         assert config.language == "es"
         assert len(config.timestamp_authorities) >= 1
 
+    def test_legacy_node_id_key_is_ignored_not_rejected(self, tmp_path: Path) -> None:
+        # A pre-FIX-01 config may still carry a plaintext node_id; loading must not fail.
+        path = tmp_path / "config.toml"
+        path.write_text('schema_version = 1\nnode_id = "legacy"\n', encoding="utf-8")
+        config = Config.from_toml(path)
+        assert config.language == "en"
+
     def test_rejects_future_schema(self) -> None:
         with pytest.raises(ConfigError, match="newer"):
-            Config.from_mapping({"node_id": "n", "schema_version": 999})
+            Config.from_mapping({"schema_version": 999})
 
     def test_rejects_bad_tsa_kind(self) -> None:
         with pytest.raises(ConfigError, match="kind"):
-            Config.from_mapping(
-                {"node_id": "n", "timestamp_authorities": [{"name": "x", "kind": "bogus"}]}
-            )
+            Config.from_mapping({"timestamp_authorities": [{"name": "x", "kind": "bogus"}]})
 
 
 class TestCrypto:

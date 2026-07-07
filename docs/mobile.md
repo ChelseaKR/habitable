@@ -8,15 +8,35 @@ honest state of fully-native packaging.
 
 ## Install as an app (works today)
 
-1. On the device (or a laptop the phone can reach), start the server:
+1. On the device, start the server (loopback by default — the case never leaves it):
    ```console
-   $ uv run habitable app --vault ./case-4B --host 0.0.0.0
+   $ uv run habitable app --vault ./case-4B
    ```
+   The command prints a URL whose fragment carries a **one-time session token**, e.g.
+   `http://127.0.0.1:8765/#token=…`. **Open that exact URL** — the app moves the token
+   into a request header and scrubs it from the address bar; every `/api/*` call must
+   present it, so anyone who can reach the port but lacks the URL gets a `401`.
 2. Open the printed URL in the phone browser and **Add to Home Screen**:
    - **Android / Chrome:** ⋮ menu → *Add to Home screen* / *Install app*.
    - **iOS / Safari:** Share → *Add to Home Screen*.
 3. It launches standalone (its own icon, no browser chrome), using the maskable
    icon and theme colour from `manifest.webmanifest`.
+
+### Reaching a laptop from a phone on the same network
+
+If the vault lives on a laptop and you want to reach it from a phone, you can bind
+beyond loopback — but understand the exposure and rely on the token:
+
+```console
+$ uv run habitable app --vault ./case-4B --host 0.0.0.0
+```
+
+The server prints a **loud warning** when it is not bound to loopback, plus the tokened
+URL. Only open that URL on a device you trust and only on a network you trust (a
+church-basement or café Wi-Fi is shared with strangers). Without the token the whole
+API is closed; with it, treat the URL like a password — do not paste it into chats or
+let it sit in another person's browser history. When you are done, stop the server
+(`Ctrl-C`), which also invalidates that session's token.
 
 The manifest ships PNG icons at 192 and 512 px, a dedicated **maskable** icon, an
 Apple touch icon, and the Apple/standalone meta tags — the installability basics a

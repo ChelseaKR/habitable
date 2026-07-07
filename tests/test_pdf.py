@@ -51,7 +51,6 @@ def _with_config(vault: Vault, **kwargs: object) -> None:
     from habitable.config import Config
 
     base = {
-        "node_id": vault.config.node_id,
         "language": vault.config.language,
         "timestamp_authorities": vault.config.timestamp_authorities,
         "packet_template": vault.config.packet_template,

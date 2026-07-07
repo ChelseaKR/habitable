@@ -15,8 +15,10 @@ accessible shell over the same evidence guarantees as the CLI.
 from __future__ import annotations
 
 import base64
+import hmac
 import json
 import re
+import secrets
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -30,7 +32,7 @@ from .tsa import DevTSA, TimestampAuthority
 from .vault import Vault
 from .verify import verify_packet
 
-__all__ = ["AppServer", "make_app_server"]
+__all__ = ["AppHTTPServer", "AppServer", "make_app_server"]
 
 _MAX_BODY = 64 * 1024 * 1024
 _STATIC_ROOT = Path(__file__).resolve().parent.parent.parent / "app"
@@ -158,15 +160,33 @@ class AppServer:
         }
 
 
-def make_app_server(
+class AppHTTPServer(ThreadingHTTPServer):
+    """A loopback app server that also carries its per-session auth token.
+
+    The token authenticates every ``/api/*`` request so an unlocked vault is not a
+    read/write API open to anyone who can reach the host (see FIX-03 / docs/mobile.md).
+    """
+
+    session_token: str = ""
+
+
+def make_app_server(  # noqa: C901 -- P1-4 follow-up: split route dispatch out of the closure
     host: str,
     port: int,
     vault: Vault,
     *,
     tsa: TimestampAuthority | None = None,
     static_root: Path | None = None,
-) -> ThreadingHTTPServer:
-    """Build (but do not start) the loopback app server."""
+    token: str | None = None,
+) -> AppHTTPServer:
+    """Build (but do not start) the loopback app server.
+
+    A per-session bearer token is generated (unless one is supplied) and required on
+    every ``/api/*`` request. The static shell (HTML/CSS/JS) is served without it so
+    the app can load, then read the token from the opaque URL fragment and present it
+    as a header. Read it back from the returned server's ``session_token``.
+    """
+    session_token = token or secrets.token_urlsafe(32)
     app = AppServer(
         vault=vault,
         tsa=tsa,
@@ -179,12 +199,19 @@ def make_app_server(
             return
 
         def do_GET(self) -> None:
-            if self.path == "/api/status":
-                self._guarded(lambda: app.status())
+            if self.path.startswith("/api/"):
+                if not self._authorized():
+                    return
+                if self.path == "/api/status":
+                    self._guarded(lambda: app.status())
+                    return
+                self._json(404, {"error": "not found"})
                 return
             self._serve_static(self.path)
 
         def do_POST(self) -> None:
+            if not self._authorized():
+                return
             body = self._read_json()
             if body is None:
                 return
@@ -204,6 +231,23 @@ def make_app_server(
                 self._json(404, {"error": "not found"})
 
         # --- helpers ----------------------------------------------------------
+
+        def _authorized(self) -> bool:
+            """Require the per-session token on API calls; 401 (constant-time) otherwise.
+
+            Accepts ``X-Habitable-Token: <token>`` or ``Authorization: Bearer <token>``.
+            The token travels in a header (never a query string) so it is not leaked via
+            request logs or the ``Referer`` header.
+            """
+            presented = self.headers.get("X-Habitable-Token", "")
+            if not presented:
+                auth = self.headers.get("Authorization", "")
+                if auth.startswith("Bearer "):
+                    presented = auth[len("Bearer ") :]
+            if presented and hmac.compare_digest(presented, session_token):
+                return True
+            self._json(401, {"error": "unauthorized: missing or invalid session token"})
+            return False
 
         def _guarded(self, action: Callable[[], dict[str, object]]) -> None:
             try:
@@ -257,7 +301,9 @@ def make_app_server(
             self.end_headers()
             self.wfile.write(body)
 
-    return ThreadingHTTPServer((host, port), Handler)
+    server = AppHTTPServer((host, port), Handler)
+    server.session_token = session_token
+    return server
 
 
 # --- request helpers ----------------------------------------------------------
