@@ -334,6 +334,15 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "{timestamped} of {total, plural, one {# media item} other {# media items}}: "
             "content hash present, trusted timestamp attached"
         ),
+        "export_awaiting_hint": (
+            "{awaiting, plural, "
+            "one {# item is still awaiting a trusted timestamp, so this packet does not "
+            "verify as complete yet. Its content hash already anchors it at capture. "
+            "Run `habitable resolve` when online, then export again.} "
+            "other {# items are still awaiting a trusted timestamp, so this packet does "
+            "not verify as complete yet. Their content hashes already anchor them at "
+            "capture. Run `habitable resolve` when online, then export again.}}"
+        ),
         "sync_done": (
             "synced — merged {messages, plural, one {# message} other {# messages}}, "
             "imported {captures, plural, one {# capture} other {# captures}}"
@@ -378,6 +387,17 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "{timestamped} de {total, plural, one {# elemento multimedia} "
             "other {# elementos multimedia}}: "
             "hash del contenido presente, sello de tiempo confiable adjunto"
+        ),
+        "export_awaiting_hint": (
+            "{awaiting, plural, "
+            "one {# elemento sigue pendiente de un sello de tiempo confiable, así que "
+            "este paquete aún no se verifica como completo. Su hash de contenido ya lo "
+            "ancla en el momento de la captura. Ejecute `habitable resolve` cuando tenga "
+            "conexión y vuelva a exportar.} "
+            "other {# elementos siguen pendientes de un sello de tiempo confiable, así "
+            "que este paquete aún no se verifica como completo. Sus hashes de contenido "
+            "ya los anclan en el momento de la captura. Ejecute `habitable resolve` "
+            "cuando tenga conexión y vuelva a exportar.}}"
         ),
         "sync_done": (
             "sincronizado — {messages, plural, one {se fusionó # mensaje} "
