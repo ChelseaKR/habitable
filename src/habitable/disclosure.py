@@ -161,14 +161,16 @@ def scope_statement(
     """
     resolved = lang if lang in _SCOPE else _DEFAULT_LANG
     strings = _SCOPE[resolved]
-    if scope_type == "issue" and issue_id:
-        statement = strings["issue"].format(issue_id=issue_id)
-    else:
-        statement = strings["unit"]
+    is_issue_scope = scope_type == "issue" and issue_id
+    statement = strings["issue"].format(issue_id=issue_id) if is_issue_scope else strings["unit"]
     exclusions: list[str] = []
     if since:
         exclusions.append(strings["since"].format(since=since))
-    exclusions.append(strings["outside"])
+    # Only state that vault contents "outside this scope" are withheld when the scope
+    # is actually partial (a single issue, or a since bound). A whole-unit export with
+    # no since filter includes everything, so there is nothing to exclude (R-35 fix).
+    if is_issue_scope or since:
+        exclusions.append(strings["outside"])
     return ScopeStatement(
         heading=strings["heading"], statement=statement, exclusions=tuple(exclusions)
     )
