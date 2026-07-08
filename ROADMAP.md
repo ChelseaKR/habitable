@@ -177,9 +177,14 @@ The courtroom rests on this; it gets the most scrutiny.
   i18n parity test already guards this).
 - **Plain-language & cognitive review.** *Objective:* usable under stress and across
   reading levels. *Exit:* a reviewed plain-language pass of UI copy and the setup guide.
-- **Low-end-device performance.** *Objective:* capture/seal/hash feel instant on an old
-  phone. *Exit:* a documented latency budget for the local path, checked on a low-end
-  target.
+- *Shipped:* **Low-end-device performance budget.** A documented latency budget for the
+  local path — per-operation targets for content hashing, seal/store, custody append,
+  CRDT merge, and packet assembly — tied to a reference low-end device modeled as ~10×
+  slower than the CI runner, with network TSA latency explicitly excluded (it is
+  deferred, off the capture path). `tests/test_perf_budget.py` asserts the budget on
+  every CI run (`make test`), and `docs/performance-budget.md` records the model and the
+  tolerance band. *Remaining:* replace the 10× model with a measurement on named
+  reference hardware once mobile packaging lands (see workstream C).
 
 ### C. Apps, sync & platform
 

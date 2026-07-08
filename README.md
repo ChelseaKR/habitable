@@ -307,7 +307,7 @@ as legal advice or a promise of a court outcome.
 **Scalability** and **elasticity** — sync is peer to peer with no central bottleneck; a relay, if used,
 forwards ciphertext and scales to zero between sessions. **Timeliness** — capture, hashing, and sealing
 complete within a perceptible moment with no network in the loop, and the RFC 3161 token is fetched
-asynchronously once the device is online; latency budgets for the local path are asserted in CI.
+asynchronously once the device is online; [latency budgets for the local path](docs/performance-budget.md) are asserted in CI.
 **Affordability** — the tool is free, runs on a tenant's existing phone, uses free public timestamp
 authorities, and needs no paid infrastructure, because the people using it have none to spare. **Process capabilities** and
 **producibility** — `make verify` reproduces the full gate; a release is one tagged, signed command.
