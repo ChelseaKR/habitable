@@ -134,10 +134,11 @@ Every export ships an accessible `packet.html`, a paginated PDF, and a verifiabl
    is shown exactly what a packet will disclose before it is produced. The tool never silently
    publishes a home's coordinates.
 5. **Retaliation is the threat model.** Defaults assume an adversary with resources and motive: data
-   at rest is encrypted, the app can be opened to a duress-safe state that hides case contents — a
-   mitigation with documented limits, not a guarantee against a coercing or forensic adversary — and
-   the tool collects no analytics and phones no home. The union decides what to disclose and to whom,
-   documented in `docs/threat-model.md`.
+   at rest is encrypted; a duress-safe open state that hides case contents is *planned but not yet
+   implemented* — today the only at-rest protection is vault encryption, and when built that state
+   will be a mitigation with documented limits, not a guarantee against a coercing or forensic
+   adversary — and the tool collects no analytics and phones no home. The union decides what to
+   disclose and to whom, documented in `docs/threat-model.md`.
 
 ---
 
@@ -159,8 +160,10 @@ fails the people relying on it.
   observe who syncs with whom and when; pure peer-to-peer sync avoids even that.
 - **A timestamp authority sees a hash, not the file** — and an RFC 3161 token bounds *when* content
   existed, not *who* created it or *what* it depicts.
-- **Duress and forensic limits.** The duress-safe state hides case contents but is not a guarantee
-  against a sufficiently capable coercing or forensic adversary.
+- **Duress and forensic limits.** The duress-safe state is *planned, not yet implemented*; today the
+  only at-rest protection is vault encryption. When built it will hide case contents but will not be a
+  guarantee against a sufficiently capable coercing or forensic adversary, and those documented limits
+  will apply.
 
 The full threat model and the mitigation for each limit live in `docs/threat-model.md`.
 
@@ -294,9 +297,10 @@ case set; a re-synced peer rebuilds local state. **Degradability** and **failure
 missing timestamp token or a broken chain is shown as a degraded evidence status, never silently passed
 as clean. **Redundancy** — multiple sync peers and configurable multiple timestamp authorities remove
 single points of failure. **Stability** and **durability** — sealed originals are immutable; semver on
-the packet format and verification protocol. **Safety** — the duress-safe open state (with the limits set
-out in the hard rules and *Honest limits*) and location-stripped sharing reduce harm to the tenant; the
-tool frames outputs as documentation, never as legal advice or a promise of a court outcome.
+the packet format and verification protocol. **Safety** — location-stripped sharing reduces harm to the
+tenant, and a duress-safe open state (planned, not yet implemented; with the limits set out in the hard
+rules and *Honest limits*) is intended to add to that; the tool frames outputs as documentation, never
+as legal advice or a promise of a court outcome.
 
 ### Performance, scale, cost
 **Efficiency** — hashing and sync deltas are incremental; the app does not re-process sealed media.
