@@ -40,6 +40,10 @@ _MEDIA_TYPES = {
     ".m4a": "audio/mp4",
     ".mp3": "audio/mpeg",
     ".wav": "audio/wav",
+    # EXP-09: an independent instrument's CSV export (temperature logger, moisture
+    # meter, ...) is a capture type like any other — same hash/seal/timestamp
+    # pipeline below, interpreted for rendering by habitable.sensor.
+    ".csv": "text/csv",
 }
 
 _MEDIA_EXTENSIONS = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
@@ -338,6 +342,13 @@ def _read_media_metadata(src: Path, resolved_media_type: str) -> MediaMetadata:
     Still images go through :mod:`habitable.exif` (piexif/Pillow); video/audio
     go through :mod:`habitable.media` (ffprobe), a different toolchain with a
     different optional-dependency story (EXP-07)."""
+    if resolved_media_type == "text/csv":
+        return MediaMetadata(
+            media_format="text/csv",
+            has_location=False,
+            capture_time=None,
+            fields_present=(),
+        )
     if src.suffix.lower() in _MEDIA_EXTENSIONS or resolved_media_type.startswith(
         ("video/", "audio/")
     ):

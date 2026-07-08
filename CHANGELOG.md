@@ -21,6 +21,21 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   `scripts/gen_kernel_corpus.py`) that lets two independent implementations cross-check the
   same canonical bytes, hashes, and custody head hashes. A guard test keeps
   `import habitable.kernel` within the Apache-2.0 subset (no relay/sync/cli/app/capture/vault).
+
+- **Instrument-corroborated conditions — sensor CSV import** (EXP-09). An independent
+  instrument's readings (a temperature logger for a no-heat case, a moisture meter for
+  mold) can now be captured as a first-class item: a `.csv` file runs the *same* evidence
+  spine as a photo — hashed, sealed, RFC 3161 timestamped, and custody-logged — so
+  `verify` treats it as a hash-anchored item with no special-casing. The packet interprets
+  the CSV (new `habitable.sensor` module: conservative `label,value[ (unit)]` parsing that
+  degrades to "no chart" rather than guessing) and renders it accessibly: a summary
+  sentence, the full readings table (header scopes + caption; the source of truth), and a
+  small line chart marked `aria-hidden` over that text equivalent — never color-only. A
+  data file is copied into `media/` verbatim (a CSV carries no embedded location metadata
+  to strip) and disclosed as such. Framed as corroboration, **not** proof of cause
+  (R-26). New `item.sensor` field documented in `docs/bundle-schema.md` and
+  `docs/packet-bundle.schema.json`; see `docs/ideation/03-expansions.md` (EXP-09).
+
 - **Relay observability — structured JSON logs + `/livez` / `/readyz`** (per the
   portfolio OBSERVABILITY-STANDARD). The optional sync relay now logs one JSON object
   per line via the stdlib `logging` module (it stays dependency-free — no structlog/OTel
