@@ -6,8 +6,9 @@
 > never be spun as "hidden" (R-33) — exactly what the operator of that relay, or anyone
 > who **subpoenas or compromises** it, can and cannot observe. This page is that
 > statement: contents are **not** observable; certain **metadata is**. It then lists the
-> mitigations, including the metadata-resistance work that is **roadmapped but not yet
-> implemented** (E-23), clearly labeled as future.
+> mitigations — including the opt-in `PaddingTransport` (§4.5, EXP-12) that removes the
+> size and message-count leaks, and the metadata-resistance work that remains
+> **roadmapped but not yet implemented** (E-23, §5), clearly labeled as future.
 >
 > Companion to [`threat-model.md`](threat-model.md) (§3.2 the optional relay, §5
 > explicit limits, §6 residual-risk table), [`relay-operator-self-audit.md`](relay-operator-self-audit.md)
@@ -27,9 +28,12 @@ image bytes, or sender identity** — not in its store, not in what it serves ba
 `/healthz`. But because it **forwards traffic**, it unavoidably **observes connection
 metadata**: which room ids are active, when, how often, and roughly how much data moves;
 and at the network/transport layer (or its TLS-terminating proxy) the **peer IP
-addresses**. habitable does **not** currently implement traffic-analysis resistance
-(padding, batching, mixing). The only way to remove the metadata exposure entirely is to
-**not use a relay** — sync peer-to-peer.
+addresses**. habitable ships an **opt-in** `PaddingTransport` (`src/habitable/sync.py`,
+EXP-12) that pads messages to fixed-size buckets and posts fixed-size **cover batches**,
+which removes the per-message **size** and real-message **count** leaks (§4.5) — but it
+does **not** mix across senders or hide room ids or IPs, and is not a substitute for an
+anonymity network. The only way to remove the metadata exposure entirely is to **not use
+a relay** — sync peer-to-peer.
 
 ---
 
@@ -62,18 +66,20 @@ subpoena."*
 | **Room id** (`--channel`) of active traffic | **Yes** | **Yes** | Room ids are the store's keys and appear in the request path (`/rooms/<id>`). They are peer-chosen and opaque, but stable: the same id recurring links sessions together. |
 | **Who-syncs-with-whom**, by room | **Partly** | **Partly** | The relay sees *that a room is active* and (at the network layer) *which IPs* touch it. It does not see identities, but **co-occurrence of IPs on a room id** reveals that those parties sync together. This is the core "who-with-whom" leak. |
 | **Timing** — when a sync happens | **Yes** | **Yes** | Every POST/GET is handled in real time; even with no logs, a live operator or a tap sees activity as it occurs. |
-| **Volume / size** — roughly how much moves | **Yes** | **Yes** | `bytes_relayed` is counted aggregate; per-message size is visible at handling time and via `Content-Length`. No padding is applied, so blob size tracks real payload size. |
-| **Frequency** — how often a room syncs | **Yes** | **Yes** | Inferable from repeated activity on a room id. |
+| **Volume / size** — roughly how much moves | **Yes** (plain) / **bucketed** (`PaddingTransport`) | same | `bytes_relayed` is counted aggregate; per-message size is visible via `Content-Length`. Plain transports leak exact payload size. With the opt-in `PaddingTransport` (§4.5) every message is padded to block-sized buckets and each flush is one uniform size, so size reveals only the block-rounded size of the *largest* message in a batch. |
+| **Frequency / real-message count** — how often / how many | **Yes** (plain) / **hidden up to batch size** (`PaddingTransport`) | same | Plain: inferable from repeated activity and per-message posts on a room id. With `PaddingTransport`, each flush posts a fixed number of indistinguishable blobs (real + decoys), so the operator cannot tell how many were real (up to `batch_size`). *That* a room is active, and roughly when, is still visible. |
 | **Peer IP addresses** | **Yes** (at network/proxy layer) | **Yes** | Not stored by `relay.py` itself, but visible to the host's network stack, the TLS-terminating proxy, and any on-path observer. The relay's *application* logs are empty by default (see audit doc), but the proxy and the network are not the application. |
 | Aggregate counts (`rooms`, `posted`, `fetched`, `bytes_relayed`) | **Yes** | **Yes** | Exposed by `/healthz` by design; harmless aggregates, but they do confirm the relay is in use and how busy it is. |
 
 ### 2.3 The residual exposure, stated so it can't be spun as hidden (R-33)
 
-> **Even a perfectly-behaved, no-log, self-hosted relay can observe who syncs with whom,
-> when, how often, and roughly how much — by room id and by IP. habitable does not hide
-> this and does not currently defeat it. If your threat model cannot tolerate that
-> metadata reaching the relay's operator or anyone who subpoenas or compromises the
-> relay, do not use a relay: sync peer-to-peer.**
+> **Even a perfectly-behaved, no-log, self-hosted relay can observe *that* a room is
+> active, roughly *when*, and the peer *IPs* — i.e. who syncs with whom, by room id and by
+> IP. The opt-in `PaddingTransport` (§4.5) removes the *size* and *how-many* leaks, but not
+> these. habitable does not hide the room/timing/IP metadata and does not defeat IP-level
+> correlation. If your threat model cannot tolerate that metadata reaching the relay's
+> operator or anyone who subpoenas or compromises the relay, do not use a relay: sync
+> peer-to-peer.**
 
 This is the same limit stated in `threat-model.md` §5 ("Relay metadata is not hidden")
 and §6 (residual-risk row "Relay operator or its subpoena"). It is repeated here, and at
@@ -144,28 +150,73 @@ this is part of the operator self-audit (audit doc §6 Step 1, §7).
   (§"Tracking via telemetry" residual risk) states network-level observation is outside
   the app's control.
 
+### 4.5 Opt-in `PaddingTransport` — remove the size and count leaks (EXP-12)
+
+`src/habitable/sync.py` ships a `PaddingTransport` that **wraps any transport**
+(`RelayClient`, `LocalDirTransport`) and is used exactly like one — no other code
+changes:
+
+```python
+from habitable.sync import PaddingTransport, RelayClient, sync
+
+transport = PaddingTransport(RelayClient(url), block_size=64 * 1024, batch_size=4)
+sync(vault, peer, transport, channel="room")
+```
+
+It does **two** concrete, tested things (see
+`tests/test_sync.py::test_padding_transport_*`):
+
+- **Padding.** Every message is framed and padded with random bytes to a multiple of
+  `block_size`; within a flush, all blobs are padded to one uniform, block-aligned size.
+  So per-message **size no longer tracks payload size** — the operator learns only the
+  block-rounded size of the *largest* message in a batch.
+- **Cover traffic.** Each flush posts a fixed `batch_size` of indistinguishable blobs;
+  when fewer real messages are pending, the batch is filled with **decoys** —
+  correctly-framed random blobs that open for no recipient and that `import_messages`
+  silently drops. The operator sees a constant number of same-size posts and **cannot
+  count how many were real** (up to `batch_size`), nor tell which ones are.
+
+With `auto_flush=False` you can `post()` several messages and `flush()` once, batching
+real events together to also blunt per-message timing.
+
+**What it does NOT do — the honest residual (do not overclaim).** It does **not** hide the
+**room id**, the **peer IP addresses**, or the fact that a room is active and roughly
+when; cover traffic hides the count only up to `batch_size`; the uniform batch size still
+reveals the *largest* message's block-rounded size; and padding costs real bandwidth (a
+tension with tight data caps, persona **P-06**). It is **not** an anonymity network: it
+does not mix across senders and does not defeat IP-level correlation. Like all
+privacy-critical changes here, the traffic-analysis property has **not** yet had the
+external review the project's own principle (roadmap A) requires before it is relied upon
+— treat it as defence-in-depth on top of "run your own relay" and "bring your own
+Tor/VPN," not as a replacement for not using a relay.
+
 ---
 
-## 5. Roadmap — metadata resistance (NOT yet implemented)
+## 5. Roadmap — metadata resistance (remaining work, NOT yet implemented)
 
-The following is **future work** (backlog **E-23**, and **R-46** "advance metadata
-resistance," marked *planned* in
+The size and cover-traffic pieces now ship as the opt-in `PaddingTransport` (§4.5). The
+following is the **remaining** future work (backlog **E-23**, and **R-46** "advance
+metadata resistance," marked *planned* in
 [`docs/research/synthetic-personas-feedback.md`](research/synthetic-personas-feedback.md)).
 It is **not in the code today.** Do not attest or claim these properties for the current
 relay.
 
-- **Padding** — pad ciphertext blobs to fixed/bucketed sizes so size no longer tracks
-  real payload size. *Not implemented:* blob size today equals payload size.
-- **Batching / cover traffic / mixing** — delay and batch deliveries, or inject decoy
-  traffic, so timing and frequency stop revealing real sync events. *Not implemented:*
-  every POST/GET is handled in real time.
-- **A hardened relay profile** combining the above into an opt-in "metadata-resistant"
-  mode. *Not implemented.*
-- **Transport-level protections** beyond "use TLS + bring your own Tor/VPN." *Not
-  implemented in the app.*
+- **Padding** — *shipped, opt-in* (§4.5): `PaddingTransport` buckets blob sizes so size no
+  longer tracks payload size. Remaining: an on-by-default profile and tuning guidance.
+- **Cover traffic** — *shipped, opt-in* (§4.5): fixed-size, decoy-filled batches hide the
+  real message count up to `batch_size`. Remaining: adaptive/continuous cover.
+- **Mixing / timing / frequency resistance** — delay, reorder, and mix deliveries *across
+  senders* so *when* and *how often* stop revealing real sync events. *Not implemented:*
+  the relay handles every POST/GET in real time, and `PaddingTransport` batches a single
+  sender's own messages but does not mix across senders.
+- **A hardened relay profile** combining the above into an on-by-default
+  "metadata-resistant" mode with a reviewed parameter set. *Not implemented.*
+- **Transport-level anonymity** (an anonymity-network `Transport` that also hides room ids
+  and IPs) beyond "use TLS + bring your own Tor/VPN." *Not implemented in the app.*
 
-Until these ship, the honest statement is the one in §2.3: a relay observes who/when/
-how-much, and the only way to avoid that is to not use a relay.
+Until these ship, the honest statement is the one in §2.3: even with `PaddingTransport`, a
+relay observes *that* a room is active, roughly *when*, and the peer *IPs*; the only way to
+avoid that entirely is to not use a relay.
 
 ---
 
@@ -176,9 +227,9 @@ how-much, and the only way to avoid that is to not use a relay.
 | Can the relay read my notes/photos? | **No** — sealed before it arrives. |
 | Can it tell who sent a message? | **No** at the app layer (sender id is inside the sealed box). **But** it can correlate IPs to a room. |
 | Can it tell which peers sync together? | **Partly** — via room-id activity and IP co-occurrence. |
-| Can it see when / how often / how much? | **Yes** (timing, frequency, size). |
+| Can it see when / how often / how much? | **When**: yes (that a room is active). **How much / how many**: yes on a plain transport; hidden by the opt-in `PaddingTransport` (bucketed size + fixed cover batches, §4.5). |
 | Does it store any of this on disk or in logs? | **No** by default (in-memory, no request logs, `/healthz` aggregates only) — but the network/proxy layer can. |
-| Does it pad/batch/mix to resist traffic analysis? | **No** — roadmapped (E-23), not implemented. |
+| Does it pad/batch/mix to resist traffic analysis? | **Padding + cover batches**: yes, opt-in (`PaddingTransport`, §4.5, EXP-12). **Cross-sender mixing / IP + room-id hiding**: no — roadmapped (E-23). |
 | How do I avoid relay metadata entirely? | **Don't use a relay** — sync peer-to-peer (`LocalDirTransport`, USB/SD/shared folder). |
 
 See [`threat-model.md`](threat-model.md) §3.2, §5, and §6 for the canonical statement of

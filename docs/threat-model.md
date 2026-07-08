@@ -147,9 +147,16 @@ courtroom fails the people relying on it.
   internally-consistent one before any external party has seen the head hash. Detection depends on
   an external anchor (a counterpart who already holds the chain head, or a timestamp over it). The
   chain answers "was this record altered after the fact?" — it cannot bind a hostile keyholder.
-- **Relay metadata is not hidden.** Even a no-log relay observes who syncs with whom and when, and
-  roughly how much moves. habitable does not implement traffic-analysis resistance, padding, or
-  mixing. The only way to remove this exposure entirely is to not use a relay (pure peer-to-peer).
+- **Relay metadata is only partly hidden.** Even a no-log relay observes who syncs with whom and
+  when, and — without extra measures — roughly how much moves. The opt-in `PaddingTransport`
+  (`sync.py`, EXP-12) reduces two of these: it pads every message to block-sized buckets and posts
+  fixed-size cover batches, so per-message **size** and real-message **count** (up to the batch
+  size) stop tracking the real payload. It does **not** hide the **room id**, the **peer IP
+  addresses**, or **that a room is active and roughly when**, and it is not an anonymity network
+  (no cross-sender mixing, no IP-correlation defence); it also has not yet had the external
+  traffic-analysis review such a claim requires. The only way to remove relay metadata **entirely**
+  is to not use a relay (pure peer-to-peer). See `relay-observability-matrix.md` §4.5 for the exact
+  residual.
 - **The duress-safe state is planned, not implemented.** It is described here as a future mitigation;
   a `grep` for `duress`/`panic`/`decoy` across `src/` and `app/` returns nothing today. When built,
   opening the app to a duress-safe state will hide case contents from someone glancing at the screen or
