@@ -98,6 +98,12 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_status = sub.add_parser("status", help="show the state of the case")
     add_vault(p_status)
+    p_status.add_argument(
+        "--xray",
+        action="store_true",
+        help="show a local, telemetry-free data-flow X-ray of what each component "
+        "would expose externally (no network)",
+    )
     p_status.set_defaults(func=_cmd_status)
 
     p_resolve = sub.add_parser("resolve", help="fetch timestamps for items queued offline")
@@ -150,6 +156,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p_relay = sub.add_parser("relay", help="run an optional ciphertext-only sync relay")
     p_relay.add_argument("--host", default="127.0.0.1")
     p_relay.add_argument("--port", type=int, default=8787)
+    p_relay.add_argument(
+        "--persist-dir",
+        type=Path,
+        help="opt-in on-disk ciphertext journal (default: memory-only, nothing on disk)",
+    )
     p_relay.set_defaults(func=_cmd_relay)
 
     p_app = sub.add_parser("app", help="run the local web app (accessible, EN/ES)")
@@ -187,6 +198,17 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_demo = sub.add_parser("demo", help="walk a synthetic case end to end (no real data)")
     p_demo.set_defaults(func=_cmd_demo)
+
+    p_prove = sub.add_parser(
+        "prove-no-plaintext",
+        help="prove no plaintext reaches the relay: real sync + wire capture + marker grep",
+    )
+    p_prove.add_argument(
+        "--capture-dir",
+        type=Path,
+        help="directory to write the wire-capture file to (default: a temp dir)",
+    )
+    p_prove.set_defaults(func=_cmd_prove)
 
     return parser
 
@@ -266,6 +288,11 @@ def _cmd_timeline(args: argparse.Namespace) -> int:
 
 def _cmd_status(args: argparse.Namespace) -> int:
     vault = _open(args)
+    if getattr(args, "xray", False):
+        from .prove import data_flow_xray
+
+        print(data_flow_xray(vault))
+        return 0
     locale = resolve_locale(vault.config.language)
     unit = vault.document.get_meta("unit") or vault.document.case_id
     issues = vault.document.issues()
@@ -436,7 +463,7 @@ def _cmd_sync(args: argparse.Namespace) -> int:
 def _cmd_relay(args: argparse.Namespace) -> int:
     from .relay import serve
 
-    serve(args.host, args.port)
+    serve(args.host, args.port, persist_dir=args.persist_dir)
     return 0
 
 
@@ -491,6 +518,14 @@ def _cmd_demo(_args: argparse.Namespace) -> int:
     from .demo import run_demo
 
     return run_demo()
+
+
+def _cmd_prove(args: argparse.Namespace) -> int:
+    from .prove import format_report, prove_no_plaintext
+
+    report = prove_no_plaintext(args.capture_dir)
+    print(format_report(report))
+    return report.exit_code
 
 
 # --- helpers ------------------------------------------------------------------

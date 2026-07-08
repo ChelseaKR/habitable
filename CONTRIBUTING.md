@@ -17,6 +17,12 @@ limits matter more than speed or features.
 
 You need [uv](https://docs.astral.sh/uv/). Python 3.14 is installed automatically.
 
+**Fastest path:** open the repo in a
+[devcontainer](.devcontainer/devcontainer.json) or a GitHub Codespace, or run
+`./scripts/bootstrap.sh` on a local checkout — either one installs `uv`,
+provisions the Python 3.14 environment, and prints the next steps in a single
+command. The manual steps below do the same thing by hand.
+
 ```console
 $ uv sync                 # create the env on Python 3.14 + install dev tools
 $ uv run habitable demo   # walk the whole pipeline on synthetic data, offline
