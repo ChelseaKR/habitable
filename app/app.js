@@ -6,6 +6,10 @@
   var LANG_KEY = "habitable.lang";
   var SUPPORTED = ["en", "es"];
   var DEFAULT_LANG = "en";
+  // Right-to-left scripts. When one of these is active we flip the document
+  // direction so the (logical-property) CSS mirrors correctly. Currently no RTL
+  // bundle ships, but the plumbing is in place ahead of one (R-48).
+  var RTL_LANGS = ["ar", "he", "fa", "ur"];
 
   var strings = {}; // active dictionary
   var lang = DEFAULT_LANG;
@@ -189,6 +193,10 @@
       strings = dict;
       lang = which;
       document.documentElement.setAttribute("lang", which);
+      document.documentElement.setAttribute(
+        "dir",
+        RTL_LANGS.indexOf(which) !== -1 ? "rtl" : "ltr"
+      );
       try {
         localStorage.setItem(LANG_KEY, which);
       } catch (e) {

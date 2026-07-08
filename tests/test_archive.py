@@ -65,6 +65,47 @@ def test_archive_chain_anchors_existence_and_detects_tamper(
         verify_archive_chain(cap.content_hash, primary, broken)
 
 
+def test_retimestamp_threads_redundant_authorities(
+    make_vault: Callable[..., Vault], make_jpeg: Callable[..., Path], tmp_path: Path
+) -> None:
+    """retimestamp_all extends the archive chain with each redundant authority (FIX-06).
+
+    The extra authorities thread into the (still strictly linear) archive chain so the
+    re-timestamp proof does not rest on a single TSA, and the packet still verifies.
+    """
+    vault = make_vault()
+    primary = LocalRfc3161TSA("p", time_source=lambda: 1_767_312_000)
+    extra = LocalRfc3161TSA("second", time_source=lambda: 1_767_312_000)
+    issue = vault.document.add_issue(category="mold", issue_id="i1")
+    capture(vault, make_jpeg(), issue_id=issue, tsa=primary, extra_tsas=[extra])
+    cap_id = vault.document.captures()[0].capture_id
+    assert len(vault.get_additional_tokens(cap_id)) == 1  # a redundant primary token
+
+    later = LocalRfc3161TSA("archive-primary", time_source=lambda: 1_800_000_000)
+    later_extra = LocalRfc3161TSA("archive-second", time_source=lambda: 1_800_000_000)
+    assert retimestamp_all(vault, later, extra_tsas=[later_extra]) == 1  # one capture archived
+
+    # One link from the primary archive authority, one threaded from the redundant one.
+    archives = vault.get_archive_tokens(cap_id)
+    assert [t.tsa_name for t in archives] == ["archive-primary", "archive-second"]
+    archive_entries = [
+        e
+        for e in vault.custody.entries
+        if e.item_id == cap_id and e.details.get("kind") == "archive"
+    ]
+    assert len(archive_entries) == 2
+    assert sum(1 for e in archive_entries if e.details.get("role") == "additional") == 1
+
+    # The threaded chain still verifies cleanly in an exported packet.
+    out = tmp_path / "packet"
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
+    report = verify_packet(out)
+    assert report.ok
+    item = report.items[0]
+    assert {"p", "second"} <= set(item.verified_authorities)
+    assert any("archive-timestamped (2 link(s))" in n for n in item.notes)
+
+
 def test_retimestamp_cli_flow(
     tmp_path: Path,
     make_jpeg: Callable[..., Path],

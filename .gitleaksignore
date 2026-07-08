@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Scoped gitleaks allowlist — fingerprints only, each with a stated reason.
+# This is NOT a blanket mute: any new finding not listed here still fails the
+# CI gate, the pre-commit hook, and the scheduled full-history scan.
+#
+# site/sample-packet/bundle.json ships a synthetic demo evidence packet (no real
+# tenant data — see `make demo` / docs/productionization.md) that embeds base64
+# RFC 3161 CMS timestamp tokens ("token_b64"). Their high entropy trips
+# gitleaks' generic-api-key heuristic; they are DER-encoded timestamp tokens
+# from the bundled DevTSA, not credentials. Verified by hand on 2026-07-05
+# (decodes as ASN.1 SEQUENCE / CMS SignedData, not a key/token format).
+bd2e8596b0c2bfcedefd39a94fd9745e4bd66863:site/sample-packet/bundle.json:generic-api-key:1

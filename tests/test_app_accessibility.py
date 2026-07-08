@@ -35,7 +35,9 @@ class _A11yParser(HTMLParser):
         self.main = 0
         self._label_depth = 0
 
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:  # noqa: C901
+        # P1-4 follow-up: this structural-check parser grew one branch per HTML
+        # feature it asserts on; splitting per-tag handlers is the fix, not urgent.
         d = {k: (v or "") for k, v in attrs}
         if tag == "html":
             self.html_lang = d.get("lang")
