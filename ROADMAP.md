@@ -67,9 +67,11 @@ violating one is the wrong item.
   that could break verification of an existing packet is a protocol major bump with a
   migration note, never a silent change.
 - A release is tagged, has a `CHANGELOG.md` entry, and passes the full gate (`make verify`
-  + the `a11y` browser gate + CodeQL). **Signed releases and build provenance** are
-  planned (see workstream A) — today actions are SHA-pinned and dependencies locked, but
-  release artifacts are not yet signed.
+  + the `a11y` browser gate + CodeQL). Actions are SHA-pinned and dependencies locked;
+  release artifacts carry a build **provenance attestation** and an SBOM since v0.2.0
+  (see `.github/workflows/release.yml`). **Signed release tags** (not yet in place) remain
+  planned (see workstream A) — provenance attestation proves *how* an artifact was built,
+  not that the tag pointing at it was signed by the maintainer.
 
 ## The v1.0 gate (when "alpha" comes off)
 
@@ -86,7 +88,10 @@ true and documented before the "alpha — do not rely on this" caveat is removed
 - [ ] The **threat model independently reviewed** and its residual risks re-confirmed
       (workstream D), including a lawyer's read of the "not legal advice / no admissibility
       guarantee" framing.
-- [ ] **Signed releases + build provenance** in place (workstream A).
+- [ ] **Signed release tags + build provenance** in place (workstream A). Build
+      provenance attestation and an SBOM ship since v0.2.0; **tag signing** (and a
+      release-job guard that rejects an unsigned or version-mismatched tag) is the
+      remaining piece.
 - [ ] Recovery, key-rotation, and multi-device flows documented and tested for a
       non-technical organizer (workstream C).
 
@@ -117,6 +122,12 @@ The courtroom rests on this; it gets the most scrutiny.
 - *Shipped:* SHA-256 fixity, RFC 3161 timestamps (local issuer + HTTP client + offline dev
   TSA), hash-linked custody with salted actor commitments, the standalone verifier,
   SHA-pinned CI, CodeQL, `pip-audit`, Dependabot.
+- *Shipped (FIX-10):* **No wall-clock/node metadata in exported identifiers.** Every id in a
+  packet (issue, capture, timeline entry, custody item) and the exported `hlc` fields are now
+  opaque, per-case-salted digests that encode neither the device wall clock nor the HLC node id;
+  the hybrid logical clock stays internal for CRDT ordering/merge. Bundle format bumped to
+  `packet_version` 2 (v1 packets still verify, guarded by the golden corpus); a `test_guards`
+  invariant asserts no exported field reveals the wall-clock ms or node id.
 - **Continuous real public-TSA integration.** *Objective:* prove tokens from real
   authorities (e.g. FreeTSA, DigiCert) verify end to end, not just the local issuer.
   *Exit:* a scheduled, network-gated CI job stamps and verifies against ≥2 public TSAs and
@@ -204,7 +215,11 @@ The courtroom rests on this; it gets the most scrutiny.
   a packet was usable in its forum and what broke (gate item for v1.0).
 - **Contributor growth & onboarding.** *Objective:* lower the bus-factor. *Exit:* a "good
   first issue" set, an onboarding path beyond `CONTRIBUTING.md`, and ≥1 sustained outside
-  contributor.
+  contributor. *Shipped (R-42/R-43 tooling):* the good-first-issue set, the newcomer
+  architecture walkthrough (`docs/good-first-issues.md`), and a one-command onboarding path —
+  `./scripts/bootstrap.sh` plus a devcontainer/Codespace config (`.devcontainer/`) that
+  provisions the full Python 3.14 + uv environment. The remaining exit criterion — ≥1
+  sustained outside contributor — is a social outcome, not a tooling gap, and stays open.
 - **Shared governance.** *Objective:* move from benevolent-maintainer toward shared
   stewardship as contributors arrive. *Trigger:* sustained contributors → adopt a documented
   decision process and `MAINTAINERS`/`GOVERNANCE` evolution in `docs/governance.md`.

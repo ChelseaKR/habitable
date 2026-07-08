@@ -18,10 +18,11 @@ import base64
 import json
 import re
 import threading
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import cast
 
 from .capture import capture, resolve_deferred
 from .errors import HabitableError
@@ -55,6 +56,7 @@ class AppServer:
     tsa: TimestampAuthority | None
     static_root: Path
     lock: threading.Lock
+    extra_tsas: Sequence[TimestampAuthority] = field(default_factory=tuple)
 
     # --- API actions (called under the lock) ---------------------------------
 
@@ -134,7 +136,7 @@ class AppServer:
     def resolve(self) -> dict[str, object]:
         if self.tsa is None:
             raise HabitableError("no timestamp authority configured")
-        results = resolve_deferred(self.vault, self.tsa)
+        results = resolve_deferred(self.vault, self.tsa, extra_tsas=self.extra_tsas)
         return {"resolved": len(results)}
 
     def export(self, body: dict[str, object]) -> dict[str, object]:
@@ -158,106 +160,156 @@ class AppServer:
         }
 
 
+# POST routes: path -> a call against the AppServer with the parsed JSON body.
+# Kept at module scope (not built inside the handler) so dispatch is a plain dict
+# lookup. The old form defined the whole handler class inside make_app_server, so
+# every branch in every handler method counted toward that one function's
+# complexity (C901 = 19); moving the handler out drops make_app_server to trivial
+# with no behavior change.
+_POST_ROUTES: dict[str, Callable[[AppServer, dict[str, object]], dict[str, object]]] = {
+    "/api/issues": lambda app, body: app.add_issue(body),
+    "/api/capture": lambda app, body: app.capture(body),
+    "/api/resolve": lambda app, _body: app.resolve(),
+    "/api/export": lambda app, body: app.export(body),
+}
+_TIMELINE_RE = re.compile(r"^/api/issues/([A-Za-z0-9_.-]+)/timeline$")
+
+
+class _AppHTTPServer(ThreadingHTTPServer):
+    """Loopback server that carries the shared AppServer for its handlers.
+
+    Holding ``app`` on the server (rather than closing over it in a handler class
+    defined inside ``make_app_server``) is what lets the handler live at module
+    scope. It is also the attachment point for the per-session auth token that the
+    app-server auth pass adds next.
+    """
+
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        handler_class: type[BaseHTTPRequestHandler],
+        *,
+        app: AppServer,
+    ) -> None:
+        self.app = app
+        super().__init__(server_address, handler_class)
+
+
+class _AppRequestHandler(BaseHTTPRequestHandler):
+    """JSON API plus the static app shell. Behavior mirrors the CLI core."""
+
+    @property
+    def _app(self) -> AppServer:
+        # socketserver sets ``self.server`` to the server instance that owns this
+        # handler; for this server that is always an _AppHTTPServer.
+        return cast(_AppHTTPServer, self.server).app
+
+    def log_message(self, _format: str, *_args: object) -> None:
+        return
+
+    def do_GET(self) -> None:
+        if self.path == "/api/status":
+            app = self._app
+            self._guarded(lambda: app.status())
+            return
+        self._serve_static(self.path)
+
+    def do_POST(self) -> None:
+        body = self._read_json()
+        if body is None:
+            return
+        app = self._app
+        timeline = _TIMELINE_RE.match(self.path)
+        if timeline is not None:
+            self._guarded(lambda: app.add_timeline(timeline.group(1), body))
+            return
+        route = _POST_ROUTES.get(self.path)
+        if route is None:
+            self._json(404, {"error": "not found"})
+            return
+        self._guarded(lambda: route(app, body))
+
+    # --- helpers ----------------------------------------------------------
+
+    def _guarded(self, action: Callable[[], dict[str, object]]) -> None:
+        try:
+            with self._app.lock:
+                payload = action()
+        except HabitableError as exc:
+            self._json(400, {"error": str(exc)})
+            return
+        except Exception as exc:  # defensive: never leak a traceback to the UI
+            self._json(500, {"error": f"internal error: {exc}"})
+            return
+        self._json(200, payload)
+
+    def _read_json(self) -> dict[str, object] | None:
+        length = int(self.headers.get("Content-Length", "0"))
+        if length <= 0 or length > _MAX_BODY:
+            self._json(413, {"error": "bad or oversized body"})
+            return None
+        try:
+            parsed = json.loads(self.rfile.read(length))
+        except json.JSONDecodeError:
+            self._json(400, {"error": "invalid JSON"})
+            return None
+        if not isinstance(parsed, dict):
+            self._json(400, {"error": "expected a JSON object"})
+            return None
+        return parsed
+
+    def _serve_static(self, path: str) -> None:
+        static_root = self._app.static_root
+        rel = "index.html" if path in ("/", "") else path.lstrip("/")
+        if not _SAFE_PATH.match(rel) or ".." in rel:
+            self._json(404, {"error": "not found"})
+            return
+        target = (static_root / rel).resolve()
+        if not str(target).startswith(str(static_root.resolve())) or not target.is_file():
+            self._json(404, {"error": "not found"})
+            return
+        body = target.read_bytes()
+        content_type = _CONTENT_TYPES.get(target.suffix, "application/octet-stream")
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _json(self, code: int, payload: dict[str, object]) -> None:
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
 def make_app_server(
     host: str,
     port: int,
     vault: Vault,
     *,
     tsa: TimestampAuthority | None = None,
+    extra_tsas: Sequence[TimestampAuthority] = (),
     static_root: Path | None = None,
 ) -> ThreadingHTTPServer:
-    """Build (but do not start) the loopback app server."""
+    """Build (but do not start) the loopback app server.
+
+    ``extra_tsas`` are the case's redundant timestamp authorities (every
+    authority beyond the primary, as ``cli._extra_tsas_for`` derives them from
+    ``config.timestamp_authorities[1:]``); the ``/api/resolve`` endpoint stamps
+    each queued capture against them so deferred captures get the same
+    multiple-authority proof as online ones (item R-16).
+    """
     app = AppServer(
         vault=vault,
         tsa=tsa,
         static_root=static_root or _STATIC_ROOT,
         lock=threading.Lock(),
+        extra_tsas=tuple(extra_tsas),
     )
-
-    class Handler(BaseHTTPRequestHandler):
-        def log_message(self, _format: str, *_args: object) -> None:
-            return
-
-        def do_GET(self) -> None:
-            if self.path == "/api/status":
-                self._guarded(lambda: app.status())
-                return
-            self._serve_static(self.path)
-
-        def do_POST(self) -> None:
-            body = self._read_json()
-            if body is None:
-                return
-            timeline = re.match(r"^/api/issues/([A-Za-z0-9_.-]+)/timeline$", self.path)
-            routes: dict[str, Callable[[], dict[str, object]]] = {
-                "/api/issues": lambda: app.add_issue(body),
-                "/api/capture": lambda: app.capture(body),
-                "/api/resolve": lambda: app.resolve(),
-                "/api/export": lambda: app.export(body),
-            }
-            if timeline is not None:
-                match = timeline
-                self._guarded(lambda: app.add_timeline(match.group(1), body))
-            elif self.path in routes:
-                self._guarded(routes[self.path])
-            else:
-                self._json(404, {"error": "not found"})
-
-        # --- helpers ----------------------------------------------------------
-
-        def _guarded(self, action: Callable[[], dict[str, object]]) -> None:
-            try:
-                with app.lock:
-                    payload = action()
-            except HabitableError as exc:
-                self._json(400, {"error": str(exc)})
-                return
-            except Exception as exc:  # defensive: never leak a traceback to the UI
-                self._json(500, {"error": f"internal error: {exc}"})
-                return
-            self._json(200, payload)
-
-        def _read_json(self) -> dict[str, object] | None:
-            length = int(self.headers.get("Content-Length", "0"))
-            if length <= 0 or length > _MAX_BODY:
-                self._json(413, {"error": "bad or oversized body"})
-                return None
-            try:
-                parsed = json.loads(self.rfile.read(length))
-            except json.JSONDecodeError:
-                self._json(400, {"error": "invalid JSON"})
-                return None
-            if not isinstance(parsed, dict):
-                self._json(400, {"error": "expected a JSON object"})
-                return None
-            return parsed
-
-        def _serve_static(self, path: str) -> None:
-            rel = "index.html" if path in ("/", "") else path.lstrip("/")
-            if not _SAFE_PATH.match(rel) or ".." in rel:
-                self._json(404, {"error": "not found"})
-                return
-            target = (app.static_root / rel).resolve()
-            if not str(target).startswith(str(app.static_root.resolve())) or not target.is_file():
-                self._json(404, {"error": "not found"})
-                return
-            body = target.read_bytes()
-            content_type = _CONTENT_TYPES.get(target.suffix, "application/octet-stream")
-            self.send_response(200)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def _json(self, code: int, payload: dict[str, object]) -> None:
-            body = json.dumps(payload).encode("utf-8")
-            self.send_response(code)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-    return ThreadingHTTPServer((host, port), Handler)
+    return _AppHTTPServer((host, port), _AppRequestHandler, app=app)
 
 
 # --- request helpers ----------------------------------------------------------

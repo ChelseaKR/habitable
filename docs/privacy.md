@@ -32,6 +32,13 @@ for, even though, as set out below, the project itself processes almost none of 
 The practical consequence: **there is no operator who can be compelled to produce, or who
 can accidentally leak, a tenant's data — because no operator holds it.**
 
+> **Check it yourself.** The "relay sees ciphertext only" claim is externally demonstrable, not
+> just asserted: run `habitable prove-no-plaintext` (a real sync through an in-process relay with a
+> byte-for-byte wire capture you can `grep`), or capture a self-hosted relay with `tcpdump` — both
+> are documented in [prove-no-plaintext.md](prove-no-plaintext.md). For your *own* case, `habitable
+> status --xray` prints a local, telemetry-free per-component account of what each part would
+> expose externally.
+
 ## 3. Data inventory and flows
 
 | Data | Where it lives | Form | Leaves the device? |
