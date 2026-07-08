@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Code owners: solo-maintainer project today, so every path routes to the same
+# owner, but the file exists (and is enforced once branch-protection review is
+# required — see the audit's P1-2) so ownership is a declared fact rather than
+# a silent default, and so the highest-risk paths are named explicitly.
+
+* @ChelseaKR
+
+# Highest-risk surfaces: workflow definitions (supply-chain/CI trust boundary),
+# the standalone verifier (a skeptic/court must be able to trust it alone), and
+# the crypto core (vault confidentiality/tamper-evidence rests on it).
+/.github/workflows/       @ChelseaKR
+/src/habitable/verify.py  @ChelseaKR
+/src/habitable/crypto.py  @ChelseaKR
+/docs/threat-model.md     @ChelseaKR

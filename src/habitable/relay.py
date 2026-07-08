@@ -175,7 +175,7 @@ def _store_ready(store: RelayStore) -> bool:
     return isinstance(metrics, dict) and "rooms" in metrics
 
 
-def make_server(
+def make_server(  # noqa: C901 -- P1-4 follow-up: split route dispatch out of the closure
     host: str,
     port: int,
     store: RelayStore | None = None,

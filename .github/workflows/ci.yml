@@ -19,8 +19,18 @@ jobs:
     name: lint · types · tests (the merge gate)
     runs-on: ubuntu-latest
     steps:
+      # P1-3 (SEC-04): runtime egress monitoring. Starts in `audit` mode (log,
+      # don't block) so a real allowlist can be derived from real traffic
+      # before flipping to `block`. Note: even in audit mode this step reports
+      # run metadata to StepSecurity's own service (`disable-telemetry` only
+      # takes effect under `egress-policy: block`) — a deliberate, documented
+      # trade-off for a privacy-first repo, not an oversight.
+      - name: Harden Runner (audit mode)
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Install uv (pinned)
@@ -45,12 +55,37 @@ jobs:
           path: coverage.xml
           if-no-files-found: ignore
 
+  secrets:
+    name: secret scanning (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner (audit mode)
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+      - name: Checkout (full history — gitleaks needs it to scan the diff/range)
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Run gitleaks (fails the build on any finding; redacts secrets in logs)
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No GITLEAKS_LICENSE: this repo is under a personal account, not an
+          # organization, so gitleaks-action does not require a license key.
+          # No mute: default config, no .gitleaksignore, non-zero exit fails the job.
+
   audit:
     name: dependency vulnerability audit
     runs-on: ubuntu-latest
     steps:
+      - name: Harden Runner (audit mode)
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Install uv (pinned)
@@ -67,8 +102,12 @@ jobs:
     name: build wheel + sdist
     runs-on: ubuntu-latest
     steps:
+      - name: Harden Runner (audit mode)
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Install uv (pinned)

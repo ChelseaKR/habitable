@@ -1,0 +1,21 @@
+# SSH "allowed signers" file for verifying signed release tags (git's
+# `gpg.format=ssh`), consumed by `.github/workflows/release.yml`.
+#
+# BLOCKED / manual action required (see habitable-REMEDIATION.md P0-3): this file
+# currently has NO real key in it, so `git tag -v` will fail for every tag until
+# the maintainer completes both steps below. That failure is intentional — the
+# release job is meant to fail closed on an unsigned tag, not silently skip the
+# check.
+#
+# 1. Generate (or reuse) an SSH key dedicated to release signing, e.g.:
+#      ssh-keygen -t ed25519 -C "release-signing@habitable" -f ~/.ssh/habitable-release
+#    Configure git locally to sign tags with it:
+#      git config gpg.format ssh
+#      git config user.signingkey ~/.ssh/habitable-release.pub
+#    Then cut releases with a SIGNED, annotated tag:
+#      git tag -s vX.Y.Z -m "vX.Y.Z"
+#
+# 2. Replace the line below with the matching PUBLIC key (safe to commit — it's
+#    a public key), in the format: <principal> <key-type> <base64-key>
+#    Example (replace with your real public key):
+#      chelsea@habitable-release ssh-ed25519 AAAA...replace-with-real-key...
