@@ -407,3 +407,80 @@ def test_since_excludes_earlier_items_and_states_exclusion(
     assert any(since in x for x in bundle["scope"]["exclusions"])
     assert any(since in note for note in bundle["disclosures"])
     assert verify_packet(out).ok
+
+
+# --- FIX-05: bind packet authenticity to the custody chain ---------------------
+#
+# Pre-fix, verify._verify_signature trusted whatever sign_public was embedded in
+# bundle.sig.json: rebuild bundle.json (unchanged or modified), sign it with a
+# brand-new keypair, and the verifier reported signature_ok = True. These tests
+# pin the fix: the bundle-signing key must also be the identity that produced the
+# custody chain, so a rebuilt/re-signed packet fails verification.
+
+
+def test_custody_entries_export_their_signature(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    vault = _case_with_two_captures(make_vault, make_jpeg, local_tsa)
+    out = tmp_path / "packet"
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
+    bundle = json.loads((out / "bundle.json").read_text())
+    entries = bundle["custody_proof"]["entries"]
+    assert entries and all(e["signature"] for e in entries)
+    # But no clear actor identity is ever exported (privacy invariant unchanged).
+    assert all("actor" not in e and "actor_salt" not in e for e in entries)
+
+
+def test_repackaged_bundle_signed_with_a_fresh_key_fails_verification(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """The core FIX-05 regression: an attacker with a legitimate (or even untouched)
+    bundle.json cannot make it verify as authentic by re-signing bundle.sig.json with
+    a key of their own choosing -- the custody chain was signed with the real
+    producer's identity, and that identity does not change just because bundle.sig.json
+    claims a new one."""
+    import base64
+
+    from habitable.crypto import Identity
+
+    vault = _case_with_two_captures(make_vault, make_jpeg, local_tsa)
+    out = tmp_path / "packet"
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
+    assert verify_packet(out).ok  # sanity: the real packet verifies
+
+    bundle_bytes = (out / "bundle.json").read_bytes()
+    bundle_hash = sha256_bytes(bundle_bytes)
+    forged_identity = Identity.generate()  # attacker's own key, not the producer's
+    forged_signature = forged_identity.sign(bundle_hash.encode("ascii"))
+    forged_doc = {
+        "producer_fingerprint": forged_identity.public().fingerprint,
+        "sign_public": base64.b64encode(forged_identity.public().sign_public).decode("ascii"),
+        "bundle_sha256": bundle_hash,
+        "signature": base64.b64encode(forged_signature).decode("ascii"),
+    }
+    (out / "bundle.sig.json").write_text(json.dumps(forged_doc, indent=2, sort_keys=True))
+
+    report = verify_packet(out)
+    # Internally consistent (the forged signature over bundle_sha256 is valid), but
+    # NOT authentic: the custody chain was never signed by the forged key.
+    assert not report.signature_ok
+    assert not report.ok
+    assert any("custody chain" in p for p in report.problems)
+
+
+def test_legacy_v1_golden_packet_keeps_verifying_under_the_old_contract() -> None:
+    """packet_version 1 predates FIX-05 and never exported custody signatures, so it
+    cannot retroactively satisfy the stronger check -- the golden-packet corpus
+    (test_golden.py) pins that these must keep verifying forever."""
+    golden = Path(__file__).resolve().parent / "golden" / "packet-v1"
+    bundle = json.loads((golden / "bundle.json").read_text())
+    assert bundle["packet_version"] == 1
+    assert all(not e.get("signature") for e in bundle["custody_proof"]["entries"])
+    report = verify_packet(golden)
+    assert report.ok and report.signature_ok

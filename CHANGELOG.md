@@ -7,6 +7,26 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+### Security
+
+- **Packet authenticity is now bound to the custody chain (`packet_version` 2,
+  FIX-05).** Previously, `verify._verify_signature` trusted whatever `sign_public`
+  key was embedded in `bundle.sig.json`: since custody entries' Ed25519 signatures
+  were stripped by `CustodyEntry.redacted()` before export, nothing tied the
+  bundle-signing key to the identity that actually produced the evidence. An
+  attacker could take (or rebuild) a `bundle.json`, sign `bundle.sig.json` with a
+  freshly generated key, and `signature_ok` still reported `True` — undercutting
+  the "verify, don't trust" promise for a third-party recipient (opposing counsel,
+  a court). Custody entries now export their `signature` (it commits to no actor
+  identity by itself, so this costs no privacy), and `verify_packet` additionally
+  requires the bundle's `sign_public` to verify at least one signed custody entry.
+  A rebuilt/re-signed packet now fails `signature_ok` unless the attacker also
+  forges the whole hash-linked, signed custody chain. `packet_version 1` packets
+  predate this and are held to the older, weaker contract they were issued under
+  (still verify — see the `packet-v1`/`packet-v2` golden corpus in
+  `tests/golden/`). See `docs/ideation/02-large-scale-fixes.md` (FIX-05),
+  `docs/verifier-decision-table.md` §2, and `docs/bundle-schema.md`.
+
 ### Added
 
 - **Reusable, local-first evidence kernel (`habitable.kernel`)** — EXP-13. The

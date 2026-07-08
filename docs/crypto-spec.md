@@ -248,17 +248,20 @@ Any insertion, deletion, reorder, or edit breaks the chain at a precise `seq`.
 
 **Actor privacy.** The actor is committed, not exported in clear:
 `actor_commitment = SHA-256("<salt_hex>:<actor>")` with a fresh 128-bit salt per entry. The clear
-`actor`, the `actor_salt`, the Ed25519 `signature`, and any identity/PII `private_details` are
-**vault-only** — they are *not* part of `public_payload` (so they are neither hashed nor
-reconstructable from an export) and are dropped by `redacted()` before export. A recipient thus
-verifies the chain is intact **without learning who did what**. The salt makes the commitment
-preimage-resistant against guessing a small actor space; reviewers should weigh that the commitment
-is unkeyed SHA-256 over a low-entropy actor string protected only by the per-entry salt.
+`actor`, the `actor_salt`, and any identity/PII `private_details` are **vault-only** — they are *not*
+part of `public_payload` (so they are neither hashed nor reconstructable from an export) and are
+dropped by `redacted()` before export. A recipient thus verifies the chain is intact **without
+learning who did what**. The salt makes the commitment preimage-resistant against guessing a small
+actor space; reviewers should weigh that the commitment is unkeyed SHA-256 over a low-entropy actor
+string protected only by the per-entry salt.
 
 **Optional per-entry signatures.** When an `Identity` is supplied, the entry is Ed25519-signed over
 `entry_hash`. `verify(signer_keys=…)` checks signatures whose `actor_commitment` maps to a known
-public key. The exported `integrity_proof()` includes redacted entries plus a per-item summary and
-the chain `head_hash`.
+public key; `verify(producer_public_key=…)` instead checks every signed entry against one fixed key
+regardless of its `actor_commitment`. The exported `integrity_proof()` includes redacted entries
+(**FIX-05**: unlike `actor`/`actor_salt`/`private_details`, `signature` is *not* dropped by
+`redacted()` — it commits to no identity by itself, so exporting it costs no privacy) plus a
+per-item summary and the chain `head_hash`.
 
 ### 6.3 Packet signature
 
@@ -266,6 +269,15 @@ the chain `head_hash`.
 producer's device Ed25519 key signs `bundle_sha256` (hex, ASCII) into `bundle.sig.json`
 (`{producer_fingerprint, sign_public(b64), bundle_sha256, signature(b64)}`). The verifier recomputes
 `bundle_sha256`, checks it matches the claimed value, and verifies the signature over it.
+
+**Binding to the custody chain (FIX-05, `packet_version >= 2`).** A signature that only proves "the
+bundle bytes are consistent with the embedded `sign_public`" is not enough — the key itself is
+self-asserted, so an attacker can rebuild the bundle and sign it with a key of their choosing.
+`verify_packet` additionally requires `sign_public` to verify at least one custody entry's
+`signature` (via `CustodyLog.verify(producer_public_key=sign_public)`), which is only possible if
+the attacker controls the key that produced the *entire* hash-linked custody chain the entry
+belongs to. `packet_version 1` bundles predate this and are exempted (see
+[`verifier-decision-table.md`](verifier-decision-table.md) §2).
 
 ### 6.4 Trusted time (RFC 3161)
 

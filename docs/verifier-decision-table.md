@@ -10,7 +10,8 @@
 > intact, and never crashes on hostile input — malformed structure becomes a clean rejection, not an
 > exception escaping `verify_packet`. (Two pre-structural conditions are raised as
 > `VerificationError` by design; see [§1](#1-packet-level-outcomes).) This file is normative for
-> `SUPPORTED_PACKET_VERSION = 1`.
+> `SUPPORTED_PACKET_VERSION = 2`. `packet_version 1` packets are still accepted but held to the
+> weaker, pre-FIX-05 signature contract described in [§2](#2-signature-bundlesigjson--signature_ok).
 
 ## 0. What "intact" means
 
@@ -39,7 +40,7 @@ matches or was not included).
 | `bundle.json` not valid JSON / not UTF-8 | raises `VerificationError` (clean message, no crash) | — |
 | `bundle.json` is JSON but not an object | raises `VerificationError` | — |
 | `packet_version` missing or not an integer | early return; `problems = ("bundle has no integer packet_version",)` | **False** |
-| `packet_version` > `SUPPORTED_PACKET_VERSION` | early return; `problems = ("packet_version N is newer than supported 1; upgrade habitable…",)` | **False** |
+| `packet_version` > `SUPPORTED_PACKET_VERSION` | early return; `problems = ("packet_version N is newer than supported 2; upgrade habitable…",)` | **False** |
 | an entry in `items` is not an object | `problems` gains "malformed item in bundle"; that item is skipped | **False** |
 | everything well-formed | full per-item + custody + signature evaluation below | depends |
 
@@ -57,12 +58,28 @@ matches or was not included).
 | `doc.bundle_sha256` ≠ SHA-256 of the actual `bundle.json` bytes | `False` |
 | `sign_public` or `signature` missing or not a string | `False` |
 | Ed25519 verify of `signature` over ASCII(`bundle_sha256`) fails | `False` |
-| all of the above pass | `True` |
+| bundle signature verifies, `packet_version == 1` | `True` (pre-FIX-05 packets are held to this weaker contract) |
+| bundle signature verifies, `packet_version >= 2`, **and** `sign_public` also verifies ≥1 signed `custody_proof.entries[]` entry | `True` |
+| bundle signature verifies, `packet_version >= 2`, but `sign_public` verifies **zero** custody entries (unsigned/empty chain, or every entry signed by a different key) | `False` — `problems` gains a "does not match the key that signed the custody chain" note |
 
 Any malformed signature file is a *failed signature*, never a crash (`json`/`Unicode`/`Value`/`OS`
 errors are caught). Note the signature binds the **producer's** key to the bundle bytes; it asserts
 "this device produced exactly these bytes," not third-party identity (see
 [`crypto-spec.md`](crypto-spec.md) §4).
+
+**FIX-05 — internally consistent vs. authored by the pinned producer.** Before `packet_version 2`,
+`signature_ok` proved only that the bundle bytes were internally consistent with *some* Ed25519
+key — an attacker could rebuild (or leave untouched) `bundle.json`, sign `bundle.sig.json` with a
+freshly generated key, and `signature_ok` still reported `True`. From `packet_version 2`, custody
+entries export their `signature` (an Ed25519 signature over `entry_hash`, made with the producing
+node's identity key at capture/export time — see [`bundle-schema.md`](bundle-schema.md)), and the
+verifier additionally requires that the bundle's `sign_public` verifies at least one of them. A
+rebuilt/re-signed packet now fails `signature_ok` unless the attacker also forges a custody chain
+signed end-to-end with their own key — which they cannot do without breaking the hash-linked chain
+itself (§3) or holding the original producer's private key. An empty or entirely unsigned custody
+chain does **not** count as bound (stripping every signature is not a bypass). `packet_version 1`
+packets never carried custody signatures and are held to the older, weaker contract above; this is
+a *deliberate* backward-compatibility choice (see `test_golden.py`), not an oversight.
 
 ## 3. Chain of custody (`custody_proof` → `custody_ok`)
 

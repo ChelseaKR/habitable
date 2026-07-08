@@ -41,6 +41,11 @@ from .vault import Vault
 
 __all__ = ["PACKET_VERSION", "PacketResult", "build_packet"]
 
+# v2 (FIX-05): custody entries now export their signature (previously stripped by
+# CustodyEntry.redacted()), so verify.py can bind the bundle-signing key to the same
+# identity that produced the custody chain. v1 packets remain verifiable (see
+# verify.SUPPORTED_PACKET_VERSION and verify._CUSTODY_BINDING_SINCE_VERSION) but were
+# never signed this way, so they cannot retroactively meet the stronger check.
 PACKET_VERSION = 2
 _BUNDLE = "bundle.json"
 _SIGNATURE = "bundle.sig.json"
@@ -191,7 +196,9 @@ def build_packet(
             JSONValue, [_timeline_json(e, opaque_hlc) for e in _timeline(vault, issue_ids)]
         ),
         "items": cast(JSONValue, items),
-        "custody_proof": vault.custody.integrity_proof(hlc_map=opaque_hlc),
+        "custody_proof": vault.custody.integrity_proof(
+            hlc_map=opaque_hlc, signing_identity=vault.identity
+        ),
         "appendix": {
             "item_count": len(items),
             "timestamped_count": timestamped,

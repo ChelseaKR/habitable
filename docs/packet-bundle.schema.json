@@ -194,7 +194,7 @@
     "custodyProof": {
       "type": "object",
       "required": ["algorithm", "length", "head_hash", "entries"],
-      "description": "Identity-stripped, independently checkable proof the chain of custody is intact. Actor identities, salts, signatures, and private_details are NOT present (they stay in the union's vault).",
+      "description": "Identity-stripped, independently checkable proof the chain of custody is intact. Actor identities, salts, and private_details are NOT present (they stay in the union's vault). From packet_version 2, each entry's Ed25519 signature IS present (see $defs/custodyEntry) -- it commits to no identity by itself and lets a verifier bind bundle.sig.json's sign_public to the producer of this chain (FIX-05).",
       "properties": {
         "algorithm": { "type": "string", "const": "sha256" },
         "length": { "type": "integer", "minimum": 0 },
@@ -220,7 +220,7 @@
     },
     "custodyEntry": {
       "type": "object",
-      "description": "Exported (redacted) custody entry. entry_hash = SHA-256(canonical_json of {seq, action, item_id, hlc, actor_commitment, details(sorted), prev_hash}).",
+      "description": "Exported (redacted) custody entry. entry_hash = SHA-256(canonical_json of {seq, action, item_id, hlc, actor_commitment, details(sorted), prev_hash}). From packet_version 2 (FIX-05), 'signature' is also exported so a verifier can bind the bundle-signing key (bundle.sig.json.sign_public) to the identity that produced the custody chain; packet_version 1 entries never carry it.",
       "required": ["seq", "action", "item_id", "hlc", "actor_commitment", "details", "prev_hash", "entry_hash"],
       "properties": {
         "seq": { "type": "integer", "minimum": 1, "description": "1-based, strictly increasing position in the chain." },
@@ -240,7 +240,12 @@
           "oneOf": [{ "$ref": "#/$defs/hexSha256" }, { "type": "string", "pattern": "^0{64}$" }],
           "description": "entry_hash of the previous entry; 64 zeros for the genesis link."
         },
-        "entry_hash": { "$ref": "#/$defs/hexSha256" }
+        "entry_hash": { "$ref": "#/$defs/hexSha256" },
+        "signature": {
+          "type": "string",
+          "contentEncoding": "base64",
+          "description": "Ed25519 signature over entry_hash, made with the acting node's own identity key at capture/export time (packet_version >= 2 only; empty or absent in packet_version 1). Reveals no actor identity by itself -- only that whoever holds the matching private key produced this entry."
+        }
       },
       "additionalProperties": false
     },

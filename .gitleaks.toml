@@ -1,0 +1,14 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "RFC 3161 timestamp tokens in committed packet fixtures"
+condition = "AND"
+paths = [
+  '''tests/golden/packet-v[0-9]+/bundle\.json''',
+  '''site/sample-packet/bundle\.json''',
+]
+regexTarget = "line"
+regexes = [
+  '''"token_b64":"[A-Za-z0-9+/=]{200,}"''',
+]

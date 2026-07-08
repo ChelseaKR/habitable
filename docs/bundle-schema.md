@@ -107,10 +107,20 @@ Each exported entry is:
 with `entry_hash = SHA-256(canonical_json({seq, action, item_id, hlc, actor_commitment,
 details(sorted), prev_hash}))` and `prev_hash` linking to the prior `entry_hash` (genesis = 64
 zeros). `action` is one of `captured, imported, fixity_checked, timestamped, viewed,
-copied_for_sharing, included_in_packet, note_added`. The clear actor, the per-entry salt, the
-Ed25519 signature, and any identity/PII `private_details` are **vault-only** and never appear here —
-so a recipient confirms the chain is intact but cannot learn the actors. See
-[`crypto-spec.md`](crypto-spec.md) §6.2.
+copied_for_sharing, included_in_packet, note_added`. The clear actor, the per-entry salt, and any
+identity/PII `private_details` are **vault-only** and never appear here — so a recipient confirms
+the chain is intact but cannot learn the actors. See [`crypto-spec.md`](crypto-spec.md) §6.2.
+
+From `packet_version 2` (**FIX-05**), each entry also carries `signature`: an Ed25519 signature over
+`entry_hash`, made with the acting node's own identity key at capture/export time. It is not
+identity-bearing by itself — a bare signature reveals nothing about the actor unless verified
+against a known public key — so exporting it costs no privacy. What it buys: `verify.verify_packet`
+checks that `bundle.sig.json`'s `sign_public` also verifies at least one custody entry's signature,
+binding the bundle-signing key to the identity that actually produced the custody chain. Without
+this, `signature_ok` meant only "the bundle bytes are internally consistent with *some* key" — a
+rebuilt/re-signed bundle with a fresh key passed. `packet_version 1` entries never carry `signature`
+and are held to that older, weaker contract (see
+[`verifier-decision-table.md`](verifier-decision-table.md) §2).
 
 The verifiability bridge: because a shared copy is metadata-stripped, its bytes differ from the
 original and cannot hash back to `content_hash`. A signed `copied_for_sharing` entry whose `details`
@@ -124,7 +134,9 @@ with shared media.
 ```
 
 `signature` is an Ed25519 signature over the **ASCII hex** of `bundle_sha256`, which must equal the
-SHA-256 of the `bundle.json` bytes.
+SHA-256 of the `bundle.json` bytes. From `packet_version 2`, `signature_ok` is `True` only when
+`sign_public` *also* verifies at least one `custody_proof.entries[].signature` (FIX-05) — see
+[`verifier-decision-table.md`](verifier-decision-table.md) §2.
 
 ### Evidence receipt (downstream ingest record)
 
@@ -146,7 +158,9 @@ for usage.
   protocol are versioned by `packet_version`, separately from the `habitable` package version.
 - **Old packets keep verifying.** A change that could break verification of an existing packet is a
   **major** `packet_version` bump with a migration note — never a silent change. A committed
-  golden-packet corpus enforces this in CI.
+  golden-packet corpus (now `packet-v1/` and `packet-v2/`) enforces this in CI; `packet-v1` is held
+  to the pre-FIX-05 contract it was issued under, since it cannot retroactively carry custody
+  signatures it never had.
 - **Additive within a major.** New optional fields may appear within a `packet_version`. Consumers
   **must ignore unknown fields** (the JSON Schema sets `additionalProperties: true` at the document
   and object level for exactly this reason) and must not assume field order — the bytes are sorted,

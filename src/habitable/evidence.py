@@ -95,7 +95,12 @@ class CustodyEntry:
     """One link in the chain of custody.
 
     Public fields (exported in a packet) prove integrity; ``actor``/``actor_salt``/
-    ``signature``/``private_details`` are vault-only and absent in the exported form.
+    ``private_details`` are vault-only and absent in the exported form. ``signature``
+    *is* exported (see :meth:`redacted`): it is an Ed25519 signature over ``entry_hash``
+    made with the acting node's own identity key, and it never encodes who the actor
+    was (that's ``actor``/``actor_salt``, stripped separately) -- so exporting it costs
+    no privacy while letting a verifier confirm the chain was produced by the same
+    identity that signed the bundle (FIX-05; see ``verify._verify_signature``).
 
     ``details`` is bound into the entry hash and travels in a packet, so it must hold
     only verification-relevant, non-identifying facts (hashes, media type, TSA name).
@@ -138,12 +143,18 @@ class CustodyEntry:
         return sha256_bytes(canonical_json(self.public_payload()))
 
     def redacted(self) -> CustodyEntry:
-        """Drop clear identity, salt, signature, and private details — safe to export."""
-        return replace(self, actor="", actor_salt="", signature="", private_details={})
+        """Drop clear identity, salt, and private details — safe to export.
+
+        ``signature`` is deliberately KEPT (not blanked): it lets a third-party
+        verifier confirm this entry was produced by the same identity that signed
+        the bundle, without revealing who the acting actor was (FIX-05).
+        """
+        return replace(self, actor="", actor_salt="", private_details={})
 
     def to_export_dict(self) -> dict[str, JSONValue]:
         payload = self.public_payload()
         payload["entry_hash"] = self.entry_hash
+        payload["signature"] = self.signature
         return payload
 
     def to_vault_dict(self) -> dict[str, JSONValue]:
@@ -196,6 +207,38 @@ class CustodyVerification:
     head_hash: str
     items: Mapping[str, ItemCustodySummary]
     signatures_checked: int = 0
+    producer_signatures_checked: int = 0
+
+
+def _check_entry_signature(
+    entry: CustodyEntry,
+    *,
+    signer_keys: Mapping[str, bytes] | None,
+    producer_public_key: bytes | None,
+) -> tuple[int, int]:
+    """Check ``entry``'s signature against ``signer_keys``/``producer_public_key``.
+
+    Returns ``(signer_keys_checked, producer_checked)``, each 0 or 1. Raises
+    :class:`CustodyError` if a check that applies fails.
+    """
+    if not entry.signature:
+        return 0, 0
+    sig = base64.b64decode(entry.signature)
+    signer_checked = 0
+    producer_checked = 0
+    if signer_keys is not None:
+        pub = signer_keys.get(entry.actor_commitment)
+        if pub is not None:
+            if not verify(pub, entry.entry_hash.encode("ascii"), sig):
+                raise CustodyError(f"custody entry seq {entry.seq} signature invalid")
+            signer_checked = 1
+    if producer_public_key is not None:
+        if not verify(producer_public_key, entry.entry_hash.encode("ascii"), sig):
+            raise CustodyError(
+                f"custody entry seq {entry.seq} signature does not match the producer key"
+            )
+        producer_checked = 1
+    return signer_checked, producer_checked
 
 
 class CustodyLog:
@@ -261,15 +304,29 @@ class CustodyLog:
         self._entries.append(entry)
         return entry
 
-    def verify(self, *, signer_keys: Mapping[str, bytes] | None = None) -> CustodyVerification:
+    def verify(
+        self,
+        *,
+        signer_keys: Mapping[str, bytes] | None = None,
+        producer_public_key: bytes | None = None,
+    ) -> CustodyVerification:
         """Walk the chain; raise :class:`CustodyError` on any break.
 
         If ``signer_keys`` maps an actor commitment to an Ed25519 public key, each
         signed entry is also signature-checked.
+
+        If ``producer_public_key`` is given, every signed entry must ALSO verify
+        under that single key. This is how a packet verifier binds bundle-level
+        authenticity to the custody chain (FIX-05): the bundle-signing key must be
+        the same identity that produced the custody entries, not merely a key that
+        is internally consistent with the bundle bytes. ``producer_signatures_checked``
+        reports how many entries were actually confirmed against it, so a caller can
+        require at least one (an empty/unsigned chain must not count as bound).
         """
         prev = GENESIS_PREV_HASH
         items: dict[str, ItemCustodySummary] = {}
         sigs_checked = 0
+        producer_sigs_checked = 0
         for index, entry in enumerate(self._entries):
             expected_seq = index + 1
             if entry.seq != expected_seq:
@@ -281,13 +338,11 @@ class CustodyLog:
                 raise CustodyError(f"custody chain broken at seq {entry.seq}: prev_hash mismatch")
             if entry.recompute_hash() != entry.entry_hash:
                 raise CustodyError(f"custody entry seq {entry.seq} has been altered")
-            if signer_keys is not None and entry.signature:
-                pub = signer_keys.get(entry.actor_commitment)
-                if pub is not None:
-                    sig = base64.b64decode(entry.signature)
-                    if not verify(pub, entry.entry_hash.encode("ascii"), sig):
-                        raise CustodyError(f"custody entry seq {entry.seq} signature invalid")
-                    sigs_checked += 1
+            checked, producer_checked = _check_entry_signature(
+                entry, signer_keys=signer_keys, producer_public_key=producer_public_key
+            )
+            sigs_checked += checked
+            producer_sigs_checked += producer_checked
             prev = entry.entry_hash
             items[entry.item_id] = ItemCustodySummary(
                 item_id=entry.item_id,
@@ -301,21 +356,32 @@ class CustodyLog:
             head_hash=prev,
             items=items,
             signatures_checked=sigs_checked,
+            producer_signatures_checked=producer_sigs_checked,
         )
 
     def integrity_proof(
-        self, *, hlc_map: Callable[[str], str] | None = None
+        self,
+        *,
+        hlc_map: Callable[[str], str] | None = None,
+        signing_identity: Identity | None = None,
     ) -> dict[str, JSONValue]:
         """A compact, identity-free proof that the chain is intact.
 
         Includes the redacted entries (which verify standalone) plus a summary, so
-        a packet can demonstrate custody without exporting who did what.
+        a packet can demonstrate custody without exporting who did what. Each
+        entry's signature travels too (it commits to no identity by itself), so a
+        verifier can confirm the chain was produced by the same key that signs the
+        bundle (FIX-05).
 
         ``hlc_map`` rewrites each entry's ``hlc`` in the *exported* proof — used to
         strip recoverable wall-clock/node metadata from a shared packet. The chain is
         re-derived over the mapped values so it still verifies standalone; the vault's
         own chain (:meth:`to_vault_records`) is untouched, so internal custody is
         unchanged.
+
+        When ``signing_identity`` is provided with ``hlc_map``, the remapped entries
+        are signed after rehashing so the bundle-signing key binds to the exact
+        privacy-preserving chain a packet exposes.
         """
         verification = self.verify()  # validate the real chain first (raises on a break)
         if hlc_map is None:
@@ -325,7 +391,9 @@ class CustodyLog:
             summaries = verification.items
         else:
             length = len(self._entries)
-            head_hash, summaries, exported = self._rehash_with_hlc(hlc_map)
+            head_hash, summaries, exported = self._rehash_with_hlc(
+                hlc_map, signing_identity=signing_identity
+            )
             entries = [entry.to_export_dict() for entry in exported]
         return {
             "algorithm": HASH_ALGORITHM,
@@ -343,7 +411,7 @@ class CustodyLog:
         }
 
     def _rehash_with_hlc(
-        self, hlc_map: Callable[[str], str]
+        self, hlc_map: Callable[[str], str], *, signing_identity: Identity | None = None
     ) -> tuple[str, dict[str, ItemCustodySummary], list[CustodyEntry]]:
         """Re-link the redacted chain over opaque-mapped HLC values."""
         exported: list[CustodyEntry] = []
@@ -354,7 +422,12 @@ class CustodyLog:
                 entry.redacted(), hlc=hlc_map(entry.hlc), prev_hash=prev, entry_hash=""
             )
             new_hash = skeleton.recompute_hash()
-            mapped = replace(skeleton, entry_hash=new_hash)
+            signature = skeleton.signature
+            if signing_identity is not None:
+                signature = base64.b64encode(
+                    signing_identity.sign(new_hash.encode("ascii"))
+                ).decode("ascii")
+            mapped = replace(skeleton, entry_hash=new_hash, signature=signature)
             exported.append(mapped)
             prior = summaries.get(mapped.item_id)
             summaries[mapped.item_id] = ItemCustodySummary(

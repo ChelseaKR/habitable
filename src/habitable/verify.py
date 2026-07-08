@@ -8,6 +8,17 @@ timestamp against its authority, checks the producer's signature over the whole
 bundle, and walks the chain of custody — confirming the packet has not been
 altered after the fact, without access to the union's other data.
 
+Signature authenticity (FIX-05): a bundle's ``sign_public`` key is self-embedded in
+the packet, so a `signature_ok` check that stops at "the bundle bytes match this
+key" would accept a bundle rebuilt from scratch and signed with a brand-new key —
+internally consistent, but not actually produced by the original custodian. For
+packets at ``packet_version >= 2``, ``signature_ok`` therefore also requires that
+the SAME key signed at least one entry in the custody chain (custody entries are
+signed at capture/export time with the producer's own identity — see
+``evidence.CustodyLog.append``); a rebuilt/re-signed packet fails this unless the
+attacker also forges the whole signed chain. Packets at version 1 predate this and
+are held to the older, weaker contract they were verified under when issued.
+
 Licensing: this verifier, together with the pure modules it imports
 (:mod:`habitable.canonical`, :mod:`habitable.crypto`, :mod:`habitable.evidence`,
 :mod:`habitable.tsa`), is the "verification subset" offered under Apache-2.0 as an
@@ -45,6 +56,12 @@ _ORIGINALS = "originals"
 # corpus in tests/), and a newer-than-supported packet is rejected with a clear,
 # non-crashing error rather than mis-verified.
 SUPPORTED_PACKET_VERSION = 2
+
+# FIX-05: packets at this version or newer export per-entry custody signatures, so
+# `signature_ok` additionally requires the bundle-signing key to have signed at least
+# one custody entry. Older packets never carried those signatures and cannot
+# retroactively satisfy a check their producer never had the chance to meet.
+_CUSTODY_BINDING_SINCE_VERSION = 2
 
 # Referenced by name (not an inline `except (...)`) so the formatter cannot rewrite it
 # to the parenthesis-free PEP 758 form, a SyntaxError on Python < 3.14. verify.py is
@@ -127,21 +144,42 @@ def verify_packet(
     # Enforce the version contract before trusting the rest of the structure.
     version_problem = _check_packet_version(bundle)
     if version_problem is not None:
+        bundle_signature_ok, _ = _verify_signature(packet_dir, bundle_bytes)
         return VerificationReport(
             packet_dir=packet_dir,
-            signature_ok=_verify_signature(packet_dir, bundle_bytes),
+            signature_ok=bundle_signature_ok,
             custody_ok=False,
             custody_length=0,
             items=(),
             problems=(version_problem,),
         )
 
-    signature_ok = _verify_signature(packet_dir, bundle_bytes)
-    custody_ok, custody_length, custody = _verify_custody(bundle)
+    bundle_signature_ok, sign_public = _verify_signature(packet_dir, bundle_bytes)
+    custody_ok, custody_length, custody_bound, custody = _verify_custody(bundle, sign_public)
     bindings = _sharing_bindings(custody)
     poster_bindings = _poster_bindings(custody)
 
     problems: list[str] = []
+
+    # FIX-05: from packet_version 2, the bundle-signing key must also be the identity
+    # that signed the custody chain -- otherwise a rebuilt/re-signed packet (fresh
+    # key, same-looking content) would still report signature_ok=True, which is
+    # exactly the "how do I know this wasn't reconstructed?" gap the verifier exists
+    # to close for a third-party recipient.
+    version = bundle.get("packet_version")
+    requires_custody_binding = (
+        isinstance(version, int)
+        and not isinstance(version, bool)
+        and version >= _CUSTODY_BINDING_SINCE_VERSION
+    )
+    if requires_custody_binding and bundle_signature_ok and not custody_bound:
+        problems.append(
+            "bundle signature is internally consistent but does not match the key "
+            "that signed the custody chain — packet may be a modified rebuild "
+            "signed with a different identity"
+        )
+    signature_ok = bundle_signature_ok and (custody_bound if requires_custody_binding else True)
+
     items: list[ItemVerdict] = []
     for raw_item in _list(bundle, "items"):
         if not isinstance(raw_item, dict):
@@ -310,30 +348,48 @@ def _check_packet_version(bundle: Mapping[str, JSONValue]) -> str | None:
     return None
 
 
-def _verify_signature(packet_dir: Path, bundle_bytes: bytes) -> bool:
+def _verify_signature(packet_dir: Path, bundle_bytes: bytes) -> tuple[bool, bytes | None]:
+    """Verify the bundle-level signature.
+
+    Returns ``(signature_ok, sign_public_bytes)``. ``sign_public_bytes`` is only
+    returned when the signature actually verified, so a caller can use it to check
+    custody-chain binding (FIX-05) without re-trusting an unverified key.
+    """
     sig_path = packet_dir / _SIGNATURE
     if not sig_path.exists():
-        return False
+        return False, None
     try:
         doc = json.loads(sig_path.read_text(encoding="utf-8"))
         if not isinstance(doc, dict):
-            return False
+            return False, None
         bundle_hash = sha256_bytes(bundle_bytes)
         if doc.get("bundle_sha256") != bundle_hash:
-            return False
+            return False, None
         public = doc.get("sign_public")
         signature = doc.get("signature")
         if not isinstance(public, str) or not isinstance(signature, str):
-            return False
-        return verify_signature(
-            base64.b64decode(public), bundle_hash.encode("ascii"), base64.b64decode(signature)
+            return False, None
+        public_bytes = base64.b64decode(public)
+        ok = verify_signature(
+            public_bytes, bundle_hash.encode("ascii"), base64.b64decode(signature)
         )
+        return ok, (public_bytes if ok else None)
     except _SIGNATURE_READ_ERRORS:
         # Any malformed signature file is a failed signature, never a crash.
-        return False
+        return False, None
 
 
-def _verify_custody(bundle: Mapping[str, JSONValue]) -> tuple[bool, int, CustodyLog]:
+def _verify_custody(
+    bundle: Mapping[str, JSONValue], producer_public_key: bytes | None
+) -> tuple[bool, int, bool, CustodyLog]:
+    """Walk the custody chain and check it is bound to ``producer_public_key``.
+
+    Returns ``(custody_ok, custody_length, custody_bound, custody)``. ``custody_bound``
+    is True iff at least one custody entry's signature verifies under
+    ``producer_public_key`` — an empty or entirely unsigned chain never counts as
+    bound, so an attacker cannot bypass the check by simply stripping signatures
+    (FIX-05).
+    """
     proof = _map(bundle, "custody_proof")
     raw_entries = _list(proof, "entries")
     records: list[Mapping[str, JSONValue]] = [e for e in raw_entries if isinstance(e, dict)]
@@ -341,12 +397,13 @@ def _verify_custody(bundle: Mapping[str, JSONValue]) -> tuple[bool, int, Custody
         # from_records can reject malformed entries (CustodyError); treat any
         # failure to parse or walk the chain as a broken chain, never a crash.
         custody = CustodyLog.from_records(records)
-        result = custody.verify()
+        result = custody.verify(producer_public_key=producer_public_key)
     except Exception:
-        return False, len(records), CustodyLog([])
+        return False, len(records), False, CustodyLog([])
     declared_head = proof.get("head_hash")
     head_ok = declared_head == result.head_hash
-    return (result.ok and head_ok), result.length, custody
+    custody_bound = producer_public_key is not None and result.producer_signatures_checked > 0
+    return (result.ok and head_ok), result.length, custody_bound, custody
 
 
 def _sharing_bindings(custody: CustodyLog) -> dict[str, set[tuple[str, str]]]:
