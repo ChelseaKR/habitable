@@ -12,8 +12,9 @@
 
 ```
 4B-packet/
-├── bundle.json            # the canonical, signed manifest (this document)
+├── bundle.json            # the canonical, signed evidentiary core (this document)
 ├── bundle.sig.json        # producer Ed25519 signature over bundle.json's bytes
+├── manifest.json           # small, NON-signed export metadata (generated_at) — see below
 ├── media/                 # location-stripped shared copies (referenced by items[].shared_name)
 ├── originals/             # OPTIONAL sealed originals (present only with --include-originals)
 ├── packet.html            # accessible human-readable rendering (the conformant view)
@@ -26,13 +27,38 @@ court-ready layout — a cover sheet, a single chronological timeline interleavi
 the per-issue detail, and a chain-of-custody / integrity summary — all **derived from the fields
 below** (no extra bundle fields, no `packet_version` change); see `src/habitable/bundleview.py`.
 
-## Canonical bytes
+## Canonical bytes, and determinism (EXP-02)
 
 `bundle.json` is serialized **canonically**: UTF-8, keys sorted, tight separators (`,` and `:`), no
 insignificant whitespace, `NaN`/`Infinity` disallowed. This makes the bytes reproducible across
 machines and Python versions — a prerequisite for the signature and for independent verification.
 The signature in `bundle.sig.json` is over the SHA-256 of these exact bytes, so do **not**
 re-serialize `bundle.json` before checking the signature.
+
+`bundle.json` also carries **no wall-clock export timestamp**, so it is fully deterministic:
+exporting the same case state twice — same items, same issues, same custody chain, same packet
+version — produces **byte-identical** `bundle.json` (and therefore an identical signature). The one
+genuinely time-varying fact about an export, "when was this copy produced," is not evidentiary — it
+says nothing about the underlying evidence — so it lives in the sibling `manifest.json` file
+instead, which is deliberately **not signed**. This split means regenerating a packet from
+unchanged case state never requires re-signing, and two recipients comparing bundles byte-for-byte
+can trust that any difference reflects a real change to the evidence, not export jitter.
+
+### `manifest.json` — non-evidentiary export metadata
+
+```
+{ "packet_version": 1, "generated_at": "2026-01-02T00:10:00Z" }
+```
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `packet_version` | int | Mirrors `bundle.json`'s `packet_version`, for convenience. |
+| `generated_at` | string | ISO 8601 UTC. When this specific copy was produced. **Not signed** — do not treat it as evidence of anything; it is a courtesy timestamp for humans comparing exports, not a claim about the case. |
+
+`manifest.json` is intentionally outside the signature: it is regenerated fresh on every export and
+is not part of what `habitable verify` checks. A verifier that ignores or lacks this file still
+verifies the packet completely. `habitable diff old/ new/` (see below) reads it only to report
+*when* each export was produced, never as part of the comparison itself.
 
 ## Top-level fields
 
@@ -42,7 +68,6 @@ re-serialize `bundle.json` before checking the signature.
 | `case_id` | string | Case identifier. |
 | `unit` | string | Unit label; may be empty. |
 | `scope` | object | `{type: "issue"\|"unit", issue_id, since, statement, exclusions}` — what the packet covers. `statement` is a human-readable minimal-disclosure summary; `exclusions` is an array of what is deliberately *not* included (vault contents outside the scope; pre-`since` items). Defensible against over-broad discovery (item R-35); see [`legal/minimal-disclosure.md`](./legal/minimal-disclosure.md). Also rendered, localized, in `packet.html`/`packet.pdf`. |
-| `generated_at` | string | ISO 8601 UTC, e.g. `2026-01-02T00:00:00Z`. |
 | `producer_fingerprint` | string | Producing device fingerprint (`xxxx-xxxx-xxxx-xxxx`). |
 | `hash_algorithm` | string | Always `"sha256"`. |
 | `language` | string | Language of the rendered packet (e.g. `en`, `es`). |
@@ -153,6 +178,32 @@ for usage.
   but treat the document as a mapping.
 - **Forward rejection.** A verifier that meets a `packet_version` newer than it supports rejects the
   packet cleanly rather than guessing.
+- **`generated_at` moved out of the signed core (EXP-02).** Packets exported before this change
+  carried `generated_at` inside `bundle.json`; that field simply goes unread by current tooling
+  (unknown/legacy fields are ignored per the rule above) and such packets still verify against the
+  golden-packet corpus. New exports never write `generated_at` into `bundle.json` — it lives in
+  `manifest.json` only. This is additive/non-breaking, not a `packet_version` bump: nothing a
+  verifier checks depended on `generated_at`.
+
+## Comparing two exports: `habitable diff`
+
+`habitable diff old/ new/` compares two packet directories that claim to be exports of the **same**
+`case_id` and reports, in the packet's language:
+
+- **items** added, removed, or changed (by `capture_id`) — e.g. a new timestamp attached, a shared
+  copy re-stripped, an item newly included;
+- **issues** added, removed, or changed (by `issue_id`) — e.g. a severity or status edit;
+- **disclosures** added or removed;
+- whether the **chain of custody advanced honestly**: the tool checks that `old`'s custody entries
+  are an unmodified, position-for-position **prefix** of `new`'s entries (same `entry_hash` at every
+  shared index). Growth is expected and reported as e.g. "3 entries added, nothing removed or
+  rewritten"; a mismatch in the shared prefix is flagged as a possible history rewrite rather than
+  silently summarized as "changed."
+- the two exports' `generated_at` (read from each `manifest.json`, purely informational).
+
+It refuses (clean error, not a crash) to compare packets with different `case_id`s. Two exports of
+literally unchanged state — identical `bundle.json` bytes — report no changes. See
+`habitable diff --help` and :mod:`habitable.diff`.
 
 ## See also
 

@@ -3,8 +3,18 @@
 """Assemble a court/inspector evidence packet.
 
 A packet is a self-contained directory: a deterministic, signed ``bundle.json``;
-location-stripped shared copies of the media; and a paginated, human-readable
-``packet.pdf`` with an evidence appendix.
+a small, non-signed ``manifest.json`` carrying export-time-only metadata
+(``generated_at``); location-stripped shared copies of the media; and a
+paginated, human-readable ``packet.pdf`` with an evidence appendix.
+
+``bundle.json`` carries no wall-clock export timestamp: two exports of the
+same case state, at the same packet version, produce byte-identical
+``bundle.json`` (and therefore an identical signature). The export time —
+which is not evidentiary, only "when was this copy produced" — lives in
+``manifest.json`` instead, which is deliberately unsigned so regenerating it
+never requires re-signing the evidentiary core. See ``habitable diff``
+(:mod:`habitable.diff`) for comparing two exports of the same case, and
+``docs/bundle-schema.md`` for the full contract.
 
 The privacy/verifiability bridge: a shared copy has its metadata stripped, so its
 bytes differ from the sealed original and cannot be hashed back to the recorded
@@ -44,6 +54,7 @@ __all__ = ["PACKET_VERSION", "PacketResult", "build_packet"]
 PACKET_VERSION = 2
 _BUNDLE = "bundle.json"
 _SIGNATURE = "bundle.sig.json"
+_MANIFEST = "manifest.json"
 _MEDIA = "media"
 _ORIGINALS = "originals"
 _PDF = "packet.pdf"
@@ -78,12 +89,14 @@ class PacketResult:
 
     out_dir: Path
     bundle_path: Path
+    manifest_path: Path
     pdf_path: Path | None
     html_path: Path | None
     inspector_path: Path | None
     item_count: int
     timestamped_count: int
     includes_originals: bool
+    generated_at: str
     disclosures: tuple[str, ...] = field(default_factory=tuple)
 
 
@@ -112,37 +125,35 @@ def build_packet(
     selected_issues = _select_issues(vault, issue_id)
     issue_ids = {issue.issue_id for issue in selected_issues}
 
-    items: list[dict[str, JSONValue]] = []
-    timestamped = 0
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_dir = Path(tmp)
-        for capture in vault.document.captures():
-            if capture.issue_id not in issue_ids:
-                continue
-            if since is not None and capture.captured_at < since:
-                continue
-            item = _build_item(
-                vault,
-                capture,
-                sharing,
-                media_dir,
-                originals_dir,
-                tmp_dir,
-                include_originals=include_originals,
-                actor=actor,
-            )
-            items.append(item)
-            if item.get("timestamp") is not None:
-                timestamped += 1
+    items, timestamped = _collect_items(
+        vault,
+        sharing,
+        media_dir,
+        originals_dir,
+        issue_ids,
+        since=since,
+        include_originals=include_originals,
+        actor=actor,
+    )
 
-    # Record export actions in the chain of custody (signed), then persist.
+    # Record export actions in the chain of custody (signed), then persist — but
+    # only the FIRST time an item is included in any packet. Custody proves facts
+    # about the evidence ("this item has been exported at least once"), not a diary
+    # of every local export directory a producer happened to create; recording a
+    # fresh entry (and, worse, the export directory's name) on every re-export
+    # would make custody_proof — and so bundle.json — diverge between two exports
+    # of identical case state, defeating determinism (EXP-02). See
+    # docs/bundle-schema.md.
     for item in items:
+        capture_id = str(item["capture_id"])
+        if _already_recorded(vault, CustodyAction.INCLUDED_IN_PACKET, capture_id):
+            continue
         vault.custody.append(
             CustodyAction.INCLUDED_IN_PACKET,
-            str(item["capture_id"]),
+            capture_id,
             actor=actor,
             hlc=vault.document.clock.now().encode(),
-            details={"packet": out_dir.name},
+            details={},
             identity=vault.identity,
         )
 
@@ -167,6 +178,12 @@ def build_packet(
         awaiting=len(items) - timestamped,
         total=len(items),
     )
+    # `bundle` is the deterministic evidentiary core: no wall-clock export time and
+    # no other field that could vary between two exports of the same case state.
+    # Two exports of an unchanged case therefore produce byte-identical bundle.json
+    # (and thus an identical signature) — see the module docstring and
+    # docs/bundle-schema.md. Export-time metadata lives in the sibling, unsigned
+    # manifest.json instead.
     bundle: dict[str, JSONValue] = {
         "packet_version": PACKET_VERSION,
         "case_id": vault.document.case_id,
@@ -178,7 +195,6 @@ def build_packet(
             "statement": scope.statement,
             "exclusions": cast(JSONValue, list(scope.exclusions)),
         },
-        "generated_at": generated_at or _now_iso(),
         "producer_fingerprint": actor,
         "hash_algorithm": "sha256",
         "language": vault.config.language,
@@ -203,14 +219,22 @@ def build_packet(
     bundle_path = out_dir / _BUNDLE
     bundle_path.write_bytes(bundle_bytes)
     _write_signature(vault, out_dir, bundle_bytes)
+
+    resolved_generated_at = generated_at or _now_iso()
+    manifest_path = out_dir / _MANIFEST
+    _write_manifest(manifest_path, resolved_generated_at)
     vault.save()
 
     # An accessible HTML rendering always accompanies the packet (the conformant
-    # human-readable view; see docs/accessibility/ACR.md).
+    # human-readable view; see docs/accessibility/ACR.md). The rendered views may
+    # show the (non-evidentiary) export time, so they read from a view of the
+    # bundle merged with the manifest rather than from the signed bytes.
+    render_bundle: dict[str, JSONValue] = {**bundle, "generated_at": resolved_generated_at}
+
     from . import htmlpacket
 
     html_path = out_dir / _HTML
-    htmlpacket.render_packet_html(bundle, media_dir, html_path)
+    htmlpacket.render_packet_html(render_bundle, media_dir, html_path)
 
     # An optional recipient-oriented (inspector) rollup of the same signed
     # bundle, organized room → condition → chronological timeline.
@@ -224,19 +248,58 @@ def build_packet(
         from . import pdf as pdf_module
 
         pdf_path = out_dir / _PDF
-        pdf_module.render_packet_pdf(bundle, media_dir, pdf_path)
+        pdf_module.render_packet_pdf(render_bundle, media_dir, pdf_path)
 
     return PacketResult(
         out_dir=out_dir,
         bundle_path=bundle_path,
+        manifest_path=manifest_path,
         pdf_path=pdf_path,
         html_path=html_path,
         inspector_path=inspector_path,
         item_count=len(items),
         timestamped_count=timestamped,
         includes_originals=include_originals,
+        generated_at=resolved_generated_at,
         disclosures=disclosures,
     )
+
+
+def _collect_items(
+    vault: Vault,
+    sharing: SharingPolicy,
+    media_dir: Path,
+    originals_dir: Path,
+    issue_ids: set[str],
+    *,
+    since: str | None,
+    include_originals: bool,
+    actor: str,
+) -> tuple[list[dict[str, JSONValue]], int]:
+    """Build the packet's item list (and count of trusted-timestamped items)."""
+    items: list[dict[str, JSONValue]] = []
+    timestamped = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
+        for capture in vault.document.captures():
+            if capture.issue_id not in issue_ids:
+                continue
+            if since is not None and capture.captured_at < since:
+                continue
+            item = _build_item(
+                vault,
+                capture,
+                sharing,
+                media_dir,
+                originals_dir,
+                tmp_dir,
+                include_originals=include_originals,
+                actor=actor,
+            )
+            items.append(item)
+            if item.get("timestamp") is not None:
+                timestamped += 1
+    return items, timestamped
 
 
 def _build_item(
@@ -296,31 +359,52 @@ def _build_item(
         }
         if poster_name:
             custody_details["poster_hash"] = poster_hash
-        vault.custody.append(
+        # Same determinism rationale as INCLUDED_IN_PACKET below: only record this
+        # exact (content_hash, shared_hash) binding once. Stripping is deterministic,
+        # so a re-export of unchanged evidence recomputes the identical binding —
+        # recording it again would grow custody_proof for no new fact and break
+        # byte-identical re-export.
+        if not _already_recorded(
+            vault,
             CustodyAction.COPIED_FOR_SHARING,
             capture_id,
-            actor=actor,
-            hlc=vault.document.clock.now().encode(),
-            details=custody_details,
-            identity=vault.identity,
-        )
+            content_hash=content_hash,
+            shared_hash=shared_hash,
+        ):
+            vault.custody.append(
+                CustodyAction.COPIED_FOR_SHARING,
+                capture_id,
+                actor=actor,
+                hlc=vault.document.clock.now().encode(),
+                details=custody_details,
+                identity=vault.identity,
+            )
     elif data_ext:  # an instrument data file (EXP-09): no location metadata to strip
         shared_name = f"{capture_id}{data_ext}"
         (media_dir / shared_name).write_bytes(original_bytes)
         shared_hash = sha256_file(media_dir / shared_name)
         stripped = "not applicable (data file; no embedded location metadata)"
-        vault.custody.append(
+        # Same determinism guard: a re-export of unchanged evidence recomputes the
+        # identical binding, so only record it once (byte-identical re-export).
+        if not _already_recorded(
+            vault,
             CustodyAction.COPIED_FOR_SHARING,
             capture_id,
-            actor=actor,
-            hlc=vault.document.clock.now().encode(),
-            details={
-                "content_hash": content_hash,
-                "shared_hash": shared_hash,
-                "stripped": stripped,
-            },
-            identity=vault.identity,
-        )
+            content_hash=content_hash,
+            shared_hash=shared_hash,
+        ):
+            vault.custody.append(
+                CustodyAction.COPIED_FOR_SHARING,
+                capture_id,
+                actor=actor,
+                hlc=vault.document.clock.now().encode(),
+                details={
+                    "content_hash": content_hash,
+                    "shared_hash": shared_hash,
+                    "stripped": stripped,
+                },
+                identity=vault.identity,
+            )
         series = parse_sensor_csv(original_bytes)
         sensor = cast(dict[str, JSONValue], series.to_dict()) if series is not None else None
 
@@ -348,6 +432,18 @@ def _build_item(
         "additional_timestamps": cast(JSONValue, [a.to_dict() for a in additional]),
         "sensor": sensor,
     }
+
+
+def _already_recorded(vault: Vault, action: CustodyAction, item_id: str, **must_match: str) -> bool:
+    """Whether the custody log already has an entry for *action*/*item_id* whose
+    ``details`` match every key in *must_match* (used to make packet-export custody
+    entries idempotent — see call sites)."""
+    for entry in vault.custody.entries:
+        if entry.action != action or entry.item_id != item_id:
+            continue
+        if all(entry.details.get(key) == value for key, value in must_match.items()):
+            return True
+    return False
 
 
 def _select_issues(vault: Vault, issue_id: str | None) -> list[Issue]:
@@ -399,6 +495,20 @@ def _write_signature(vault: Vault, out_dir: Path, bundle_bytes: bytes) -> None:
         "signature": base64.b64encode(signature).decode("ascii"),
     }
     (out_dir / _SIGNATURE).write_text(json.dumps(doc, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _write_manifest(manifest_path: Path, generated_at: str) -> None:
+    """Write the small, deliberately non-signed manifest sibling to bundle.json.
+
+    Everything a verifier needs is in the signed bundle; this file exists only so
+    a recipient (or `habitable diff`) can see when a copy was produced, without
+    that wall-clock value ever perturbing the deterministic, signed bytes.
+    """
+    manifest: dict[str, JSONValue] = {
+        "packet_version": PACKET_VERSION,
+        "generated_at": generated_at,
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
 
 
 def _disclosures(

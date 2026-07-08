@@ -27,6 +27,7 @@ from .capture import capture, resolve_deferred, retimestamp_all
 from .commons import DEFAULT_K, build_commons, summarize_case
 from .config import TSAConfig
 from .crypto import KDF_PROFILES, PublicIdentity
+from .diff import diff_packets, format_diff
 from .errors import HabitableError, SyncError
 from .i18n import DEFAULT_LOCALE, cli_text, format_datetime, resolve_locale
 from .letter import LetterOptions, build_letter, render_letter_html
@@ -294,6 +295,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "anchoring to a specific authority.",
     )
     p_verify.set_defaults(func=_cmd_verify)
+
+    p_diff = sub.add_parser(
+        "diff", help="compare two packet exports of the same case (what changed)"
+    )
+    p_diff.add_argument("old", type=Path, help="older packet directory")
+    p_diff.add_argument("new", type=Path, help="newer packet directory")
+    p_diff.add_argument(
+        "--json", action="store_true", help="emit a structured JSON report (for scripts)"
+    )
+    p_diff.set_defaults(func=_cmd_diff)
 
     p_sync = sub.add_parser("sync", help="sync the case with a peer")
     add_vault(p_sync)
@@ -922,6 +933,41 @@ def _cmd_verify(args: argparse.Namespace) -> int:
                 print(f"  · {item.capture_id}: {detail}", file=sys.stderr)
         return 1
     return 0
+
+
+def _cmd_diff(args: argparse.Namespace) -> int:
+    diff = diff_packets(args.old, args.new)
+    if args.json:
+        payload = {
+            "case_id": diff.case_id,
+            "ok": diff.ok,
+            "has_changes": diff.has_changes,
+            "old_generated_at": diff.old_generated_at,
+            "new_generated_at": diff.new_generated_at,
+            "items_added": list(diff.items_added),
+            "items_removed": list(diff.items_removed),
+            "items_changed": [
+                {"capture_id": c.capture_id, "fields": list(c.fields)} for c in diff.items_changed
+            ],
+            "issues_added": list(diff.issues_added),
+            "issues_removed": list(diff.issues_removed),
+            "issues_changed": [
+                {"issue_id": c.issue_id, "fields": list(c.fields)} for c in diff.issues_changed
+            ],
+            "disclosures_added": list(diff.disclosures_added),
+            "disclosures_removed": list(diff.disclosures_removed),
+            "custody_length_old": diff.custody_length_old,
+            "custody_length_new": diff.custody_length_new,
+            "custody_prefix_intact": diff.custody_prefix_intact,
+            "custody_divergence_index": diff.custody_divergence_index,
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0 if diff.ok else 1
+    locale = resolve_locale(diff.language)
+    print(f"habitable: case {diff.case_id} — {diff.old_dir} → {diff.new_dir}")
+    for line in format_diff(diff, locale):
+        print(f"  · {line}")
+    return 0 if diff.ok else 1
 
 
 def _cmd_sync(args: argparse.Namespace) -> int:

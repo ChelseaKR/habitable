@@ -22,6 +22,16 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   same canonical bytes, hashes, and custody head hashes. A guard test keeps
   `import habitable.kernel` within the Apache-2.0 subset (no relay/sync/cli/app/capture/vault).
 
+- **Deterministic packets + `habitable diff` (EXP-02).** `bundle.json` no longer embeds a
+  wall-clock `generated_at`, so two exports of an unchanged case now produce **byte-identical**
+  `bundle.json` bytes (and an identical signature). Export time moves to a new, deliberately
+  **non-signed** sibling file, `manifest.json` (`{packet_version, generated_at}`) — see
+  `docs/bundle-schema.md`. New `habitable diff old/ new/` compares two packet exports of the same
+  case and reports, in the packet's language: items and issues added/changed/removed, disclosure
+  changes, and whether the chain of custody grew honestly (old's custody entries must be an
+  unmodified prefix of new's — a mismatch is flagged as a possible history rewrite, not folded
+  into "changed"). It refuses, cleanly, to diff two packets with different `case_id`s. New module
+  `habitable.diff`; new `docs/packet-manifest.schema.json`.
 - **Instrument-corroborated conditions — sensor CSV import** (EXP-09). An independent
   instrument's readings (a temperature logger for a no-heat case, a moisture meter for
   mold) can now be captured as a first-class item: a `.csv` file runs the *same* evidence

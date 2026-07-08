@@ -62,7 +62,10 @@ auditability, accessibility, and saying plainly what the tool does not do.
   interleaving notes and photos across issues, the per-issue detail, and a **chain-of-custody /
   integrity summary** — every item's hash, RFC 3161 timestamp authority, and the append-only custody
   proof, shown intact without exporting who viewed or copied each item — so the recipient can verify
-  nothing was altered after the fact.
+  nothing was altered after the fact. The evidentiary `bundle.json` is **deterministic**: exporting an unchanged case twice yields
+  byte-identical bytes, so a recipient with an older packet can run `habitable diff old/ new/` to
+  see precisely what moved — items or issues added/changed/removed, and whether the chain of
+  custody grew honestly — instead of eyeballing two JSON files.
 - **Shares with an organizer, end to end.** A tenant can hand a case — or a chosen subset of issues,
   optionally with the unit label redacted — to a tenant-union organizer who was not on the case,
   signed and **sealed to the organizer's verified public key**, so any relay or courier sees only

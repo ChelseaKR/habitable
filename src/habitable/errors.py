@@ -14,6 +14,7 @@ __all__ = [
     "ConfigError",
     "CryptoError",
     "CustodyError",
+    "DiffError",
     "FixityError",
     "HabitableError",
     "LetterError",
@@ -73,6 +74,10 @@ class PacketError(HabitableError):
 
 class VerificationError(HabitableError):
     """A packet (or one of its items) failed independent verification."""
+
+
+class DiffError(HabitableError):
+    """Two packet exports could not be meaningfully compared."""
 
 
 class SyncError(HabitableError):

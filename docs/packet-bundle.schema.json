@@ -7,7 +7,6 @@
   "required": [
     "packet_version",
     "case_id",
-    "generated_at",
     "producer_fingerprint",
     "hash_algorithm",
     "items",
@@ -43,7 +42,7 @@
     },
     "generated_at": {
       "type": "string",
-      "description": "Packet generation time, ISO 8601 UTC, e.g. 2026-01-02T00:00:00Z."
+      "description": "DEPRECATED here as of EXP-02: current exports never write this field into bundle.json (it lives, unsigned, in the sibling manifest.json instead, per docs/bundle-schema.md). Retained in the schema only because additionalProperties is true and some pre-EXP-02 packets in the golden corpus still carry it; a verifier must ignore it either way."
     },
     "producer_fingerprint": {
       "type": "string",

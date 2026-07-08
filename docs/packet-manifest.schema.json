@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chelseakr.github.io/habitable/schema/packet-manifest-v1.schema.json",
+  "title": "habitable evidence packet — manifest.json (v1)",
+  "description": "The machine-readable contract for the sibling manifest.json alongside bundle.json in a habitable evidence packet (EXP-02). Deliberately NOT signed and NOT part of what habitable verify checks — it exists only so a human (or `habitable diff`) can see when a copy was produced without that wall-clock value perturbing the deterministic, signed bundle.json. See docs/bundle-schema.md.",
+  "type": "object",
+  "required": ["packet_version", "generated_at"],
+  "additionalProperties": true,
+  "properties": {
+    "packet_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Mirrors bundle.json's packet_version, for convenience."
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "ISO 8601 UTC, e.g. 2026-01-02T00:00:00Z. When this specific copy was produced. Not evidentiary; not signed."
+    }
+  }
+}

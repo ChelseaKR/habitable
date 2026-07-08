@@ -386,6 +386,26 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "storage: {total} total — {sealed} sealed originals + {shared} shared copies "
             "(originals are kept twice by design)"
         ),
+        "diff_no_changes": "no changes — the two packets are identical",
+        "diff_items_added": "{count, plural, one {# capture added} other {# captures added}}",
+        "diff_items_removed": (
+            "{count, plural, one {# capture removed} other {# captures removed}}"
+        ),
+        "diff_item_changed_line": "capture {capture_id}: {fields} changed",
+        "diff_issues_added": "{count, plural, one {# issue added} other {# issues added}}",
+        "diff_issues_removed": ("{count, plural, one {# issue removed} other {# issues removed}}"),
+        "diff_issue_changed_line": "issue {issue_id}: {fields} changed",
+        "diff_disclosures_changed": (
+            "disclosures changed ({added, plural, one {# added} other {# added}}, "
+            "{removed, plural, one {# removed} other {# removed}})"
+        ),
+        "diff_custody_advanced": (
+            "chain of custody advanced: {old} → {new} entries, nothing removed or rewritten"
+        ),
+        "diff_custody_diverged": (
+            "custody history diverges at entry {index} — the shared prefix does not match; "
+            "treat both packets with caution"
+        ),
     },
     "es": {
         "status_summary": (
@@ -483,6 +503,32 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         "status_storage": (
             "almacenamiento: {total} en total — {sealed} originales sellados + "
             "{shared} copias compartidas (los originales se guardan por duplicado por diseño)"
+        ),
+        "diff_no_changes": "sin cambios — los dos paquetes son idénticos",
+        "diff_items_added": (
+            "{count, plural, one {# captura añadida} other {# capturas añadidas}}"
+        ),
+        "diff_items_removed": (
+            "{count, plural, one {# captura eliminada} other {# capturas eliminadas}}"
+        ),
+        "diff_item_changed_line": "captura {capture_id}: cambió {fields}",
+        "diff_issues_added": (
+            "{count, plural, one {# problema añadido} other {# problemas añadidos}}"
+        ),
+        "diff_issues_removed": (
+            "{count, plural, one {# problema eliminado} other {# problemas eliminados}}"
+        ),
+        "diff_issue_changed_line": "problema {issue_id}: cambió {fields}",
+        "diff_disclosures_changed": (
+            "cambiaron las revelaciones ({added, plural, one {# añadida} other {# añadidas}}, "
+            "{removed, plural, one {# eliminada} other {# eliminadas}})"
+        ),
+        "diff_custody_advanced": (
+            "la cadena de custodia avanzó: {old} → {new} entradas, nada eliminado ni reescrito"
+        ),
+        "diff_custody_diverged": (
+            "la cadena de custodia diverge en la entrada {index} — el prefijo compartido no "
+            "coincide; trate ambos paquetes con precaución"
         ),
     },
 }
