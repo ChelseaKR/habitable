@@ -63,7 +63,10 @@ For the full picture see [`ARCHITECTURE.md`](ARCHITECTURE.md) and the README's
 ## Get the dev environment running
 
 You need [uv](https://docs.astral.sh/uv/); the right Python (3.14) is fetched
-automatically.
+automatically. For a **one-command setup**, open the repo in a devcontainer or
+GitHub Codespace, or run `./scripts/bootstrap.sh` on a local checkout — it
+installs `uv`, provisions the environment, and prints these next steps. The
+manual steps below do the same thing by hand.
 
 ```console
 $ git clone https://github.com/ChelseaKR/habitable && cd habitable
@@ -82,9 +85,9 @@ locally on purpose — your case never leaves the device).
 
 If `make verify` is **green on a clean checkout before you change anything**, you
 have a working baseline. Getting it green is itself a worthwhile first
-milestone; if the Python 3.14 toolchain gives you trouble, that friction is
-known and a documented one-command bootstrap / devcontainer is itself a welcome
-contribution (see below).
+milestone; if the Python 3.14 toolchain gives you trouble, the one-command
+`./scripts/bootstrap.sh` (or the devcontainer/Codespace) exists to smooth
+exactly that friction.
 
 ## Where to start — categorized
 
@@ -106,8 +109,10 @@ guide:
 - 🟢 Expand the newcomer architecture walkthrough above with anything that
   confused *you* while getting set up — first-contributor friction is best
   reported by a first contributor.
-- 🟡 A one-command dev bootstrap / devcontainer for the Python 3.14 toolchain,
-  so getting `make verify` green is frictionless. (Backlog R-43.)
+- 🟢 Improve the one-command dev bootstrap / devcontainer for the Python 3.14
+  toolchain — `./scripts/bootstrap.sh` and `.devcontainer/` now exist (R-42/R-43);
+  report any friction you hit on your OS or extend them (e.g. more editors). Making
+  `make verify` green frictionless everywhere is ongoing.
 
 ### Jurisdiction and packet templates
 

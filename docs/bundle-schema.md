@@ -51,6 +51,17 @@ re-serialize `bundle.json` before checking the signature.
 | `disclosures` | array | Human-readable notes of what the packet reveals (location stripped, custody identities not exported, originals embedded). Also rendered, localized, in `packet.html`/`packet.pdf`. |
 | `appendix` | object | `{item_count, timestamped_count, includes_originals}`. |
 
+### Opaque identifiers (packet_version ≥ 2)
+
+Every exported id — `issues[].issue_id`, `items[].capture_id`, `timeline[].entry_id`, and the
+`custody_proof` `item_id`s — is an **opaque, per-case-salted digest** (`prefix-<16 hex>`). It is
+stable (the same event yields the same id on every device that shares the case) but encodes
+**no device wall-clock time and no HLC node id**. The `hlc` fields in `timeline[]` and
+`custody_proof.entries[]` are likewise pseudonymized to opaque tokens in the export. Internally the
+tool still keeps a full hybrid logical clock for CRDT ordering and merge; that raw stamp simply never
+leaves the vault. (In `packet_version` 1 these fields carried the raw `wall_ms.counter.node_id` HLC;
+treat all ids and `hlc` values as opaque strings regardless of version.)
+
 ### `items[]` — the evidentiary core
 
 | Field | Type | Notes |

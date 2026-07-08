@@ -14,6 +14,15 @@ on nothing else in the package so it can be embedded and audited on its own.
 
 from __future__ import annotations
 
+import importlib.metadata
+
 __all__ = ["__version__"]
 
-__version__ = "0.1.0"
+try:
+    # Single source of truth: the installed distribution's version (from
+    # pyproject.toml at build time), not a hand-copied literal that can drift from
+    # it. REL-02/03: a v0.2.0 release once reported "habitable 0.1.0" because this
+    # constant was hand-maintained and forgotten at tag time.
+    __version__ = importlib.metadata.version("habitable")
+except importlib.metadata.PackageNotFoundError:  # pragma: no cover - editable/uninstalled dev tree
+    __version__ = "0.0.0+unknown"

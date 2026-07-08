@@ -44,7 +44,7 @@ _ORIGINALS = "originals"
 # from 1..SUPPORTED_PACKET_VERSION still verifies (guarded by the golden-packet
 # corpus in tests/), and a newer-than-supported packet is rejected with a clear,
 # non-crashing error rather than mis-verified.
-SUPPORTED_PACKET_VERSION = 1
+SUPPORTED_PACKET_VERSION = 2
 
 # Referenced by name (not an inline `except (...)`) so the formatter cannot rewrite it
 # to the parenthesis-free PEP 758 form, a SyntaxError on Python < 3.14. verify.py is
@@ -158,7 +158,8 @@ def verify_packet(
     )
 
 
-def _verify_item(
+def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; left alone for
+    # now rather than risk a regression in the standalone verifier under time pressure.
     item: Mapping[str, JSONValue],
     packet_dir: Path,
     bindings: dict[str, set[tuple[str, str]]],

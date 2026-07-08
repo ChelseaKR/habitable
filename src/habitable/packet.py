@@ -22,6 +22,7 @@ from __future__ import annotations
 import base64
 import json
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -37,7 +38,7 @@ from .vault import Vault
 
 __all__ = ["PACKET_VERSION", "PacketResult", "build_packet"]
 
-PACKET_VERSION = 1
+PACKET_VERSION = 2
 _BUNDLE = "bundle.json"
 _SIGNATURE = "bundle.sig.json"
 _MEDIA = "media"
@@ -125,6 +126,15 @@ def build_packet(
             identity=vault.identity,
         )
 
+    # Exported identifiers and timestamps must not encode device wall-clock time or the
+    # node id (packet v2). Ids are already opaque at mint time; the remaining raw HLC
+    # strings — the timeline entries' and custody entries' ``hlc`` — are pseudonymized
+    # here via the same per-case salt, so the shared bundle leaks neither.
+    doc = vault.document
+
+    def opaque_hlc(raw: str) -> str:
+        return doc.opaque_id("hlc", raw)
+
     disclosures = _disclosures(items, sharing, include_originals=include_originals)
     bundle: dict[str, JSONValue] = {
         "packet_version": PACKET_VERSION,
@@ -144,9 +154,11 @@ def build_packet(
             "footer": vault.config.packet_template.footer,
         },
         "issues": cast(JSONValue, [_issue_json(issue) for issue in selected_issues]),
-        "timeline": cast(JSONValue, [_timeline_json(e) for e in _timeline(vault, issue_ids)]),
+        "timeline": cast(
+            JSONValue, [_timeline_json(e, opaque_hlc) for e in _timeline(vault, issue_ids)]
+        ),
         "items": cast(JSONValue, items),
-        "custody_proof": vault.custody.integrity_proof(),
+        "custody_proof": vault.custody.integrity_proof(hlc_map=opaque_hlc),
         "appendix": {
             "item_count": len(items),
             "timestamped_count": timestamped,
@@ -277,13 +289,15 @@ def _issue_json(issue: Issue) -> dict[str, JSONValue]:
     }
 
 
-def _timeline_json(entry: TimelineEntry) -> dict[str, JSONValue]:
+def _timeline_json(entry: TimelineEntry, opaque_hlc: Callable[[str], str]) -> dict[str, JSONValue]:
+    # ``hlc`` is pseudonymized: the entries are already sorted and keyed by an opaque
+    # entry_id, so the exported value is only a stable, non-identifying ordering token.
     return {
         "entry_id": entry.entry_id,
         "issue_id": entry.issue_id,
         "kind": entry.kind,
         "text": entry.text,
-        "hlc": entry.hlc,
+        "hlc": opaque_hlc(entry.hlc),
     }
 
 

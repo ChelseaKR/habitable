@@ -218,9 +218,13 @@ Exposed wiring in a kitchen.
   hashed, that there's an invariant guard test proving no plaintext hits the relay, and that
   it's AGPL to close the hosted-service loophole. "This is the first one that didn't insult
   my intelligence."
-- ⚠️ "I want to *see* the ciphertext-only claim myself, not just read that a test asserts
-  it. Give me a `--prove-no-plaintext` or a documented packet capture I can run against a
-  relay." → make the invariant externally demonstrable, not only internally tested. [E-07]
+- ✅ **Shipped [E-07].** "I want to *see* the ciphertext-only claim myself, not just read that a
+  test asserts it. Give me a `--prove-no-plaintext` or a documented packet capture I can run against
+  a relay." → `habitable prove-no-plaintext` now runs a real sync through an in-process relay,
+  captures every byte on the wire verbatim, and greps it for planted plaintext markers (failing on
+  any hit); [`docs/prove-no-plaintext.md`](../prove-no-plaintext.md) documents the equivalent
+  `tcpdump`/`tshark` procedure against a self-hosted relay. The invariant is now externally
+  demonstrable, not only internally tested.
 - ⚠️ Wants reproducible builds finished so she can verify the binary matches source. (Knows
   it's roadmapped.) [planned, E-coverage]
 - ⚠️ "Multiple TSAs by default — is it on by default or do I have to know to configure it?
@@ -228,7 +232,10 @@ Exposed wiring in a kitchen.
 
 **On the future.** A "transparency dashboard" *local to her device* (no telemetry) that
 shows, for her own case, exactly what each component would expose externally — a personal
-data-flow X-ray. [E-08]
+data-flow X-ray. [E-08] — ✅ **shipped** as `habitable status --xray`: a fully-local,
+telemetry-free per-component table (capture → nothing, TSA → a hash, relay → sealed blobs + a
+mailbox id, export → a plaintext packet you initiate) derived from her own vault, with no network
+calls.
 
 #### P-06 · Marcus — prepaid data, dead zone at home, exurban
 
@@ -662,8 +669,8 @@ broadest dividend:
 | E-04 | "Assisted / calm mode": large-type, high-contrast, one-task-at-a-time capture for stressed/low-vision/low-dexterity users | P-03,P-16 | high | M | B | net-new | clean |
 | E-05 | Assisted/social backup path + printable recovery card — no server, no honeypot | P-03,P-08 | high | M | C | net-new | shape: no central store |
 | E-06 | Stronger panic/duress action (configurable) + "shared device" hardening setup, with documented limits | P-04,P-22 | high | L | C | net-new | shape: never overpromise |
-| E-07 | Externally demonstrable "no plaintext to relay" — a `--prove-no-plaintext` / documented packet-capture procedure | P-05 | medium | M | A | net-new | clean |
-| E-08 | On-device, telemetry-free "data-flow X-ray": show the user exactly what each component would expose externally | P-05 | medium | M | A | net-new | clean (local only) |
+| E-07 | ✅ **done** — Externally demonstrable "no plaintext to relay": `habitable prove-no-plaintext` (real sync through an in-process relay + verbatim wire capture + marker grep) and a `tcpdump`/`tshark` procedure in [`prove-no-plaintext.md`](../prove-no-plaintext.md) | P-05 | medium | M | A | shipped | clean |
+| E-08 | ✅ **done** — On-device, telemetry-free "data-flow X-ray": `habitable status --xray` prints a per-component account (capture → nothing, TSA → hash, relay → sealed blobs + mailbox id, export → plaintext, user-initiated) from the user's own vault, no network | P-05 | medium | M | A | shipped | clean (local only) |
 | E-09 | First-class **sneakernet sync**: export/import an encrypted delta via USB/SD, no relay, no data plan | P-06 | high | M | C | implied | clean |
 | E-10 | "Adopt habitable" workshop kit: slides, facilitator script, EN/ES quick-start, train-the-trainer | P-07,P-13 | high | M | D | planned | clean |
 | E-11 | Local multi-case **campaign/organizer view** with per-unit evidence-health badges | P-07 | high | L | C | net-new | clean (on-device) |
