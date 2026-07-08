@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import hashlib
 import json
 import os
 import sys
@@ -22,6 +23,7 @@ from cryptography import x509
 
 from . import __version__
 from .capture import capture, resolve_deferred, retimestamp_all
+from .commons import DEFAULT_K, build_commons, summarize_case
 from .config import TSAConfig
 from .crypto import PublicIdentity
 from .errors import HabitableError
@@ -64,6 +66,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p_init.add_argument("vault", type=Path)
     p_init.add_argument("--case", required=True, help="case id, e.g. a building or unit code")
     p_init.add_argument("--unit", default="", help="unit label, e.g. 4B")
+    p_init.add_argument(
+        "--building",
+        default="",
+        help="coarse building label for the opt-in aggregate commons (e.g. '1200 Elm')",
+    )
     p_init.add_argument("--lang", default="en")
     p_init.add_argument("--passphrase")
     p_init.set_defaults(func=_cmd_init)
@@ -185,6 +192,43 @@ def _build_parser() -> argparse.ArgumentParser:
     p_key_restore.add_argument("--new-passphrase", help="new vault passphrase (else prompt)")
     p_key_restore.set_defaults(func=_cmd_key_restore)
 
+    p_commons = sub.add_parser(
+        "commons",
+        help="opt-in: compute a k-anonymous aggregate summary across cases (no telemetry)",
+    )
+    p_commons.add_argument(
+        "--vault",
+        dest="vaults",
+        required=True,
+        action="append",
+        type=Path,
+        metavar="VAULT",
+        help="a case vault to include; repeat --vault for each case in the union",
+    )
+    p_commons.add_argument(
+        "--out",
+        required=True,
+        type=Path,
+        help="file to write the aggregate summary to (nothing is sent anywhere)",
+    )
+    p_commons.add_argument(
+        "--k",
+        type=int,
+        default=DEFAULT_K,
+        help=f"k-anonymity threshold: suppress cells under k households (default {DEFAULT_K})",
+    )
+    p_commons.add_argument(
+        "--period",
+        choices=("month", "quarter"),
+        default="month",
+        help="time-bucket granularity for the summary (default month)",
+    )
+    p_commons.add_argument(
+        "--passphrase",
+        help="shared vault passphrase (else HABITABLE_PASSPHRASE, else prompted per vault)",
+    )
+    p_commons.set_defaults(func=_cmd_commons)
+
     p_demo = sub.add_parser("demo", help="walk a synthetic case end to end (no real data)")
     p_demo.set_defaults(func=_cmd_demo)
 
@@ -197,7 +241,12 @@ def _build_parser() -> argparse.ArgumentParser:
 def _cmd_init(args: argparse.Namespace) -> int:
     passphrase = _passphrase(args, confirm=True)
     vault = Vault.create(
-        args.vault, passphrase, case_id=args.case, unit=args.unit, language=args.lang
+        args.vault,
+        passphrase,
+        case_id=args.case,
+        unit=args.unit,
+        building=args.building,
+        language=args.lang,
     )
     print(f"habitable: created vault at {vault.path} for case {args.case!r}")
     print(f"           device fingerprint: {vault.identity.public().fingerprint}")
@@ -483,6 +532,41 @@ def _cmd_key_restore(args: argparse.Namespace) -> int:
     blob = args.recovery_file.read_text(encoding="utf-8")
     Vault.restore_keyfile(args.vault, blob, recovery, new)
     print(f"habitable: keyfile restored for {args.vault}; open it with the new passphrase.")
+    return 0
+
+
+def _cmd_commons(args: argparse.Namespace) -> int:
+    contributions = []
+    for vault_path in args.vaults:
+        vault = Vault.open(vault_path, _passphrase(args))
+        case_id = vault.document.case_id
+        # An opaque, non-emitted handle used only to count distinct households
+        # when applying the k-anonymity threshold. Never written to the export.
+        household_token = hashlib.sha256(f"commons-household::{case_id}".encode()).hexdigest()
+        building_label = vault.document.get_meta("building") or case_id
+        contributions.append(
+            summarize_case(
+                vault.document,
+                building_label=building_label,
+                household_token=household_token,
+                granularity=args.period,
+            )
+        )
+    export = build_commons(contributions, k=args.k, granularity=args.period)
+    args.out.write_text(
+        json.dumps(export.to_json(), indent=2, sort_keys=False, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    print(
+        f"habitable: wrote k-anonymous commons summary to {args.out} "
+        f"(k={export.k}, {len(export.cells)} cell(s) published, "
+        f"{export.suppressed_cells} suppressed, "
+        f"{export.contributing_cases} case(s) contributing)"
+    )
+    print(
+        "           nothing was transmitted; publishing this file is a separate, "
+        "deliberate act you control."
+    )
     return 0
 
 

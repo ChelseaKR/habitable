@@ -86,6 +86,7 @@ class Vault:
         *,
         case_id: str,
         unit: str = "",
+        building: str = "",
         language: str = "en",
         time_source: Callable[[], int] = wall_clock_ms,
     ) -> Vault:
@@ -110,6 +111,8 @@ class Vault:
         document = CaseDocument(case_id, clock)
         if unit:
             document.set_meta("unit", unit)
+        if building:
+            document.set_meta("building", building)
         vault = cls(path, config, dek, identity, document, CustodyLog(), [])
         vault._write_blob(_IDENTITY, identity.serialize())
         vault.save()

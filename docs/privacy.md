@@ -42,6 +42,7 @@ can accidentally leak, a tenant's data — because no operator holds it.**
 | Device identity / keys | Device vault `identity.enc`, `keyfile.json` | Encrypted (keyfile passphrase-wrapped) | Never |
 | Sync messages | Relay mailbox (if used) | **Sealed to recipient's key** | Ciphertext only; relay cannot read |
 | Content hash | RFC 3161 authority (if used) | SHA-256 imprint | Hash only; discloses nothing about contents |
+| Aggregate commons summary (opt-in) | A file the union writes | **k-anonymous counts** by building label / category / coarse period | Only as a file the union **manually chooses to publish**; computed on-device, aggregate-only, no case/person linkage, and never transmitted by the tool (EXP-14, see [`commons.md`](commons.md)) |
 | Operational data | — | — | **None.** No telemetry, no logs of users; relay keeps only aggregate ciphertext-passthrough counts |
 
 ## 4. Necessity, proportionality, and minimization
