@@ -69,6 +69,34 @@ def test_cli_full_flow_verifies(
     assert "packet intact" in capsys.readouterr().out
 
 
+def test_cli_status_shows_record_strength(
+    tmp_path: Path,
+    make_jpeg: Callable[..., Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """EXP-03: ``habitable status`` surfaces a per-issue record-strength line
+    with its honesty caveat — never a bare level with no framing."""
+    monkeypatch.setenv("HABITABLE_PASSPHRASE", "pw")
+    vault = tmp_path / "vault"
+    assert main(["init", str(vault), "--case", "bldg-12", "--unit", "4B"]) == 0
+
+    assert main(["issue", "--vault", str(vault), "--category", "mold", "--title", "Mold"]) == 0
+    out = capsys.readouterr().out
+    issue_id = next(token for token in out.split() if token.startswith("issue-"))
+
+    photo = make_jpeg(with_location=True)
+    assert (
+        main(["capture", str(photo), "--vault", str(vault), "--issue", issue_id, "--dev-tsa"]) == 0
+    )
+    capsys.readouterr()
+
+    assert main(["status", "--vault", str(vault)]) == 0
+    status_out = capsys.readouterr().out
+    assert "record strength: developing" in status_out
+    assert "not admissibility" in status_out
+
+
 def test_cli_verify_detects_tamper(
     tmp_path: Path,
     make_jpeg: Callable[..., Path],

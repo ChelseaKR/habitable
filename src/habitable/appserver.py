@@ -27,6 +27,7 @@ from typing import cast
 from .capture import capture, resolve_deferred
 from .errors import HabitableError
 from .packet import build_packet
+from .strength import assess_issue
 from .tsa import DevTSA, TimestampAuthority
 from .vault import Vault
 from .verify import verify_packet
@@ -80,6 +81,7 @@ class AppServer:
     def _issue(self, issue_id: str) -> dict[str, object]:
         doc = self.vault.document
         issue = next(i for i in doc.issues() if i.issue_id == issue_id)
+        strength = assess_issue(self.vault, issue_id)
         return {
             "issue_id": issue.issue_id,
             "category": issue.category,
@@ -90,6 +92,16 @@ class AppServer:
             "description": issue.description,
             "captures": len(doc.captures(issue_id)),
             "timeline": [{"kind": e.kind, "text": e.text} for e in doc.timeline(issue_id)],
+            # EXP-03: an on-device, telemetry-free record-strength summary — never a
+            # legal or admissibility claim, see habitable.strength module docstring.
+            "record_strength": {
+                "level": strength.level.value,
+                "item_count": strength.item_count,
+                "strong_count": strength.strong_count,
+                "developing_count": strength.developing_count,
+                "minimal_count": strength.minimal_count,
+                "timeline_entries": strength.timeline_entries,
+            },
         }
 
     def add_issue(self, body: dict[str, object]) -> dict[str, object]:
