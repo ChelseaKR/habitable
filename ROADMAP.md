@@ -209,7 +209,11 @@ The courtroom rests on this; it gets the most scrutiny.
   a packet was usable in its forum and what broke (gate item for v1.0).
 - **Contributor growth & onboarding.** *Objective:* lower the bus-factor. *Exit:* a "good
   first issue" set, an onboarding path beyond `CONTRIBUTING.md`, and ≥1 sustained outside
-  contributor.
+  contributor. *Shipped (R-42/R-43 tooling):* the good-first-issue set, the newcomer
+  architecture walkthrough (`docs/good-first-issues.md`), and a one-command onboarding path —
+  `./scripts/bootstrap.sh` plus a devcontainer/Codespace config (`.devcontainer/`) that
+  provisions the full Python 3.14 + uv environment. The remaining exit criterion — ≥1
+  sustained outside contributor — is a social outcome, not a tooling gap, and stays open.
 - **Shared governance.** *Objective:* move from benevolent-maintainer toward shared
   stewardship as contributors arrive. *Trigger:* sustained contributors → adopt a documented
   decision process and `MAINTAINERS`/`GOVERNANCE` evolution in `docs/governance.md`.
