@@ -18,9 +18,10 @@ import json
 import re
 import secrets
 import tomllib
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from .canonical import JSONValue, canonical_json, sha256_bytes
 from .clock import HybridLogicalClock, wall_clock_ms
@@ -51,6 +52,11 @@ _NODE = "node.enc"
 _DEFERRED = "deferred.enc"
 _ORIGINALS = "originals"
 _TOKENS = "tokens"
+# Local-only record of which captures each sync peer has already confirmed holding
+# (FIX-02: incremental sync deltas). Never merged via the CRDT and never exported —
+# it is purely an optimization so a later ``sync.export_message`` can skip re-sending
+# sealed originals a peer already told us they have.
+_PEER_HAVE = "peer_have.enc"
 
 # Pre-FIX-01 vaults wrote the device node_id into plaintext config.toml; this
 # matches that line so a legacy vault can be migrated (the value moves into the
@@ -116,6 +122,7 @@ class Vault:
         document: CaseDocument,
         custody: CustodyLog,
         deferred: list[DeferredItem],
+        peer_have: Mapping[str, Iterable[str]] | None = None,
     ) -> None:
         self.path = path
         self.config = config
@@ -124,6 +131,9 @@ class Vault:
         self.document = document
         self.custody = custody
         self._deferred = deferred
+        self._peer_have: dict[str, set[str]] = {
+            fingerprint: set(capture_ids) for fingerprint, capture_ids in (peer_have or {}).items()
+        }
 
     # --- lifecycle ------------------------------------------------------------
 
@@ -204,7 +214,8 @@ class Vault:
             DeferredItem(capture_id=str(item["capture_id"]), digest=str(item["digest"]))
             for item in _as_record_list(deferred_raw)
         ]
-        return cls(path, config, dek, identity, document, custody, deferred)
+        peer_have = _load_peer_have(path, dek)
+        return cls(path, config, dek, identity, document, custody, deferred, peer_have)
 
     # --- key management -------------------------------------------------------
 
@@ -291,12 +302,17 @@ class Vault:
         deferred_json: JSONValue = [
             {"capture_id": item.capture_id, "digest": item.digest} for item in self._deferred
         ]
+        peer_have_json: JSONValue = {
+            fingerprint: cast(JSONValue, sorted(capture_ids))
+            for fingerprint, capture_ids in self._peer_have.items()
+        }
         return [
             (_CASE, canonical_json(self.document.to_state())),
             (_CUSTODY, canonical_json(_records_to_json(self.custody.to_vault_records()))),
             (_DEFERRED, canonical_json(deferred_json)),
             (_IDENTITY, self.identity.serialize()),
             (_NODE, canonical_json({"node_id": self.document.clock.node_id})),
+            (_PEER_HAVE, canonical_json(peer_have_json)),
         ]
 
     def export_recovery(self, recovery_passphrase: str) -> str:
@@ -339,7 +355,7 @@ class Vault:
         (path / _KEYFILE).write_text(export_recovery_blob(dek, new_passphrase), encoding="utf-8")
 
     def save(self) -> None:
-        """Persist the document, custody log, and deferred queue (encrypted)."""
+        """Persist the document, custody log, deferred queue, and peer-have record."""
         self._write_blob(_CASE, canonical_json(self.document.to_state()))
         self._write_blob(
             _CUSTODY, canonical_json(_records_to_json(self.custody.to_vault_records()))
@@ -348,6 +364,30 @@ class Vault:
             {"capture_id": item.capture_id, "digest": item.digest} for item in self._deferred
         ]
         self._write_blob(_DEFERRED, canonical_json(deferred_json))
+        peer_have_json: JSONValue = {
+            fingerprint: cast(JSONValue, sorted(capture_ids))
+            for fingerprint, capture_ids in self._peer_have.items()
+        }
+        self._write_blob(_PEER_HAVE, canonical_json(peer_have_json))
+
+    # --- sync peer inventory (FIX-02) ------------------------------------------
+
+    def known_peer_captures(self, peer_fingerprint: str) -> frozenset[str]:
+        """Capture ids ``peer_fingerprint`` has previously told us it already holds.
+
+        Used by :func:`habitable.sync.export_message` to skip re-sending a sealed
+        original the recipient already confirmed having, instead of re-embedding
+        every capture on every sync exchange.
+        """
+        return frozenset(self._peer_have.get(peer_fingerprint, ()))
+
+    def record_peer_captures(self, peer_fingerprint: str, capture_ids: Iterable[str]) -> None:
+        """Remember that ``peer_fingerprint`` holds ``capture_ids`` (additive, never shrinks).
+
+        Called on import with the sender's own declared inventory (from the sealed
+        "have" manifest), never from anything a relay or third party could see.
+        """
+        self._peer_have.setdefault(peer_fingerprint, set()).update(capture_ids)
 
     # --- sealed originals -----------------------------------------------------
 
@@ -548,6 +588,26 @@ def _strip_plaintext_node_id(config_path: Path) -> None:
     kept = [line for line in text.splitlines(keepends=True) if not _LEGACY_NODE_ID_LINE.match(line)]
     if len(kept) != len(text.splitlines(keepends=True)):
         config_path.write_text("".join(kept), encoding="utf-8")
+
+
+def _load_peer_have(path: Path, dek: SymmetricKey) -> dict[str, set[str]]:
+    """Load the local, never-exported record of each peer's known inventory.
+
+    Absent on a vault created before FIX-02 (or one that has never synced), in
+    which case every peer starts with an empty known set and the first exchange
+    with them falls back to sending every original, exactly as before.
+    """
+    if not (path / _PEER_HAVE).exists():
+        return {}
+    raw = _decode_json(_read_blob(path, dek, _PEER_HAVE))
+    if not isinstance(raw, dict):
+        raise VaultError("corrupt peer-have record")
+    result: dict[str, set[str]] = {}
+    for fingerprint, capture_ids in raw.items():
+        if not isinstance(capture_ids, list):
+            raise VaultError("corrupt peer-have record")
+        result[fingerprint] = {cid for cid in capture_ids if isinstance(cid, str)}
+    return result
 
 
 def _decode_json(data: bytes) -> JSONValue:

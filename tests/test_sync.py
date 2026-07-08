@@ -5,11 +5,14 @@
 from __future__ import annotations
 
 import base64
+import os
 import threading
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
+import piexif
 import pytest
+from PIL import Image
 
 from habitable import relay as relay_mod
 from habitable.capture import capture
@@ -19,6 +22,7 @@ from habitable.sync import (
     LocalDirTransport,
     PaddingTransport,
     RelayClient,
+    export_message,
     import_messages,
     sync,
 )
@@ -57,6 +61,76 @@ def test_directory_sync_converges(
     # Idempotent: re-importing changes nothing.
     again = import_messages(b, transport.fetch("room"))
     assert again.captures_imported == 0
+
+
+def _noisy_jpeg(path: Path, *, size: tuple[int, int] = (400, 300)) -> Path:
+    """A larger, incompressible synthetic JPEG.
+
+    ``make_jpeg`` makes a tiny 16x16 solid-color image (a few hundred bytes) — fine
+    for most tests, but too small to show a size *ratio* effect: CRDT-state and
+    envelope overhead would dwarf it. This is closer to a real phone photo, where
+    the original dominates total message size, which is the regime FIX-02 targets.
+    """
+    width, height = size
+    image = Image.frombytes("RGB", (width, height), os.urandom(width * height * 3))
+    exif = {piexif.ExifIFD.DateTimeOriginal: b"2026:01:02 03:04:05"}
+    gps = {
+        piexif.GPSIFD.GPSLatitudeRef: b"N",
+        piexif.GPSIFD.GPSLatitude: ((38, 1), (33, 1), (0, 1)),
+        piexif.GPSIFD.GPSLongitudeRef: b"W",
+        piexif.GPSIFD.GPSLongitude: ((121, 1), (44, 1), (0, 1)),
+    }
+    payload = {"0th": {}, "Exif": exif, "GPS": gps, "1st": {}, "thumbnail": None}
+    image.save(path, "jpeg", exif=piexif.dump(payload))
+    return path
+
+
+def test_incremental_sync_skips_already_held_originals(
+    make_vault: Callable[..., Vault],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """FIX-02: once a peer has confirmed holding a capture, re-sending it is skipped.
+
+    A full round trip (A->B, B->A) is needed before B's inventory is confirmed back
+    to A, since neither side knows the other's holdings until told. After that
+    steady state: re-syncing an unchanged case carries ~no original bytes, and
+    adding one more capture only costs that one capture, not the whole case.
+    """
+    a = make_vault("A")
+    b = make_vault("B", passphrase="pw-b")
+    for n in range(5):
+        issue = a.document.add_issue(
+            category="mold", room=f"room-{n}", title=SENTINEL, issue_id=f"i{n}"
+        )
+        capture(a, _noisy_jpeg(tmp_path / f"photo-{n}.jpg"), issue_id=issue, tsa=local_tsa)
+    transport = LocalDirTransport(tmp_path / "mbox")
+
+    # Round 1: full exchange establishes mutual inventory.
+    first_export = export_message(a, b.identity.public())
+    sync(a, b.identity.public(), transport, channel="room")  # A -> B: full send (B has nothing)
+    sync(b, a.identity.public(), transport, channel="room")  # B imports A's captures
+    # A second B->A leg: B now knows (from A's "have") that A has everything, so this
+    # leg tells A nothing new about its own captures but does carry B's "have" back.
+    sync(b, a.identity.public(), transport, channel="room")
+    # A reads the channel to pick up B's declared "have" manifests.
+    import_messages(a, transport.fetch("room"))
+    assert b.document.captures() and len(b.document.captures()) == 5
+    assert b.custody.verify().ok
+    assert a.known_peer_captures(b.identity.public().fingerprint) == {
+        c.capture_id for c in a.document.captures()
+    }
+
+    # Round 2: nothing new — A's export to B should carry ~none of the original bytes.
+    steady_export = export_message(a, b.identity.public())
+    assert len(steady_export) < 0.05 * len(first_export)
+
+    # Round 3: one new capture — the export grows by about one photo, not the whole case.
+    issue = a.document.add_issue(category="mold", room="room-new", title=SENTINEL, issue_id="i-new")
+    capture(a, _noisy_jpeg(tmp_path / "photo-new.jpg"), issue_id=issue, tsa=local_tsa)
+    delta_export = export_message(a, b.identity.public())
+    per_photo = (len(first_export) - len(steady_export)) / 5
+    assert len(delta_export) - len(steady_export) < 2 * per_photo
 
 
 def test_message_isolation(
