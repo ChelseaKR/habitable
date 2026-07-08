@@ -10,9 +10,19 @@ from pathlib import Path
 import pytest
 
 from habitable.capture import capture, resolve_deferred
-from habitable.errors import HabitableError, VaultError
-from habitable.tsa import DevTSA, LocalRfc3161TSA
+from habitable.errors import HabitableError, TimestampError, VaultError
+from habitable.tsa import DevTSA, LocalRfc3161TSA, TimestampToken
 from habitable.vault import Vault
+
+
+class _UnreachableTSA:
+    """A redundant authority that is always offline (its ``stamp`` raises)."""
+
+    name = "flaky-extra"
+    kind = "dev"
+
+    def stamp(self, digest_hex: str) -> TimestampToken:
+        raise TimestampError("simulated: redundant authority unreachable")
 
 
 def test_create_open_round_trip(make_vault: Callable[..., Vault], tmp_path: Path) -> None:
@@ -64,6 +74,62 @@ def test_offline_capture_defers_then_resolves(
     assert len(resolved) == 1 and resolved[0].timestamped
     assert len(vault.deferred()) == 0
     assert vault.get_token(result.capture_id) is not None
+
+
+def test_deferred_resolve_gets_redundant_authorities(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    dev_tsa: DevTSA,
+) -> None:
+    """An item captured offline and later resolved carries >=2 verified authorities.
+
+    This mirrors online capture's multi-TSA redundancy (item R-16 / FIX-06): the most
+    at-risk captures — taken with no signal — must not rest on a single TSA.
+    """
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", issue_id="i1")
+    result = capture(vault, make_jpeg(), issue_id=issue, tsa=None)
+    assert not result.timestamped and len(vault.deferred()) == 1
+
+    resolved = resolve_deferred(vault, dev_tsa, extra_tsas=[DevTSA("extra-a"), DevTSA("extra-b")])
+    assert len(resolved) == 1 and resolved[0].timestamped
+    assert resolved[0].extra_authorities == ("extra-a", "extra-b")
+    assert len(vault.deferred()) == 0
+
+    # The primary token plus two independent additional tokens: redundancy achieved.
+    assert vault.get_token(result.capture_id) is not None
+    additional = vault.get_additional_tokens(result.capture_id)
+    assert {t.tsa_name for t in additional} == {"extra-a", "extra-b"}
+    # Each redundant stamp is recorded in the (still-intact) chain of custody.
+    additional_roles = [
+        e.details.get("role")
+        for e in vault.custody.entries
+        if e.item_id == result.capture_id and e.details.get("role") == "additional"
+    ]
+    assert len(additional_roles) == 2
+    assert vault.custody.verify().ok
+
+
+def test_deferred_resolve_skips_unreachable_extra_authority(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    dev_tsa: DevTSA,
+) -> None:
+    """A redundant authority that is offline is skipped; the item still resolves."""
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", issue_id="i1")
+    result = capture(vault, make_jpeg(), issue_id=issue, tsa=None)
+    assert len(vault.deferred()) == 1
+
+    resolved = resolve_deferred(
+        vault, dev_tsa, extra_tsas=[_UnreachableTSA(), DevTSA("good-extra")]
+    )
+    assert len(resolved) == 1 and resolved[0].timestamped
+    assert len(vault.deferred()) == 0
+    # Only the reachable authority is recorded; the failing one is silently skipped.
+    assert resolved[0].extra_authorities == ("good-extra",)
+    assert {t.tsa_name for t in vault.get_additional_tokens(result.capture_id)} == {"good-extra"}
+    assert vault.custody.verify().ok
 
 
 def test_sealed_original_fixity_on_read(

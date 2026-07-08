@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import threading
@@ -11,10 +12,24 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
-from habitable.relay import RelayStore, _route_label, configure_logging, make_server
+from habitable import relay
+from habitable.relay import (
+    RelayStore,
+    RoomAuthError,
+    RoomFullError,
+    _route_label,
+    configure_logging,
+    make_server,
+)
+
+# A stand-in room write-capability token for tests that drive the store/HTTP layer
+# directly (the real client derives it from the channel; see habitable.sync).
+_TOKEN = "test-room-token"
+_TOKEN_HEADER = "X-Habitable-Room-Token"
 
 # Fields every structured access-log line must carry (OBSERVABILITY-STANDARD §3,
 # specialized to the relay's metadata-only contract).
@@ -33,8 +48,8 @@ _REQUIRED_LOG_FIELDS = {
 class TestRelayStore:
     def test_post_fetch_round_trip_and_metrics(self) -> None:
         store = RelayStore()
-        store.post("room", b"ciphertext-1")
-        store.post("room", b"ciphertext-2")
+        store.post("room", b"ciphertext-1", token=_TOKEN)
+        store.post("room", b"ciphertext-2", token=_TOKEN)
         assert store.fetch("room") == [b"ciphertext-1", b"ciphertext-2"]
         metrics = store.metrics()
         assert metrics["posted"] == 2 and metrics["rooms"] == 1
@@ -42,6 +57,93 @@ class TestRelayStore:
 
     def test_empty_room(self) -> None:
         assert RelayStore().fetch("nobody") == []
+
+    def test_post_requires_a_token(self) -> None:
+        store = RelayStore()
+        with pytest.raises(RoomAuthError):
+            store.post("room", b"x", token=None)
+        with pytest.raises(RoomAuthError):
+            store.post("room", b"x", token="")
+
+    def test_first_token_binds_and_mismatch_is_rejected(self) -> None:
+        """Trust-on-first-use: the first token claims the room; others are rejected."""
+        store = RelayStore()
+        store.post("room", b"one", token=_TOKEN)
+        store.post("room", b"two", token=_TOKEN)  # same token: fine
+        with pytest.raises(RoomAuthError):
+            store.post("room", b"evil", token="a-different-token")
+        # The rejected write did not land.
+        assert store.fetch("room") == [b"one", b"two"]
+
+    def test_room_full_raises_instead_of_silent_eviction(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(relay, "_MAX_MESSAGES_PER_ROOM", 2)
+        store = RelayStore()
+        store.post("room", b"1", token=_TOKEN)
+        store.post("room", b"2", token=_TOKEN)
+        with pytest.raises(RoomFullError):
+            store.post("room", b"3", token=_TOKEN)
+        # The earlier messages are intact — no silent pop(0) displacement.
+        assert store.fetch("room") == [b"1", b"2"]
+
+    def test_ttl_expires_stale_messages_lazily(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(relay, "_MESSAGE_TTL_SECONDS", 10.0)
+        now = {"t": 1_000.0}
+        store = RelayStore(clock=lambda: now["t"])
+        store.post("room", b"fresh", token=_TOKEN)
+        assert store.fetch("room") == [b"fresh"]
+        now["t"] += 11.0  # advance past the TTL
+        assert store.fetch("room") == []  # expired lazily on fetch
+        # A subsequent post starts a clean queue (expiry also runs on post).
+        store.post("room", b"new", token=_TOKEN)
+        assert store.fetch("room") == [b"new"]
+
+    def test_ttl_zero_disables_expiry(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(relay, "_MESSAGE_TTL_SECONDS", 0.0)
+        now = {"t": 1_000.0}
+        store = RelayStore(clock=lambda: now["t"])
+        store.post("room", b"keep", token=_TOKEN)
+        now["t"] += 10_000_000.0
+        assert store.fetch("room") == [b"keep"]
+
+
+class TestPersistence:
+    def test_round_trip_across_a_new_store_instance(self, tmp_path: Path) -> None:
+        store = RelayStore(persist_dir=tmp_path)
+        store.post("room", b"cipher-1", token=_TOKEN)
+        store.post("room", b"cipher-2", token=_TOKEN)
+
+        # A fresh instance (simulating a relay restart) reloads undelivered messages.
+        reborn = RelayStore(persist_dir=tmp_path)
+        assert reborn.fetch("room") == [b"cipher-1", b"cipher-2"]
+        # The trust-on-first-use token binding also survives the restart.
+        with pytest.raises(RoomAuthError):
+            reborn.post("room", b"x", token="wrong-token")
+        reborn.post("room", b"cipher-3", token=_TOKEN)
+        assert reborn.fetch("room") == [b"cipher-1", b"cipher-2", b"cipher-3"]
+
+    def test_expired_messages_are_not_resurrected_on_load(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(relay, "_MESSAGE_TTL_SECONDS", 10.0)
+        now = {"t": 1_000.0}
+        store = RelayStore(persist_dir=tmp_path, clock=lambda: now["t"])
+        store.post("room", b"stale", token=_TOKEN)
+        now["t"] += 11.0  # let it age past the TTL
+        reborn = RelayStore(persist_dir=tmp_path, clock=lambda: now["t"])
+        assert reborn.fetch("room") == []
+
+    def test_raw_room_id_never_becomes_a_filename(self, tmp_path: Path) -> None:
+        room = "room-SECRETNAME-123"
+        store = RelayStore(persist_dir=tmp_path)
+        store.post(room, b"SECRET-CIPHERTEXT-PAYLOAD", token=_TOKEN)
+        names = [p.name for p in tmp_path.iterdir()]
+        assert names
+        for name in names:
+            assert "SECRETNAME" not in name  # no raw room id in any filename
+        expected = f"{hashlib.sha256(room.encode()).hexdigest()}.jsonl"
+        assert expected in names
 
 
 @pytest.fixture
@@ -68,6 +170,18 @@ def _get(url: str) -> tuple[int, bytes]:
         return exc.code, body
 
 
+def _post(url: str, data: bytes, *, token: str | None = _TOKEN) -> tuple[int, bytes]:
+    headers = {} if token is None else {_TOKEN_HEADER: token}
+    request = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return response.status, response.read()
+    except urllib.error.HTTPError as exc:
+        body = exc.read()
+        exc.close()
+        return exc.code, body
+
+
 def test_healthz(server_url: str) -> None:
     status, body = _get(f"{server_url}/healthz")
     assert status == 200
@@ -80,21 +194,39 @@ def test_unknown_path_is_404(server_url: str) -> None:
 
 
 def test_http_post_then_get(server_url: str) -> None:
-    request = urllib.request.Request(f"{server_url}/rooms/abc", data=b"sealed-bytes", method="POST")
-    with urllib.request.urlopen(request, timeout=5) as response:
-        assert response.status == 200
+    status, _ = _post(f"{server_url}/rooms/abc", b"sealed-bytes")
+    assert status == 200
     status, body = _get(f"{server_url}/rooms/abc")
     assert status == 200
     assert json.loads(body)["messages"]  # one base64 message present
+
+
+def test_http_post_without_token_is_403(server_url: str) -> None:
+    status, body = _post(f"{server_url}/rooms/abc", b"sealed-bytes", token=None)
+    assert status == 403
+    assert "token" in json.loads(body)["error"]
+
+
+def test_http_post_with_mismatched_token_is_403(server_url: str) -> None:
+    assert _post(f"{server_url}/rooms/abc", b"first", token="claimant")[0] == 200
+    status, body = _post(f"{server_url}/rooms/abc", b"second", token="impostor")
+    assert status == 403
+    assert json.loads(body)["error"] == "room token mismatch"
+
+
+def test_http_room_full_is_413(server_url: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(relay, "_MAX_MESSAGES_PER_ROOM", 1)
+    assert _post(f"{server_url}/rooms/full", b"1")[0] == 200
+    status, body = _post(f"{server_url}/rooms/full", b"2")
+    assert status == 413
+    assert json.loads(body)["error"] == "room full"
 
 
 def test_healthz_exposes_only_aggregate_counts(server_url: str) -> None:
     """The relay must leak no room names or message contents — only counts."""
     room = "room-SECRETNAME-123"
     blob = b"SECRET-CIPHERTEXT-PAYLOAD"
-    request = urllib.request.Request(f"{server_url}/rooms/{room}", data=blob, method="POST")
-    with urllib.request.urlopen(request, timeout=5) as response:
-        assert response.status == 200
+    assert _post(f"{server_url}/rooms/{room}", blob)[0] == 200
     status, body = _get(f"{server_url}/healthz")
     assert status == 200
     payload = json.loads(body)
@@ -203,9 +335,7 @@ def test_access_log_line_is_valid_json_with_expected_fields(
     logging_relay: tuple[str, io.StringIO],
 ) -> None:
     url, buffer = logging_relay
-    request = urllib.request.Request(f"{url}/rooms/abc", data=b"sealed-bytes", method="POST")
-    with urllib.request.urlopen(request, timeout=5) as response:
-        assert response.status == 200
+    assert _post(f"{url}/rooms/abc", b"sealed-bytes")[0] == 200
     _get(f"{url}/rooms/abc")
 
     lines = _wait_for_lines(buffer, 2)
@@ -228,9 +358,7 @@ def test_access_log_never_leaks_room_id_key_or_payload(
     url, buffer = logging_relay
     room = "room-SECRETNAME-123"
     blob = b"SECRET-CIPHERTEXT-PAYLOAD"
-    request = urllib.request.Request(f"{url}/rooms/{room}", data=blob, method="POST")
-    with urllib.request.urlopen(request, timeout=5) as response:
-        assert response.status == 200
+    assert _post(f"{url}/rooms/{room}", blob)[0] == 200
 
     lines = _wait_for_lines(buffer, 1)
     assert lines, "expected an access-log line"
@@ -240,6 +368,22 @@ def test_access_log_never_leaks_room_id_key_or_payload(
     assert "sealed-bytes" not in text
     record = json.loads(lines[0])
     assert record["path"] == "/rooms/{room}"
+
+
+def test_access_log_never_leaks_the_room_write_token(
+    logging_relay: tuple[str, io.StringIO],
+) -> None:
+    """The write-capability token is a header, compared only via hmac — never logged."""
+    url, buffer = logging_relay
+    token = "ROOMTOKEN-SENTINEL-must-not-appear-in-logs"
+    assert _post(f"{url}/rooms/tokenroom", b"sealed", token=token)[0] == 200
+
+    lines = _wait_for_lines(buffer, 1)
+    assert lines, "expected an access-log line"
+    text = "\n".join(lines)
+    assert token not in text  # the token never reaches the log stream
+    assert "tokenroom" not in text  # nor the raw room id
+    assert json.loads(lines[0])["path"] == "/rooms/{room}"
 
 
 def test_health_probes_excluded_from_access_log(

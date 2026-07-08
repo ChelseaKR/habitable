@@ -19,8 +19,14 @@ jobs:
     name: axe-core WCAG scan (merge gate)
     runs-on: ubuntu-latest
     steps:
+      # P1-3 (SEC-04): audit-mode egress monitoring; see ci.yml's Harden Runner
+      # step for the telemetry trade-off note.
+      - name: Harden Runner (audit mode)
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Install uv (pinned)
