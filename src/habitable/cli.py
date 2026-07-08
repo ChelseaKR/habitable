@@ -171,6 +171,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_status.set_defaults(func=_cmd_status)
 
+    p_prov = sub.add_parser(
+        "provenance", help="show which device last wrote each field of an issue (FIX-07)"
+    )
+    add_vault(p_prov)
+    p_prov.add_argument("--issue", required=True, help="issue id, e.g. from `habitable status`")
+    p_prov.set_defaults(func=_cmd_provenance)
+
     p_resolve = sub.add_parser("resolve", help="fetch timestamps for items queued offline")
     add_vault(p_resolve)
     p_resolve.add_argument("--dev-tsa", action="store_true")
@@ -571,6 +578,30 @@ def _cmd_timeline(args: argparse.Namespace) -> int:
     entry_id = vault.document.add_timeline_entry(args.issue, args.kind, args.text)
     vault.save()
     print(f"habitable: added timeline entry {entry_id} ({args.kind})")
+    return 0
+
+
+def _cmd_provenance(args: argparse.Namespace) -> int:
+    """Print, per field, which device last wrote it and whether that write is signed.
+
+    A synced peer's edit can still win a merge (that's the CRDT contract) but it
+    can no longer do so invisibly: every field carries the writer's device
+    fingerprint, so an overwrite is attributable and reviewable (FIX-07).
+    """
+    vault = _open(args)
+    fields = ("category", "room", "title", "status", "severity", "description")
+    issues = {issue.issue_id: issue for issue in vault.document.issues()}
+    if args.issue not in issues:
+        print(f"habitable: error: unknown issue {args.issue!r}", file=sys.stderr)
+        return 1
+    print(f"habitable: field provenance for issue {args.issue}")
+    for field in fields:
+        prov = vault.document.field_provenance(args.issue, field)
+        if prov is None:
+            continue
+        stamp = "signed" if prov.signed else "unsigned (no device identity at write time)"
+        actor = prov.actor or "unknown device"
+        print(f"  · {field}: last written by {actor} at {prov.ts} — {stamp}")
     return 0
 
 

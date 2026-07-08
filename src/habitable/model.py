@@ -16,10 +16,23 @@ Three CRDT shapes cover the domain:
   to present).
 * :class:`GrowLog` — an append-only, grow-only log for the timeline and captures,
   whose entries are immutable evidence and therefore never conflict.
+
+Per-field provenance (FIX-07). A synced peer can still win a merge on any
+``LWWRegister`` — that is the point of a CRDT — but it can no longer do so
+*silently*. Every write made through :class:`CaseDocument` (when the document
+was opened with a device :class:`~habitable.crypto.Identity`) is stamped with
+the writer's device fingerprint and an Ed25519 signature over
+``(case_id, field target, value, ts)``, carried on the register itself. The
+stamp travels with whichever value wins a merge (:meth:`LWWRegister.merge`
+returns one of the two registers wholesale), so provenance for the current
+value of a field survives merge in any order. :func:`verify_state_provenance`
+lets a receiver check that everything a peer *claims* to have authored in a
+sync payload is actually signed by that peer, before it is merged in.
 """
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import secrets
@@ -29,16 +42,20 @@ from typing import cast
 
 from .canonical import JSONValue, canonical_json
 from .clock import HLCTimestamp, HybridLogicalClock
+from .crypto import Identity
+from .crypto import verify as _crypto_verify
 from .errors import HabitableError
 
 __all__ = [
     "Capture",
     "CaseDocument",
+    "FieldProvenance",
     "GrowLog",
     "Issue",
     "LWWRegister",
     "ORSet",
     "TimelineEntry",
+    "verify_state_provenance",
 ]
 
 CASE_SCHEMA_VERSION = 1
@@ -54,12 +71,51 @@ def _greater(a: JSONValue, b: JSONValue) -> bool:
     return canonical_json(a) > canonical_json(b)
 
 
+def _provenance_payload(case_id: str, target: str, value: JSONValue, ts: str) -> bytes:
+    """The exact bytes a field write's signature is taken over.
+
+    Binding ``case_id`` and ``target`` (e.g. ``"issue:i1:severity"``) into the
+    signed message stops a valid signature over one field/case from being
+    replayed as if it authorized a write to a different field or case.
+    """
+    return canonical_json(
+        cast(JSONValue, {"case_id": case_id, "target": target, "ts": ts, "value": value})
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class FieldProvenance:
+    """Who last wrote a field, and whether the write carries a signature.
+
+    ``actor`` is the writer's device fingerprint (short, human-verifiable —
+    never the raw public key), so this is safe to surface in an on-device
+    "history of this field" view without exporting identity beyond what the
+    union already shows for custody entries.
+    """
+
+    actor: str
+    ts: str
+    signed: bool
+
+
 @dataclass(frozen=True, slots=True)
 class LWWRegister:
-    """A last-writer-wins register: a value tagged with an HLC timestamp."""
+    """A last-writer-wins register: a value tagged with an HLC timestamp.
+
+    ``actor``/``sig`` are an optional provenance stamp: the device fingerprint
+    that wrote ``value`` and an Ed25519 signature over it (see
+    :func:`_provenance_payload`). They default to ``""`` for unsigned writes
+    (e.g. a document opened without a device identity, or state written before
+    FIX-07), so old and new registers interoperate. Because :meth:`merge`
+    always returns one of the two registers *wholesale*, the stamp travels
+    with whichever value wins — provenance for the current value survives
+    merge in any order, the same way the value itself does.
+    """
 
     value: JSONValue
     ts: str  # encoded HLCTimestamp
+    actor: str = ""  # writer's device fingerprint; "" if unsigned
+    sig: str = ""  # base64 Ed25519 signature; "" if unsigned
 
     def merge(self, other: LWWRegister) -> LWWRegister:
         mine, theirs = HLCTimestamp.decode(self.ts), HLCTimestamp.decode(other.ts)
@@ -71,14 +127,39 @@ class LWWRegister:
         return other if _greater(other.value, self.value) else self
 
     def to_json(self) -> dict[str, JSONValue]:
-        return {"value": self.value, "ts": self.ts}
+        payload: dict[str, JSONValue] = {"value": self.value, "ts": self.ts}
+        if self.actor:
+            payload["actor"] = self.actor
+        if self.sig:
+            payload["sig"] = self.sig
+        return payload
 
     @classmethod
     def from_json(cls, raw: Mapping[str, JSONValue]) -> LWWRegister:
         ts = raw.get("ts")
         if not isinstance(ts, str):
             raise HabitableError("LWWRegister 'ts' must be a string")
-        return cls(value=raw.get("value"), ts=ts)
+        actor = raw.get("actor", "")
+        sig = raw.get("sig", "")
+        if not isinstance(actor, str) or not isinstance(sig, str):
+            raise HabitableError("LWWRegister 'actor'/'sig' must be strings")
+        return cls(value=raw.get("value"), ts=ts, actor=actor, sig=sig)
+
+    def verify(self, case_id: str, target: str, public_key: bytes) -> bool:
+        """Check this register's signature against ``public_key``.
+
+        Returns ``False`` (never raises) for an unsigned register or a bad
+        signature — callers decide whether the absence of a signature is
+        acceptable for their context.
+        """
+        if not self.sig:
+            return False
+        try:
+            signature = base64.b64decode(self.sig, validate=True)
+        except ValueError, TypeError:
+            return False
+        message = _provenance_payload(case_id, target, self.value, self.ts)
+        return _crypto_verify(public_key, message, signature)
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,15 +290,19 @@ class CaseDocument:
         "_captures",
         "_case_id",
         "_clock",
+        "_identity",
         "_issue_fields",
         "_issues",
         "_meta",
         "_timeline",
     )
 
-    def __init__(self, case_id: str, clock: HybridLogicalClock) -> None:
+    def __init__(
+        self, case_id: str, clock: HybridLogicalClock, identity: Identity | None = None
+    ) -> None:
         self._case_id = case_id
         self._clock = clock
+        self._identity = identity
         self._meta: dict[str, LWWRegister] = {}
         self._issues = ORSet.empty()
         self._issue_fields: dict[str, dict[str, LWWRegister]] = {}
@@ -232,11 +317,30 @@ class CaseDocument:
     def clock(self) -> HybridLogicalClock:
         return self._clock
 
+    def set_identity(self, identity: Identity | None) -> None:
+        """Attach (or clear) the device identity used to sign future writes.
+
+        A document reconstructed via :meth:`from_state` (e.g. on vault open, or
+        the scratch document :meth:`merge` builds from an incoming payload) has
+        no identity by default — set one so local edits made afterward carry a
+        provenance stamp.
+        """
+        self._identity = identity
+
     # --- mutations ------------------------------------------------------------
+
+    def _stamp(self, target: str, value: JSONValue, ts: str) -> LWWRegister:
+        """Build a register for ``value``, signed if a device identity is set."""
+        if self._identity is None:
+            return LWWRegister(value=value, ts=ts)
+        actor = self._identity.public().fingerprint
+        message = _provenance_payload(self._case_id, target, value, ts)
+        sig = base64.b64encode(self._identity.sign(message)).decode("ascii")
+        return LWWRegister(value=value, ts=ts, actor=actor, sig=sig)
 
     def set_meta(self, key: str, value: str) -> None:
         ts = self._clock.now().encode()
-        self._meta[key] = LWWRegister(value=value, ts=ts)
+        self._meta[key] = self._stamp(f"meta:{key}", value, ts)
 
     def get_meta(self, key: str, default: str = "") -> str:
         register = self._meta.get(key)
@@ -273,6 +377,20 @@ class CaseDocument:
             self.set_meta(_CASE_SALT_META, salt_hex)
         return bytes.fromhex(salt_hex)
 
+    def meta_provenance(self, key: str) -> FieldProvenance | None:
+        """Who last wrote ``meta[key]``, if it has ever been set."""
+        register = self._meta.get(key)
+        if register is None:
+            return None
+        return FieldProvenance(actor=register.actor, ts=register.ts, signed=bool(register.sig))
+
+    def field_provenance(self, issue_id: str, field: str) -> FieldProvenance | None:
+        """Who last wrote ``issue[issue_id][field]``, if it has ever been set."""
+        register = self._issue_fields.get(issue_id, {}).get(field)
+        if register is None:
+            return None
+        return FieldProvenance(actor=register.actor, ts=register.ts, signed=bool(register.sig))
+
     def add_issue(
         self,
         *,
@@ -297,7 +415,8 @@ class CaseDocument:
             "description": description,
         }
         self._issue_fields[resolved_id] = {
-            name: LWWRegister(value=value, ts=tag) for name, value in fields.items()
+            name: self._stamp(f"issue:{resolved_id}:{name}", value, tag)
+            for name, value in fields.items()
         }
         return resolved_id
 
@@ -308,7 +427,8 @@ class CaseDocument:
         for name, value in fields.items():
             if name not in _ISSUE_FIELDS:
                 raise HabitableError(f"unknown issue field: {name!r}")
-            registers[name] = LWWRegister(value=value, ts=self._clock.now().encode())
+            ts = self._clock.now().encode()
+            registers[name] = self._stamp(f"issue:{issue_id}:{name}", value, ts)
 
     def remove_issue(self, issue_id: str) -> None:
         self._issues = self._issues.remove(issue_id)
@@ -527,6 +647,59 @@ class CaseDocument:
                 max_ts = _max_ts(max_ts, str(payload["hlc"]))
         if max_ts is not None:
             self._clock.update(max_ts)
+
+
+def verify_state_provenance(
+    case_id: str, state: Mapping[str, JSONValue], actor: str, public_key: bytes
+) -> list[str]:
+    """Verify every field in ``state`` that claims authorship by ``actor``.
+
+    A synced peer's own signing key only lets it authenticate its *own*
+    writes — not any third-party edits it may be relaying from earlier syncs
+    (this deliberately stays a per-case, key-based check, not an account or
+    authority system: see FIX-07's invariant-#3 note). So this walks
+    ``meta`` and ``issue_fields``, and for every register whose ``actor``
+    equals the given fingerprint, requires a valid signature from
+    ``public_key``. Registers attributed to some other actor are skipped —
+    verifying them would need that other actor's key, which the immediate
+    sender does not possess.
+
+    Returns the list of field targets (e.g. ``"issue:i1:severity"``) that
+    failed verification — empty if everything ``actor`` claims checks out.
+    Callers that want a hard failure should treat a non-empty result as fatal
+    (see :func:`habitable.sync.import_messages`).
+    """
+    failures: list[str] = []
+    meta = _as_dict(state, "meta")
+    for key, raw in meta.items():
+        if not isinstance(raw, dict):
+            continue
+        _check_provenance(case_id, f"meta:{key}", raw, actor, public_key, failures)
+    issue_fields = _as_dict(state, "issue_fields")
+    for issue_id, registers in issue_fields.items():
+        if not isinstance(registers, dict):
+            continue
+        for name, raw in registers.items():
+            if not isinstance(raw, dict):
+                continue
+            target = f"issue:{issue_id}:{name}"
+            _check_provenance(case_id, target, raw, actor, public_key, failures)
+    return failures
+
+
+def _check_provenance(
+    case_id: str,
+    target: str,
+    raw: Mapping[str, JSONValue],
+    actor: str,
+    public_key: bytes,
+    failures: list[str],
+) -> None:
+    register = LWWRegister.from_json(raw)
+    if register.actor != actor:
+        return  # not claimed to be authored by this peer; nothing to check
+    if not register.verify(case_id, target, public_key):
+        failures.append(target)
 
 
 # --- helpers ------------------------------------------------------------------

@@ -48,6 +48,7 @@ from .canonical import JSONValue, canonical_json, sha256_bytes
 from .crypto import Identity, PublicIdentity, open_sealed, seal_to, verify
 from .errors import SyncError
 from .evidence import CustodyAction
+from .model import verify_state_provenance
 from .obslog import log_event
 from .tsa import TimestampToken, verify_token
 from .vault import Vault
@@ -191,7 +192,9 @@ def import_messages(
             raise SyncError(
                 f"message is for case {inner.get('case_id')!r}, not {require_case_id!r}"
             )
-        vault.document.merge(_as_map(inner.get("state")))
+        state = _as_map(inner.get("state"))
+        _check_field_provenance(state, sender)
+        vault.document.merge(state)
         vault.record_peer_captures(sender.fingerprint, _have_capture_ids(inner))
         imported += _import_captures(vault, inner, sender)
         merged += 1
@@ -254,6 +257,28 @@ def _verify_envelope(envelope_bytes: bytes) -> tuple[Mapping[str, JSONValue], Pu
     if not verify(sender.sign_public, inner_bytes, base64.b64decode(sig_raw)):
         raise SyncError("sync message signature is invalid")
     return _as_map(_loads(inner_bytes)), sender
+
+
+def _check_field_provenance(state: Mapping[str, JSONValue], sender: PublicIdentity) -> None:
+    """Reject a payload where the sender forges authorship of a field it didn't sign.
+
+    Every ``LWWRegister`` the sender's own device claims to have written
+    (``actor == sender.fingerprint``) must carry a valid signature from the
+    sender's key — see FIX-07. Fields attributed to some *other* device (the
+    sender is just relaying an earlier peer's edit) are left unchecked here;
+    the envelope signature already guarantees the sender didn't tamper with
+    the bytes in transit, and verifying a third party's authorship would need
+    that third party's key.
+    """
+    case_id = state.get("case_id")
+    if not isinstance(case_id, str):
+        raise SyncError("sync payload state missing case_id")
+    failed = verify_state_provenance(case_id, state, sender.fingerprint, sender.sign_public)
+    if failed:
+        raise SyncError(
+            "sync message claims authorship of "
+            f"{', '.join(sorted(failed))} but the signature does not match the sender"
+        )
 
 
 def _import_captures(vault: Vault, inner: Mapping[str, JSONValue], sender: PublicIdentity) -> int:

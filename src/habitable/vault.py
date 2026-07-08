@@ -170,7 +170,7 @@ class Vault:
 
         identity = Identity.generate()
         clock = HybridLogicalClock(node_id, time_source=time_source)
-        document = CaseDocument(case_id, clock)
+        document = CaseDocument(case_id, clock, identity=identity)
         document.ensure_case_salt()  # so exported ids are opaque from the first mint
         if unit:
             document.set_meta("unit", unit)
@@ -204,6 +204,7 @@ class Vault:
         if not isinstance(case_state, dict):
             raise VaultError("corrupt case state")
         document = CaseDocument.from_state(case_state, clock)
+        document.set_identity(identity)
         document.catch_up_clock()
 
         custody_records = _decode_json(_read_blob(path, dek, _CUSTODY))
