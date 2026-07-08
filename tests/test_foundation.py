@@ -5,12 +5,14 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 from pathlib import Path
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+import habitable
 from habitable.canonical import canonical_json, sha256_bytes, sha256_file
 from habitable.clock import HLCTimestamp, HybridLogicalClock
 from habitable.config import Config, default_config_toml
@@ -160,3 +162,21 @@ _RT_KEY = SymmetricKey.generate()
 @given(st.binary(max_size=2048))
 def test_symmetric_round_trip(payload: bytes) -> None:
     assert _RT_KEY.decrypt(_RT_KEY.encrypt(payload, aad=b"a"), aad=b"a") == payload
+
+
+class TestVersion:
+    """REL-02/03: single source of version truth — no hand-copied drift."""
+
+    def test_dunder_version_matches_installed_distribution(self) -> None:
+        assert habitable.__version__ == importlib.metadata.version("habitable")
+
+    def test_dunder_version_matches_pyproject(self) -> None:
+        pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+        text = pyproject.read_text(encoding="utf-8")
+        # Minimal parse: find `version = "X.Y.Z"` under [project] without a TOML dep.
+        match = next(
+            line.split("=", 1)[1].strip().strip('"')
+            for line in text.splitlines()
+            if line.strip().startswith("version ")
+        )
+        assert habitable.__version__ == match

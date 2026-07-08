@@ -86,8 +86,11 @@ It is deliberately a dumb mailbox: ciphertext in, ciphertext out.
 - Every sync message is **sealed to the recipient's public key before it leaves the sender**
   (`seal_to` in `crypto.py`), so the relay only ever stores opaque blobs per room and hands them
   back. It **cannot read anything**.
-- The relay keeps **no logs beyond aggregate passthrough counts** (rooms, posted, fetched,
-  bytes_relayed). It does not log request lines, peer addresses, or message contents.
+- The relay writes **no per-request logs by default**; per-request access logging is opt-in
+  (`HABITABLE_RELAY_LOG=json`). Its logs are always **metadata-only** — a structured JSON line
+  never carries a peer address, a room id (the logged route is redacted to `/rooms/{room}`), or
+  message contents. Aggregate passthrough counts (rooms, posted, fetched, bytes_relayed) remain
+  exposed only via `/healthz`.
 
 **What the relay can nonetheless see — connection metadata:** because it forwards traffic, it
 necessarily observes **who connects, to which room, when, and roughly how much data moves**. That

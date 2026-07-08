@@ -11,21 +11,96 @@ on:
         required: true
 
 permissions:
-  contents: write # create/edit the GitHub release
-  id-token: write # sigstore signing for provenance
-  attestations: write # build-provenance attestations
+  contents: read
+
+# A tag push and a manual re-run of the same tag must never race each other into
+# two concurrent publishes of the same release; queue them instead of cancelling
+# (cancelling a half-finished publish is worse than waiting).
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
     name: build · SBOM · provenance · publish
     runs-on: ubuntu-latest
+    # P3 (CICD-04): write grants scoped to the job, not the whole workflow —
+    # rewards a tighter blast radius (OpenSSF Scorecard Token-Permissions check).
+    permissions:
+      contents: write # create/edit the GitHub release
+      id-token: write # sigstore signing for provenance
+      attestations: write # build-provenance attestations
     steps:
-      - name: Checkout
+      # P1-3 (SEC-04): audit-mode egress monitoring; see ci.yml's Harden Runner
+      # step for the telemetry trade-off note. Flip to `block` + an explicit
+      # allowlist once a few real release runs show the actual endpoint set
+      # (PyPI/uv index, GitHub API, Sigstore) — don't guess the allowlist blind.
+      - name: Harden Runner (audit mode)
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+      - name: Checkout (full history + tags — needed to verify the tag signature)
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve the release tag
+        id: tag
+        env:
+          # Bind the (potentially attacker-influenceable, on a workflow_dispatch
+          # input) values to an env var rather than expanding `${{ }}` directly
+          # into the shell command — avoids template-injection (zizmor High).
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: echo "tag=${INPUT_TAG:-$REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      # --- REL-02/03/08: release identity guard ---------------------------------
+      # An evidence tool's artifact identity is part of its safety case: a tag whose
+      # version doesn't match pyproject, or that isn't signed, must never reach a
+      # published release. This fails BEFORE any build step runs.
+      #
+      # Uses SSH-format signature verification (git's `gpg.format=ssh`): simpler to
+      # bootstrap in CI than importing a GPG key, and git has supported it natively
+      # since 2.34. `.github/allowed_signers` must contain the maintainer's real
+      # public signing key for this to ever succeed — see that file's header.
+      - name: Configure tag-signature verification (SSH format)
+        run: |
+          git config gpg.format ssh
+          git config gpg.ssh.allowedSignersFile "${GITHUB_WORKSPACE}/.github/allowed_signers"
+      - name: "Guard: tag must be signed"
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          if ! git tag -v "$TAG" 2>/tmp/tag-verify.log; then
+            echo "::error::Tag '$TAG' is not a valid signed tag (git tag -v failed)."
+            echo "::error::habitable requires signed release tags (REL-08). See docs/releasing.md."
+            cat /tmp/tag-verify.log
+            exit 1
+          fi
+      - name: "Guard: tag version must match pyproject.toml"
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          TAG_VERSION="${TAG#v}"
+          PYPROJECT_VERSION="$(grep -m1 '^version = ' pyproject.toml | sed -E 's/version = "(.*)"/\1/')"
+          if [ "$TAG_VERSION" != "$PYPROJECT_VERSION" ]; then
+            echo "::error::Tag '$TAG' (version $TAG_VERSION) does not match pyproject.toml version '$PYPROJECT_VERSION'."
+            exit 1
+          fi
+          echo "Tag version $TAG_VERSION matches pyproject.toml."
+
+      # --- REL-14/15: release re-runs the full merge gate before it ships --------
       - name: Install uv (pinned)
         uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
           version: "0.11.19"
+          enable-cache: false # this job runs once per release; a stale cache is not worth the risk
+      - name: Sync environment (Python 3.14, locked, with dev tools)
+        run: uv sync --frozen
+      - name: Run the full gate at the tagged commit (ruff + mypy --strict + pytest + coverage + i18n)
+        run: make verify
+
       - name: Build wheel + sdist
         run: uv build
       - name: Generate a runtime SBOM (CycloneDX)
@@ -33,14 +108,14 @@ jobs:
           uv sync --frozen --no-dev
           uvx cyclonedx-py environment .venv > dist/sbom.cdx.json
       - name: Attest build provenance (signed via Sigstore)
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-path: "dist/*.whl,dist/*.tar.gz"
       - name: Publish artifacts to the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
           gh release view "$TAG" >/dev/null 2>&1 \
             || gh release create "$TAG" --title "habitable $TAG" --generate-notes
           gh release upload "$TAG" dist/* --clobber

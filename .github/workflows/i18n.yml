@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: i18n
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: i18n-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    name: mechanical i18n gates — UTF-8 · BCP 47 · EN/ES parity (merge gate)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      # These checkers are standard-library only and offline, so no dependency
+      # install or uv sync is needed — the runner's built-in python3 suffices.
+      # They mirror `make verify`'s `i18n` target byte-for-byte (no local/CI drift).
+      - name: G1 — UTF-8 encoding of all tracked text files
+        run: python3 scripts/check_i18n_utf8.py
+      - name: G3 — BCP 47 validity of every authored language tag
+        run: python3 scripts/check_bcp47.py
+      - name: G6 — EN/ES bundle key-parity
+        run: python3 scripts/check_i18n_parity.py

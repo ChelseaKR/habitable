@@ -67,9 +67,11 @@ violating one is the wrong item.
   that could break verification of an existing packet is a protocol major bump with a
   migration note, never a silent change.
 - A release is tagged, has a `CHANGELOG.md` entry, and passes the full gate (`make verify`
-  + the `a11y` browser gate + CodeQL). **Signed releases and build provenance** are
-  planned (see workstream A) — today actions are SHA-pinned and dependencies locked, but
-  release artifacts are not yet signed.
+  + the `a11y` browser gate + CodeQL). Actions are SHA-pinned and dependencies locked;
+  release artifacts carry a build **provenance attestation** and an SBOM since v0.2.0
+  (see `.github/workflows/release.yml`). **Signed release tags** (not yet in place) remain
+  planned (see workstream A) — provenance attestation proves *how* an artifact was built,
+  not that the tag pointing at it was signed by the maintainer.
 
 ## The v1.0 gate (when "alpha" comes off)
 
@@ -86,7 +88,10 @@ true and documented before the "alpha — do not rely on this" caveat is removed
 - [ ] The **threat model independently reviewed** and its residual risks re-confirmed
       (workstream D), including a lawyer's read of the "not legal advice / no admissibility
       guarantee" framing.
-- [ ] **Signed releases + build provenance** in place (workstream A).
+- [ ] **Signed release tags + build provenance** in place (workstream A). Build
+      provenance attestation and an SBOM ship since v0.2.0; **tag signing** (and a
+      release-job guard that rejects an unsigned or version-mismatched tag) is the
+      remaining piece.
 - [ ] Recovery, key-rotation, and multi-device flows documented and tested for a
       non-technical organizer (workstream C).
 
@@ -146,6 +151,12 @@ The courtroom rests on this; it gets the most scrutiny.
   violations) plus structural, **keyboard-navigation**, and **320px-reflow** tests; an
   accessible `packet.html`; a PDF with language + DisplayDocTitle + outline; a documented
   manual-testing protocol.
+- *Shipped (FIX-12):* **Real pluralization and locale formatting.** CLDR cardinal plural
+  rules for EN/ES in both CLI and web app; ICU-MessageFormat subset (`{name}` placeholders
+  and `{name, plural, ...}`) for plural-aware strings; locale-aware number/date/datetime
+  formatting; `scripts/check_i18n_parity.py` enforces plural-category and placeholder parity
+  across locales; 65 comprehensive tests covering all plural categories and formatting
+  functions.
 - **Recorded human screen-reader pass.** *Objective:* confirm the app is *usable* with AT,
   which automation can't certify. *Exit:* a dated NVDA + VoiceOver pass per
   `docs/accessibility/manual-testing.md` recorded in `docs/audits/`, no open moderate+
@@ -237,6 +248,24 @@ and outcomes*, never by watching users:
 - **Reproducible, signed** releases.
 
 If a metric would require instrumenting users, it is the wrong metric.
+
+## Observability
+
+Per the portfolio **OBSERVABILITY-STANDARD** (which is tiered by deployment shape). This
+records habitable's *values*; the gates themselves live in the standard.
+
+- **CLI / library surface — Tier C.** OTel tracing/metrics/SLOs are **N/A: no network
+  surface** (offline-first, local-only). Opt-in `--log-format json` is future work.
+- **Optional sync relay (`src/habitable/relay.py`) — Tier A**, with deliberate
+  N/A-with-reason carve-outs driven by two hard project rules — *no telemetry / no
+  phone-home* and a *dependency-free relay image* (stdlib only, small attack surface):
+
+| Control (standard §) | habitable value |
+| --- | --- |
+| Structured JSON logs (§3) | **Implemented**, stdlib `logging` (no structlog dep). One JSON object per line: `ts`, `level`, `msg`, `request_id`, `method`, `path`, `status`, `latency_ms`. Per-request access log is opt-in (`HABITABLE_RELAY_LOG=json`), off by default. |
+| **PII/secrets-in-logs gate (§3, never N/A)** | **Enforced.** Logs are metadata-only: no bodies, no keys, no peer IPs, and the room id is redacted to the route template `/rooms/{room}`. Pinned by `tests/test_relay.py` (`test_access_log_never_leaks_room_id_key_or_payload`) and the E2E-encryption guard in `tests/test_sync.py`. |
+| `/livez` + `/readyz` (§6) | **Implemented.** `/livez` → 200 (no dep calls); `/readyz` fails **closed** (503) when the in-memory store is unhealthy; existing `/healthz` kept for aggregate counts. Probes excluded from the access log. |
+| OTel traces (§1), RED/USE metrics (§2), SLOs (§4), burn-rate alerts (§5), collector/LGTM compose (§7) | **N/A-with-reason:** the relay must stay dependency-free and telemetry-free; adding OTel/OTLP exporters would contradict the *no phone-home* rule and enlarge the attack surface of a component whose whole point is that it can observe as little as possible. Trace correlation fields are omitted for the same reason. |
 
 ## Non-goals
 

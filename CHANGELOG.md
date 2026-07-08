@@ -7,6 +7,22 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+### Added
+
+- **Relay observability — structured JSON logs + `/livez` / `/readyz`** (per the
+  portfolio OBSERVABILITY-STANDARD). The optional sync relay now logs one JSON object
+  per line via the stdlib `logging` module (it stays dependency-free — no structlog/OTel
+  wheels in its image): `ts`, `level`, `msg`, `request_id`, `method`, `path`, `status`,
+  `latency_ms`. The privacy gate is absolute and metadata-only: logs never carry
+  ciphertext, plaintext bodies, keys, or peer IPs, and the room id is **redacted** to the
+  route template `/rooms/{room}` so it cannot link sync sessions. Per-request access
+  logging is **opt-in and off by default** (`HABITABLE_RELAY_LOG=json`), preserving the
+  threat-model default of no request lines. New `/livez` (liveness, no dependency calls)
+  and `/readyz` (readiness — fails **closed** with 503 when the store is unhealthy) sit
+  alongside the existing `/healthz`; health probes are excluded from the access log.
+  Guard test `test_access_log_never_leaks_room_id_key_or_payload` reinforces the
+  no-leak invariant.
+
 ### Fixed
 
 - **Verifier subset now imports on Python < 3.14 again.** Three multi-type `except`

@@ -1,25 +1,52 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Releasing habitable
 
-Releases are tagged, built reproducibly, accompanied by an SBOM, and
-**provenance-attested and signed** so a downloader can verify a release artifact
-was built from this source by this repository's CI.
+Releases are tagged, built reproducibly, accompanied by an SBOM, and carry a
+**Sigstore-signed build-provenance attestation** so a downloader can verify a
+release artifact was built from this source by this repository's CI. The
+**release tag itself** is signed too, going forward (git tag signature,
+verified by a CI guard before anything builds) — see the one-time setup below.
+These are two different signatures: one over the build (always present since
+v0.2.0), one over the tag identity (new; existing v0.1.0/v0.2.0 tags predate it
+and are not signed).
 
 ## Cutting a release
 
 1. Ensure `main` is green: `make verify`, the `a11y` gate, and CodeQL all pass.
 2. Update `CHANGELOG.md` (move `[Unreleased]` → the new version) and bump
-   `version` in `pyproject.toml` (and `__version__`) if it changed.
-3. Tag and push:
+   `version` in `pyproject.toml`. `__version__` is derived from the installed
+   distribution (`importlib.metadata.version`), so there is nothing to hand-edit
+   in `src/habitable/__init__.py` — that is the point (REL-02/03: no second place
+   for the version to drift).
+3. Tag with a **signed, annotated tag** and push (see one-time setup below):
    ```console
-   $ git tag vX.Y.Z && git push origin vX.Y.Z
+   $ git tag -s vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z
    ```
-4. The **`release` workflow** (`.github/workflows/release.yml`) then:
-   - builds the wheel + sdist (`uv build`);
-   - generates a runtime **SBOM** (CycloneDX) into `dist/sbom.cdx.json`;
-   - produces a **signed build-provenance attestation** for the artifacts
+4. The **`release` workflow** (`.github/workflows/release.yml`) first runs two
+   guards, *before* building anything: the tag must be a valid signature per
+   `.github/allowed_signers`, and its version must match `pyproject.toml`. It
+   then re-runs `make verify` at the tagged commit — a red commit cannot ship.
+   Only then does it:
+   - build the wheel + sdist (`uv build`);
+   - generate a runtime **SBOM** (CycloneDX) into `dist/sbom.cdx.json`;
+   - produce a **signed build-provenance attestation** for the artifacts
      (`actions/attest-build-provenance`, Sigstore);
-   - creates/updates the GitHub release and uploads `dist/*`.
+   - create/update the GitHub release and upload `dist/*`.
+
+### One-time setup: signing release tags
+
+The release workflow verifies tag signatures against `.github/allowed_signers`
+using git's SSH signing format. Until a maintainer completes this setup, the tag
+guard fails closed (intentional — an unsigned tag must never publish):
+
+```console
+$ ssh-keygen -t ed25519 -C "release-signing@habitable" -f ~/.ssh/habitable-release
+$ git config gpg.format ssh
+$ git config user.signingkey ~/.ssh/habitable-release.pub
+```
+
+Then add the matching **public** key as a line in `.github/allowed_signers`
+(format documented in that file) and commit it — public keys are not secret.
 
 ## Verifying a downloaded artifact
 

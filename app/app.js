@@ -16,6 +16,140 @@
     return Object.prototype.hasOwnProperty.call(strings, key) ? strings[key] : key;
   }
 
+  // Real pluralization + locale formatting (FIX-12). Dictionary values may use
+  // an ICU-MessageFormat subset — "{name}" placeholders and
+  // "{name, plural, =N {...} one {...} many {...} other {...}}" with "#" for
+  // the formatted count — rendered against the browser's CLDR data via
+  // Intl.PluralRules / Intl.NumberFormat / Intl.DateTimeFormat. No library:
+  // the app stays dependency-free and the browser already ships the rules.
+
+  function pluralCategory(n) {
+    try {
+      return new Intl.PluralRules(lang).select(n);
+    } catch (e) {
+      return n === 1 ? "one" : "other"; // last-resort English-ish fallback
+    }
+  }
+
+  function formatNumber(n) {
+    try {
+      return new Intl.NumberFormat(lang).format(n);
+    } catch (e) {
+      return String(n);
+    }
+  }
+
+  function formatDateTime(value) {
+    // gen_time and friends arrive as ISO 8601 UTC strings.
+    var date = value instanceof Date ? value : new Date(value);
+    if (isNaN(date.getTime())) {
+      return String(value);
+    }
+    try {
+      return new Intl.DateTimeFormat(lang, {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: "UTC",
+        timeZoneName: "short"
+      }).format(date);
+    } catch (e) {
+      return String(value);
+    }
+  }
+
+  // Index of the "}" matching the "{" at `start`, or -1 when unbalanced.
+  function matchBrace(text, start) {
+    var depth = 0;
+    for (var i = start; i < text.length; i++) {
+      if (text.charAt(i) === "{") { depth++; }
+      else if (text.charAt(i) === "}") {
+        depth--;
+        if (depth === 0) { return i; }
+      }
+    }
+    return -1;
+  }
+
+  // "one {# link} other {# links}" -> { one: "# link", other: "# links" }
+  function parsePluralBranches(source) {
+    var branches = {};
+    var i = 0;
+    while (i < source.length) {
+      if (/\s/.test(source.charAt(i))) { i++; continue; }
+      var start = i;
+      while (i < source.length && !/\s/.test(source.charAt(i)) && source.charAt(i) !== "{") { i++; }
+      var selector = source.slice(start, i);
+      while (i < source.length && /\s/.test(source.charAt(i))) { i++; }
+      if (!selector || source.charAt(i) !== "{") { return null; }
+      var end = matchBrace(source, i);
+      if (end < 0) { return null; }
+      branches[selector] = source.slice(i + 1, end);
+      i = end + 1;
+    }
+    return Object.prototype.hasOwnProperty.call(branches, "other") ? branches : null;
+  }
+
+  function renderArgument(body, values) {
+    var comma = body.indexOf(",");
+    if (comma < 0) {
+      var name = body.trim();
+      if (!Object.prototype.hasOwnProperty.call(values, name)) {
+        return "{" + body + "}";
+      }
+      var value = values[name];
+      return typeof value === "number" ? formatNumber(value) : String(value);
+    }
+    var argName = body.slice(0, comma).trim();
+    var rest = body.slice(comma + 1);
+    var comma2 = rest.indexOf(",");
+    var kind = (comma2 < 0 ? rest : rest.slice(0, comma2)).trim();
+    if (kind !== "plural" || comma2 < 0) {
+      return "{" + body + "}"; // unsupported type: degrade visibly, never crash
+    }
+    var branches = parsePluralBranches(rest.slice(comma2 + 1));
+    if (!branches) {
+      return "{" + body + "}";
+    }
+    var n = Number(values[argName]);
+    if (isNaN(n)) { n = 0; }
+    var branch;
+    if (Object.prototype.hasOwnProperty.call(branches, "=" + n)) {
+      branch = branches["=" + n];
+    } else {
+      var category = pluralCategory(n);
+      branch = Object.prototype.hasOwnProperty.call(branches, category)
+        ? branches[category]
+        : branches.other;
+    }
+    return renderIcu(branch, values, formatNumber(n));
+  }
+
+  function renderIcu(message, values, hashText) {
+    var out = "";
+    var i = 0;
+    while (i < message.length) {
+      var ch = message.charAt(i);
+      if (ch === "{") {
+        var end = matchBrace(message, i);
+        if (end < 0) { return message; } // malformed: show the raw string
+        out += renderArgument(message.slice(i + 1, end), values);
+        i = end + 1;
+      } else if (ch === "#" && typeof hashText === "string") {
+        out += hashText;
+        i++;
+      } else {
+        out += ch;
+        i++;
+      }
+    }
+    return out;
+  }
+
+  // t() + ICU rendering: fm("custody_links", { count: 3 }) -> "3 links" / "3 enlaces".
+  function fm(key, values) {
+    return renderIcu(t(key), values || {});
+  }
+
   function applyTranslations(root) {
     var scope = root || document;
     var textNodes = scope.querySelectorAll("[data-i18n]");
@@ -149,10 +283,10 @@
     lastStatus = status;
     setText("st-unit", status.unit || "—");
     setText("st-fingerprint", status.fingerprint || "—");
-    setText("st-issues", String((status.issues || []).length));
-    setText("st-captures", String(status.capture_count || 0));
-    setText("st-timestamped", String(status.timestamped || 0));
-    setText("st-awaiting", String(status.deferred || 0));
+    setText("st-issues", formatNumber((status.issues || []).length));
+    setText("st-captures", formatNumber(status.capture_count || 0));
+    setText("st-timestamped", formatNumber(status.timestamped || 0));
+    setText("st-awaiting", formatNumber(status.deferred || 0));
 
     var custody = document.getElementById("st-custody");
     if (custody) {
@@ -162,7 +296,7 @@
         : t("custody_broken");
       var len = status.custody_length;
       var suffix = (typeof len === "number")
-        ? " (" + t("custody_links_prefix") + " " + len + ")"
+        ? " (" + fm("custody_links", { count: len }) + ")"
         : "";
       custody.textContent = label + suffix;
       custody.className = ok ? "custody-ok" : "custody-bad";
@@ -215,8 +349,8 @@
     counts.className = "issue-counts";
     var captureCount = (typeof issue.captures === "number") ? issue.captures : 0;
     var timelineCount = (issue.timeline || []).length;
-    counts.appendChild(badge(t("issue_captures_count") + ": " + captureCount));
-    counts.appendChild(badge(t("issue_timeline_count") + ": " + timelineCount));
+    counts.appendChild(badge(fm("issue_captures_count", { count: captureCount })));
+    counts.appendChild(badge(fm("issue_timeline_count", { count: timelineCount })));
     li.appendChild(counts);
 
     return li;
@@ -377,7 +511,7 @@
       }).then(function (res) {
         form.reset();
         var stamp = res.timestamped
-          ? (t("capture_timestamped_yes") + (res.gen_time ? " (" + res.gen_time + ")" : ""))
+          ? (t("capture_timestamped_yes") + (res.gen_time ? " (" + formatDateTime(res.gen_time) + ")" : ""))
           : t("capture_timestamped_no");
         announce(
           t("msg_capture_done") + " " +
@@ -470,8 +604,8 @@
 
     var ul = document.createElement("ul");
     ul.appendChild(line(t("export_out_dir") + ": " + (res.out_dir || "—")));
-    ul.appendChild(line(t("export_items") + ": " + (res.item_count != null ? res.item_count : 0)));
-    ul.appendChild(line(t("export_timestamped") + ": " + (res.timestamped_count != null ? res.timestamped_count : 0)));
+    ul.appendChild(line(t("export_items") + ": " + formatNumber(res.item_count != null ? res.item_count : 0)));
+    ul.appendChild(line(t("export_timestamped") + ": " + formatNumber(res.timestamped_count != null ? res.timestamped_count : 0)));
     if (res.summary) {
       ul.appendChild(line(t("export_summary") + ": " + res.summary));
     }
@@ -530,7 +664,7 @@
         return apiPost("/api/resolve", {});
       }).then(function (res) {
         var n = (res && typeof res.resolved === "number") ? res.resolved : 0;
-        announce(t("msg_resolved") + " (" + n + ")", "ok");
+        announce(fm("msg_resolved", { count: n }), "ok");
         return refreshStatus();
       }, announceError);
     });
