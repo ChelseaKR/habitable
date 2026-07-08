@@ -136,9 +136,7 @@ class TestFormatNumber:
             (1000000, "1,000,000", "1.000.000"),
         ],
     )
-    def test_format_number_en_es(
-        self, value: float, en_result: str, es_result: str
-    ) -> None:
+    def test_format_number_en_es(self, value: float, en_result: str, es_result: str) -> None:
         """EN uses comma for group separator; ES uses period."""
         assert format_number(value, "en") == en_result
         assert format_number(value, "es") == es_result
@@ -360,8 +358,7 @@ class TestCliText:
         en_keys = set(_CLI_MESSAGES["en"].keys())
         es_keys = set(_CLI_MESSAGES["es"].keys())
         assert en_keys == es_keys, (
-            f"Missing in es: {en_keys - es_keys}; "
-            f"Extra in es: {es_keys - en_keys}"
+            f"Missing in es: {en_keys - es_keys}; Extra in es: {es_keys - en_keys}"
         )
 
 

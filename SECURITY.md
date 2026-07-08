@@ -7,8 +7,15 @@ until they are fixed.
 ## Reporting a vulnerability
 
 **Preferred:** use GitHub's [private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability)
-on this repository (the **Security** tab → *Report a vulnerability*). This keeps
-the report confidential and lets us coordinate a fix and advisory.
+on this repository (the **Security** tab → *Report a vulnerability*), **if that
+option is showing as available on the Security tab**. This keeps the report
+confidential and lets us coordinate a fix and advisory.
+
+**Fallback (use this if the Security tab has no "Report a vulnerability" button,
+or you'd rather not use GitHub):** email the maintainer directly at
+**ckellyreif@gmail.com** with a subject line starting `[habitable security]`.
+This channel exists so a reporter is never stuck with no way in, regardless of
+the repository's current GitHub configuration.
 
 Please include: what you found, how to reproduce it (on synthetic data — never
 real tenant data), the impact you foresee, and any suggested remediation.
@@ -35,6 +42,9 @@ contract. Reports that undermine any of these are highest priority:
 
 ## Scope and limits
 
+- **Supported versions:** pre-1.0, only the **latest release** is supported.
+  There is no back-porting of fixes to older tags; upgrade to the latest release
+  to get a fix.
 - This is alpha, concept-stage software. **Do not rely on it for real legal
   matters yet.** See *Honest limits* in `README.md`.
 - Cryptography uses well-reviewed primitives via `cryptography` and standard

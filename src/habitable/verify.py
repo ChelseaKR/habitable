@@ -158,7 +158,8 @@ def verify_packet(
     )
 
 
-def _verify_item(
+def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; left alone for
+    # now rather than risk a regression in the standalone verifier under time pressure.
     item: Mapping[str, JSONValue],
     packet_dir: Path,
     bindings: dict[str, set[tuple[str, str]]],
