@@ -152,9 +152,9 @@ Sync and transport:
 Entry points:
 
 - **`cli.py`** — the `habitable` command line: `init`, `id`, `issue`, `capture`,
-  `timeline`, `status`, `resolve`, `export`, `verify`, `sync`, `relay`, `demo`. No account,
-  nothing to sign up for. `__main__.py` makes the package runnable; `demo.py` walks a
-  synthetic case end to end with no network and no real data.
+  `timeline`, `status`, `resolve`, `retimestamp`, `anchor`, `export`, `verify`, `sync`,
+  `relay`, `demo`. No account, nothing to sign up for. `__main__.py` makes the package
+  runnable; `demo.py` walks a synthetic case end to end with no network and no real data.
 
 ## Capture data flow
 
@@ -189,6 +189,35 @@ Key points:
 - The timestamp authority only ever receives the **hash**, never the media.
 - `resolve_deferred` later drains the queue once a device is online, stamping each queued
   item and appending its `TIMESTAMPED` custody entry.
+
+## External anchoring (`anchor.py`, EXP-01)
+
+The chain of custody is tamper-*evident*, not tamper-*proof*, against whoever holds the
+vault key: threat-model.md §5 is explicit that a hostile keyholder can discard the whole
+local log and write a new, internally-consistent one before any outside party has seen the
+head hash. `habitable anchor` closes that gap by timestamping the same privacy-preserving
+custody proof head that packets export — a 32-byte SHA-256 value, never case contents or raw
+HLC metadata — with one or more trusted authorities, the same mechanism `tsa.py` already uses
+for capture content:
+
+```
+habitable anchor --vault ./case-4B
+   head_hash = exported custody proof head    (a hex SHA-256; reveals nothing about contents)
+   chain_length = len(vault.custody)
+   for each configured authority: token = tsa.stamp(head_hash)
+   AnchorRecord{head_hash, chain_length, created_at, tokens} → vault.add_anchor(...)
+```
+
+Because the chain is hash-linked, an anchor over the head at `chain_length` N commits to
+*every* entry at or before N — rewriting any of it afterward changes the hash and no longer
+matches the anchor. Anchors ship inside the packet (`bundle.json`'s `anchors` array) and the
+standalone verifier (`verify._verify_anchors`) re-checks each one: the recorded `head_hash`
+must match the shipped chain's entry at `chain_length`, and at least one of the anchor's
+tokens must verify. `VerificationReport.anchored_by` / `.anchored_through` report the
+tightest available bound — the *most recent* (largest `chain_length`) anchor that verifies —
+so a recipient can see "this custody chain provably existed by `<time>`," mitigating the
+hostile-keyholder gap for every entry before the last anchor (not after — anchoring cadence
+is a policy tradeoff between cost and how wide that window is left).
 
 ## Export and verify flow
 
@@ -245,9 +274,14 @@ item it checks, independently:
   links, recomputed entry hashes) and the declared head hash matches.
 - **Embedded original fixity** — if originals were embedded, each re-derives to its
   `content_hash`.
+- **External anchors, if any** — each anchor's `head_hash` matches the shipped chain at its
+  `chain_length`, and at least one of its timestamp tokens verifies (see "External
+  anchoring" above); a present-but-broken anchor is a structural problem, same as a broken
+  custody link.
 
 The overall verdict is intact only if the signature verifies, the custody chain is whole,
-there are no structural problems, and every item passes.
+there are no structural problems, and every item passes. A packet with no anchors verifies
+exactly as before — anchoring is opt-in and additive.
 
 ## Sync
 
@@ -306,6 +340,7 @@ habitable/
         ├── evidence.py          # content fixity + append-only hash-linked custody log
         ├── exif.py              # explicit EXIF: seal original, strip shared copies
         ├── tsa.py               # RFC 3161 (HTTP + local) and dev TSA; token verification
+        ├── anchor.py            # external anchoring over the custody head (EXP-01)
         ├── model.py             # state-based CRDT case document (LWW + OR-Set + grow-logs)
         ├── config.py            # versioned policy: authorities, node id, sharing policy
         ├── vault.py             # encrypted per-case vault (sealed originals, state, tokens)

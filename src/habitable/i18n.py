@@ -343,6 +343,11 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         "retimestamp_done": (
             "archive-timestamped {count, plural, =0 {no items} one {# item} other {# items}}"
         ),
+        "anchor_done": (
+            "anchored the custody chain through "
+            "{links, plural, one {# entry} other {# entries}} with "
+            "{count, plural, one {# authority} other {# authorities}}"
+        ),
         "export_timestamped_line": (
             "{timestamped} of {total, plural, one {# media item} other {# media items}}: "
             "content hash present, trusted timestamp attached"
@@ -435,6 +440,11 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "{count, plural, =0 {ningún elemento re-sellado} "
             "one {# elemento re-sellado para archivo} "
             "other {# elementos re-sellados para archivo}}"
+        ),
+        "anchor_done": (
+            "cadena de custodia anclada a través de "
+            "{links, plural, one {# entrada} other {# entradas}} con "
+            "{count, plural, one {# autoridad} other {# autoridades}}"
         ),
         "export_timestamped_line": (
             "{timestamped} de {total, plural, one {# elemento multimedia} "

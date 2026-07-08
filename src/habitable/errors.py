@@ -10,6 +10,7 @@ present a compromised item rather than failing opaquely.
 from __future__ import annotations
 
 __all__ = [
+    "AnchorError",
     "CaptureError",
     "ConfigError",
     "CryptoError",
@@ -29,6 +30,10 @@ __all__ = [
 
 class HabitableError(Exception):
     """Base class for every error raised by habitable."""
+
+
+class AnchorError(HabitableError):
+    """An external anchor over the custody-chain head could not be created."""
 
 
 class ConfigError(HabitableError):

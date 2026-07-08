@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from .anchor import AnchorRecord
 from .canonical import JSONValue, canonical_json, sha256_bytes
 from .clock import HybridLogicalClock, wall_clock_ms
 from .config import Config, default_config_toml
@@ -62,6 +63,12 @@ _PEER_HAVE = "peer_have.enc"
 # matches that line so a legacy vault can be migrated (the value moves into the
 # encrypted vault and the plaintext line is stripped) on first open.
 _LEGACY_NODE_ID_LINE = re.compile(r"^\s*node_id\s*=")
+
+# Anchor records hold only hashes, TSA names, and timestamp tokens — never case
+# contents or identities — so, like the tokens directory, they are stored as
+# plain JSON rather than inside an encrypted blob (nothing here to protect the
+# confidentiality of; the whole point is a third party can see and attest to it).
+_ANCHORS_FILE = "anchors.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +130,7 @@ class Vault:
         custody: CustodyLog,
         deferred: list[DeferredItem],
         peer_have: Mapping[str, Iterable[str]] | None = None,
+        anchors: list[AnchorRecord] | None = None,
     ) -> None:
         self.path = path
         self.config = config
@@ -134,6 +142,7 @@ class Vault:
         self._peer_have: dict[str, set[str]] = {
             fingerprint: set(capture_ids) for fingerprint, capture_ids in (peer_have or {}).items()
         }
+        self._anchors: list[AnchorRecord] = list(anchors) if anchors else []
 
     # --- lifecycle ------------------------------------------------------------
 
@@ -215,7 +224,8 @@ class Vault:
             for item in _as_record_list(deferred_raw)
         ]
         peer_have = _load_peer_have(path, dek)
-        return cls(path, config, dek, identity, document, custody, deferred, peer_have)
+        anchors = _load_anchors(path)
+        return cls(path, config, dek, identity, document, custody, deferred, peer_have, anchors)
 
     # --- key management -------------------------------------------------------
 
@@ -514,6 +524,25 @@ class Vault:
         archives = self.get_archive_tokens(capture_id)
         return archives[-1] if archives else self.get_token(capture_id)
 
+    # --- external anchors (EXP-01) ----------------------------------------------
+
+    def add_anchor(self, record: AnchorRecord) -> None:
+        """Append an external anchor over the custody-chain head and persist it.
+
+        Written immediately (like a timestamp token), independent of :meth:`save`,
+        so an anchor is never lost by a caller forgetting to save afterward.
+        """
+        self._anchors.append(record)
+        path = self.path / _ANCHORS_FILE
+        path.write_text(
+            json.dumps([r.to_dict() for r in self._anchors], indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+
+    def anchors(self) -> tuple[AnchorRecord, ...]:
+        """Every external anchor recorded for this vault, oldest first."""
+        return tuple(self._anchors)
+
     # --- deferred-timestamp queue ---------------------------------------------
 
     def queue_deferred(self, capture_id: str, digest: str) -> None:
@@ -608,6 +637,17 @@ def _load_peer_have(path: Path, dek: SymmetricKey) -> dict[str, set[str]]:
             raise VaultError("corrupt peer-have record")
         result[fingerprint] = {cid for cid in capture_ids if isinstance(cid, str)}
     return result
+
+
+def _load_anchors(path: Path) -> list[AnchorRecord]:
+    """Load recorded anchors, defaulting to none for a pre-EXP-01 vault."""
+    anchors_path = path / _ANCHORS_FILE
+    if not anchors_path.exists():
+        return []
+    raw = json.loads(anchors_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, list):
+        raise VaultError("corrupt anchors record")
+    return [AnchorRecord.from_dict(item) for item in raw if isinstance(item, dict)]
 
 
 def _decode_json(data: bytes) -> JSONValue:

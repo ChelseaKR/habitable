@@ -126,6 +126,7 @@ learns nothing about the contents.
 | **Tamper-evidence (sequence)** | The chain of custody is an append-only, hash-linked log: each entry commits to the previous entry's hash, so any insertion, deletion, or reordering breaks the chain detectably. Entries can also be Ed25519-signed. | `evidence.py` (`CustodyLog`) |
 | **Upper-bound timestamps** | A SHA-256 hash is sent to an RFC 3161 authority, which returns a signed token proving the content existed *no later than* that time. Tokens travel inside the packet for offline verification, and the verifier checks the signature and certificate chain. | `tsa.py` (`Rfc3161HttpTSA`, `verify_token`) |
 | **Proof durability over time** | Archive (re-)timestamping re-stamps over each capture's most recent token before the issuing authority's certificate or hash algorithm ages out (RFC 4998-style chaining). The existence proof stays anchored at the *primary* token's time while staying verifiable under a current authority; the standalone verifier walks the chain and fails closed on any break. | `tsa.py` (`retimestamp`, `verify_archive_chain`), `capture.py` (`retimestamp_all`) |
+| **External anchoring of the exported custody-chain head** | `habitable anchor` timestamps the same privacy-preserving custody proof head that packets export (a 32-byte hash, never contents or raw HLC metadata) with one or more trusted authorities. Because the chain is hash-linked, a verified anchor is proof every exported custody entry at or before it existed by the anchor's time — a hostile keyholder can no longer discard the whole log and rebuild it undetected *for anything anchored*. Opt-in; cadence is a cost/coverage tradeoff (§5). | `anchor.py` (`create_anchor`, `verify_anchor_records`), `verify.py` (`anchored_by`/`anchored_through`) |
 | **Location stripping on shared copies** | The sealed original keeps EXIF (capture time, GPS) for evidentiary integrity; any shared or exported copy strips location by default, and the user is shown what a packet discloses before it is produced. | README *Hard rules* #4; `exif.py` (per architecture) |
 | **Custody-identity minimization in exports** | Each custody entry binds a *salted commitment* to the actor, not the actor in clear. The exported (packet) form drops the actor, salt, and signature entirely, so a recipient can confirm the chain is intact **without** learning who viewed or copied an item. The clear identity stays in the vault. | `evidence.py` (`public_payload`, `redacted`, `integrity_proof`) |
 | **No telemetry / no analytics / no phone-home** | The tool collects no analytics and contacts no servers it is not told to. The relay logs only aggregate ciphertext-passthrough counts. There is no account system and no central database. | README *Hard rules* #1, #5; `relay.py` |
@@ -141,12 +142,18 @@ courtroom fails the people relying on it.
   existed — an *upper bound* on creation. It does **not** prove who created the content or that the
   content depicts what a tenant says it depicts. Tamper-evidence and a timestamp strengthen a true
   record; neither manufactures a case the facts do not support.
-- **The local custody log is tamper-*evident*, not tamper-*proof*, against the device owner.** The
-  hash-linked chain makes after-the-fact alteration *detectable* by anyone who verifies it. It does
-  **not** prevent the holder of the vault key from discarding the whole log and writing a new
-  internally-consistent one before any external party has seen the head hash. Detection depends on
-  an external anchor (a counterpart who already holds the chain head, or a timestamp over it). The
-  chain answers "was this record altered after the fact?" — it cannot bind a hostile keyholder.
+- **The local custody log is tamper-*evident*, not tamper-*proof*, against the device owner —
+  unless it has been externally anchored.** The hash-linked chain makes after-the-fact alteration
+  *detectable* by anyone who verifies it, but by itself it does **not** prevent the holder of the
+  vault key from discarding the whole log and writing a new internally-consistent one before any
+  external party has seen the head hash. `habitable anchor` (EXP-01) closes this **for anchored
+  entries**: a counterpart who already holds the chain head, or a timestamp authority that has
+  stamped `head_hash`, gives a recipient something to check the shipped chain against. Anchoring is
+  **opt-in and not automatic** — a chain that was never anchored, or entries appended *after* the
+  most recent anchor, still rest on tamper-evidence alone. Anchoring cadence is a real tradeoff:
+  anchoring after every capture gives the strongest guarantee at the cost of a call to a TSA each
+  time; anchoring periodically is cheaper but widens the window of entries a hostile keyholder could
+  still rewrite undetected.
 - **Relay metadata is only partly hidden.** Even a no-log relay observes who syncs with whom and
   when, and — without extra measures — roughly how much moves. The opt-in `PaddingTransport`
   (`sync.py`, EXP-12) reduces two of these: it pads every message to block-sized buckets and posts
@@ -190,7 +197,7 @@ courtroom fails the people relying on it.
 | Device seized while **unlocked**, or passphrase **coerced** | Passphrase rotation; recovery blob under an independent passphrase. *(A duress-safe open state to hide case contents is planned, not yet implemented.)* | Not a guarantee against coercion or forensic imaging; an unlocked vault exposes plaintext; a compelled passphrase reveals everything. |
 | Relay operator or its subpoena | Messages sealed to recipient keys before leaving the sender; no-log, self-hostable relay; pure peer-to-peer option removes the party entirely. | Connection **metadata** (who/when/how-much) is visible to any relay; only peer-to-peer sync avoids it. |
 | Timestamp authority compromised, colluding, or subpoenaed | Authority sees only a SHA-256 hash; multiple authorities configurable; tokens verified offline against their certificate chain. | A single TSA could backdate or refuse; a hash leak still reveals nothing about contents; trust in *any one* TSA is reduced, not eliminated, by using several. |
-| Evidence altered after capture | SHA-256 fixity re-checked on every read; append-only hash-linked custody; RFC 3161 upper-bound timestamps, kept durable by archive re-timestamping before an authority ages out; standalone verifier. | Custody is tamper-*evident* only: a hostile keyholder can rewrite the whole local chain before any external anchor exists; detection needs a counterpart or a timestamp over the head. |
+| Evidence altered after capture | SHA-256 fixity re-checked on every read; append-only hash-linked custody; RFC 3161 upper-bound timestamps, kept durable by archive re-timestamping before an authority ages out; standalone verifier; `habitable anchor` timestamps the exported custody-chain head to an external authority. | Custody is tamper-*evident* only for entries with **no** anchor covering them: a hostile keyholder can rewrite the local chain up to (but not through) the most recent anchor undetected. Anchoring is opt-in — a vault that never anchors gets no mitigation here at all. |
 | Tenant location leaked through sharing | Originals sealed with EXIF intact; shared/exported copies strip location by default; the user is shown what a packet discloses before producing it. | User error or an out-of-band copy (a screenshot, a forwarded original) can still leak; stripping covers habitable's own outputs, not other apps. |
 | Organizer identity exposed via exported records | Custody actor stored only as a salted commitment; exports drop actor, salt, and signature; clear identity stays in the vault. | The in-vault clear identity is exposed if the vault itself is compromised; correlation across packets or out-of-band knowledge can still re-identify. |
 | Tracking via telemetry | No analytics, no telemetry, no phone-home; relay logs only aggregate counts. | Network-level observation (ISP, Wi-Fi operator) of *connections* is outside the app's control; use of Tor/VPN is the user's responsibility. |
@@ -203,11 +210,13 @@ courtroom fails the people relying on it.
 habitable concentrates trust on the **device**, keeps the **relay** to ciphertext plus unavoidable
 connection metadata, and shows the **timestamp authority** only a hash. It protects confidentiality
 at rest, end-to-end encryption in sync, content and sequence tamper-evidence, location stripping,
-and custody-identity minimization, with no telemetry. It does **not** protect against a hostile
-keyholder rewriting the local chain before any external anchor, relay metadata, a coercing or
-forensic adversary with the unlocked device (the duress-safe state that would blunt this is planned,
-not yet implemented), lost keys with no backup, or an endpoint that is already compromised — and a
-timestamp proves only *when*, never *who* or *what*.
+and custody-identity minimization, with no telemetry. `habitable anchor` lets a chain be externally
+timestamped so a recipient can say it provably existed by a given time, but this is opt-in: it does
+**not** protect against a hostile keyholder rewriting the local chain before any anchor was made (or
+after the most recent one), relay metadata, a coercing or forensic adversary with the unlocked
+device (the duress-safe state that would blunt this is planned, not yet implemented), lost keys with
+no backup, or an endpoint that is already compromised — and a timestamp proves only *when*, never
+*who* or *what*.
 
 **This is alpha / concept-stage software. It must not be relied on for a real legal matter yet.**
 When that changes, this document and the README will say so explicitly.

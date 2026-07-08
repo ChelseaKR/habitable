@@ -63,6 +63,11 @@
     "timeline": { "type": "array", "items": { "$ref": "#/$defs/timelineEntry" } },
     "items": { "type": "array", "items": { "$ref": "#/$defs/item" } },
     "custody_proof": { "$ref": "#/$defs/custodyProof" },
+    "anchors": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/anchor" },
+      "description": "External anchors (EXP-01): trusted timestamps over CustodyLog.head_hash at a given chain length, closing the hostile-keyholder gap in threat-model.md §5. Absent or empty in packets from a vault that never ran `habitable anchor` — anchoring is opt-in and additive."
+    },
     "disclosures": {
       "type": "array",
       "items": { "type": "string" },
@@ -243,6 +248,23 @@
         "entry_hash": { "$ref": "#/$defs/hexSha256" }
       },
       "additionalProperties": false
+    },
+    "anchor": {
+      "type": "object",
+      "description": "One external anchor: timestamp token(s) over the custody-chain head hash at a specific chain length. A verifier accepts it only if head_hash matches the entry at chain_length in the shipped custody_proof.entries.",
+      "required": ["head_hash", "chain_length", "created_at", "tokens"],
+      "properties": {
+        "head_hash": { "$ref": "#/$defs/hexSha256", "description": "CustodyLog.head_hash at the moment of anchoring; must equal custody_proof.entries[chain_length-1].entry_hash." },
+        "chain_length": { "type": "integer", "minimum": 1, "description": "Number of custody entries committed to by head_hash at anchor time (1-based count, matching custody_proof.entries length at that point)." },
+        "created_at": { "type": "string", "description": "The local (untrusted) clock's view of when the anchor was made, ISO 8601 UTC. Not itself evidentiary — the trusted bound comes from the tokens' own gen_time." },
+        "tokens": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/timestampToken" },
+          "description": "One or more independent authorities' tokens over head_hash; the anchor counts as verified if at least one verifies."
+        }
+      },
+      "additionalProperties": true
     },
     "signature": {
       "type": "object",

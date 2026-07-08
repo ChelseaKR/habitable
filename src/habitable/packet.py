@@ -192,6 +192,7 @@ def build_packet(
         ),
         "items": cast(JSONValue, items),
         "custody_proof": vault.custody.integrity_proof(hlc_map=opaque_hlc),
+        "anchors": cast(JSONValue, [a.to_dict() for a in vault.anchors()]),
         "appendix": {
             "item_count": len(items),
             "timestamped_count": timestamped,

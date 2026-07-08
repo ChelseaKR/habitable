@@ -29,15 +29,18 @@ Version 2.0, at the recipient's option. That subset is `src/habitable/verify.py`
 together with the pure, side-effect-free helpers it relies on to do its job:
 `src/habitable/canonical.py` (canonical serialization + SHA-256), the timestamp
 verification routines and token model in `src/habitable/tsa.py`, the
-chain-of-custody verification in `src/habitable/evidence.py`, and the signature
-verification (`verify`) in `src/habitable/crypto.py`. This grant exists so that a
-court, a housing inspector, a legal-aid organization, or an opposing party can
-embed verification of a habitable evidence packet (hashes, RFC 3161 timestamp
-tokens, and the chain-of-custody integrity proof) into their own software and
-redistribute it without the AGPL reaching their code. Merely running the verifier
-never triggers copyleft in any case; this permission is about embedding and
-redistribution. Independent verifiability is of little use if shipping the
-verifier inside another tool is itself encumbered.
+chain-of-custody verification in `src/habitable/evidence.py`, the external-anchor
+record model and verification routines (`AnchorRecord`, `verify_anchor_records`,
+`latest_anchor_bound` — not the vault-dependent `create_anchor`) in
+`src/habitable/anchor.py`, and the signature verification (`verify`) in
+`src/habitable/crypto.py`. This grant exists so that a court, a housing
+inspector, a legal-aid organization, or an opposing party can embed verification
+of a habitable evidence packet (hashes, RFC 3161 timestamp tokens, the
+chain-of-custody integrity proof, and any external anchors) into their own
+software and redistribute it without the AGPL reaching their code. Merely
+running the verifier never triggers copyleft in any case; this permission is
+about embedding and redistribution. Independent verifiability is of little use
+if shipping the verifier inside another tool is itself encumbered.
 
 Not legal advice
 ----------------

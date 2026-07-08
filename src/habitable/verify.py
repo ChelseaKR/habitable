@@ -24,9 +24,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .anchor import AnchorRecord, latest_anchor_bound, verify_anchor_records
 from .canonical import JSONValue, sha256_bytes, sha256_file
 from .crypto import verify as verify_signature
-from .errors import VerificationError
+from .errors import AnchorError, VerificationError
 from .evidence import CustodyLog
 from .tsa import TimestampToken, verify_archive_chain, verify_token
 
@@ -88,6 +89,12 @@ class VerificationReport:
     custody_length: int
     items: tuple[ItemVerdict, ...]
     problems: tuple[str, ...]
+    # External anchors (EXP-01), closing threat-model §5's hostile-keyholder gap.
+    # A packet with no anchors leaves these at their defaults — anchoring is opt-in.
+    anchor_count: int = 0
+    anchors_verified: int = 0
+    anchored_by: str = ""  # earliest gen_time of the anchor covering the most entries
+    anchored_through: int = 0  # how many custody entries that anchor covers
 
     @property
     def ok(self) -> bool:
@@ -104,15 +111,21 @@ class VerificationReport:
 
     def summary(self) -> str:
         total = len(self.items)
+        anchor_note = ""
+        if self.anchors_verified:
+            anchor_note = (
+                f"; custody chain provably existed by {self.anchored_by} "
+                f"(anchored through entry {self.anchored_through}/{self.custody_length})"
+            )
         if self.ok:
             return (
                 f"{self.verified_items}/{total} items verify against their sealed originals "
-                f"and timestamp tokens — packet intact"
+                f"and timestamp tokens — packet intact{anchor_note}"
             )
         return (
             f"{self.verified_items}/{total} items verified; "
             f"signature={'ok' if self.signature_ok else 'FAILED'}, "
-            f"custody={'ok' if self.custody_ok else 'BROKEN'} — packet NOT intact"
+            f"custody={'ok' if self.custody_ok else 'BROKEN'} — packet NOT intact{anchor_note}"
         )
 
 
@@ -149,6 +162,10 @@ def verify_packet(
             continue
         items.append(_verify_item(raw_item, packet_dir, bindings, poster_bindings, trusted_certs))
 
+    anchor_count, anchors_verified, anchored_by, anchored_through = _verify_anchors(
+        bundle, custody, trusted_certs, problems
+    )
+
     return VerificationReport(
         packet_dir=packet_dir,
         signature_ok=signature_ok,
@@ -156,6 +173,10 @@ def verify_packet(
         custody_length=custody_length,
         items=tuple(items),
         problems=tuple(problems),
+        anchor_count=anchor_count,
+        anchors_verified=anchors_verified,
+        anchored_by=anchored_by,
+        anchored_through=anchored_through,
     )
 
 
@@ -347,6 +368,42 @@ def _verify_custody(bundle: Mapping[str, JSONValue]) -> tuple[bool, int, Custody
     declared_head = proof.get("head_hash")
     head_ok = declared_head == result.head_hash
     return (result.ok and head_ok), result.length, custody
+
+
+def _verify_anchors(
+    bundle: Mapping[str, JSONValue],
+    custody: CustodyLog,
+    trusted_certs: list[x509.Certificate] | None,
+    problems: list[str],
+) -> tuple[int, int, str, int]:
+    """Parse and check every external anchor (EXP-01) against the shipped chain.
+
+    A malformed anchor, or one whose head hash does not match the custody chain it
+    shipped with, is appended to ``problems`` — fail closed, same as a broken
+    custody link — rather than silently ignored. Returns
+    ``(anchor_count, anchors_verified, anchored_by, anchored_through)``.
+    """
+    records: list[AnchorRecord] = []
+    for raw in _list(bundle, "anchors"):
+        if not isinstance(raw, dict):
+            problems.append("malformed anchor in bundle")
+            continue
+        try:
+            records.append(AnchorRecord.from_dict(raw))
+        except AnchorError as exc:
+            problems.append(f"malformed anchor: {exc}")
+
+    verdicts = verify_anchor_records(records, custody, trusted_certs=trusted_certs)
+    for verdict in verdicts:
+        if not verdict.ok:
+            reason = "; ".join(verdict.problems) or "no anchor token verified"
+            problems.append(
+                f"anchor over {verdict.record.chain_length} custody entry(ies) failed: {reason}"
+            )
+
+    anchored_by, anchored_through = latest_anchor_bound(verdicts)
+    anchors_verified = sum(1 for v in verdicts if v.ok)
+    return len(records), anchors_verified, anchored_by, anchored_through
 
 
 def _sharing_bindings(custody: CustodyLog) -> dict[str, set[tuple[str, str]]]:

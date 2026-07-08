@@ -22,6 +22,20 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   same canonical bytes, hashes, and custody head hashes. A guard test keeps
   `import habitable.kernel` within the Apache-2.0 subset (no relay/sync/cli/app/capture/vault).
 
+- **`habitable anchor` — external anchoring of the exported custody-chain head (EXP-01)**, closing the
+  threat-model §5 hostile-keyholder gap: "a keyholder can rewrite the whole local chain before
+  any external party has seen the head hash." The new `anchor.py` module timestamps the same
+  privacy-preserving custody proof head that packets export (a hash, never contents or raw HLC
+  metadata) with one or more configured trusted authorities via the existing `tsa.py` stamping
+  path; `habitable anchor` records the result in the vault, and `habitable export` ships every
+  anchor inside `bundle.json`'s new `anchors` field. `verify_packet` (`verify.py`) re-checks
+  each anchor against the shipped chain — the head hash must match the entry at the anchor's
+  recorded chain length, and at least one token must verify — and reports the tightest available
+  bound on `VerificationReport.anchored_by` /
+  `.anchored_through`: "this custody chain provably existed by `<time>`" for every entry up to
+  the most recent verified anchor. Anchoring is opt-in and additive: packets from vaults that
+  never anchor verify exactly as before. `AnchorRecord` and the pure verification routines join
+  the Apache-2.0 embeddable verifier subset (see `NOTICE`, `docs/embedding-the-verifier.md`).
 - **Instrument-corroborated conditions — sensor CSV import** (EXP-09). An independent
   instrument's readings (a temperature logger for a no-heat case, a moisture meter for
   mold) can now be captured as a first-class item: a `.csv` file runs the *same* evidence

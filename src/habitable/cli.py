@@ -23,6 +23,7 @@ from pathlib import Path
 from cryptography import x509
 
 from . import __version__, campaign
+from .anchor import create_anchor
 from .capture import capture, resolve_deferred, retimestamp_all
 from .commons import DEFAULT_K, build_commons, summarize_case
 from .config import TSAConfig
@@ -184,6 +185,14 @@ def _build_parser() -> argparse.ArgumentParser:
     p_retime.add_argument("--dev-tsa", action="store_true")
     add_metered(p_retime)
     p_retime.set_defaults(func=_cmd_retimestamp)
+
+    p_anchor = sub.add_parser(
+        "anchor",
+        help="timestamp the custody-chain head externally (closes the hostile-keyholder gap)",
+    )
+    add_vault(p_anchor)
+    p_anchor.add_argument("--dev-tsa", action="store_true", help="use the offline dev TSA")
+    p_anchor.set_defaults(func=_cmd_anchor)
 
     p_export = sub.add_parser("export", help="assemble a court/inspector evidence packet")
     add_vault(p_export)
@@ -680,6 +689,24 @@ def _cmd_retimestamp(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_anchor(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    tsa = _tsa_for(vault, dev=args.dev_tsa)
+    if tsa is None:
+        raise HabitableError("no timestamp authority configured")
+    tsas = [tsa, *_extra_tsas_for(vault, dev=args.dev_tsa)]
+    record = create_anchor(vault, tsas)
+    locale = resolve_locale(vault.config.language)
+    when = format_datetime(record.created_at, locale)
+    names = ", ".join(token.tsa_name for token in record.tokens)
+    print(
+        f"habitable: "
+        f"{cli_text('anchor_done', locale, count=len(record.tokens), links=record.chain_length)}"
+    )
+    print(f"           head {record.head_hash[:16]}… · {when} · anchored by: {names}")
+    return 0
+
+
 def _cmd_export(args: argparse.Namespace) -> int:
     vault = _open(args)
     result = build_packet(
@@ -894,6 +921,10 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             "custody_length": report.custody_length,
             "verified_items": report.verified_items,
             "item_count": len(report.items),
+            "anchor_count": report.anchor_count,
+            "anchors_verified": report.anchors_verified,
+            "anchored_by": report.anchored_by,
+            "anchored_through": report.anchored_through,
             "problems": list(report.problems),
             "items": [
                 {

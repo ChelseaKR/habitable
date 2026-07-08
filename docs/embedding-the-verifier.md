@@ -20,9 +20,9 @@
 ## What "the verifier subset" is
 
 The independently-licensed subset is `habitable.verify` plus the pure modules it imports:
-`habitable.canonical`, `habitable.crypto`, `habitable.evidence`, and `habitable.tsa`. It pulls no
-AGPL-only or heavy modules — `import habitable.verify` brings in only this subset, and a guard test
-in `tests/test_guards.py` keeps it that way. Runtime dependencies are
+`habitable.anchor`, `habitable.canonical`, `habitable.crypto`, `habitable.evidence`, and
+`habitable.tsa`. It pulls no AGPL-only or heavy modules — `import habitable.verify` brings in only
+this subset, and a guard test in `tests/test_guards.py` keeps it that way. Runtime dependencies are
 [`cryptography`](https://cryptography.io) and [`asn1crypto`](https://github.com/wbond/asn1crypto).
 
 **Python support.** The subset uses only standard, parenthesized exception syntax and runs on any
@@ -82,6 +82,10 @@ except VerificationError as exc:
 | `items` | tuple of `ItemVerdict` |
 | `problems` | tuple of structural/version problems (empty when clean) |
 | `verified_items` | count of items with `ok == True` |
+| `anchor_count` | external anchors (EXP-01) present in the bundle, `0` if none were made |
+| `anchors_verified` | of those, how many both matched the shipped chain and had a verified token |
+| `anchored_by` | the tightest "chain existed by" bound: the earliest verified gen_time of the anchor covering the most custody entries (`""` if none verified) |
+| `anchored_through` | how many custody entries `anchored_by` covers |
 | `summary()` | a single human-readable line |
 
 `ItemVerdict` (per media item): `capture_id`, `content_hash`, `timestamp_verified`, `gen_time`,

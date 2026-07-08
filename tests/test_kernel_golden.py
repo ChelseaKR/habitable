@@ -72,6 +72,7 @@ def test_custody_chain_vectors_verify_and_match_head() -> None:
 # in only the verification modules (plus itself), never relay/sync/cli/app/capture/vault.
 _ALLOWED_KERNEL_MODULES = {
     "habitable",
+    "habitable.anchor",
     "habitable.canonical",
     "habitable.crypto",
     "habitable.errors",

@@ -51,6 +51,7 @@ re-serialize `bundle.json` before checking the signature.
 | `timeline` | array | Timeline entries for the selected issues. |
 | `items` | array | The media items — the evidentiary core (see below). |
 | `custody_proof` | object | Identity-stripped chain-of-custody proof (see below). |
+| `anchors` | array | External anchors over the custody-chain head (see below); absent/empty unless `habitable anchor` was run. |
 | `disclosures` | array | Human-readable notes of what the packet reveals (location stripped, custody identities not exported, originals embedded). Also rendered, localized, in `packet.html`/`packet.pdf`. |
 | `appendix` | object | `{item_count, timestamped_count, includes_originals}`. |
 
@@ -116,6 +117,23 @@ The verifiability bridge: because a shared copy is metadata-stripped, its bytes 
 original and cannot hash back to `content_hash`. A signed `copied_for_sharing` entry whose `details`
 carry `content_hash` + `shared_hash` binds the two; the verifier requires that binding for any item
 with shared media.
+
+### `anchors[]` — external anchoring (EXP-01)
+
+Each entry is `{ head_hash, chain_length, created_at, tokens[] }`: a set of trusted timestamps over
+`custody_proof.head_hash` **as it stood** after `chain_length` custody entries, produced by
+`habitable anchor`. `tokens[]` is one or more `timestampToken` objects (same shape as an item's
+`timestamp`) — redundant across authorities, same as `additional_timestamps`.
+
+A verifier accepts an anchor only if `head_hash` equals `custody_proof.entries[chain_length-1].
+entry_hash` in the **same packet** (so a producer cannot swap in an anchor over a different chain)
+and at least one token verifies. Because the chain is hash-linked, a verified anchor proves every
+entry at or before `chain_length` existed by the earliest verifying token's `gen_time` — closing
+threat-model.md §5's hostile-keyholder gap ("a keyholder can rewrite the whole local chain before any
+external party has seen the head hash") for everything before the most recent anchor. `created_at` is
+the local, untrusted clock's record of when the anchor was made; it carries no evidentiary weight —
+the trusted bound is each token's own `gen_time`. Absent or empty in packets from a vault that never
+anchored; the rest of verification is unaffected either way.
 
 ### `bundle.sig.json` (sibling file)
 

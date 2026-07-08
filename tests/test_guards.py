@@ -133,6 +133,7 @@ def test_packet_ids_do_not_encode_wall_clock_or_node_id(
 # verify + the pure helpers it imports, plus the side-effect-free parent package.
 _ALLOWED_VERIFIER_MODULES = {
     "habitable",
+    "habitable.anchor",
     "habitable.canonical",
     "habitable.crypto",
     "habitable.errors",
@@ -165,6 +166,7 @@ def test_verifier_imports_stay_within_apache_subset() -> None:
 # The import closure of habitable.verify — the source an embedder vendors and must be
 # able to run on Python < 3.14 (verify.py docstring, NOTICE, docs/embedding-the-verifier.md).
 _VERIFIER_SUBSET_FILES = (
+    "anchor.py",
     "canonical.py",
     "crypto.py",
     "errors.py",
