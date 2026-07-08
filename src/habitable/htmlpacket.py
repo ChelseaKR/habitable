@@ -174,22 +174,62 @@ def _issue_section(
     if items:
         out.append("<h3>Captured evidence</h3>")
         for item in items:
-            shared = _s(item, "shared_name")
-            stamp = "trusted-timestamped" if item.get("timestamp") else "awaiting timestamp"
-            content_hash = _s(item, "content_hash")
+            out.extend(_evidence_figure(item))
+    out.append("</section>")
+    return out
+
+
+def _evidence_figure(item: Mapping[str, JSONValue]) -> list[str]:
+    """Render one evidence item: a photo inline, or -- for video/audio (EXP-07) --
+    a poster frame and/or transcript plus a link to the shared media file. Video
+    and audio are never embedded as playable <video>/<audio> elements here: doing
+    so accessibly requires caption/track markup this packet cannot yet author, so
+    the honest accessible fallback is a still poster frame with real alt text and
+    a plain-text transcript, exactly the excellence bar EXP-07 sets."""
+    media_type = _s(item, "media_type")
+    shared = _s(item, "shared_name")
+    poster = _s(item, "poster_name")
+    transcript = _s(item, "transcript")
+    stamp = "trusted-timestamped" if item.get("timestamp") else "awaiting timestamp"
+    content_hash = _s(item, "content_hash")
+    captured_at = _s(item, "captured_at")
+    is_video = media_type.startswith("video/")
+    is_audio = media_type.startswith("audio/")
+
+    out = ["<figure>"]
+    if is_video or is_audio:
+        kind = "video" if is_video else "audio"
+        if poster:
             alt = (
-                f"Evidence photo for this issue, captured {_s(item, 'captured_at')}, "
+                f"Poster frame from evidence {kind} for this issue, captured {captured_at}, "
                 f"content hash {content_hash[:12]}, {stamp}."
             )
-            out.append("<figure>")
-            if shared:
-                out.append(f'<img src="media/{escape(shared)}" alt="{escape(alt)}">')
+            out.append(f'<img src="media/{escape(poster)}" alt="{escape(alt)}">')
+        if transcript:
             out.append(
-                f"<figcaption>Captured {escape(_s(item, 'captured_at'))} · "
-                f"hash {escape(content_hash[:16])}… · {escape(stamp)}</figcaption>"
+                f"<details><summary>Transcript</summary><p>{escape(transcript)}</p></details>"
             )
-            out.append("</figure>")
-    out.append("</section>")
+        elif not poster:
+            out.append(
+                '<p class="warning">No transcript or poster frame was recorded for this '
+                f"{escape(kind)} — it does not yet meet the accessibility bar.</p>"
+            )
+        if shared:
+            out.append(
+                f'<p><a href="media/{escape(shared)}">Download the {escape(kind)} '
+                "(verify its hash against bundle.json before playing)</a></p>"
+            )
+    elif shared:
+        alt = (
+            f"Evidence photo for this issue, captured {captured_at}, "
+            f"content hash {content_hash[:12]}, {stamp}."
+        )
+        out.append(f'<img src="media/{escape(shared)}" alt="{escape(alt)}">')
+    out.append(
+        f"<figcaption>Captured {escape(captured_at)} · "
+        f"hash {escape(content_hash[:16])}… · {escape(stamp)}</figcaption>"
+    )
+    out.append("</figure>")
     return out
 
 

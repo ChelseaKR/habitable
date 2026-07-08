@@ -94,6 +94,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p_capture.add_argument("--issue", required=True)
     p_capture.add_argument("--dev-tsa", action="store_true", help="use the offline dev TSA")
     p_capture.add_argument("--no-timestamp", action="store_true", help="defer timestamping")
+    p_capture.add_argument(
+        "--transcript",
+        default="",
+        help="plain-text transcript/caption for video or audio (EXP-07 accessibility fallback)",
+    )
     p_capture.set_defaults(func=_cmd_capture)
 
     p_tl = sub.add_parser("timeline", help="add a timeline entry")
@@ -337,7 +342,14 @@ def _cmd_capture(args: argparse.Namespace) -> int:
     vault = _open(args)
     tsa = None if args.no_timestamp else _tsa_for(vault, dev=args.dev_tsa)
     extra_tsas = [] if args.no_timestamp else _extra_tsas_for(vault, dev=args.dev_tsa)
-    result = capture(vault, args.media, issue_id=args.issue, tsa=tsa, extra_tsas=extra_tsas)
+    result = capture(
+        vault,
+        args.media,
+        issue_id=args.issue,
+        tsa=tsa,
+        extra_tsas=extra_tsas,
+        transcript=args.transcript,
+    )
     locale = resolve_locale(vault.config.language)
     status = (
         cli_text(

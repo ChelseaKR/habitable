@@ -19,7 +19,9 @@ from pathlib import Path
 from .canonical import sha256_file
 from .errors import CaptureError, TimestampError
 from .evidence import CustodyAction
-from .exif import read_metadata
+from .exif import MediaMetadata, read_metadata
+from .media import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS
+from .media import probe_metadata as probe_media_metadata
 from .tsa import TimestampAuthority, TimestampInfo, TimestampToken, retimestamp, verify_token
 from .vault import Vault
 
@@ -35,7 +37,12 @@ _MEDIA_TYPES = {
     ".tiff": "image/tiff",
     ".mp4": "video/mp4",
     ".mov": "video/quicktime",
+    ".m4a": "audio/mp4",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
 }
+
+_MEDIA_EXTENSIONS = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +67,7 @@ def capture(
     tsa: TimestampAuthority | None = None,
     extra_tsas: Sequence[TimestampAuthority] = (),
     media_type: str | None = None,
+    transcript: str = "",
 ) -> CaptureResult:
     """Capture a media file into the vault as an evidence-grade record.
 
@@ -67,7 +75,15 @@ def capture(
     independent authorities stamped for redundancy so the proof does not rest on a
     single TSA (item R-16). Extra authorities are stamped only when the primary
     succeeds (i.e. the device is online); offline, the item is queued and resolved
-    later against the primary."""
+    later against the primary.
+
+    ``transcript`` is a plain-text description of what a video/audio recording
+    shows or says (e.g. "Landlord, on 2026-06-01: 'I'm not fixing that.'"). It is
+    the accessible fallback packet.build_packet renders alongside (or instead
+    of) a poster frame, and the mechanism EXP-07 adds so temporal evidence can
+    meet the same accessibility bar as a photo's alt text. Optional but strongly
+    recommended for any video/audio capture -- an empty transcript is recorded
+    and surfaced honestly (not hidden) in the packet, never silently dropped."""
     src = Path(source)
     if not src.is_file():
         raise CaptureError(f"no such media file: {src}")
@@ -76,7 +92,7 @@ def capture(
     resolved_media_type = media_type or _MEDIA_TYPES.get(
         src.suffix.lower(), "application/octet-stream"
     )
-    metadata = read_metadata(src)
+    metadata = _read_media_metadata(src, resolved_media_type)
     actor_id = actor or vault.identity.public().fingerprint
 
     stamp = vault.document.clock.now()
@@ -124,6 +140,7 @@ def capture(
         sealed_name=sealed_name,
         captured_at=captured_at,
         capture_id=capture_id,
+        transcript=transcript,
     )
     vault.save()
     return CaptureResult(
@@ -315,14 +332,37 @@ def _stamp_and_record(
     return info
 
 
-def _exif_to_iso(exif_time: str | None) -> str | None:
-    if not exif_time:
+def _read_media_metadata(src: Path, resolved_media_type: str) -> MediaMetadata:
+    """Dispatch metadata reading to the right toolchain for this media kind.
+
+    Still images go through :mod:`habitable.exif` (piexif/Pillow); video/audio
+    go through :mod:`habitable.media` (ffprobe), a different toolchain with a
+    different optional-dependency story (EXP-07)."""
+    if src.suffix.lower() in _MEDIA_EXTENSIONS or resolved_media_type.startswith(
+        ("video/", "audio/")
+    ):
+        return probe_media_metadata(src)
+    return read_metadata(src)
+
+
+def _exif_to_iso(capture_time: str | None) -> str | None:
+    """Parse a capture timestamp from either EXIF (``YYYY:MM:DD HH:MM:SS``) or
+    ffprobe's ``creation_time`` tag (ISO 8601), whichever the source produced."""
+    if not capture_time:
         return None
     try:
-        parsed = datetime.strptime(exif_time, "%Y:%m:%d %H:%M:%S").replace(tzinfo=UTC)
+        parsed = datetime.strptime(capture_time, "%Y:%m:%d %H:%M:%S").replace(tzinfo=UTC)
+        return parsed.strftime("%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        pass
+    try:
+        iso_time = capture_time.replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(iso_time)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     except ValueError:
         return None
-    return parsed.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _ms_to_iso(wall_ms: int) -> str:
