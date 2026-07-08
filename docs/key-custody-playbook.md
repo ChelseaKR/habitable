@@ -16,10 +16,11 @@ person most likely to do it by accident, with the best intentions.
 > about living with that tradeoff safely.
 >
 > **Honesty note:** the commands below (`key rotate`, `key backup`, `key
-> restore`) exist today. The *practices* in this playbook — splitting custody,
-> drilling recovery, a who-can-recover-what map — are organizational practices
-> you implement *around* those commands. Where a smoother built-in feature is
-> only planned, this document says so rather than implying it exists.
+> restore`, and now `key share` / `key recover` for threshold custody) exist
+> today. The *practices* in this playbook — drilling recovery, a
+> who-can-recover-what map — are organizational practices you implement *around*
+> those commands. Where a smoother built-in feature is still only planned, this
+> document says so rather than implying it exists.
 
 ## The core tension, stated plainly
 
@@ -115,14 +116,46 @@ of failure.** Some practical patterns, from simplest to strongest:
   holds the case data; combined with that device's own passphrase and recovery
   blob, the case survives the loss of any one phone. Treat multi-device sync as
   part of the custody plan, not separate from it.
+- **Threshold (M-of-N) social custody — the strongest pattern, now built in.**
+  Instead of one recovery blob held by one person, split recovery into `N` shares
+  handed to `N` stewards so that *any* `M` of them — but no fewer — can recover
+  together. No single steward can, so no single steward is worth stealing,
+  coercing, or subpoenaing; and losing up to `N - M` shares still leaves the case
+  recoverable. This is a *cryptographic* guarantee, not a matter of who-trusts-whom:
 
-> **A note on "threshold / split-key" schemes.** A true cryptographic
-> threshold-backup ("any 3 of 5 organizers can recover") is an attractive idea
-> and a documented *future* direction, **not a built-in command today**. Do not
-> tell a union it exists. The patterns above approximate its *intent* —
-> distributing trust so no one is the honeypot — using the commands that do
-> exist. If you want the real thing, say so in the backlog rather than improvising
-> a homegrown crypto scheme.
+  ```console
+  $ uv run habitable key share --vault ./case-4B \
+      --threshold 2 \
+      --steward Ana --steward Bo --steward Cy \
+      --out-dir ./case-4B-custody
+  # writes recovery-bundle.json + one share file per steward (here, 2-of-3)
+  ```
+
+  Give each `share-*.json` to its named steward and keep them apart. When
+  recovery is needed, a quorum brings their shares together:
+
+  ```console
+  $ uv run habitable key recover ./case-4B \
+      --bundle ./case-4B-custody/recovery-bundle.json \
+      --share ./from-ana.json --share ./from-cy.json
+  # (any 2 of the 3 shares; then choose a new vault passphrase)
+  ```
+
+  The `recovery-bundle.json` is **not** secret on its own — it is useless without
+  a quorum of shares — but still keep it with the union, not on a project server.
+  As with any recovery, restoring rebuilds *access*; the encrypted vault directory
+  (or a synced peer that still has it) must still exist. See
+  [`key-management.md`](key-management.md) and
+  [`crypto-spec.md`](crypto-spec.md) §3a for the construction (Shamir's Secret
+  Sharing over GF(2⁸)).
+
+> **Which pattern for a small union?** The two-person rule is the baseline every
+> union should adopt on day one. Move to **threshold custody** (`key share` /
+> `key recover`) once you have three or more organizers who can each safely hold
+> a share — it is the pattern that most directly dissolves the honeypot, because
+> no single custodian ever holds enough to recover. Do **not** hand-roll your own
+> split-key scheme: use `key share`, which implements a reviewed threshold
+> construction rather than improvising crypto.
 
 ## Per-member vs shared responsibilities
 

@@ -98,6 +98,52 @@ exception and never a distinguishable oracle beyond pass/fail.
   the module (`_raw()` is private). Python offers no reliable zeroization of immutable `bytes`;
   this is called out as a [review focus](#7-review-focus--known-tradeoffs), not claimed as solved.
 
+### 3a. Threshold (M-of-N) social custody of recovery keys (EXP-11)
+
+Implemented in `src/habitable/threshold.py`. This makes *distributed* custody cryptographic rather
+than a matter of who-trusts-whom: recovery is split across `N` stewards so that any `M` of them —
+but no fewer — can recover, and no single steward is a honeypot. The construction:
+
+1. **Wrap.** Generate a fresh uniformly-random 256-bit **recovery secret** `S`. Because `S` is
+   already full-entropy, it *is* the KEK: the DEK is wrapped directly with `ChaCha20-Poly1305`
+   under `S` (no scrypt), with associated data `b"habitable-threshold-recovery-wrap-v1"` for domain
+   separation. The result is a **recovery bundle** — a JSON blob that is **not secret** on its own
+   (it is useless without `S`).
+2. **Split.** `S` is shared with **Shamir's Secret Sharing over GF(2⁸)** (the AES field, reduction
+   polynomial `0x11b`). Each of the 32 bytes of `S` is the constant term of an independent degree
+   `M-1` polynomial with fixed random higher coefficients; share `i` is that set of polynomials
+   evaluated at a distinct non-zero x-coordinate `x_i ∈ [1, 255]`. `M` shares reconstruct each byte
+   by Lagrange interpolation at `x = 0`. Information-theoretically, any `M-1` shares reveal
+   **nothing** about `S`.
+3. **Bind.** Every share records the bundle's `bundle_id` (`sha256(wrapped_dek)[:16]`), so shares
+   from different bundles cannot be silently combined and a mismatched set is rejected up front.
+4. **Recover.** Collect ≥ `M` distinct shares (duplicates by x-coordinate are ignored, not
+   double-counted), interpolate `S`, and AEAD-unwrap the DEK. A wrong, corrupt, or short share set
+   fails the Poly1305 tag and surfaces as a single `CryptoError` — never a silently-wrong key.
+
+**Bundle format** (`habitable_recovery_bundle_version = 1`):
+
+```json
+{
+  "habitable_recovery_bundle_version": 1,
+  "aead": "chacha20poly1305",
+  "scheme": "shamir-gf256",
+  "threshold": 2,
+  "shares": 3,
+  "bundle_id": "<hex16>",
+  "wrapped_dek": "<b64 of nonce‖ciphertext>"
+}
+```
+
+**Share format** (`habitable_share_version = 1`): `{ version, scheme, threshold, shares, index,
+steward, bundle_id, y: "<b64 of per-byte evaluations>" }`.
+
+Exposed as `habitable key share` (produce a bundle + one share per steward) and `habitable key
+recover` (rebuild the keyfile from a bundle and a quorum). The Shamir primitive is implemented in
+this project because `cryptography` ships no threshold scheme; it is a small, self-contained target
+for the independent review and should be a focus of it. Operational guidance lives in
+[`key-custody-playbook.md`](key-custody-playbook.md).
+
 ## 4. Device identity and signatures
 
 Each device holds an **Identity**: an Ed25519 signing key (32-byte seed) and an X25519
