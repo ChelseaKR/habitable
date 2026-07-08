@@ -80,7 +80,7 @@ def capture(
     actor_id = actor or vault.identity.public().fingerprint
 
     stamp = vault.document.clock.now()
-    capture_id = f"cap-{stamp.encode()}"
+    capture_id = vault.document.opaque_id("cap", stamp.encode())
 
     # 1. Seal the original immutably (encrypted), bound to its content hash.
     sealed_name = vault.seal_original(capture_id, src, digest)
