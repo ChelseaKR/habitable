@@ -354,8 +354,7 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "{awaiting, plural, one {# pendiente} other {# pendientes}}"
         ),
         "status_custody": (
-            "cadena de custodia: {verdict} "
-            "({links, plural, one {# entrada} other {# entradas}})"
+            "cadena de custodia: {verdict} ({links, plural, one {# entrada} other {# entradas}})"
         ),
         "custody_intact": "intacta",
         "custody_broken": "ROTA",
