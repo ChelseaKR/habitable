@@ -49,6 +49,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from .errors import CryptoError
 
 __all__ = [
+    "KDF_PROFILES",
     "KEYFILE_VERSION",
     "Identity",
     "KdfParams",
@@ -56,6 +57,7 @@ __all__ = [
     "SymmetricKey",
     "create_keyfile",
     "export_recovery_blob",
+    "harden_keyfile",
     "import_recovery_blob",
     "open_keyfile",
     "open_sealed",
@@ -71,13 +73,23 @@ _KEY_BYTES = 32
 _DEK_AAD = b"habitable-dek-wrap-v1"
 _SEALEDBOX_INFO = b"habitable-sealedbox-v1"
 
+# Named scrypt cost profiles (N; r/p stay fixed). "standard" is what `create_keyfile`
+# uses -- tuned for an interactive unlock on a low-end phone. `key harden` re-wraps the
+# DEK under a stronger profile chosen here; see docs/crypto-spec.md sec 3.1 for the
+# rationale and a bump procedure (FIX-08).
+KDF_PROFILES: dict[str, int] = {
+    "standard": 2**15,  # ~32 MiB -- the original default, adequate but not future-proof
+    "hardened": 2**17,  # ~128 MiB -- OWASP's current scrypt-minimum recommendation
+    "paranoid": 2**20,  # ~1 GiB -- for a device that can spare the time and memory
+}
+
 
 @dataclass(frozen=True, slots=True)
 class KdfParams:
     """scrypt parameters. Defaults target an interactive unlock on a phone."""
 
     salt: bytes
-    n: int = 2**15
+    n: int = KDF_PROFILES["standard"]
     r: int = 8
     p: int = 1
     length: int = _KEY_BYTES
@@ -108,6 +120,16 @@ class KdfParams:
             p=_as_int(raw, "p"),
             length=_as_int(raw, "length"),
         )
+
+    @classmethod
+    def for_profile(cls, profile: str, *, salt: bytes) -> KdfParams:
+        """Cost parameters for a named entry in :data:`KDF_PROFILES`."""
+        try:
+            n = KDF_PROFILES[profile]
+        except KeyError:
+            known = ", ".join(sorted(KDF_PROFILES))
+            raise CryptoError(f"unknown KDF profile {profile!r}; known: {known}") from None
+        return cls(salt=salt, n=n)
 
 
 class SymmetricKey:
@@ -168,6 +190,18 @@ def rotate_passphrase(keyfile: str, old_passphrase: str, new_passphrase: str) ->
     """Re-wrap the same DEK under a new passphrase (no bulk re-encryption)."""
     dek = open_keyfile(keyfile, old_passphrase)
     return _wrap_dek(dek, new_passphrase, KdfParams(salt=os.urandom(16)))
+
+
+def harden_keyfile(dek: SymmetricKey, passphrase: str, *, profile: str = "hardened") -> str:
+    """Re-wrap ``dek`` under ``passphrase`` at a stronger named KDF cost profile.
+
+    This is the ``key harden`` remedy for FIX-08: KDF parameters that were adequate
+    when a vault was created but are light today. Same passphrase, same DEK, just a
+    costlier re-derivation on unlock going forward -- no bulk re-encryption (see
+    ``Vault.rotate_dek`` for that). Raises :class:`CryptoError` for an unknown
+    ``profile``.
+    """
+    return _wrap_dek(dek, passphrase, KdfParams.for_profile(profile, salt=os.urandom(16)))
 
 
 def export_recovery_blob(dek: SymmetricKey, recovery_passphrase: str) -> str:

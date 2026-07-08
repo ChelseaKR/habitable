@@ -9,18 +9,20 @@ person most likely to do it by accident, with the best intentions.
 
 > **Read the basics first.** This playbook assumes you have read
 > [`key-management.md`](key-management.md), which explains the `habitable key
-> rotate | backup | restore` commands and the one hard truth: **if a passphrase
-> is lost *and* there is no recovery backup *and* no synced peer who still has
-> the case, the data is gone.** That is by design — it is the same property that
-> stops a landlord, a breach, or a subpoena from getting it. This playbook is
-> about living with that tradeoff safely.
+> rotate | harden | rotate-dek | backup | restore | share | recover` commands
+> and the one hard truth: **if a passphrase is lost *and* there is no recovery
+> backup *and* no synced peer who still has the case, the data is gone.** That is
+> by design — it is the same property that stops a landlord, a breach, or a
+> subpoena from getting it. This playbook is about living with that tradeoff
+> safely.
 >
-> **Honesty note:** the commands below (`key rotate`, `key backup`, `key
-> restore`, and now `key share` / `key recover` for threshold custody) exist
-> today. The *practices* in this playbook — drilling recovery, a
-> who-can-recover-what map — are organizational practices you implement *around*
-> those commands. Where a smoother built-in feature is still only planned, this
-> document says so rather than implying it exists.
+> **Honesty note:** the commands below (`key rotate`, `key harden`,
+> `key rotate-dek`, `key backup`, `key restore`, `key share`, and
+> `key recover`) exist today. The *practices* in this playbook — splitting
+> custody, drilling recovery, and maintaining a who-can-recover-what map — are
+> organizational practices you implement *around* those commands. Where a
+> smoother built-in feature is only planned, this document says so rather than
+> implying it exists.
 
 ## The core tension, stated plainly
 
@@ -211,6 +213,23 @@ re-encrypted, so it is instant. After rotating:
   already copied the plaintext off a device while it was unlocked, rotation does
   not un-disclose it. Rotation limits *future* access through the old secret; it
   is not a time machine. Say so plainly to the affected member.
+- **If the encrypted vault files themselves may have been copied** (not just the
+  passphrase guessed or overheard) — a stolen laptop, a synced-folder leak, a
+  backup that ended up somewhere it shouldn't have — `key rotate` alone is **not
+  enough**. Rotation re-wraps the *same* data key; anyone who has that key (from
+  the copied files, if they can also get or brute-force a valid passphrase-wrapped
+  keyfile for it) can still read every blob encrypted under it, before or after
+  you rotate. In that case, also run:
+
+  ```console
+  $ uv run habitable key rotate-dek --vault ./case-4B
+  ```
+
+  which generates a **new** data key and re-encrypts the whole vault under it —
+  slower than rotation (it touches every blob and every sealed original) but the
+  actual remedy for a leaked key, not just a leaked passphrase. See
+  [`crypto-spec.md`](crypto-spec.md#31-key-lifecycle-r-38-fix-08) for what it does
+  under the hood.
 
 ## Rehearse recovery before you trust it
 
