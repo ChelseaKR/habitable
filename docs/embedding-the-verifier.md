@@ -127,6 +127,36 @@ schema = json.load(open("packet-bundle.schema.json"))
 jsonschema.validate(json.load(open(packet_dir / "bundle.json")), schema)
 ```
 
+## Reference importer + signed evidence receipt (EXP-10)
+
+If you are a legal-aid case-management system (persona P-23) you usually want two things beyond a
+one-shot verdict: a small routine to **ingest** a packet, and a **machine-readable, signed record**
+you can store next to the case file and re-check later without re-running the whole verifier. The
+Apache-2.0 reference importer in [`contrib/legal_aid_importer.py`](../contrib/legal_aid_importer.py)
+(see [`contrib/README.md`](../contrib/README.md)) provides both — it builds only on the verification
+subset above, so it carries no AGPL obligation.
+
+```python
+from legal_aid_importer import import_packet, sign_receipt, verify_receipt, generate_signing_key
+
+result = import_packet("4B-packet", now="2026-01-02T00:10:00Z")   # verifies + builds a receipt
+receipt = result.receipt                                          # a plain dict → store as JSON
+
+private_seed, public_key = generate_signing_key()   # your org's key; keep the seed, publish the key
+envelope = sign_receipt(receipt, private_seed)       # tamper-evident signed envelope
+
+check = verify_receipt(envelope, expected_public=public_key)      # re-check later, no packet needed
+assert check.ok
+```
+
+The receipt **binds the verdict to the packet's identity** — the SHA-256 of the exact `bundle.json`
+bytes — so a relying party can independently re-hash the packet and confirm the receipt is about
+*this* packet. `import_packet` fails closed exactly like `verify_packet`: a tampered or
+newer-than-supported packet yields a receipt whose `verdict.ok` is `False`, never a false "intact".
+The receipt is pinned to the packet schema's semver via `receipt_version` and `packet_schema` so a
+downstream store can refuse a future major it does not understand. Cross-tested against the
+golden-packet corpus in [`tests/test_contrib_importer.py`](../tests/test_contrib_importer.py).
+
 ## Stability contract (what you can rely on)
 
 - **`packet_version`** gates compatibility. This verifier accepts versions
