@@ -1,5 +1,9 @@
 # habitable — court-ready habitability evidence for tenant unions, offline and encrypted
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ChelseaKR/habitable/badge)](https://scorecard.dev/viewer/?uri=github.com/ChelseaKR/habitable)
+— an honest, itemized supply-chain self-assessment; see the dated report at
+[`docs/audits/scorecard-2026-07.md`](docs/audits/scorecard-2026-07.md) for what the current number means and what moves it.
+
 > A privacy-first, offline-capable tool that lets tenants and their unions document repair and
 > habitability problems as evidence that holds up: dated photos, condition notes, and a timeline,
 > each captured with a trusted timestamp, a content hash, and a chain of custody, then assembled into
@@ -17,6 +21,8 @@ languages). A recorded human screen-reader pass and signed native app-store bina
 independent personal open-source project · AGPL-3.0 ·
 unaffiliated with any employer or client; contains no proprietary or client material; not a
 government system and not built for a government customer.
+
+**Supported versions:** pre-1.0, only the **latest release** is supported (see `SECURITY.md`).
 
 **Why this domain.** A tenant withholding rent or fighting an eviction over a broken heater needs
 proof, and proof is exactly what the housing-power imbalance denies them: the landlord controls the
@@ -111,7 +117,10 @@ Every export ships an accessible `packet.html`, a paginated PDF, and a verifiabl
    and roughly how much moves — even though it can read none of the contents; the mitigations are a
    no-log, self-hostable relay and pure peer-to-peer sync with no relay at all, detailed in
    `docs/threat-model.md`. Nothing the project operates can be subpoenaed for a tenant's contents,
-   because it never holds them.
+   because it never holds them. Don't take our word for it: `habitable prove-no-plaintext` runs a
+   real sync through an in-process relay, captures every byte on the wire, and greps it for planted
+   plaintext markers — or capture a real relay with `tcpdump` yourself, per
+   [`docs/prove-no-plaintext.md`](docs/prove-no-plaintext.md).
 2. **No central authority over a union's records.** Each union holds its own keys and its own data;
    the project ships no account system, no admin who can read or revoke a union's evidence, and no
    hosted service that owns the records. Forking the code or running the relay yourself changes
@@ -125,10 +134,11 @@ Every export ships an accessible `packet.html`, a paginated PDF, and a verifiabl
    is shown exactly what a packet will disclose before it is produced. The tool never silently
    publishes a home's coordinates.
 5. **Retaliation is the threat model.** Defaults assume an adversary with resources and motive: data
-   at rest is encrypted, the app can be opened to a duress-safe state that hides case contents — a
-   mitigation with documented limits, not a guarantee against a coercing or forensic adversary — and
-   the tool collects no analytics and phones no home. The union decides what to disclose and to whom,
-   documented in `docs/threat-model.md`.
+   at rest is encrypted; a duress-safe open state that hides case contents is *planned but not yet
+   implemented* — today the only at-rest protection is vault encryption, and when built that state
+   will be a mitigation with documented limits, not a guarantee against a coercing or forensic
+   adversary — and the tool collects no analytics and phones no home. The union decides what to
+   disclose and to whom, documented in `docs/threat-model.md`.
 
 ---
 
@@ -150,8 +160,10 @@ fails the people relying on it.
   observe who syncs with whom and when; pure peer-to-peer sync avoids even that.
 - **A timestamp authority sees a hash, not the file** — and an RFC 3161 token bounds *when* content
   existed, not *who* created it or *what* it depicts.
-- **Duress and forensic limits.** The duress-safe state hides case contents but is not a guarantee
-  against a sufficiently capable coercing or forensic adversary.
+- **Duress and forensic limits.** The duress-safe state is *planned, not yet implemented*; today the
+  only at-rest protection is vault encryption. When built it will hide case contents but will not be a
+  guarantee against a sufficiently capable coercing or forensic adversary, and those documented limits
+  will apply.
 
 The full threat model and the mitigation for each limit live in `docs/threat-model.md`.
 
@@ -248,8 +260,9 @@ act, measured against documented evidentiary requirements, not padded.
 ### Privacy, security, accountability, autonomy
 **Confidentiality** and **securability** — end-to-end encryption at rest and in sync; the relay and the
 timestamp authority see ciphertext or a bare hash, never contents; no analytics, no telemetry.
-**Integrity** (supply chain) — pinned, hashed dependencies; signed releases; GitHub Actions pinned to
-commit SHAs with build-provenance attestations.
+**Integrity** (supply chain) — pinned, hashed dependencies; Sigstore-signed build-provenance
+attestations per release (signed release **tags** are in progress — see `docs/releasing.md`);
+GitHub Actions pinned to commit SHAs.
 **Vulnerability** management — pip-audit, gitleaks, and CodeQL in CI; a published threat model and
 SECURITY policy with a disclosure path. **Accountability** — append-only custody logs and committed
 `docs/audits/` record who did what to the data, while no outside party can read the data itself.
@@ -284,16 +297,17 @@ case set; a re-synced peer rebuilds local state. **Degradability** and **failure
 missing timestamp token or a broken chain is shown as a degraded evidence status, never silently passed
 as clean. **Redundancy** — multiple sync peers and configurable multiple timestamp authorities remove
 single points of failure. **Stability** and **durability** — sealed originals are immutable; semver on
-the packet format and verification protocol. **Safety** — the duress-safe open state (with the limits set
-out in the hard rules and *Honest limits*) and location-stripped sharing reduce harm to the tenant; the
-tool frames outputs as documentation, never as legal advice or a promise of a court outcome.
+the packet format and verification protocol. **Safety** — location-stripped sharing reduces harm to the
+tenant, and a duress-safe open state (planned, not yet implemented; with the limits set out in the hard
+rules and *Honest limits*) is intended to add to that; the tool frames outputs as documentation, never
+as legal advice or a promise of a court outcome.
 
 ### Performance, scale, cost
 **Efficiency** — hashing and sync deltas are incremental; the app does not re-process sealed media.
 **Scalability** and **elasticity** — sync is peer to peer with no central bottleneck; a relay, if used,
 forwards ciphertext and scales to zero between sessions. **Timeliness** — capture, hashing, and sealing
 complete within a perceptible moment with no network in the loop, and the RFC 3161 token is fetched
-asynchronously once the device is online; latency budgets for the local path are asserted in CI.
+asynchronously once the device is online; [latency budgets for the local path](docs/performance-budget.md) are asserted in CI.
 **Affordability** — the tool is free, runs on a tenant's existing phone, uses free public timestamp
 authorities, and needs no paid infrastructure, because the people using it have none to spare. **Process capabilities** and
 **producibility** — `make verify` reproduces the full gate; a release is one tagged, signed command.
@@ -366,9 +380,10 @@ to also makes the packets and the app usable to the legal-aid workers and inspec
   custody-intact state is announced in words, never signaled by color or an icon alone. The case timeline
   and the review list are operable by keyboard and screen reader, and the exported PDF packet is tagged
   for accessibility with a text layer so a screen-reader user can read the evidence appendix.
-- The app passes automated checks (axe) **and** manual screen-reader review (NVDA, VoiceOver); capture
-  works without precise pointer control, and time limits are avoidable so a tenant documenting under
-  stress is not rushed.
+- The app passes automated checks (axe) and has a **documented manual screen-reader protocol**
+  (`docs/accessibility/manual-testing.md`); a *recorded* NVDA/VoiceOver pass is a v1.0 gate item still
+  open (see `docs/accessibility/ACR.md`) — capture works without precise pointer control, and time
+  limits are avoidable so a tenant documenting under stress is not rushed.
 - Accessibility is a **merge-blocking CI gate**; a regression fails the build. The ACR is regenerated and
   re-committed on each release, the same audit-as-artifact discipline as the evidence method.
 
@@ -405,13 +420,45 @@ see **[`ROADMAP.md`](ROADMAP.md)**.
 
 ## Engineering and open-source practices
 
+### Standards conformance
+
+This repo is developed against a portfolio-wide set of engineering standards
+(quality, security, CI/CD, release, accessibility, observability, i18n,
+AI-evaluation, documentation, and a responsible-tech framework). Per that
+standard's own README, silent omission of this declaration is itself a defect
+— so here it is, stated rather than left implicit. "Applies" does not mean
+"fully conformant"; it means the standard's controls are in scope and tracked,
+with open gaps named rather than hidden.
+
+| # | Standard | Applies? | Where it's tracked |
+|---|---|---|---|
+| 1 | Quality & metrics | Applies (all repos) | `make verify` (coverage floor, complexity gate); [Definition of done](#definition-of-done) below |
+| 2 | Code quality | Applies (Python; TS/Node/frontend-toolchain controls are N/A — the PWA is no-build vanilla JS with no `package.json`) | `pyproject.toml` (ruff + mypy --strict config); `.pre-commit-config.yaml` |
+| 3 | Security & supply chain | Applies (ships code, releases, and a Dockerfile for the relay) | `SECURITY.md`; `.github/workflows/ci.yml` (gitleaks), `secret-scan-scheduled.yml` (TruffleHog), `codeql.yml`, `zizmor.yml`; `docs/audits/scorecard-2026-07.md` |
+| 4 | CI/CD | Applies (workflows under `.github/workflows/`) | This README's build/verify description; `.github/rulesets/` (branch/tag ruleset — drafted, not yet applied, see the remediation log) |
+| 5 | Release & versioning | Applies (tagged GitHub Releases) | `docs/releasing.md`; `ROADMAP.md` §Releases & versioning; **gap:** signed release tags not yet in place (tracked there) |
+| 6 | Accessibility | Applies (emits HTML: the PWA in `app/`, `packet.html`, the `site/` landing page) | [Accessibility and Section 508 conformance](#accessibility-and-section-508-conformance) below; `docs/accessibility/ACR.md`; **gap:** recorded human screen-reader pass still open, tracked as a v1.0 gate item in `ROADMAP.md` |
+| 7 | Observability | Applies (Tier A for the optional relay, Tier C for the CLI; no-telemetry principle drives the N/A rows) | `ROADMAP.md` §Observability |
+| 8 | Internationalization | Applies (bilingual EN/ES civic surface) | `docs/I18N.md` ("i18n status: IN-SCOPE"); `docs/adr/0005-i18n-g12-cldr-na-by-design.md` |
+| 9 | AI evaluation | **N/A — no LLM/AI features** (verified: no LLM SDK in `[project].dependencies` or the dev group; no AI code paths) | — |
+| 10 | Documentation | Applies (all repos) | This README; `docs/` tree; `CHANGELOG.md` |
+| 11 | Responsible-tech framework | Applies (all repos) | `docs/audits/`, `docs/privacy.md`, `docs/threat-model.md`; **gap:** the A–F applicability matrix this table itself represents was only added 2026-07-05 and a standalone `docs/RESPONSIBLE-TECH-AUDITS.md` is still open |
+
+Every "gap" above is also named in this repo's dated remediation record
+(`habitable-REMEDIATION.md` from the 2026-07-05 conformance audit); formal
+per-gap tracking issues had not been filed as of that date — filing one per
+open row is itself a tracked follow-up, not assumed done by this table's
+existence.
+
 pytest plus property-based and tamper-detection tests for the evidence, crypto, sync, and verify paths;
 ruff + mypy strict in CI; verification and packet assembly are deterministic and reproducible; `make
 verify` reproduces the full gate end to end. The repo ships LICENSE (AGPL-3.0), NOTICE (independence
 statement), CODE_OF_CONDUCT, CONTRIBUTING, SECURITY with a coordinated-disclosure path, a semver policy
 covering the packet format and verification protocol, ADRs, a committed `docs/threat-model.md`, and
 committed `docs/audits/`. Conventional commits; GitHub Actions pinned to commit SHAs with
-build-provenance attestations; signed releases; Dependabot.
+build-provenance attestations and an SBOM per release; Dependabot. **Signed release tags**
+are not yet in place (tracked: `docs/releasing.md` §One-time setup, ROADMAP's v1.0 gate) —
+said plainly rather than claimed early.
 
 **Why AGPL-3.0.** This tool guards people under threat of retaliation, and the credible promise is that
 no operator can quietly read or weaken the data. AGPL closes the hosted-service loophole: anyone who runs

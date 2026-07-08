@@ -27,7 +27,7 @@ by anyone without trusting this project.* The cryptography serves four goals:
 
 Non-goals (stated so the threat model is honest): hiding sync **metadata** from a relay (see
 [`relay-observability-matrix.md`](relay-observability-matrix.md)); resisting a **forensic or
-coercing** adversary with the unlocked device (see the duress limits in
+coercing** adversary with the unlocked device (see the planned duress mitigation and its limits in
 [`threat-model.md`](threat-model.md)); proving **authorship or depiction** of a photo (a timestamp
 bounds *existence in time* only).
 

@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Local pre-commit gate, mirroring the CI merge gate so problems are caught
+# before a push, not after. Install with:
+#   uv run pre-commit install --hook-type pre-commit --hook-type pre-push
+#
+# All hooks are pinned to a full commit SHA (not just a tag), same discipline
+# as the SHA-pinned GitHub Actions in .github/workflows/.
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: c59bba8fb259db0fec2bbb77ad8ba51ea7341b56 # v0.15.20
+    hooks:
+      # Scoped to src/ + tests/ only — same surface as `make lint` (Makefile:19-20).
+      # `scripts/` is deliberately out of scope here too, so this hook does not
+      # silently expand the project's lint surface beyond what CI enforces.
+      - id: ruff-format
+        files: '^(src|tests)/.*\.py$'
+      - id: ruff
+        args: [--fix]
+        files: '^(src|tests)/.*\.py$'
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: 83d9cd684c87d95d656c1458ef04895a7f1cbd8e # v8.30.1
+    hooks:
+      - id: gitleaks
+        name: gitleaks (secret scan of staged changes)
+        # Matches the CI gate's intent at the diff layer: redact any match in
+        # output, never print a raw secret to a terminal or log; no mute.
+
+  - repo: local
+    hooks:
+      # mypy --strict is slow enough that it belongs at pre-push, not on every
+      # commit. Runs via `uv run` in the project's own managed environment
+      # (`language: system`) rather than pre-commit's isolated per-hook venv:
+      # mypy needs the real dependency closure (cryptography, pillow, piexif,
+      # reportlab, playwright, asn1crypto...) to resolve imports, and
+      # `additional_dependencies:` would just re-duplicate uv.lock by hand.
+      - id: mypy
+        name: mypy --strict (pre-push, uv-managed env)
+        stages: [pre-push]
+        language: system
+        entry: uv run mypy
+        pass_filenames: false
+        always_run: true
+
+      - id: no-bare-todo-fixme-hack
+        name: no bare TODO/FIXME/HACK (must reference an issue, e.g. TODO(#142))
+        language: pygrep
+        entry: '(TODO|FIXME|HACK)(?!\(#\d)'
+        files: '^(src|tests|app|scripts)/.*\.(py|js)$'
+      - id: no-bare-noqa-type-ignore
+        name: no noqa/type:ignore without an explicit rule code
+        language: pygrep
+        entry: '(# ?noqa(?!: ?[A-Z]+\d)|# ?type: ?ignore(?!\[))'
+        files: '^(src|tests|scripts)/.*\.py$'
