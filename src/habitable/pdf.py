@@ -384,25 +384,57 @@ def _render_issue(
         for entry in _list(bundle, "timeline")
         if isinstance(entry, dict) and _s(entry, "issue_id") == issue_id
     ]
+    items = items_by_issue.get(issue_id, [])
+
+    # Evidentiary threading (EXP-04): a capture linked to a timeline event renders
+    # immediately under that event (labelled "Linked evidence"), so the packet
+    # reads as a connected request → silence → worsening narrative rather than
+    # two independent lists.
+    threaded_capture_ids: set[str] = set()
     if timeline:
         story.append(Paragraph("Timeline", styles["Heading3"]))
         for entry in timeline:
-            if isinstance(entry, dict):
-                # Keep the literal <b> formatting, but escape the dynamic parts.
-                kind = escape(_s(entry, "kind"))
-                text = escape(_s(entry, "text"))
-                story.append(Paragraph(f"· <b>{kind}</b>: {text}", styles["Small"]))
+            kind = escape(_s(entry, "kind"))
+            text = escape(_s(entry, "text"))
+            story.append(Paragraph(f"· <b>{kind}</b>: {text}", styles["Small"]))
+            for item in _linked_items(entry, items):
+                threaded_capture_ids.add(_s(item, "capture_id"))
+                _render_evidence_item(story, item, media_dir, styles, threaded=True)
         story.append(Spacer(1, 0.1 * inch))
 
-    for item in items_by_issue.get(issue_id, []):
+    unthreaded = [item for item in items if _s(item, "capture_id") not in threaded_capture_ids]
+    for item in unthreaded:
         if item.get("sensor") is not None:
             _render_sensor_item(story, item, styles)
         else:
-            _render_evidence_item(story, item, media_dir, styles)
+            _render_evidence_item(story, item, media_dir, styles, threaded=False)
+
+
+def _linked_items(
+    entry: Mapping[str, JSONValue], items: list[Mapping[str, JSONValue]]
+) -> list[Mapping[str, JSONValue]]:
+    """Captures threaded to this timeline entry, from either link direction."""
+    entry_id = _s(entry, "entry_id")
+    entry_capture_id = _s(entry, "capture_id")
+    linked, seen = [], set()
+    for item in items:
+        capture_id = _s(item, "capture_id")
+        matches = _s(item, "timeline_entry_id") == entry_id or (
+            bool(entry_capture_id) and capture_id == entry_capture_id
+        )
+        if matches and capture_id not in seen:
+            seen.add(capture_id)
+            linked.append(item)
+    return linked
 
 
 def _render_evidence_item(
-    story: list[Any], item: Mapping[str, JSONValue], media_dir: Path, styles: Any
+    story: list[Any],
+    item: Mapping[str, JSONValue],
+    media_dir: Path,
+    styles: Any,
+    *,
+    threaded: bool,
 ) -> None:
     media_type = _s(item, "media_type")
     shared_name = _s(item, "shared_name")
@@ -410,8 +442,10 @@ def _render_evidence_item(
     transcript = _s(item, "transcript")
     is_video = media_type.startswith("video/")
     is_audio = media_type.startswith("audio/")
-    caption = f"Captured {_s(item, 'captured_at')} · hash {_s(item, 'content_hash')[:16]}… · " + (
-        "timestamped" if item.get("timestamp") else "awaiting timestamp"
+    prefix = "↳ Linked evidence: " if threaded else ""
+    caption = (
+        f"{prefix}Captured {_s(item, 'captured_at')} · hash {_s(item, 'content_hash')[:16]}… · "
+        + ("timestamped" if item.get("timestamp") else "awaiting timestamp")
     )
 
     # Video/audio (EXP-07): never embedded as playable media in a static PDF --
@@ -424,7 +458,7 @@ def _render_evidence_item(
             try:
                 story.append(
                     Image(
-                        str(poster_path), width=2.4 * inch, height=2.4 * inch, kind="proportional"
+                        str(poster_path), width=2.0 * inch, height=2.0 * inch, kind="proportional"
                     )
                 )
             except Exception:
@@ -451,7 +485,7 @@ def _render_evidence_item(
     if media_path is not None and media_path.exists():
         try:
             story.append(
-                Image(str(media_path), width=2.4 * inch, height=2.4 * inch, kind="proportional")
+                Image(str(media_path), width=2.0 * inch, height=2.0 * inch, kind="proportional")
             )
         except Exception:
             story.append(Paragraph("[image could not be rendered]", styles["Small"]))

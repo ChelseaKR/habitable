@@ -73,6 +73,7 @@ def capture(
     extra_tsas: Sequence[TimestampAuthority] = (),
     media_type: str | None = None,
     transcript: str = "",
+    timeline_entry_id: str = "",
 ) -> CaptureResult:
     """Capture a media file into the vault as an evidence-grade record.
 
@@ -88,7 +89,11 @@ def capture(
     of) a poster frame, and the mechanism EXP-07 adds so temporal evidence can
     meet the same accessibility bar as a photo's alt text. Optional but strongly
     recommended for any video/audio capture -- an empty transcript is recorded
-    and surfaced honestly (not hidden) in the packet, never silently dropped."""
+    and surfaced honestly (not hidden) in the packet, never silently dropped.
+
+    ``timeline_entry_id`` optionally threads this capture to a timeline event it
+    documents (evidentiary threading — EXP-04), e.g. the photo that shows a
+    condition worsening after a repair request went unanswered."""
     src = Path(source)
     if not src.is_file():
         raise CaptureError(f"no such media file: {src}")
@@ -146,6 +151,7 @@ def capture(
         captured_at=captured_at,
         capture_id=capture_id,
         transcript=transcript,
+        timeline_entry_id=timeline_entry_id,
     )
     vault.save()
     # Metadata-only trace (no-op unless logging is opted in): media_type is a MIME

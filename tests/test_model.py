@@ -151,3 +151,98 @@ def test_merge_is_commutative_and_idempotent(ops_a: list[Op], ops_b: list[Op]) -
     ab.merge(a.to_state())
     ab.merge(b.to_state())
     assert ab.to_state() == snapshot
+
+
+class TestEvidentiaryThreading:
+    """EXP-04: optional cross-references between captures and timeline events."""
+
+    def test_capture_can_link_to_timeline_entry(self) -> None:
+        doc = _doc("A", 1_000_000)
+        issue = doc.add_issue(category="mold", issue_id="i1")
+        entry_id = doc.add_timeline_entry(issue, "sent_request", "emailed landlord")
+        capture_id = doc.add_capture(
+            issue_id=issue,
+            content_hash="deadbeef",
+            media_type="image/jpeg",
+            sealed_name="sealed-1",
+            captured_at="2026-01-05T00:00:00Z",
+            timeline_entry_id=entry_id,
+        )
+        [capture] = doc.captures()
+        assert capture.capture_id == capture_id
+        assert capture.timeline_entry_id == entry_id
+
+    def test_timeline_entry_can_link_to_capture(self) -> None:
+        doc = _doc("A", 1_000_000)
+        issue = doc.add_issue(category="mold", issue_id="i1")
+        capture_id = doc.add_capture(
+            issue_id=issue,
+            content_hash="deadbeef",
+            media_type="image/jpeg",
+            sealed_name="sealed-1",
+            captured_at="2026-01-05T00:00:00Z",
+        )
+        entry_id = doc.add_timeline_entry(issue, "worsened", "mold on wall", capture_id=capture_id)
+        [entry] = doc.timeline()
+        assert entry.entry_id == entry_id
+        assert entry.capture_id == capture_id
+
+    def test_link_defaults_to_empty_and_is_backward_compatible(self) -> None:
+        doc = _doc("A", 1_000_000)
+        issue = doc.add_issue(category="mold", issue_id="i1")
+        doc.add_timeline_entry(issue, "observed", "spreading")
+        doc.add_capture(
+            issue_id=issue,
+            content_hash="deadbeef",
+            media_type="image/jpeg",
+            sealed_name="sealed-1",
+            captured_at="2026-01-05T00:00:00Z",
+        )
+        [entry] = doc.timeline()
+        [capture] = doc.captures()
+        assert entry.capture_id == ""
+        assert capture.timeline_entry_id == ""
+
+    def test_link_round_trips_through_state(self) -> None:
+        doc = _doc("A", 1_000_000)
+        issue = doc.add_issue(category="mold", issue_id="i1")
+        entry_id = doc.add_timeline_entry(issue, "sent_request", "emailed landlord")
+        doc.add_capture(
+            issue_id=issue,
+            content_hash="deadbeef",
+            media_type="image/jpeg",
+            sealed_name="sealed-1",
+            captured_at="2026-01-05T00:00:00Z",
+            timeline_entry_id=entry_id,
+        )
+
+        restored = CaseDocument.from_state(
+            doc.to_state(), HybridLogicalClock("B", time_source=_counter_clock(2_000_000))
+        )
+        [capture] = restored.captures()
+        assert capture.timeline_entry_id == entry_id
+
+    def test_old_growlog_payloads_without_link_fields_still_load(self) -> None:
+        """A capture/timeline entry serialized before EXP-04 lacks the new keys."""
+        doc = _doc("A", 1_000_000)
+        state = dict(doc.to_state())
+        state["timeline"] = {
+            "tl-1": {"issue_id": "i1", "kind": "observed", "text": "spreading", "hlc": "1.0.a"}
+        }
+        state["captures"] = {
+            "cap-1": {
+                "issue_id": "i1",
+                "content_hash": "deadbeef",
+                "media_type": "image/jpeg",
+                "sealed_name": "sealed-1",
+                "hlc": "1.0.a",
+                "captured_at": "2026-01-05T00:00:00Z",
+            }
+        }
+        restored = CaseDocument.from_state(
+            state, HybridLogicalClock("B", time_source=_counter_clock(2_000_000))
+        )
+        [entry] = restored.timeline()
+        [capture] = restored.captures()
+        assert entry.capture_id == ""
+        assert capture.timeline_entry_id == ""

@@ -183,6 +183,8 @@ class TimelineEntry:
     kind: str
     text: str
     hlc: str
+    capture_id: str = ""
+    """Optional evidentiary thread: a capture that documents this event."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +199,8 @@ class Capture:
     transcript: str = ""
     """Plain-text description of a video/audio recording (EXP-07): the
     accessible fallback for temporal evidence, analogous to a photo's alt text."""
+    timeline_entry_id: str = ""
+    """Optional evidentiary thread: the timeline event this capture documents."""
 
 
 _ISSUE_FIELDS = ("category", "room", "title", "status", "severity", "description")
@@ -313,12 +317,28 @@ class CaseDocument:
     def remove_issue(self, issue_id: str) -> None:
         self._issues = self._issues.remove(issue_id)
 
-    def add_timeline_entry(self, issue_id: str, kind: str, text: str) -> str:
+    def add_timeline_entry(
+        self, issue_id: str, kind: str, text: str, *, capture_id: str = ""
+    ) -> str:
+        """Append a timeline entry.
+
+        ``capture_id`` optionally threads this event to a capture that already
+        documents it (evidentiary threading — EXP-04), so a packet can render the
+        request → silence → worsening narrative as connected evidence rather than
+        two independent grow-logs. The link is immutable once written, consistent
+        with grow-log append-only semantics.
+        """
         stamp = self._clock.now()
         entry_id = self.opaque_id("tl", stamp.encode())
         self._timeline = self._timeline.add(
             entry_id,
-            {"issue_id": issue_id, "kind": kind, "text": text, "hlc": stamp.encode()},
+            {
+                "issue_id": issue_id,
+                "kind": kind,
+                "text": text,
+                "hlc": stamp.encode(),
+                "capture_id": capture_id,
+            },
         )
         return entry_id
 
@@ -332,7 +352,16 @@ class CaseDocument:
         captured_at: str,
         capture_id: str | None = None,
         transcript: str = "",
+        timeline_entry_id: str = "",
     ) -> str:
+        """Append a capture.
+
+        ``timeline_entry_id`` optionally threads this capture to the timeline event
+        it documents (evidentiary threading — EXP-04): a capture attaches to a
+        specific timeline event (repair request sent, landlord response,
+        inspection) instead of standing alone. The link is immutable once written,
+        consistent with grow-log append-only semantics.
+        """
         stamp = self._clock.now()
         resolved_id = capture_id or self.opaque_id("cap", stamp.encode())
         self._captures = self._captures.add(
@@ -345,6 +374,7 @@ class CaseDocument:
                 "hlc": stamp.encode(),
                 "captured_at": captured_at,
                 "transcript": transcript,
+                "timeline_entry_id": timeline_entry_id,
             },
         )
         return resolved_id
@@ -379,6 +409,7 @@ class CaseDocument:
                 kind=str(payload.get("kind", "")),
                 text=str(payload.get("text", "")),
                 hlc=str(payload.get("hlc", "")),
+                capture_id=str(payload.get("capture_id", "")),
             )
             if issue_id is None or entry.issue_id == issue_id:
                 entries.append(entry)
@@ -399,6 +430,7 @@ class CaseDocument:
                 hlc=str(payload.get("hlc", "")),
                 captured_at=str(payload.get("captured_at", "")),
                 transcript=str(payload.get("transcript", "")),
+                timeline_entry_id=str(payload.get("timeline_entry_id", "")),
             )
             if issue_id is None or capture.issue_id == issue_id:
                 out.append(capture)

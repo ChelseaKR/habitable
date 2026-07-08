@@ -347,6 +347,7 @@ def _build_item(
         "archive_timestamps": cast(JSONValue, [a.to_dict() for a in archives]),
         "additional_timestamps": cast(JSONValue, [a.to_dict() for a in additional]),
         "sensor": sensor,
+        "timeline_entry_id": capture.timeline_entry_id,
     }
 
 
@@ -385,6 +386,7 @@ def _timeline_json(entry: TimelineEntry, opaque_hlc: Callable[[str], str]) -> di
         "kind": entry.kind,
         "text": entry.text,
         "hlc": opaque_hlc(entry.hlc),
+        "capture_id": entry.capture_id,
     }
 
 

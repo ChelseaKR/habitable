@@ -46,6 +46,7 @@ dl.cover { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .8r
 dl.cover dt { font-weight: 600; }
 dl.cover dd { margin: 0; }
 figure { margin: 0 0 1rem; border: 1px solid #ccc; border-radius: 6px; padding: .6rem; }
+figure.threaded-evidence { margin: .5rem 0 .5rem 1.5rem; max-width: 20rem; }
 img { max-width: 100%; height: auto; }
 figcaption { font-size: .9rem; color: #222; }
 table { border-collapse: collapse; width: 100%; }
@@ -483,28 +484,36 @@ def _issue_section(
         for e in _list(bundle, "timeline")
         if isinstance(e, dict) and _s(e, "issue_id") == issue_id
     ]
+    items = items_by_issue.get(issue_id, [])
+
+    # Evidentiary threading (EXP-04): a capture linked to a timeline event renders
+    # nested under that event, so the packet reads as a connected request →
+    # silence → worsening narrative rather than two independent lists.
+    threaded_capture_ids: set[str] = set()
     if timeline:
         out.append("<h3>Timeline</h3><ul>")
-        out += [
-            f"<li><strong>{escape(_s(e, 'kind'))}:</strong> {escape(_s(e, 'text'))}</li>"
-            for e in timeline
-            if isinstance(e, dict)
-        ]
+        for e in timeline:
+            linked = _linked_items(e, items)
+            threaded_capture_ids.update(_s(i, "capture_id") for i in linked)
+            out.append(f"<li><strong>{escape(_s(e, 'kind'))}:</strong> {escape(_s(e, 'text'))}")
+            for item in linked:
+                out.extend(_evidence_figure(item, threaded=True))
+            out.append("</li>")
         out.append("</ul>")
 
-    items = items_by_issue.get(issue_id, [])
-    if items:
+    unthreaded = [item for item in items if _s(item, "capture_id") not in threaded_capture_ids]
+    if unthreaded:
         out.append("<h3>Captured evidence</h3>")
-        for item in items:
+        for item in unthreaded:
             if item.get("sensor") is not None:
                 out.append(_sensor_figure(item))
             else:
-                out.extend(_evidence_figure(item))
+                out.extend(_evidence_figure(item, threaded=False))
     out.append("</section>")
     return out
 
 
-def _evidence_figure(item: Mapping[str, JSONValue]) -> list[str]:
+def _evidence_figure(item: Mapping[str, JSONValue], *, threaded: bool) -> list[str]:
     """Render one evidence item: a photo inline, or -- for video/audio (EXP-07) --
     a poster frame and/or transcript plus a link to the shared media file. Video
     and audio are never embedded as playable <video>/<audio> elements here: doing
@@ -520,8 +529,9 @@ def _evidence_figure(item: Mapping[str, JSONValue]) -> list[str]:
     captured_at = _s(item, "captured_at")
     is_video = media_type.startswith("video/")
     is_audio = media_type.startswith("audio/")
+    caption_prefix = "Linked evidence: " if threaded else ""
 
-    out = ["<figure>"]
+    out = ['<figure class="threaded-evidence">' if threaded else "<figure>"]
     if is_video or is_audio:
         kind = "video" if is_video else "audio"
         if poster:
@@ -551,11 +561,29 @@ def _evidence_figure(item: Mapping[str, JSONValue]) -> list[str]:
         )
         out.append(f'<img src="media/{escape(shared)}" alt="{escape(alt)}">')
     out.append(
-        f"<figcaption>Captured {escape(captured_at)} · "
+        f"<figcaption>{escape(caption_prefix)}Captured {escape(captured_at)} · "
         f"hash {escape(content_hash[:16])}… · {escape(stamp)}</figcaption>"
     )
     out.append("</figure>")
     return out
+
+
+def _linked_items(
+    entry: Mapping[str, JSONValue], items: list[Mapping[str, JSONValue]]
+) -> list[Mapping[str, JSONValue]]:
+    """Captures threaded to this timeline entry, from either link direction."""
+    entry_id = _s(entry, "entry_id")
+    entry_capture_id = _s(entry, "capture_id")
+    linked, seen = [], set()
+    for item in items:
+        capture_id = _s(item, "capture_id")
+        matches = _s(item, "timeline_entry_id") == entry_id or (
+            bool(entry_capture_id) and capture_id == entry_capture_id
+        )
+        if matches and capture_id not in seen:
+            seen.add(capture_id)
+            linked.append(item)
+    return linked
 
 
 def _photo_figure(item: Mapping[str, JSONValue]) -> str:

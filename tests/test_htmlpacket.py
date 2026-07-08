@@ -156,6 +156,50 @@ def test_inspector_view_escapes_user_content(
     assert "&lt;script&gt;evil()&lt;/script&gt;" in html
 
 
+def test_html_packet_threads_capture_under_its_timeline_entry(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """EXP-04: a linked capture renders nested under its timeline event, not in a
+    separate, disconnected gallery — the request → silence → worsening narrative."""
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", room="bath", title="Mold", issue_id="i1")
+    vault.document.add_timeline_entry(issue, "sent_request", "emailed landlord")
+    worsened = vault.document.add_timeline_entry(issue, "worsened", "spread to the wall")
+    unlinked_capture = capture(
+        vault, make_jpeg("ceiling.jpg", color=(70, 70, 60)), issue_id=issue, tsa=local_tsa
+    )
+    linked_capture = capture(
+        vault,
+        make_jpeg("wall.jpg", color=(40, 50, 70)),
+        issue_id=issue,
+        tsa=local_tsa,
+        timeline_entry_id=worsened,
+    )
+    result = build_packet(vault, tmp_path / "pkt", generated_at="2026-01-02T00:10:00Z")
+    assert result.html_path is not None
+    html = result.html_path.read_text(encoding="utf-8")
+
+    # The linked capture's image is nested inside the "worsened" <li>, not in the
+    # separate "Captured evidence" gallery.
+    li_start = html.index("<strong>worsened:</strong>")
+    li_end = html.index("</li>", li_start)
+    threaded_li = html[li_start:li_end]
+    assert 'class="threaded-evidence"' in threaded_li
+    assert linked_capture.content_hash[:16] in threaded_li
+
+    # The unlinked capture still appears in the per-issue gallery (not the global
+    # integrity/appendix tables, which always list every item), but not inside
+    # that <li>. Slice only to the end of this issue's <section> so those global
+    # tables are excluded.
+    gallery = html[li_end : html.index("</section>", li_end)]
+    assert "Captured evidence" in gallery
+    assert unlinked_capture.content_hash[:16] in gallery
+    assert linked_capture.content_hash[:16] not in gallery  # not duplicated in the gallery
+
+
 @pytest.mark.a11y
 def test_html_packet_passes_axe(
     make_vault: Callable[..., Vault],

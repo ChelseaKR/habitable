@@ -43,11 +43,18 @@ def run_demo() -> int:
     )
     vault.document.add_timeline_entry(issue, "observed", "mold spreading after roof leak")
     vault.document.add_timeline_entry(issue, "sent_request", "emailed landlord requesting repair")
+    worsened = vault.document.add_timeline_entry(
+        issue, "worsened", "14 days of silence; mold has spread to the wall"
+    )
     vault.save()
-    print(f"2. opened issue {issue} and logged a 2-entry timeline")
+    print(f"2. opened issue {issue} and logged a 3-entry timeline (request → silence → worsening)")
 
-    for photo in photos:
-        result = capture(vault, photo, issue_id=issue, tsa=tsa)
+    for index, photo in enumerate(photos):
+        # Evidentiary threading (EXP-04): the last photo documents the "worsened"
+        # timeline event, so the packet renders the causal, temporal story instead
+        # of a flat list of independent captures.
+        link = worsened if index == len(photos) - 1 else ""
+        result = capture(vault, photo, issue_id=issue, tsa=tsa, timeline_entry_id=link)
         when = result.timestamp_info.gen_time if result.timestamp_info else "queued"
         print(f"3. captured {photo.name}: hash {result.content_hash[:12]}… · RFC 3161 @ {when}")
 

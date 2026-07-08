@@ -56,6 +56,41 @@ def test_export_and_verify_intact(
         assert not read_metadata(media).has_location
 
 
+def test_bundle_threads_captures_to_timeline_entries(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """EXP-04: a capture linked to a timeline event carries that link into the packet."""
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", room="bathroom", title="Mold", issue_id="i1")
+    vault.document.add_timeline_entry(issue, "sent_request", "emailed landlord requesting repair")
+    worsened = vault.document.add_timeline_entry(
+        issue, "worsened", "14 days of silence; mold has spread"
+    )
+    result = capture(
+        vault,
+        make_jpeg("wall.jpg", with_location=True),
+        issue_id=issue,
+        tsa=local_tsa,
+        timeline_entry_id=worsened,
+    )
+    out = tmp_path / "packet"
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
+    bundle = json.loads((out / "bundle.json").read_text())
+
+    [item] = bundle["items"]
+    assert item["capture_id"] == result.capture_id
+    assert item["timeline_entry_id"] == worsened
+    worsened_entry = next(e for e in bundle["timeline"] if e["entry_id"] == worsened)
+    assert worsened_entry["kind"] == "worsened"
+
+    # Verification still checks each linked item independently (no new coupling).
+    report = verify_packet(out)
+    assert report.ok
+
+
 def test_bundle_records_disclosures(
     make_vault: Callable[..., Vault],
     make_jpeg: Callable[..., Path],

@@ -152,6 +152,13 @@ def _build_parser() -> argparse.ArgumentParser:
         default="",
         help="plain-text transcript/caption for video or audio (EXP-07 accessibility fallback)",
     )
+    p_capture.add_argument(
+        "--link-timeline",
+        dest="link_timeline",
+        default="",
+        metavar="ENTRY_ID",
+        help="thread this capture to a timeline entry it documents (EXP-04)",
+    )
     p_capture.set_defaults(func=_cmd_capture)
 
     p_tl = sub.add_parser("timeline", help="add a timeline entry")
@@ -159,6 +166,13 @@ def _build_parser() -> argparse.ArgumentParser:
     p_tl.add_argument("--issue", required=True)
     p_tl.add_argument("--kind", required=True, help="e.g. observed, sent_request, inspection")
     p_tl.add_argument("--text", required=True)
+    p_tl.add_argument(
+        "--link-capture",
+        dest="link_capture",
+        default="",
+        metavar="CAPTURE_ID",
+        help="thread this timeline entry to a capture that already documents it (EXP-04)",
+    )
     p_tl.set_defaults(func=_cmd_timeline)
 
     p_status = sub.add_parser("status", help="show the state of the case")
@@ -540,6 +554,7 @@ def _cmd_capture(args: argparse.Namespace) -> int:
         tsa=tsa,
         extra_tsas=extra_tsas,
         transcript=args.transcript,
+        timeline_entry_id=args.link_timeline,
     )
     locale = resolve_locale(vault.config.language)
     status = (
@@ -568,7 +583,9 @@ def _cmd_capture(args: argparse.Namespace) -> int:
 
 def _cmd_timeline(args: argparse.Namespace) -> int:
     vault = _open(args)
-    entry_id = vault.document.add_timeline_entry(args.issue, args.kind, args.text)
+    entry_id = vault.document.add_timeline_entry(
+        args.issue, args.kind, args.text, capture_id=args.link_capture
+    )
     vault.save()
     print(f"habitable: added timeline entry {entry_id} ({args.kind})")
     return 0
