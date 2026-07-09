@@ -78,9 +78,18 @@ treat all ids and `hlc` values as opaque strings regardless of version.)
 | `timestamp` | object \| null | RFC 3161/dev token over `content_hash`; `null` while **awaiting timestamp**. |
 | `archive_timestamps` | array | Archive (re-)timestamps chaining back to the primary token. |
 | `additional_timestamps` | array | Independent redundant tokens from **other** authorities over the same `content_hash` (not a chain). The verifier counts the item as timestamped if ≥1 authority verifies — no proof rests on a single TSA. Absent in single-authority packets. |
+| `sensor` | object \| null | Present (non-null) only for **instrument data-file** captures (EXP-09, e.g. a temperature-logger or moisture-meter CSV): the readings interpreted from the sealed original for accessible chart + table rendering. `null`/absent for photos and video. The CSV bytes themselves stay the hash-anchored evidence under `content_hash`. |
 
 A **timestamp token** is `{kind: "rfc3161"|"dev", tsa_name, token_b64}` where `token_b64` is base64
 of the DER token (`rfc3161`) or a canonical-JSON token (`dev`, non-production/offline only).
+
+A **sensor series** (`item.sensor`) is `{label_header, value_header, unit|null, readings: [{label, value}],
+total_rows, truncated, minimum, maximum, mean, warnings[]}`. It is **corroboration, not proof of cause**:
+an independent instrument's reading of a condition (a no-heat or mold case), rendered as a small line chart
+over an accessible readings table (the table, never color, is the source of truth). Readings are capped at
+500 rows; `total_rows`/`truncated` disclose any truncation, and the full data remains in the sealed original.
+A data file is copied into `media/` **verbatim** (a CSV carries no embedded location metadata to strip), which
+`stripped` records as *not applicable*.
 
 ### `custody_proof` — integrity without identities
 

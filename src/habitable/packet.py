@@ -35,6 +35,7 @@ from .evidence import CustodyAction
 from .exif import make_shared_copy
 from .media import extract_poster_frame, make_shared_media_copy
 from .model import Capture, Issue, TimelineEntry
+from .sensor import parse_sensor_csv
 from .vault import Vault
 
 __all__ = ["PACKET_VERSION", "PacketResult", "build_packet"]
@@ -58,6 +59,14 @@ _EXT_BY_TYPE = {
     "audio/mp4": ".m4a",
     "audio/mpeg": ".mp3",
     "audio/wav": ".wav",
+}
+
+# EXP-09: instrument-corroborated conditions. A data-file capture (a temperature
+# logger's or moisture meter's CSV export) has no embedded location metadata to
+# strip, so it is copied into the packet verbatim rather than sanitized like an
+# image — and interpreted into a chart-ready series for the HTML/PDF renderers.
+_DATA_EXT_BY_TYPE = {
+    "text/csv": ".csv",
 }
 
 
@@ -224,6 +233,7 @@ def _build_item(
 
     original_bytes = vault.read_original(capture_id, content_hash)
     ext = _EXT_BY_TYPE.get(media_type, "")
+    data_ext = _DATA_EXT_BY_TYPE.get(media_type, "")
     is_video = media_type.startswith("video/")
     is_audio = media_type.startswith("audio/")
     shared_name = ""
@@ -231,6 +241,7 @@ def _build_item(
     stripped = "skipped"
     poster_name = ""
     poster_hash = ""
+    sensor: dict[str, JSONValue] | None = None
 
     if ext:  # a media type we know how to sanitize (image, or video/audio via ffmpeg)
         source = tmp_dir / f"{capture_id}{ext}"
@@ -268,6 +279,25 @@ def _build_item(
             details=custody_details,
             identity=vault.identity,
         )
+    elif data_ext:  # an instrument data file (EXP-09): no location metadata to strip
+        shared_name = f"{capture_id}{data_ext}"
+        (media_dir / shared_name).write_bytes(original_bytes)
+        shared_hash = sha256_file(media_dir / shared_name)
+        stripped = "not applicable (data file; no embedded location metadata)"
+        vault.custody.append(
+            CustodyAction.COPIED_FOR_SHARING,
+            capture_id,
+            actor=actor,
+            hlc=vault.document.clock.now().encode(),
+            details={
+                "content_hash": content_hash,
+                "shared_hash": shared_hash,
+                "stripped": stripped,
+            },
+            identity=vault.identity,
+        )
+        series = parse_sensor_csv(original_bytes)
+        sensor = cast(dict[str, JSONValue], series.to_dict()) if series is not None else None
 
     if include_originals:
         (originals_dir / capture_id).write_bytes(original_bytes)
@@ -291,6 +321,7 @@ def _build_item(
         "timestamp": cast(JSONValue, token.to_dict()) if token is not None else None,
         "archive_timestamps": cast(JSONValue, [a.to_dict() for a in archives]),
         "additional_timestamps": cast(JSONValue, [a.to_dict() for a in additional]),
+        "sensor": sensor,
     }
 
 
@@ -355,6 +386,12 @@ def _disclosures(
         f"location {location}",
         f"custody identities {identities}",
     ]
+    data_items = sum(1 for item in items if item.get("sensor") is not None)
+    if data_items:
+        notes.append(
+            f"{data_items} instrument data file(s) included verbatim "
+            "(independent corroboration; no location metadata to strip)"
+        )
     if include_originals:
         notes.append("sealed ORIGINALS embedded (full metadata, including any location)")
     return tuple(notes)

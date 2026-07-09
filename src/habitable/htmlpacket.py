@@ -12,7 +12,7 @@ record. Every dynamic value is HTML-escaped — bundle content is data, not mark
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from html import escape
 from pathlib import Path
 
@@ -43,6 +43,11 @@ th, td { border: 1px solid #999; padding: .35rem .5rem; text-align: left;
 th { background: #1f4e5f; color: #fff; }
 footer { margin-top: 2rem; border-top: 1px solid #ccc; padding-top: 1rem;
   color: #222; font-size: .9rem; }
+.sensor-chart { max-width: 30rem; height: auto; display: block; margin: .4rem 0; }
+.sensor-chart .line { fill: none; stroke: #1f4e5f; stroke-width: 2; }
+.sensor-chart .point { fill: #1f4e5f; }
+.sensor-chart .axis { stroke: #999; stroke-width: 1; }
+details.sensor-readings summary { cursor: pointer; font-weight: 600; }
 """
 
 
@@ -174,7 +179,10 @@ def _issue_section(
     if items:
         out.append("<h3>Captured evidence</h3>")
         for item in items:
-            out.extend(_evidence_figure(item))
+            if item.get("sensor") is not None:
+                out.append(_sensor_figure(item))
+            else:
+                out.extend(_evidence_figure(item))
     out.append("</section>")
     return out
 
@@ -233,6 +241,115 @@ def _evidence_figure(item: Mapping[str, JSONValue]) -> list[str]:
     return out
 
 
+def _photo_figure(item: Mapping[str, JSONValue]) -> str:
+    shared = _s(item, "shared_name")
+    stamp = "trusted-timestamped" if item.get("timestamp") else "awaiting timestamp"
+    content_hash = _s(item, "content_hash")
+    alt = (
+        f"Evidence photo for this issue, captured {_s(item, 'captured_at')}, "
+        f"content hash {content_hash[:12]}, {stamp}."
+    )
+    out = ["<figure>"]
+    if shared:
+        out.append(f'<img src="media/{escape(shared)}" alt="{escape(alt)}">')
+    out.append(
+        f"<figcaption>Captured {escape(_s(item, 'captured_at'))} · "
+        f"hash {escape(content_hash[:16])}… · {escape(stamp)}</figcaption>"
+    )
+    out.append("</figure>")
+    return "".join(out)
+
+
+def _sensor_figure(item: Mapping[str, JSONValue]) -> str:
+    """Render an instrument CSV capture (EXP-09): a small line chart plus its
+    accessible text equivalent — a summary sentence and the full readings table.
+
+    The chart is marked ``aria-hidden``: it is a visual convenience over data that
+    is already fully present, in reading order, as text and a table right below
+    it — so a screen-reader user loses nothing by skipping the SVG.
+    """
+    sensor = _map(item, "sensor")
+    stamp = "trusted-timestamped" if item.get("timestamp") else "awaiting timestamp"
+    content_hash = _s(item, "content_hash")
+    label_header = _s(sensor, "label_header") or "Reading"
+    value_header = _s(sensor, "value_header") or "Value"
+    unit = _s(sensor, "unit")
+    unit_suffix = f" {unit}" if unit else ""
+    readings = [r for r in _list(sensor, "readings") if isinstance(r, dict)]
+    minimum, maximum, mean = _f(sensor, "minimum"), _f(sensor, "maximum"), _f(sensor, "mean")
+    total_rows = _i(sensor, "total_rows")
+
+    summary = (
+        f"Instrument data ({value_header}): {total_rows} reading(s), "
+        f"ranging {minimum:g}{unit_suffix} to {maximum:g}{unit_suffix}, "
+        f"averaging {mean:g}{unit_suffix}."
+    )
+
+    out = ['<figure class="sensor-evidence">']
+    chart = _sensor_chart_svg(readings, minimum, maximum)
+    if chart:
+        out.append(chart)
+    out.append(
+        f"<figcaption>{escape(summary)} Captured {escape(_s(item, 'captured_at'))} · "
+        f"hash {escape(content_hash[:16])}… · {escape(stamp)}</figcaption>"
+    )
+    out.append('<details class="sensor-readings">')
+    out.append(f"<summary>Show all {len(readings)} reading(s)</summary>")
+    out.append("<table>")
+    out.append(
+        "<caption>Instrument readings for this capture "
+        "(independent corroboration, verify against bundle.json).</caption>"
+    )
+    out.append(
+        "<thead><tr>"
+        f'<th scope="col">{escape(label_header)}</th>'
+        f'<th scope="col">{escape(value_header)}{escape(f" ({unit})" if unit else "")}</th>'
+        "</tr></thead><tbody>"
+    )
+    for reading in readings:
+        out.append(
+            f"<tr><td>{escape(_s(reading, 'label'))}</td><td>{_fmt(_f(reading, 'value'))}</td></tr>"
+        )
+    out.append("</tbody></table>")
+    for warning in _list(sensor, "warnings"):
+        if isinstance(warning, str):
+            out.append(f"<p><em>{escape(warning)}</em></p>")
+    out.append("</details></figure>")
+    return "".join(out)
+
+
+def _sensor_chart_svg(
+    readings: Sequence[Mapping[str, JSONValue]], minimum: float, maximum: float
+) -> str:
+    n = len(readings)
+    if n < 2:
+        return ""
+    width, height, pad = 480, 140, 24
+    span = (maximum - minimum) or 1.0
+    step = (width - 2 * pad) / (n - 1)
+
+    def y_of(value: float) -> float:
+        return pad + (maximum - value) / span * (height - 2 * pad)
+
+    points = " ".join(
+        f"{pad + i * step:.1f},{y_of(_f(r, 'value')):.1f}" for i, r in enumerate(readings)
+    )
+    circles = "".join(
+        f'<circle class="point" cx="{pad + i * step:.1f}" cy="{y_of(_f(r, "value")):.1f}" r="2.5"/>'
+        for i, r in enumerate(readings)
+        if n <= 60  # avoid clutter on long series
+    )
+    baseline_y = height - pad
+    return (
+        f'<svg class="sensor-chart" viewBox="0 0 {width} {height}" '
+        f'aria-hidden="true" focusable="false">'
+        f'<line class="axis" x1="{pad}" y1="{baseline_y}" x2="{width - pad}" y2="{baseline_y}"/>'
+        f'<polyline class="line" points="{points}"/>'
+        f"{circles}"
+        "</svg>"
+    )
+
+
 def _appendix_table(bundle: Mapping[str, JSONValue]) -> str:
     rows = [
         "<table>",
@@ -280,6 +397,17 @@ def _s(mapping: Mapping[str, JSONValue], key: str) -> str:
 def _i(mapping: Mapping[str, JSONValue], key: str) -> int:
     value = mapping.get(key)
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _f(mapping: Mapping[str, JSONValue], key: str) -> float:
+    value = mapping.get(key)
+    if isinstance(value, bool):
+        return 0.0
+    return float(value) if isinstance(value, (int, float)) else 0.0
+
+
+def _fmt(value: float) -> str:
+    return f"{value:g}"
 
 
 def _bool(mapping: Mapping[str, JSONValue], key: str) -> bool:

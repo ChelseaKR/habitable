@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 from xml.sax.saxutils import escape
 
+from reportlab.graphics.shapes import Circle, Drawing, Line, PolyLine
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -234,7 +235,10 @@ def _render_issue(
         story.append(Spacer(1, 0.1 * inch))
 
     for item in items_by_issue.get(issue_id, []):
-        _render_evidence_item(story, item, media_dir, styles)
+        if item.get("sensor") is not None:
+            _render_sensor_item(story, item, styles)
+        else:
+            _render_evidence_item(story, item, media_dir, styles)
 
 
 def _render_evidence_item(
@@ -295,6 +299,103 @@ def _render_evidence_item(
     story.append(Spacer(1, 0.12 * inch))
 
 
+# A PDF page is finite; beyond this many rows the table is truncated (noted in text)
+# rather than spilling across dozens of pages. The full data remains in bundle.json
+# and, when requested, the embedded sealed original.
+_MAX_PDF_SENSOR_ROWS = 40
+
+
+def _render_sensor_item(story: list[Any], item: Mapping[str, JSONValue], styles: Any) -> None:
+    """Render an instrument CSV capture (EXP-09): a small chart, a summary
+    sentence, and the readings table — independent corroboration of a
+    condition, not just the tenant's own photo."""
+    sensor = _map(item, "sensor")
+    readings: list[Mapping[str, JSONValue]] = [
+        r for r in _list(sensor, "readings") if isinstance(r, dict)
+    ]
+    label_header = _s(sensor, "label_header") or "Reading"
+    value_header = _s(sensor, "value_header") or "Value"
+    unit = _s(sensor, "unit")
+    unit_suffix = f" {unit}" if unit else ""
+    minimum, maximum, mean = _f(sensor, "minimum"), _f(sensor, "maximum"), _f(sensor, "mean")
+    total_rows = _i(sensor, "total_rows")
+    stamp = "timestamped" if item.get("timestamp") else "awaiting timestamp"
+
+    summary = (
+        f"Instrument data ({value_header}): {total_rows} reading(s), ranging "
+        f"{minimum:g}{unit_suffix} to {maximum:g}{unit_suffix}, averaging "
+        f"{mean:g}{unit_suffix}. Captured {_s(item, 'captured_at')} · "
+        f"hash {_s(item, 'content_hash')[:16]}… · {stamp}"
+    )
+    story.append(_para(summary, styles["Small"]))
+
+    chart = _sensor_chart_drawing(readings, minimum, maximum)
+    if chart is not None:
+        story.append(chart)
+
+    shown = readings[:_MAX_PDF_SENSOR_ROWS]
+    rows: list[list[Any]] = [[label_header, f"{value_header}{f' ({unit})' if unit else ''}"]]
+    for reading in shown:
+        rows.append(
+            [
+                _para(_s(reading, "label"), styles["Small"]),
+                _para(f"{_f(reading, 'value'):g}", styles["Small"]),
+            ]
+        )
+    table = Table(rows, colWidths=[2.5 * inch, 2.0 * inch], repeatRows=1)
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#222222")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    story.append(table)
+    if len(readings) > _MAX_PDF_SENSOR_ROWS:
+        story.append(
+            _para(
+                f"(showing {_MAX_PDF_SENSOR_ROWS} of {len(readings)} rows; "
+                "full data in bundle.json)",
+                styles["Small"],
+            )
+        )
+    for warning in _list(sensor, "warnings"):
+        if isinstance(warning, str):
+            story.append(_para(warning, styles["Small"]))
+    story.append(Spacer(1, 0.15 * inch))
+
+
+def _sensor_chart_drawing(
+    readings: list[Mapping[str, JSONValue]], minimum: float, maximum: float
+) -> Drawing | None:
+    n = len(readings)
+    if n < 2:
+        return None
+    width, height, pad = 288, 90, 16
+    span = (maximum - minimum) or 1.0
+    step = (width - 2 * pad) / (n - 1)
+
+    def y_of(value: float) -> float:
+        # reportlab's y axis points up; invert so higher values sit higher.
+        return pad + (value - minimum) / span * (height - 2 * pad)
+
+    points: list[float] = []
+    for i, reading in enumerate(readings):
+        points.extend([pad + i * step, y_of(_f(reading, "value"))])
+
+    drawing = Drawing(width, height)
+    drawing.add(Line(pad, pad, width - pad, pad, strokeColor=colors.grey, strokeWidth=0.5))
+    drawing.add(PolyLine(points, strokeColor=colors.HexColor("#1f4e5f"), strokeWidth=1.5))
+    if n <= 60:
+        for i in range(0, len(points), 2):
+            drawing.add(Circle(points[i], points[i + 1], 1.5, fillColor=colors.HexColor("#1f4e5f")))
+    return drawing
+
+
 def _appendix_table(bundle: Mapping[str, JSONValue], styles: Any) -> Any:
     rows: list[list[Any]] = [["Capture", "Content hash (SHA-256)", "Timestamp", "Authority"]]
     for item in _list(bundle, "items"):
@@ -345,6 +446,13 @@ def _s(mapping: Mapping[str, JSONValue], key: str) -> str:
 def _i(mapping: Mapping[str, JSONValue], key: str) -> int:
     value = mapping.get(key)
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _f(mapping: Mapping[str, JSONValue], key: str) -> float:
+    value = mapping.get(key)
+    if isinstance(value, bool):
+        return 0.0
+    return float(value) if isinstance(value, (int, float)) else 0.0
 
 
 def _bool(mapping: Mapping[str, JSONValue], key: str) -> bool:

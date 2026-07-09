@@ -131,9 +131,46 @@
           "type": "array",
           "items": { "$ref": "#/$defs/timestampToken" },
           "description": "Independent redundant timestamps from other authorities over the SAME content_hash (not a chain). Provides multiple-authority redundancy: the verifier treats the item as timestamped if at least one authority (primary or additional) verifies. Absent in single-authority packets."
+        },
+        "sensor": {
+          "oneOf": [{ "$ref": "#/$defs/sensorSeries" }, { "type": "null" }],
+          "description": "Present (non-null) only for instrument data-file captures (EXP-09, e.g. a temperature-logger or moisture-meter CSV). The readings interpreted from the sealed original for accessible chart+table rendering; the CSV bytes themselves remain the hash-anchored evidence under content_hash. null (or absent) for photo/video captures."
         }
       },
       "additionalProperties": true
+    },
+    "sensorSeries": {
+      "type": "object",
+      "description": "An instrument CSV interpreted into a renderable series (EXP-09). Corroboration only, never proof of cause; the chart is a visual convenience over the readings table, which is the accessible source of truth.",
+      "required": ["label_header", "value_header", "readings", "total_rows", "truncated", "minimum", "maximum", "mean"],
+      "properties": {
+        "label_header": { "type": "string", "description": "Column name for each reading's label (often a timestamp); 'Reading' when the CSV had no header." },
+        "value_header": { "type": "string", "description": "Column name for the numeric value; 'Value' when the CSV had no header. Any trailing '(unit)' is split out into 'unit'." },
+        "unit": { "oneOf": [{ "type": "string" }, { "type": "null" }], "description": "Unit parsed from the value header (e.g. 'F', '%RH'); null if none." },
+        "readings": {
+          "type": "array",
+          "description": "Rendered readings, in file order. Capped at 500 rows; see 'truncated'/'total_rows'. Full data remains in the sealed original.",
+          "items": {
+            "type": "object",
+            "required": ["label", "value"],
+            "properties": {
+              "label": { "type": "string" },
+              "value": { "type": "number" }
+            }
+          }
+        },
+        "total_rows": { "type": "integer", "description": "Total numeric readings parsed (before any truncation)." },
+        "truncated": { "type": "boolean", "description": "Whether 'readings' is a truncated prefix of the full series." },
+        "minimum": { "type": "number" },
+        "maximum": { "type": "number" },
+        "mean": { "type": "number" },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Non-fatal parse notes (rows skipped, truncation), surfaced verbatim in the packet."
+        }
+      },
+      "additionalProperties": false
     },
     "timestampToken": {
       "type": "object",
