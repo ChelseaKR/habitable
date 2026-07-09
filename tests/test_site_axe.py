@@ -61,3 +61,14 @@ def test_committed_sample_packet_passes_axe() -> None:
     assert html_path.is_file(), "site/sample-packet/packet.html not found."
     blocking = _run_axe(html_path)
     assert not blocking, [v["id"] for v in blocking]
+
+
+@pytest.mark.a11y
+def test_verifier_page_passes_axe() -> None:
+    """The zero-install verifier page (site/verify/) is a recipient-facing surface —
+    housing-court clerks and legal-aid staff — so it is held to the same axe gate
+    as the landing page and the packet rendering."""
+    html_path = _SITE_ROOT / "verify" / "index.html"
+    assert html_path.is_file(), "site/verify/index.html not found — has the verifier page moved?"
+    blocking = _run_axe(html_path)
+    assert not blocking, [v["id"] for v in blocking]

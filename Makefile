@@ -59,9 +59,9 @@ verify: lint type cov i18n markers ## The full merge gate: lint + types + tests 
 audit: ## Dependency vulnerability audit
 	uv run pip-audit
 
-a11y: ## Accessibility gate: structural + i18n + PWA, then the axe-core browser scan
+a11y: ## Browser gate: structural + i18n + PWA, axe-core scans, and the web-verifier parity checks
 	uv run pytest tests/test_app_accessibility.py tests/test_app_i18n.py tests/test_app_pwa.py
-	uv run pytest -m a11y
+	uv run pytest -m "a11y or browser"
 	@echo "Manual pass: keyboard + NVDA/VoiceOver + zoom per docs/accessibility/manual-testing.md."
 
 demo: ## Walk a synthetic case from capture to a verified packet (no real data)

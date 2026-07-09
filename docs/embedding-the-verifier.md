@@ -23,6 +23,24 @@ in `tests/test_guards.py` keeps it that way. Runtime dependencies are
 maintained Python 3 (it does not require the 3.14 features the full app targets). If you vendor the
 source, keep multi-type `except (A, B):` parenthesized so it parses on older interpreters.
 
+## Zero-install: the in-browser verifier page
+
+For recipients who will not install anything (a housing-court clerk, an inspector — personas
+P-09/P-10), the Pages site ships a **zero-install verifier**: a static, offline-capable page at
+[`site/verify/`](../site/verify/index.html) that re-checks a packet entirely in the browser — no
+upload, no server, no network requests. It is a JavaScript port of this same verification subset
+([`site/verify/verifier.js`](../site/verify/verifier.js), also offered under Apache-2.0), pinned to
+the [decision table](verifier-decision-table.md) and cross-tested against the Python verifier over
+the golden corpus in CI (`tests/test_web_verifier.py`).
+
+Two scoping notes, both fail-closed:
+
+- **Trusted TSA roots cannot be supplied in the page**, so — exactly like running the CLI without
+  `--trusted-cert` — a valid token is flagged as *not chained to a trusted root*. A reviewer or
+  court that needs anchoring should use the CLI or OpenSSL cross-check below.
+- Anything the browser cannot check (a missing WebCrypto capability, an algorithm the port does not
+  implement) is reported as **could not fully verify**, never silently passed.
+
 ## The 20-line version
 
 ```python

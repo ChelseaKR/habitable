@@ -38,8 +38,11 @@ jobs:
         run: uv sync --frozen
       - name: Install Chromium for Playwright
         run: uv run playwright install --with-deps chromium
-      - name: Run the axe-core accessibility gate
-        # Gates the two conformant surfaces: the local app and packet.html — the
-        # accessible rendering of an evidence packet (ADR 0004). A WCAG violation in
-        # either fails the build. The PDF is a print convenience and makes no PDF/UA claim.
-        run: uv run pytest -m a11y -q
+      - name: Run the axe-core accessibility gate + browser parity checks
+        # Gates the conformant surfaces: the local app, packet.html — the accessible
+        # rendering of an evidence packet (ADR 0004) — and the static site incl. the
+        # in-browser verifier page. A WCAG violation in any fails the build. The PDF is
+        # a print convenience and makes no PDF/UA claim. The `browser` marker adds the
+        # web-verifier parity gate (site/verify/ vs the Python verifier over the golden
+        # corpus), which needs the same Playwright + Chromium this job already installs.
+        run: uv run pytest -m "a11y or browser" -q

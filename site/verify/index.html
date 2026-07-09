@@ -1,0 +1,418 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#16424f" />
+    <title>Verify a habitability evidence packet — habitable</title>
+    <meta
+      name="description"
+      content="Drag a habitable evidence packet onto this page to verify its content hashes,
+      RFC 3161 trusted timestamps, chain of custody, and producer signature — entirely in your
+      browser, with no install and no upload. Works offline."
+    />
+    <style>
+      :root { color-scheme: light dark; }
+      * { box-sizing: border-box; }
+      body { max-width: 56rem; margin: 0 auto; padding: 1.5rem;
+        font: 17px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        color: #14201f; background: #f7f5f0; }
+      a { color: #155160; }
+      a:focus-visible, button:focus-visible, input:focus-visible {
+        outline: 3px solid #155160; outline-offset: 2px; }
+      .skip { position: absolute; left: -999px; }
+      .skip:focus { position: static; }
+      header.hero { padding: 1rem 0 0.5rem; }
+      .brand { display: flex; align-items: center; gap: .6rem; }
+      .brand img { width: 44px; height: 44px; }
+      h1 { font-size: 2rem; margin: .8rem 0 .2rem; }
+      .tagline { font-size: 1.2rem; color: #2c3b3a; margin-top: 0; }
+      .alpha { border: 2px solid #7a4a12; background: #fdf3e0;
+        color: #5a3508; padding: .6rem .9rem; border-radius: 8px; font-weight: 600; }
+      section { margin: 2rem 0; }
+      h2 { font-size: 1.4rem; border-bottom: 2px solid #d8d2c4; padding-bottom: .3rem; }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      footer { margin-top: 2.5rem; border-top: 1px solid #d8d2c4; padding-top: 1rem;
+        color: #3a4847; font-size: .95rem; }
+      .privacy { border: 2px solid #155160; background: #eef4f4; color: #10333b;
+        padding: .6rem .9rem; border-radius: 8px; }
+      .dropzone { border: 2px dashed #155160; border-radius: 10px; padding: 1.25rem;
+        margin: 1rem 0; background: #fbfaf6; }
+      .dropzone.dragover { background: #eef4f4; }
+      .dropzone p { margin: 0 0 .75rem; }
+      .picker { display: block; margin: .6rem 0; }
+      .picker span { display: block; font-weight: 600; margin-bottom: .15rem; }
+      #verdict { font-size: 1.25rem; font-weight: 700; margin: 0 0 .3rem; }
+      .state-intact #verdict { color: #1c6b4a; }
+      .state-failed #verdict { color: #8a2a1b; }
+      .state-limited #verdict, .state-error #verdict { color: #5a3508; }
+      .checkgrid { list-style: none; padding: 0; margin: .75rem 0; }
+      .checkgrid li { padding: .2rem 0; }
+      .check-ok::before { content: "✓ "; color: #1c6b4a; font-weight: 700; }
+      .check-bad::before { content: "✗ "; color: #8a2a1b; font-weight: 700; }
+      .item { border: 1px solid #d8d2c4; border-radius: 8px; padding: .6rem .9rem;
+        margin: .6rem 0; background: #fbfaf6; overflow-wrap: anywhere; }
+      .item h4 { margin: 0 0 .3rem; font-size: 1rem; }
+      .item ul { margin: .2rem 0 0; padding-left: 1.2rem; }
+      .notes { color: #3a4847; font-size: .95rem; }
+      pre { background: #11201f; color: #eaf3f1; padding: 1rem; border-radius: 10px;
+        overflow-x: auto; font-size: .85rem; }
+      details { margin-top: 1rem; }
+      .fineprint { color: #3a4847; font-size: .95rem; }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="hero">
+      <div class="brand">
+        <img src="../img/icon.svg" alt="" width="44" height="44" />
+        <strong><a href="../">habitable</a></strong>
+      </div>
+      <h1>Verify a habitability evidence packet</h1>
+      <p class="tagline">
+        No install, no upload: choose a packet and this page re-checks its content hashes,
+        trusted timestamps, chain of custody, and producer signature — entirely in your browser.
+      </p>
+      <p class="alpha">
+        <strong>Alpha software.</strong> This is a working reference implementation; do not rely on
+        it for real legal matters yet.
+      </p>
+    </header>
+
+    <main id="main">
+      <section aria-labelledby="privacy-h">
+        <h2 id="privacy-h">Nothing leaves your device</h2>
+        <p class="privacy">
+          Everything on this page happens in your browser, on your device. The files you choose are
+          <strong>never uploaded</strong> — there is no server behind this page and it makes no
+          network requests. Once the page is open (or saved), it works with no internet connection.
+        </p>
+      </section>
+
+      <section aria-labelledby="pick-h">
+        <h2 id="pick-h">Choose the packet</h2>
+        <p>
+          A packet is a folder containing <code>bundle.json</code>, <code>bundle.sig.json</code>,
+          and a <code>media/</code> folder (and sometimes <code>originals/</code>). Choose the whole
+          folder so every file can be checked.
+        </p>
+        <div class="dropzone" id="dropzone">
+          <p>Drag and drop the packet folder (or its files) here, or use the pickers below.</p>
+          <label class="picker">
+            <span>Choose the packet folder</span>
+            <input type="file" id="folder-input" webkitdirectory multiple />
+          </label>
+          <label class="picker">
+            <span>Or choose the packet files</span>
+            <input type="file" id="files-input" multiple />
+          </label>
+        </div>
+      </section>
+
+      <section aria-labelledby="result-h" id="result-section" hidden>
+        <h2 id="result-h">Result</h2>
+        <div id="result">
+          <p id="verdict" role="status"></p>
+          <p id="summary"></p>
+          <ul class="checkgrid" id="checks"></ul>
+          <div id="limits"></div>
+          <div id="problems"></div>
+          <div id="items"></div>
+          <details>
+            <summary>Full report (JSON)</summary>
+            <pre id="report-json"></pre>
+          </details>
+        </div>
+      </section>
+
+      <section aria-labelledby="means-h">
+        <h2 id="means-h">What this packet proves — and what it does not</h2>
+        <h3>What this packet proves</h3>
+        <ul>
+          <li>Each photo's content has not been altered since it was captured
+            (a SHA-256 content hash that can be re-checked against the file).</li>
+          <li>Each item existed no later than the date on its trusted timestamp
+            (an RFC 3161 token over the hash) — an upper bound on when it was created.</li>
+          <li>The record of events was not reordered or edited after the fact
+            (an append-only, hash-linked chain of custody).</li>
+        </ul>
+        <h3>What this packet does not prove</h3>
+        <ul>
+          <li>Who took a photo, or that it depicts a particular home or unit.</li>
+          <li>That the underlying condition was as described — that rests on the
+            tenant's own account, not on the cryptography.</li>
+          <li>That a timestamp is the exact moment of capture — it is only an upper
+            bound (the content existed by then).</li>
+          <li>Admissibility or any legal outcome. This is documentation, not legal advice.</li>
+        </ul>
+        <p class="fineprint">
+          The bundle signature binds the <em>producer's</em> key to the bundle bytes; it asserts
+          "this device produced exactly these bytes," not third-party identity.
+        </p>
+        <p class="fineprint">
+          This page verifies each timestamp token's own signature, but trusted TSA root
+          certificates cannot be supplied here — so a valid token is flagged as
+          <em>not chained to a trusted root</em>. The item can still verify, but a reviewer or
+          court should supply roots via the command-line verifier
+          (<code>habitable verify --trusted-cert …</code>) or cross-check with standard tools —
+          see the
+          <a href="https://github.com/ChelseaKR/habitable/blob/main/docs/verifier-decision-table.md">verifier
+          decision table</a>. If this page's verdict and those tools ever disagree, that is a bug
+          worth a
+          <a href="https://github.com/ChelseaKR/habitable/blob/main/SECURITY.md">security report</a>.
+        </p>
+      </section>
+
+      <section aria-labelledby="how-h">
+        <h2 id="how-h">How it verifies</h2>
+        <p>
+          This page is a JavaScript port of habitable's standalone verifier, pinned to the
+          <a href="https://github.com/ChelseaKR/habitable/blob/main/docs/verifier-decision-table.md">verifier
+          decision table</a> and cross-tested against the Python verifier in CI. It fails closed:
+          anything this browser cannot check is reported as <em>could not fully verify</em>, never
+          silently passed. For a definitive verdict — including trusted-root anchoring — use
+          <code>habitable verify</code>, or embed the
+          <a href="https://github.com/ChelseaKR/habitable/blob/main/docs/embedding-the-verifier.md">Apache-2.0
+          verification subset</a> in your own tooling.
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        habitable — an independent, personal open-source project. AGPL-3.0 (the standalone verifier
+        also under Apache-2.0). Not legal advice.
+      </p>
+    </footer>
+
+    <script src="verifier.js"></script>
+    <script>
+      // SPDX-License-Identifier: AGPL-3.0-or-later
+      (function () {
+        "use strict";
+        var V = window.HabitableVerifier;
+
+        function readFileEntry(file, path) {
+          return file.arrayBuffer().then(function (buf) {
+            return { path: path, bytes: new Uint8Array(buf) };
+          });
+        }
+
+        function entriesFromFileList(fileList) {
+          var out = [];
+          for (var i = 0; i < fileList.length; i++) {
+            var f = fileList[i];
+            out.push(readFileEntry(f, f.webkitRelativePath || f.name));
+          }
+          return Promise.all(out);
+        }
+
+        // Directory drag-and-drop: walk webkitGetAsEntry trees where supported.
+        function entriesFromDataTransfer(dt) {
+          var walkers = [];
+          var items = dt.items || [];
+          var usedEntries = false;
+          for (var i = 0; i < items.length; i++) {
+            var entry = items[i].webkitGetAsEntry && items[i].webkitGetAsEntry();
+            if (entry) {
+              usedEntries = true;
+              walkers.push(walkEntry(entry, ""));
+            }
+          }
+          if (usedEntries) {
+            return Promise.all(walkers).then(function (nested) {
+              return nested.flat();
+            });
+          }
+          return entriesFromFileList(dt.files || []);
+        }
+
+        function walkEntry(entry, prefix) {
+          if (entry.isFile) {
+            return new Promise(function (resolve, reject) {
+              entry.file(function (file) {
+                resolve(readFileEntry(file, prefix + entry.name).then(function (e) { return [e]; }));
+              }, reject);
+            }).then(function (list) { return list; });
+          }
+          if (entry.isDirectory) {
+            return readAllDirectoryEntries(entry.createReader()).then(function (children) {
+              return Promise.all(
+                children.map(function (child) {
+                  return walkEntry(child, prefix + entry.name + "/");
+                })
+              ).then(function (nested) { return nested.flat(); });
+            });
+          }
+          return Promise.resolve([]);
+        }
+
+        function readAllDirectoryEntries(reader) {
+          var all = [];
+          function readBatch() {
+            return new Promise(function (resolve, reject) {
+              reader.readEntries(resolve, reject);
+            }).then(function (batch) {
+              if (!batch.length) { return all; }
+              all = all.concat(batch);
+              return readBatch();
+            });
+          }
+          return readBatch();
+        }
+
+        // ---- rendering ----------------------------------------------------
+
+        function el(tag, className, text) {
+          var node = document.createElement(tag);
+          if (className) { node.className = className; }
+          if (text !== undefined) { node.textContent = text; }
+          return node;
+        }
+
+        function checkLine(label, ok, extra) {
+          var li = el("li", ok ? "check-ok" : "check-bad",
+            label + ": " + (ok ? "passed" : "FAILED") + (extra ? " " + extra : ""));
+          return li;
+        }
+
+        function render(report) {
+          var section = document.getElementById("result-section");
+          var result = document.getElementById("result");
+          var verdict = document.getElementById("verdict");
+          var summary = document.getElementById("summary");
+          var checks = document.getElementById("checks");
+          var limits = document.getElementById("limits");
+          var problems = document.getElementById("problems");
+          var items = document.getElementById("items");
+          var json = document.getElementById("report-json");
+          section.hidden = false;
+          checks.textContent = "";
+          limits.textContent = "";
+          problems.textContent = "";
+          items.textContent = "";
+          result.className = "";
+
+          if (report.error) {
+            result.className = "state-error";
+            result.setAttribute("data-state", "error");
+            verdict.textContent = "Could not verify";
+            summary.textContent = report.error;
+            json.textContent = JSON.stringify(report, null, 2);
+            return;
+          }
+
+          var limited = (report.browser_limits || []).length > 0;
+          var state = report.ok ? "intact" : (limited ? "limited" : "failed");
+          result.className = "state-" + state;
+          result.setAttribute("data-state", state);
+          verdict.textContent = report.ok
+            ? "Packet intact"
+            : (limited ? "Could not fully verify in this browser" : "Packet NOT intact");
+          summary.textContent = report.summary;
+
+          checks.appendChild(checkLine("Producer signature over the bundle", report.signature_ok));
+          checks.appendChild(checkLine(
+            "Chain of custody", report.custody_ok, "(" + report.custody_length + " entries)"
+          ));
+          checks.appendChild(checkLine(
+            "Items verified", report.verified_items === report.item_count && report.item_count > 0,
+            "(" + report.verified_items + " of " + report.item_count + ")"
+          ));
+
+          if (limited) {
+            var lim = el("div", "alpha");
+            lim.appendChild(el("p", "", "This browser could not complete every check — the " +
+              "packet is reported as not fully verified (never silently passed). For a " +
+              "definitive verdict run: habitable verify"));
+            var lu = el("ul", "notes");
+            report.browser_limits.forEach(function (line) {
+              lu.appendChild(el("li", "", line));
+            });
+            lim.appendChild(lu);
+            limits.appendChild(lim);
+          }
+
+          if (report.problems && report.problems.length) {
+            var ph = el("p", "", "Problems:");
+            var pu = el("ul", "notes");
+            report.problems.forEach(function (p) { pu.appendChild(el("li", "", p)); });
+            problems.appendChild(ph);
+            problems.appendChild(pu);
+          }
+
+          (report.items || []).forEach(function (item) {
+            var box = el("div", "item");
+            box.appendChild(el("h4", "",
+              (item.ok ? "✓ " : "✗ ") + (item.capture_id || "(item)")));
+            var ul = el("ul", "notes");
+            ul.appendChild(el("li", "", "content hash: " + item.content_hash));
+            ul.appendChild(el("li", "", "trusted timestamp: " +
+              (item.timestamp_verified
+                ? "verified (" + item.tsa_name + ", " + item.gen_time + ")"
+                : "NOT verified")));
+            ul.appendChild(el("li", "", "shared media: " +
+              (item.shared_media_ok ? "matches its recorded hash" : "FAILED")));
+            ul.appendChild(el("li", "", "custody binding: " +
+              (item.custody_binding_ok ? "present" : "MISSING")));
+            if (item.original_fixity_ok !== null) {
+              ul.appendChild(el("li", "", "embedded original: " +
+                (item.original_fixity_ok ? "matches the content hash" : "FAILED fixity")));
+            }
+            (item.notes || []).forEach(function (note) {
+              ul.appendChild(el("li", "", "note: " + note));
+            });
+            box.appendChild(ul);
+            items.appendChild(box);
+          });
+
+          json.textContent = JSON.stringify(report, null, 2);
+        }
+
+        function verifyEntries(entriesPromise) {
+          var verdict = document.getElementById("verdict");
+          document.getElementById("result-section").hidden = false;
+          verdict.textContent = "Verifying…";
+          entriesPromise
+            .then(function (entries) {
+              return V.verifyPacket(entries);
+            })
+            .then(render, function (err) {
+              render({ error: "could not read the selected files: " + err });
+            });
+        }
+
+        function wire() {
+          var folder = document.getElementById("folder-input");
+          var files = document.getElementById("files-input");
+          var zone = document.getElementById("dropzone");
+          folder.addEventListener("change", function () {
+            if (folder.files.length) { verifyEntries(entriesFromFileList(folder.files)); }
+          });
+          files.addEventListener("change", function () {
+            if (files.files.length) { verifyEntries(entriesFromFileList(files.files)); }
+          });
+          zone.addEventListener("dragover", function (ev) {
+            ev.preventDefault();
+            zone.classList.add("dragover");
+          });
+          zone.addEventListener("dragleave", function () {
+            zone.classList.remove("dragover");
+          });
+          zone.addEventListener("drop", function (ev) {
+            ev.preventDefault();
+            zone.classList.remove("dragover");
+            verifyEntries(entriesFromDataTransfer(ev.dataTransfer));
+          });
+        }
+
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", wire);
+        } else {
+          wire();
+        }
+      })();
+    </script>
+  </body>
+</html>
