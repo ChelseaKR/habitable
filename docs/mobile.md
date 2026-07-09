@@ -1,54 +1,46 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-# Using habitable on a phone
+# Phone support and the local app
 
-habitable is **local-first**: the case lives on a device, not a server. On a
-phone the practical path today is the **installable web app (PWA)**, served by the
-local app server. This page covers installing it, offline behaviour, and the
-honest state of fully-native packaging.
+habitable is designed for field use, but the alpha does **not yet have a safe,
+supported phone installation path**. The current web client is served by a Python
+process that holds an unlocked vault in memory. It is for evaluation on the same
+desktop or laptop only:
 
-## Install as an app (works today)
+```console
+$ uv run habitable app --vault ./case-4B
+```
 
-1. On the device (or a laptop the phone can reach), start the server:
-   ```console
-   $ uv run habitable app --vault ./case-4B --host 0.0.0.0
-   ```
-2. Open the printed URL in the phone browser and **Add to Home Screen**:
-   - **Android / Chrome:** ⋮ menu → *Add to Home screen* / *Install app*.
-   - **iOS / Safari:** Share → *Add to Home Screen*.
-3. It launches standalone (its own icon, no browser chrome), using the maskable
-   icon and theme colour from `manifest.webmanifest`.
+The server now rejects non-loopback binds. Do not expose it with
+`--host 0.0.0.0`, a LAN address, a tunnel, port forwarding, or a public reverse
+proxy. A shared Wi-Fi network can contain other participants or observers, and
+plain HTTP does not provide a safe transport for an unlocked case API. A bearer
+token alone would not protect that traffic from interception.
 
-The manifest ships PNG icons at 192 and 512 px, a dedicated **maskable** icon, an
-Apple touch icon, and the Apple/standalone meta tags — the installability basics a
-PWA needs. `tests/test_app_pwa.py` checks these stay present.
+## What the PWA currently proves
 
-## Offline behaviour
+The web client has an app manifest, install icons, responsive layouts, and a
+cache-first static shell. Those pieces are tested and useful for evaluating the
+interface. The service worker is intentionally network-only for `/api/`, so no
+case data or evidence is placed in the browser cache. The local Python engine
+must remain running for any capture, review, or export operation.
 
-The service worker (`service-worker.js`) precaches the static shell (HTML, CSS,
-JS, i18n, icons) **cache-first**, so the interface loads with no connection and
-navigations fall back to the cached shell. It is **network-only for `/api/`**, so
-evidence and case status are never cached — they always come from the local
-server, which must be running to read or write data. Capture itself never blocks
-on the network; trusted timestamps are fetched when a connection returns (the
-*Resolve awaiting timestamps* action).
+On a desktop browser that supports installation, the shell may be added to the
+desktop or dock. That convenience does not turn it into a self-contained phone
+app: it still depends on the loopback engine on the same device.
 
-## Toward fully-native packaging (roadmap, honest constraints)
+## What must exist before a phone pilot
 
-Because habitable is local-first, a "native app" is not just a wrapper around a
-hosted website — it must carry the local engine (vault, crypto, capture, packet,
-verify) with it. That makes the usual hosted-PWA routes a poor fit:
+A supported phone build must carry the vault, cryptography, capture, packet, and
+verification engine on the device. It must also pass these release gates:
 
-- A **Trusted Web Activity** (Android) assumes a PWA hosted at an https origin
-  with Digital Asset Links; habitable has no server to host, by design.
-- A thin **Capacitor/Cordova** shell would still need the engine on-device.
+- installation and update without Git, Python, `uv`, or a terminal;
+- no unlocked API exposed beyond the device;
+- capture, backup, restore, export, and verification on a clean target device;
+- offline and interrupted-operation tests;
+- safe key storage and a documented recovery ceremony;
+- an independent security review and a recorded human accessibility pass.
 
-The realistic native path is to **embed the engine on the device** — e.g. package
-the Python core with [BeeWare/Briefcase](https://beeware.org/) (which targets
-Android and iOS) or a Tauri/embedded-runtime shell, exposing the same loopback API
-the PWA already speaks. That is tracked work, not yet built; producing signed App
-Store / Play Store binaries additionally requires the platform SDKs, developer
-accounts, and signing keys, which are out of scope for this repository's CI.
-
-Until then, **Add to Home Screen is the supported mobile install**, and it covers
-the field use case: a tenant documenting a problem in the apartment on the only
-device they have.
+BeeWare/Briefcase, Tauri with an embedded runtime, or another on-device package
+may satisfy those requirements. Signed App Store and Play Store distribution
+also requires platform accounts and signing keys. Until a build meets the gates,
+describe phone support as **planned**, not shipped, and use synthetic data only.

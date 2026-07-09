@@ -217,7 +217,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_app = sub.add_parser("app", help="run the local web app (accessible, EN/ES)")
     add_vault(p_app)
-    p_app.add_argument("--host", default="127.0.0.1")
+    p_app.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="loopback host only (default: 127.0.0.1); LAN exposure is rejected",
+    )
     p_app.add_argument("--port", type=int, default=8765)
     p_app.add_argument("--dev-tsa", action="store_true", help="use the offline dev TSA")
     p_app.add_argument("--no-timestamp", action="store_true", help="defer timestamping")

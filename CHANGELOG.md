@@ -52,6 +52,10 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **Unlocked app server is loopback-only.** `habitable app` now rejects LAN,
+  wildcard, tunneled, and public bind targets instead of exposing an unlocked case
+  API over plaintext HTTP. Phone and workshop guides no longer recommend the old
+  `0.0.0.0` path and state honestly that a reviewed on-device package is not shipped.
 - **Verifier subset now imports on Python < 3.14 again.** Three multi-type `except`
   clauses in the Apache-2.0 verification subset (`verify.py`, `tsa.py`, `exif.py`)
   used the PEP 758 parenthesis-free form, a `SyntaxError` before Python 3.14 — which
