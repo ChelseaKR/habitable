@@ -35,7 +35,7 @@ body {
 /* --- Skip link --- */
 .skip-link {
   position: absolute;
-  left: 0.5rem;
+  inset-inline-start: 0.5rem;
   top: -3rem;
   z-index: 100;
   background: var(--brand);
@@ -70,7 +70,7 @@ body {
 
 .lang-nav { display: flex; align-items: center; gap: 0.6rem; }
 .lang-label { font-size: 0.95rem; }
-.lang-buttons { display: inline-flex; gap: 0.35rem; }
+.lang-buttons { display: inline-flex; flex-wrap: wrap; gap: 0.35rem; }
 .lang-btn {
   font: inherit;
   cursor: pointer;
@@ -79,6 +79,9 @@ body {
   border: 2px solid var(--brand-ink);
   background: transparent;
   color: var(--brand-ink);
+  /* Text-expansion tolerance: let long localized labels wrap, not overflow. */
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .lang-btn[aria-pressed="true"] {
   background: var(--brand-ink);
@@ -138,6 +141,18 @@ h2 { font-size: 1.3rem; margin: 0; }
   color: var(--ok);
 }
 
+/* Non-auditory success cue (R-10): a brief visual pulse on the announcer,
+   paired with a short haptic buzz in JS where the device supports it. The
+   announced aria-live text remains the primary signal; this is supplementary. */
+@keyframes flash-ok {
+  0%   { box-shadow: 0 0 0 0 rgba(28, 90, 46, 0.5); }
+  100% { box-shadow: 0 0 0 0.65rem rgba(28, 90, 46, 0); }
+}
+.announcer.flash-ok { animation: flash-ok 0.6s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .announcer.flash-ok { animation: none; }
+}
+
 /* --- Cards --- */
 .card {
   background: var(--surface);
@@ -189,6 +204,14 @@ h2 { font-size: 1.3rem; margin: 0; }
 .custody-ok { color: var(--ok); }
 .custody-bad { color: var(--bad); }
 
+/* Plain-language reassurance under the awaiting-timestamp count (R-01, R-17). */
+.status-help {
+  color: var(--ink-soft);
+  margin: 0.75rem 0 0;
+  max-width: 44rem;
+  font-size: 0.98rem;
+}
+
 /* --- Issues list --- */
 .issues-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.75rem; }
 .issue {
@@ -207,6 +230,9 @@ h2 { font-size: 1.3rem; margin: 0; }
   border: 1px solid var(--line);
   background: var(--bg);
   color: var(--ink);
+  /* Text-expansion tolerance: wrap long localized labels rather than overflow. */
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* --- Forms --- */
@@ -243,6 +269,9 @@ textarea { resize: vertical; }
   padding: 0.6rem 1.2rem;
   background: var(--brand);
   color: var(--brand-ink);
+  /* Text-expansion tolerance: wrap long localized labels rather than overflow. */
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .btn:hover { background: #0f3540; }
 .btn[disabled] { cursor: progress; opacity: 0.7; }
@@ -262,7 +291,7 @@ textarea { resize: vertical; }
   background: var(--bg);
 }
 .result h3 { margin: 0 0 0.4rem; font-size: 1.05rem; }
-.result ul { margin: 0.25rem 0 0; padding-left: 1.2rem; }
+.result ul { margin: 0.25rem 0 0; padding-inline-start: 1.2rem; }
 .verdict-ok { color: var(--ok); font-weight: 700; }
 .verdict-bad { color: var(--bad); font-weight: 700; }
 

@@ -117,7 +117,10 @@ Every export ships an accessible `packet.html`, a paginated PDF, and a verifiabl
    and roughly how much moves — even though it can read none of the contents; the mitigations are a
    no-log, self-hostable relay and pure peer-to-peer sync with no relay at all, detailed in
    `docs/threat-model.md`. Nothing the project operates can be subpoenaed for a tenant's contents,
-   because it never holds them.
+   because it never holds them. Don't take our word for it: `habitable prove-no-plaintext` runs a
+   real sync through an in-process relay, captures every byte on the wire, and greps it for planted
+   plaintext markers — or capture a real relay with `tcpdump` yourself, per
+   [`docs/prove-no-plaintext.md`](docs/prove-no-plaintext.md).
 2. **No central authority over a union's records.** Each union holds its own keys and its own data;
    the project ships no account system, no admin who can read or revoke a union's evidence, and no
    hosted service that owns the records. Forking the code or running the relay yourself changes
@@ -131,10 +134,11 @@ Every export ships an accessible `packet.html`, a paginated PDF, and a verifiabl
    is shown exactly what a packet will disclose before it is produced. The tool never silently
    publishes a home's coordinates.
 5. **Retaliation is the threat model.** Defaults assume an adversary with resources and motive: data
-   at rest is encrypted, the app can be opened to a duress-safe state that hides case contents — a
-   mitigation with documented limits, not a guarantee against a coercing or forensic adversary — and
-   the tool collects no analytics and phones no home. The union decides what to disclose and to whom,
-   documented in `docs/threat-model.md`.
+   at rest is encrypted; a duress-safe open state that hides case contents is *planned but not yet
+   implemented* — today the only at-rest protection is vault encryption, and when built that state
+   will be a mitigation with documented limits, not a guarantee against a coercing or forensic
+   adversary — and the tool collects no analytics and phones no home. The union decides what to
+   disclose and to whom, documented in `docs/threat-model.md`.
 
 ---
 
@@ -156,8 +160,10 @@ fails the people relying on it.
   observe who syncs with whom and when; pure peer-to-peer sync avoids even that.
 - **A timestamp authority sees a hash, not the file** — and an RFC 3161 token bounds *when* content
   existed, not *who* created it or *what* it depicts.
-- **Duress and forensic limits.** The duress-safe state hides case contents but is not a guarantee
-  against a sufficiently capable coercing or forensic adversary.
+- **Duress and forensic limits.** The duress-safe state is *planned, not yet implemented*; today the
+  only at-rest protection is vault encryption. When built it will hide case contents but will not be a
+  guarantee against a sufficiently capable coercing or forensic adversary, and those documented limits
+  will apply.
 
 The full threat model and the mitigation for each limit live in `docs/threat-model.md`.
 
@@ -291,16 +297,17 @@ case set; a re-synced peer rebuilds local state. **Degradability** and **failure
 missing timestamp token or a broken chain is shown as a degraded evidence status, never silently passed
 as clean. **Redundancy** — multiple sync peers and configurable multiple timestamp authorities remove
 single points of failure. **Stability** and **durability** — sealed originals are immutable; semver on
-the packet format and verification protocol. **Safety** — the duress-safe open state (with the limits set
-out in the hard rules and *Honest limits*) and location-stripped sharing reduce harm to the tenant; the
-tool frames outputs as documentation, never as legal advice or a promise of a court outcome.
+the packet format and verification protocol. **Safety** — location-stripped sharing reduces harm to the
+tenant, and a duress-safe open state (planned, not yet implemented; with the limits set out in the hard
+rules and *Honest limits*) is intended to add to that; the tool frames outputs as documentation, never
+as legal advice or a promise of a court outcome.
 
 ### Performance, scale, cost
 **Efficiency** — hashing and sync deltas are incremental; the app does not re-process sealed media.
 **Scalability** and **elasticity** — sync is peer to peer with no central bottleneck; a relay, if used,
 forwards ciphertext and scales to zero between sessions. **Timeliness** — capture, hashing, and sealing
 complete within a perceptible moment with no network in the loop, and the RFC 3161 token is fetched
-asynchronously once the device is online; latency budgets for the local path are asserted in CI.
+asynchronously once the device is online; [latency budgets for the local path](docs/performance-budget.md) are asserted in CI.
 **Affordability** — the tool is free, runs on a tenant's existing phone, uses free public timestamp
 authorities, and needs no paid infrastructure, because the people using it have none to spare. **Process capabilities** and
 **producibility** — `make verify` reproduces the full gate; a release is one tagged, signed command.

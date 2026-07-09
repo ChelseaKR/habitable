@@ -122,6 +122,12 @@ The courtroom rests on this; it gets the most scrutiny.
 - *Shipped:* SHA-256 fixity, RFC 3161 timestamps (local issuer + HTTP client + offline dev
   TSA), hash-linked custody with salted actor commitments, the standalone verifier,
   SHA-pinned CI, CodeQL, `pip-audit`, Dependabot.
+- *Shipped (FIX-10):* **No wall-clock/node metadata in exported identifiers.** Every id in a
+  packet (issue, capture, timeline entry, custody item) and the exported `hlc` fields are now
+  opaque, per-case-salted digests that encode neither the device wall clock nor the HLC node id;
+  the hybrid logical clock stays internal for CRDT ordering/merge. Bundle format bumped to
+  `packet_version` 2 (v1 packets still verify, guarded by the golden corpus); a `test_guards`
+  invariant asserts no exported field reveals the wall-clock ms or node id.
 - **Continuous real public-TSA integration.** *Objective:* prove tokens from real
   authorities (e.g. FreeTSA, DigiCert) verify end to end, not just the local issuer.
   *Exit:* a scheduled, network-gated CI job stamps and verifies against ≥2 public TSAs and
@@ -171,9 +177,14 @@ The courtroom rests on this; it gets the most scrutiny.
   i18n parity test already guards this).
 - **Plain-language & cognitive review.** *Objective:* usable under stress and across
   reading levels. *Exit:* a reviewed plain-language pass of UI copy and the setup guide.
-- **Low-end-device performance.** *Objective:* capture/seal/hash feel instant on an old
-  phone. *Exit:* a documented latency budget for the local path, checked on a low-end
-  target.
+- *Shipped:* **Low-end-device performance budget.** A documented latency budget for the
+  local path — per-operation targets for content hashing, seal/store, custody append,
+  CRDT merge, and packet assembly — tied to a reference low-end device modeled as ~10×
+  slower than the CI runner, with network TSA latency explicitly excluded (it is
+  deferred, off the capture path). `tests/test_perf_budget.py` asserts the budget on
+  every CI run (`make test`), and `docs/performance-budget.md` records the model and the
+  tolerance band. *Remaining:* replace the 10× model with a measurement on named
+  reference hardware once mobile packaging lands (see workstream C).
 
 ### C. Apps, sync & platform
 
@@ -209,7 +220,11 @@ The courtroom rests on this; it gets the most scrutiny.
   a packet was usable in its forum and what broke (gate item for v1.0).
 - **Contributor growth & onboarding.** *Objective:* lower the bus-factor. *Exit:* a "good
   first issue" set, an onboarding path beyond `CONTRIBUTING.md`, and ≥1 sustained outside
-  contributor.
+  contributor. *Shipped (R-42/R-43 tooling):* the good-first-issue set, the newcomer
+  architecture walkthrough (`docs/good-first-issues.md`), and a one-command onboarding path —
+  `./scripts/bootstrap.sh` plus a devcontainer/Codespace config (`.devcontainer/`) that
+  provisions the full Python 3.14 + uv environment. The remaining exit criterion — ≥1
+  sustained outside contributor — is a social outcome, not a tooling gap, and stays open.
 - **Shared governance.** *Objective:* move from benevolent-maintainer toward shared
   stewardship as contributors arrive. *Trigger:* sustained contributors → adopt a documented
   decision process and `MAINTAINERS`/`GOVERNANCE` evolution in `docs/governance.md`.

@@ -26,15 +26,15 @@ jobs:
       # takes effect under `egress-policy: block`) — a deliberate, documented
       # trade-off for a privacy-first repo, not an oversight.
       - name: Harden Runner (audit mode)
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           version: "0.11.19"
           enable-cache: true
@@ -42,7 +42,10 @@ jobs:
         run: uv sync --frozen
       - name: Show interpreter
         run: uv run python -c "import sys; print('Python', sys.version)"
-      - name: Run the full gate (ruff + mypy --strict + pytest + coverage)
+      # `make verify` includes the coverage gates: 85% overall plus the scoped
+      # 95% per-module floor on the evidence-integrity core (crypto/vault/tsa/
+      # verify.py) — see the `cov` target and CODE-QUALITY-STANDARD.
+      - name: Run the full gate (ruff + mypy --strict + pytest + coverage floors 85%/95%)
         run: make verify
       - name: Upload coverage
         if: always()
@@ -57,11 +60,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner (audit mode)
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
       - name: Checkout (full history — gitleaks needs it to scan the diff/range)
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -78,15 +81,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner (audit mode)
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           version: "0.11.19"
           enable-cache: true
@@ -100,15 +103,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner (audit mode)
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
           version: "0.11.19"
       - name: Build distributions

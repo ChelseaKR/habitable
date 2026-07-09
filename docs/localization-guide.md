@@ -137,23 +137,29 @@ risk in exactly the moment the warning exists for.
 
 ## Readiness cautions: text expansion, RTL, and formats
 
-These are areas the UI is **not yet fully hardened for**; flag breakage you find
-rather than assuming it works.
+habitable has had an initial **RTL-readiness pass** (R-48): the plumbing below is
+in place, but a native-speaker visual QA is still required before an RTL or
+heavily-expanding bundle ships. Flag any breakage you find rather than assuming
+it is fully solved.
 
 - **Text expansion.** Many languages run noticeably longer than English (German,
-  French, Spanish in places). Buttons, badges, and fixed-width labels can
-  overflow or wrap badly. Check your longest strings against narrow layouts —
-  the app is tested down to a **320px reflow**, so test there. A pseudo-locale
-  that pads strings is a welcome contribution for catching this early.
-- **Right-to-left (RTL).** habitable has not yet had an RTL-readiness pass
-  (Arabic, Hebrew, Farsi, Urdu). The HTML sets `lang` but not yet `dir`, and the
-  CSS has not been audited for logical (start/end) properties. **Do not assume an
-  RTL bundle will lay out correctly** — an RTL language likely needs layout work
-  (an RTL-readiness pass) alongside the strings. Raise it in your PR so it can be
-  scoped, and treat RTL as a layout project, not just a translation.
-- **Dates and numbers.** Formats differ by locale (date order, decimal/thousands
-  separators). Where the UI renders these, confirm they read correctly in your
-  language; if formatting is hard-coded to an English convention, flag it.
+  French, Spanish in places). Buttons, badges, and labels now use
+  `white-space: normal` / `overflow-wrap` / `flex-wrap`, so long strings wrap
+  rather than overflow, and a static pseudo-locale check keeps compact-UI labels
+  bounded. Still check your longest strings against narrow layouts — the app is
+  tested down to a **320px reflow**, so test there.
+- **Right-to-left (RTL).** The CSS has been audited to use only logical
+  (`*-inline-*`, `inset-inline-*`, `text-align: start`) properties, `<html>`
+  carries an explicit `dir="ltr"` default, and the app flips `dir` to `rtl` for
+  RTL scripts (`ar`, `he`, `fa`, `ur`) alongside `lang` when the language
+  changes. No RTL bundle ships yet, so **before shipping one, get a native
+  speaker to visually QA every screen** — automated checks catch physical-
+  direction regressions, not mirroring nuances (icons, progress direction).
+- **Dates and numbers.** These are already rendered through `Intl.DateTimeFormat`
+  / `Intl.NumberFormat` / `Intl.PluralRules` keyed to the active language, so
+  date order and decimal/thousands separators follow the locale, not an English
+  convention. Confirm they read correctly in your language and flag anything that
+  still looks hard-coded.
 
 ## A per-language glossary of terms of art
 

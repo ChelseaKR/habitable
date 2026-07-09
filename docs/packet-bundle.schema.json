@@ -98,7 +98,7 @@
         "issue_id": { "type": "string" },
         "kind": { "type": "string" },
         "text": { "type": "string" },
-        "hlc": { "type": "string", "description": "Hybrid logical clock stamp." }
+        "hlc": { "type": "string", "description": "Ordering token. Opaque, per-case-salted digest in packet_version >= 2 (no wall-clock/node metadata); the raw wall_ms.counter.node_id HLC stamp in v1." }
       },
       "additionalProperties": true
     },
@@ -183,7 +183,7 @@
           "enum": ["captured", "imported", "fixity_checked", "timestamped", "viewed", "copied_for_sharing", "included_in_packet", "note_added"]
         },
         "item_id": { "type": "string" },
-        "hlc": { "type": "string" },
+        "hlc": { "type": "string", "description": "Ordering token. Opaque, per-case-salted digest in packet_version >= 2 (no wall-clock/node metadata); the raw HLC stamp in v1. The exported chain is re-hashed over this value so it still verifies standalone." },
         "actor_commitment": { "$ref": "#/$defs/hexSha256", "description": "Salted commitment SHA-256(salt:actor); the clear actor and salt are vault-only." },
         "details": {
           "type": "object",
