@@ -58,8 +58,9 @@ $ uv run habitable status   --vault ./case-4B
 Offline is fine: capture seals and hashes instantly and queues the trusted
 timestamp. When you're back online, run `habitable resolve --vault ./case-4B`.
 
-Prefer a screen? Run the local app (accessible, English/Español) and use a phone
-or laptop browser on the same machine:
+Prefer a screen? Run the local app (accessible, English/Español) and use a laptop
+or desktop browser on the same machine. The alpha has no supported phone package;
+do not expose this unlocked server over a LAN (see [`docs/mobile.md`](mobile.md)):
 
 ```console
 $ uv run habitable app --vault ./case-4B

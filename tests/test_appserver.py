@@ -17,6 +17,7 @@ import pytest
 
 from habitable.appserver import _awaiting_only, make_app_server
 from habitable.capture import capture
+from habitable.errors import HabitableError
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
 from habitable.verify import ItemVerdict, VerificationReport
@@ -186,6 +187,20 @@ def test_missing_field_is_400(app: str) -> None:
 def test_unknown_route_is_404(app: str) -> None:
     status, _ = _call(app, "POST", "/api/nope", {})
     assert status == 404
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "127.0.0.2", "192.168.1.10", "example.test", ""])
+def test_unlocked_app_rejects_non_loopback_bind(
+    host: str, make_vault: Callable[..., Vault]
+) -> None:
+    with pytest.raises(HabitableError, match="only bind to loopback"):
+        make_app_server(host, 0, make_vault())
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "localhost"])
+def test_unlocked_app_accepts_loopback_bind(host: str, make_vault: Callable[..., Vault]) -> None:
+    server = make_app_server(host, 0, make_vault())
+    server.server_close()
 
 
 def test_bad_json_is_400(app: str) -> None:

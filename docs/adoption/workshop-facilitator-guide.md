@@ -1,11 +1,11 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Workshop facilitator guide — onboarding your union to habitable
 
-A run-this-yourself, ~90-minute workshop for an organizer onboarding union members, and a
-**train-the-trainer** kit so the person you teach can teach the next group. By the end,
-each participant will have installed the app on their own phone, captured a *practice*
-issue, understood what "awaiting timestamp" means, exported and verified a practice packet,
-and backed up their key.
+A future ~90-minute workshop for an organizer onboarding union members. The curriculum is
+retained for review, but **must not be run as a phone-install workshop yet**: the alpha has no
+safe on-device package, and the unlocked local server is restricted to loopback. Until the
+release gates in [`docs/mobile.md`](../mobile.md) pass, use a facilitator-controlled laptop,
+synthetic data, and discussion only. Do not connect participant phones to the app server.
 
 > **Alpha software. Say this out loud in the room.** habitable works end to end, but it is
 > **not audited and not proven in court**, and the default development timestamp authority
@@ -26,10 +26,8 @@ teach a flow you have not done.
 
 **Prepare the room:**
 
-- A laptop you can run `uv run habitable app --host 0.0.0.0` on, that the participants'
-  phones can reach on the same network. Church-basement / community-space Wi-Fi is fine; a
-  phone hotspot works too. (No internet is needed for the hands-on parts — only the local
-  network.)
+- A laptop you can run `uv run habitable app` on. Keep the app on loopback and project or
+  screen-share the synthetic demonstration; participant phones must not connect.
 - The printed quick-start, **in both languages**: [English](quickstart-en.md) and
   [Spanish](quickstart-es.md). Print enough for everyone plus spares.
 - A few **practice photos** on a USB stick or shared folder (a picture of a wall, a
@@ -55,7 +53,7 @@ at the end, and weave it through the whole session, not just one segment.
 | --- | --- | --- |
 | 0:00–0:10 | Welcome + what this is (and isn't) | Talk |
 | 0:10–0:25 | **Consent, safety, and retaliation risk** | Talk + discussion |
-| 0:25–0:40 | Install the app on your phone | Hands-on |
+| 0:25–0:40 | Review the planned phone workflow | Discussion |
 | 0:40–0:55 | Capture a practice issue | Hands-on |
 | 0:55–1:05 | "Awaiting timestamp" — what it means | Talk + watch |
 | 1:05–1:20 | Export & verify a practice packet | Demo + hands-on |
@@ -105,11 +103,10 @@ Cover, in plain language:
 - **Shared phones leak.** If someone shares a device, others may see the app's icon, its
   name in the app-switcher, or notifications. Name this honestly: the tool reduces risk, it
   does not erase it. (This is a known gap; see [threat model §5](../threat-model.md#5-what-is-not-protected--explicit-limits).)
-- **Duress mode is real but limited.** The app can open to a state that hides case contents
-  from someone glancing at or quickly coercing the screen. Say the limit plainly, the way
-  the threat model does: it is **not** a guarantee against someone who can force the real
-  passphrase out of you, or against a forensic lab that images the phone. It is
-  harm-reduction, not a safe. Promising more than that could get someone hurt.
+- **Duress mode is not implemented.** Do not tell participants that the app can hide a real
+  vault behind a decoy state. Today the icon, local files, and an unlocked session can reveal
+  use of the tool. A future design is documented with strict limits, but it is not protection
+  anyone can rely on now.
 - **What leaves the device, ever.** Only two optional things, and only if used: an encrypted
   sync relay (sees scrambled data plus *who-connected-when* metadata, never contents) and a
   timestamp authority (sees a one-way fingerprint of a file, never the file). Photos of
@@ -123,27 +120,25 @@ what would make it feel safer?" Listen. Adjust the rest of the session to what y
 
 ---
 
-## 0:25–0:40 — Install the app on your phone (hands-on)
+## 0:25–0:40 — Review the planned phone workflow (discussion)
 
-Follow [`docs/mobile.md`](../mobile.md). On the device today, the supported install is the
-web app added to the home screen.
+Follow [`docs/mobile.md`](../mobile.md). The supported alpha evaluation is on the same laptop
+as the engine; phone installation is blocked pending an on-device package.
 
-1. You (facilitator) start the server on your laptop:
+1. You (facilitator) start the server on your laptop and keep it on loopback:
    ```console
-   $ uv run habitable app --host 0.0.0.0
+   $ uv run habitable app
    ```
-   Read out the printed URL.
-2. Each participant opens that URL in their phone browser and adds it to the home screen:
+   Project or screen-share the interface. Do not read out the URL for phones to open.
+2. Explain the intended future home-screen flow without asking participants to install it:
    - **Android / Chrome:** ⋮ menu → *Add to Home screen* / *Install app*.
    - **iOS / Safari:** Share → *Add to Home Screen*.
-3. It opens with its own icon, no browser bar.
+3. Record questions and safety concerns for the packaging review.
 
 **Watch for:** old phones where the menu looks different (walk over, don't call it out);
 people worried the icon is too visible on a shared phone (acknowledge it — see the consent
-segment); low storage (note that sealing originals keeps the photo twice, so a whole winter
-of photos adds up — they can offload to the organizer later). For the rest of today, the
-app reads and writes through your laptop's local server; that's expected and fine for
-practice.
+segment); and low storage. Do not imply that a facilitator-hosted LAN session is safe even
+for practice.
 
 ---
 

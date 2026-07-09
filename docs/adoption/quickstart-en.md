@@ -1,18 +1,27 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # habitable — quick start (one page, print me)
 
-A friendly guide to documenting a housing problem — mold, no heat, pests, water, electrical,
-or something broken — so you have a strong record. Your photos stay **on your phone**, locked
-with your passphrase. **No account. No company can read them.**
+> **Pilot draft — do not distribute as installation instructions yet.** The alpha has no
+> supported phone package. Its unlocked local app is restricted to the same laptop or desktop;
+> see [`docs/mobile.md`](../mobile.md). Use this page only to review future workflow copy with
+> synthetic data until an on-device build passes the phone release gates.
+
+A draft guide to documenting a housing problem — mold, no heat, pests, water, electrical,
+or something broken — so you have a strong record. In the intended on-device build, your
+photos stay **on your phone**, locked with your passphrase. **No account. No company can read
+them.**
 
 > **Please know:** this tool is still being tested (it's called *alpha*). It is great for
 > practice, but **do not rely on it for a real legal matter yet.** It gives you good
 > documentation — it is **not** legal advice. Ask your tenant lawyer or legal-aid group what
 > to do with it.
 
-## 1. Get the app on your phone
+## 1. Get the app on your phone (not available in this alpha)
 
-Your organizer will give you a web address. Open it in your phone's browser, then:
+When a reviewed on-device build exists, your organizer will provide its authenticated install
+instructions. Do not connect a phone to a laptop-hosted Habitable server over shared Wi-Fi.
+
+The intended installation experience is:
 
 - **Android (Chrome):** tap the ⋮ menu → **Add to Home screen**.
 - **iPhone (Safari):** tap Share → **Add to Home Screen**.

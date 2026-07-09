@@ -1,20 +1,29 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # habitable — guía rápida (una página, para imprimir)
 
-Una guía sencilla para documentar un problema en tu vivienda —moho, falta de calefacción,
-plagas, agua, electricidad o algo dañado— y tener así una prueba sólida. Tus fotos se quedan
-**en tu teléfono**, protegidas con tu contraseña. **No hay que crear una cuenta. Ninguna
-empresa puede verlas.**
+> **Borrador para un futuro piloto; todavía no lo distribuyas como instrucciones de
+> instalación.** La versión alfa no tiene un paquete compatible para teléfonos. La app local
+> desbloqueada solo funciona en la misma computadora; consulta
+> [`docs/mobile.md`](../mobile.md). Usa esta página únicamente para revisar el flujo futuro con
+> datos sintéticos hasta que una versión instalada en el dispositivo pase las pruebas de seguridad.
+
+Un borrador de una guía sencilla para documentar un problema en tu vivienda —moho, falta de
+calefacción, plagas, agua, electricidad o algo dañado— y tener así una prueba sólida. En la
+versión prevista para el dispositivo, tus fotos se quedan **en tu teléfono**, protegidas con
+tu contraseña. **No hay que crear una cuenta. Ninguna empresa puede verlas.**
 
 > **Ten en cuenta:** esta herramienta todavía se está probando (se le llama *alfa*). Sirve
 > muy bien para practicar, pero **todavía no la uses para un caso legal de verdad.** Te da una
 > buena documentación, pero **no es asesoría legal**. Pregúntale a tu abogado de inquilinos o
 > a un grupo de ayuda legal qué hacer con ella.
 
-## 1. Instala la app en tu teléfono
+## 1. Instala la app en tu teléfono (no disponible en esta versión alfa)
 
-Tu organizador o organizadora te dará una dirección web. Ábrela en el navegador de tu
-teléfono y luego:
+Cuando exista una versión segura para el dispositivo, tu organizador u organizadora te dará
+instrucciones de instalación verificadas. No conectes un teléfono a un servidor Habitable
+ejecutado en una computadora mediante una red wifi compartida.
+
+La experiencia de instalación prevista es:
 
 - **Android (Chrome):** toca el menú ⋮ → **Agregar a pantalla de inicio**.
 - **iPhone (Safari):** toca Compartir → **Agregar a pantalla de inicio**.

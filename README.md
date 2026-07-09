@@ -94,8 +94,9 @@ network and no real tenant data. From there: `uv run habitable --help`.
 
 **Just want to look?** There is deliberately no hosted app (it runs on `localhost` so your case never
 leaves the device), but a static **[landing page + live sample packet](https://chelseakr.github.io/habitable/)**
-shows what it produces. To document a real case on a phone, see [`docs/mobile.md`](docs/mobile.md);
-to run the optional sync relay, see [`docs/relay-deploy.md`](docs/relay-deploy.md).
+shows what it produces. A safe phone package is **not shipped yet**; see the honest
+[`docs/mobile.md`](docs/mobile.md) support boundary. To run the optional sync relay, see
+[`docs/relay-deploy.md`](docs/relay-deploy.md).
 
 ## Screenshots
 
@@ -283,8 +284,9 @@ already know from a camera roll, with the evidence machinery handled underneath.
 **Understandability** — each item shows its evidence status (hashed, timestamped, custody intact) in
 plain words. **Seamlessness** — capture, sync, and export operate on one local document.
 **Localizability** — all strings in per-language bundles; Spanish ships in v1 given the communities
-served. **Mobility** and **ubiquity** — mobile-first and installable as a PWA, because the documentation
-happens in the apartment, often on the only device a tenant has.
+served. **Mobility** and **ubiquity** are design requirements because documentation happens in the
+apartment, often on the only device a tenant has. The responsive PWA shell exists, but a safe,
+self-contained phone package is still a release blocker.
 
 ### Dependability, resilience, safety
 **Dependability** and **reliability** — the app is fully functional offline; loss of network never
@@ -308,8 +310,9 @@ as legal advice or a promise of a court outcome.
 forwards ciphertext and scales to zero between sessions. **Timeliness** — capture, hashing, and sealing
 complete within a perceptible moment with no network in the loop, and the RFC 3161 token is fetched
 asynchronously once the device is online; [latency budgets for the local path](docs/performance-budget.md) are asserted in CI.
-**Affordability** — the tool is free, runs on a tenant's existing phone, uses free public timestamp
-authorities, and needs no paid infrastructure, because the people using it have none to spare. **Process capabilities** and
+**Affordability** — the tool is free, uses free public timestamp authorities, and needs no paid
+infrastructure. Running safely on a tenant's existing phone remains a packaging goal, not a current
+claim. **Process capabilities** and
 **producibility** — `make verify` reproduces the full gate; a release is one tagged, signed command.
 
 ### Maintainability, evolvability, modularity
@@ -414,7 +417,7 @@ see **[`ROADMAP.md`](ROADMAP.md)**.
   screen-reader protocol (✅ `docs/accessibility/manual-testing.md`). **Remaining:** a *recorded* human
   NVDA/VoiceOver pass; a fully tagged **PDF/UA** structure tree (not available in reportlab's
   open-source API — the HTML packet is the accessible rendering until then); and signed native
-  app-store binaries (the PWA covers mobile install today).
+  app-store binaries or another independently reviewed on-device package.
 
 ---
 
@@ -497,9 +500,9 @@ Offers go through the [reviewer intake form](https://github.com/ChelseaKR/habita
 
 ## Definition of done
 
-A tenant can capture a moldy bathroom offline; the photo is sealed and hashed at capture and timestamped
-as soon as a device is online; an organizer on another phone syncs the case end to end encrypted with no
-server; the union exports a
+A tenant can capture a moldy bathroom offline in a supported on-device build; the photo is sealed and
+hashed at capture and timestamped as soon as a device is online; an organizer on another device syncs
+the case end to end encrypted with no server; the union exports a
 paginated packet with an evidence appendix for unit 4B; and a recipient runs `habitable verify` to confirm
 every item is intact against its sealed original and timestamp token — with no personal data on any server
 and every CI gate, including the accessibility gate, green.

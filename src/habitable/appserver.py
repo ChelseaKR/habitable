@@ -338,6 +338,11 @@ def make_app_server(
     each queued capture against them so deferred captures get the same
     multiple-authority proof as online ones (item R-16).
     """
+    if not _is_loopback_host(host):
+        raise HabitableError(
+            "the unlocked app may only bind to loopback (localhost or 127.0.0.1); "
+            "LAN access is not a supported phone-install path"
+        )
     app = AppServer(
         vault=vault,
         tsa=tsa,
@@ -346,6 +351,11 @@ def make_app_server(
         extra_tsas=tuple(extra_tsas),
     )
     return _AppHTTPServer((host, port), _AppRequestHandler, app=app)
+
+
+def _is_loopback_host(host: str) -> bool:
+    """Accept only the loopback forms this IPv4 HTTP server supports."""
+    return host.casefold() in {"localhost", "127.0.0.1"}
 
 
 # --- request helpers ----------------------------------------------------------
