@@ -114,6 +114,20 @@ with shared media.
 `signature` is an Ed25519 signature over the **ASCII hex** of `bundle_sha256`, which must equal the
 SHA-256 of the `bundle.json` bytes.
 
+### Evidence receipt (downstream ingest record)
+
+A downstream system does not have to re-run the verifier every time it references a packet. The
+Apache-2.0 reference importer ([`../contrib/legal_aid_importer.py`](../contrib/legal_aid_importer.py))
+distils a verification into a small, signed **evidence receipt**: a JSON object recording the verdict
+and — crucially — `packet.bundle_sha256`, the same SHA-256 of the `bundle.json` bytes described above.
+Because a receipt names the exact bundle bytes it is about, a relying party can re-hash a packet's
+`bundle.json` and confirm a stored receipt refers to *this* packet. A signed receipt seals the receipt
+with the ingesting organisation's Ed25519 key using the identical "sign the ASCII hex of the SHA-256"
+convention, and pins itself to this document's `packet_version` contract via `receipt_version` and
+`packet_schema`. See [`../contrib/README.md`](../contrib/README.md) for the receipt shape and
+[`embedding-the-verifier.md`](embedding-the-verifier.md#reference-importer--signed-evidence-receipt-exp-10)
+for usage.
+
 ## Stability & compatibility contract
 
 - **SemVer on the format, independent of the package.** The packet format and the verification

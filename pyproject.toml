@@ -125,6 +125,7 @@ warn_redundant_casts = true
 disallow_any_generics = true
 no_implicit_reexport = true
 files = ["src", "tests"]
+mypy_path = "contrib"
 
 [[tool.mypy.overrides]]
 module = ["piexif.*", "reportlab.*", "PIL.*", "asn1crypto.*", "axe_playwright_python.*"]
