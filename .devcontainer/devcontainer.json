@@ -1,5 +1,5 @@
 {
-  "name": "habitable",
+  "name": "habitable (Python 3.14 + uv)",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
   "postCreateCommand": "bash scripts/bootstrap.sh",
   "remoteEnv": {
@@ -12,7 +12,8 @@
         "charliermarsh.ruff"
       ],
       "settings": {
-        "python.defaultInterpreterPath": ".venv/bin/python"
+        "python.defaultInterpreterPath": ".venv/bin/python",
+        "editor.formatOnSave": true
       }
     }
   }

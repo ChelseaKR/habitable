@@ -469,8 +469,9 @@ strips everything but the next action. [E-04, R-41]
 - ✅ `make verify` reproduces the gate; CONTRIBUTING, conventional commits, ADRs present.
 - ⚠️ "No `good first issue` set; I don't know where to start or what's wanted." (Roadmapped
   under contributor growth.) [R-42]
-- ⚠️ "Python 3.14 is bleeding-edge — getting the toolchain right took a while. A devcontainer
-  or a one-command bootstrap would help." [R-43]
+- ✅ "Python 3.14 is bleeding-edge — getting the toolchain right took a while. A devcontainer
+  or a one-command bootstrap would help." [R-43] — shipped: `./scripts/bootstrap.sh`
+  (`make bootstrap`) and a `.devcontainer/` for VS Code / Codespaces.
 
 **Future.** A curated starter-issue lane, a devcontainer, an architecture walkthrough for
 newcomers. [R-42, R-43, E-22]
@@ -647,7 +648,7 @@ broadest dividend:
 | R-40 | Recipient guidance pointing AT users to the accessible HTML packet (not only the PDF) | P-15 | medium | S | B | implied | clean |
 | R-41 | Full plain-language pass (EN+ES) with a reading-level target and an in-app jargon glossary | P-16,P-01 | high | M | B | planned | clean |
 | R-42 | Curate a `good first issue` set + newcomer architecture walkthrough | P-17,P-18 | medium | S | D | planned | clean |
-| R-43 | One-command dev bootstrap / devcontainer for the Python 3.14 toolchain | P-17 | low | S | D | net-new | clean |
+| R-43 | One-command dev bootstrap / devcontainer for the Python 3.14 toolchain | P-17 | low | S | D | done | clean |
 | R-44 | Weight every backlog item by maintenance cost; prefer config/community-extensible surfaces | P-18,P-21 | high | S | D | planned | clean |
 | R-45 | Relay operator no-log self-audit + a documented log schema to attest to the union | P-19 | medium | M | C | net-new | clean |
 | R-46 | Document precisely what a relay operator can/cannot observe; advance metadata resistance | P-19,P-22 | medium | L | C | planned | clean |

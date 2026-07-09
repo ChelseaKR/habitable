@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # habitable — developer entry points. `make verify` reproduces the full CI gate.
 .DEFAULT_GOAL := help
-.PHONY: help install fmt lint type test cov i18n markers verify audit a11y integration demo build clean
+.PHONY: help bootstrap install fmt lint type test cov i18n markers verify audit a11y integration demo build clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
+
+bootstrap: ## One-command setup from a bare machine (installs uv if missing, then syncs)
+	bash scripts/bootstrap.sh
 
 install: ## Create the env and install the project + dev tools (Python 3.14 via uv)
 	uv sync
