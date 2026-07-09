@@ -28,6 +28,7 @@ and are not signed).
    then re-runs `make verify` at the tagged commit — a red commit cannot ship.
    Only then does it:
    - build the wheel + sdist (`uv build`);
+   - install the wheel into a clean environment and serve the packaged local app;
    - generate a runtime **SBOM** (CycloneDX) into `dist/sbom.cdx.json`;
    - produce a **signed build-provenance attestation** for the artifacts
      (`actions/attest-build-provenance`, Sigstore);

@@ -35,7 +35,22 @@ from .verify import VerificationReport, verify_packet
 __all__ = ["AppServer", "make_app_server"]
 
 _MAX_BODY = 64 * 1024 * 1024
-_STATIC_ROOT = Path(__file__).resolve().parent.parent.parent / "app"
+
+
+def _default_static_root() -> Path:
+    """Return app assets from an installed wheel or the source checkout.
+
+    Hatch maps the repository's ``app/`` directory to ``habitable/_app`` in a
+    wheel. Editable/source installs still use the repository directory so there
+    is one canonical copy of every asset.
+    """
+    package_root = Path(__file__).resolve().parent / "_app"
+    if package_root.is_dir():
+        return package_root
+    return Path(__file__).resolve().parent.parent.parent / "app"
+
+
+_STATIC_ROOT = _default_static_root()
 _SAFE_PATH = re.compile(r"^[A-Za-z0-9_./-]+$")
 _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
