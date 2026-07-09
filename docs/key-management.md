@@ -49,6 +49,33 @@ $ uv run habitable key restore ./case-4B \
 $ uv run habitable status --vault ./case-4B   # opens with the new passphrase
 ```
 
+## Threshold (M-of-N) social custody
+
+A plain recovery backup is one blob held by one person. **Threshold custody**
+splits recovery across several stewards so that *any* `M` of `N` can recover,
+but no single steward can — so no single steward is the honeypot:
+
+```console
+$ uv run habitable key share --vault ./case-4B \
+    --threshold 2 --steward Ana --steward Bo --steward Cy \
+    --out-dir ./case-4B-custody
+# writes recovery-bundle.json + one share file per steward (a 2-of-3 split)
+```
+
+Give each `share-*.json` to its named steward and keep them apart; the
+`recovery-bundle.json` is not secret on its own but is useless without a quorum
+of shares. When recovery is needed, bring any `M` shares together:
+
+```console
+$ uv run habitable key recover ./case-4B \
+    --bundle ./case-4B-custody/recovery-bundle.json \
+    --share ./from-ana.json --share ./from-cy.json
+# (any 2 of the 3 shares, then choose a new vault passphrase)
+```
+
+See the [`key-custody-playbook.md`](key-custody-playbook.md) for when to use this
+and [`crypto-spec.md`](crypto-spec.md) §3a for the construction.
+
 ## Multiple devices
 
 A second organizer's device is itself a kind of backup: sync the case

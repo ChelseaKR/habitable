@@ -172,7 +172,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_app.add_argument("--no-browser", action="store_true", help="do not open a browser")
     p_app.set_defaults(func=_cmd_app)
 
-    p_key = sub.add_parser("key", help="manage vault keys: rotate, backup, restore")
+    p_key = sub.add_parser("key", help="manage vault keys: rotate, backup, restore, share, recover")
     key_sub = p_key.add_subparsers(dest="key_action")
     p_key_rotate = key_sub.add_parser("rotate", help="change the vault passphrase")
     add_vault(p_key_rotate)
@@ -195,6 +195,42 @@ def _build_parser() -> argparse.ArgumentParser:
     p_key_restore.add_argument("--recovery-passphrase", help="backup passphrase (else prompt)")
     p_key_restore.add_argument("--new-passphrase", help="new vault passphrase (else prompt)")
     p_key_restore.set_defaults(func=_cmd_key_restore)
+    p_key_share = key_sub.add_parser(
+        "share",
+        help="split recovery so any M of N stewards can recover (threshold social custody)",
+    )
+    add_vault(p_key_share)
+    p_key_share.add_argument(
+        "--threshold", "-m", required=True, type=int, help="how many stewards must cooperate (M)"
+    )
+    p_key_share.add_argument(
+        "--steward",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="name/label for a steward who holds one share (repeat for each of the N)",
+    )
+    p_key_share.add_argument(
+        "--out-dir", required=True, type=Path, help="directory to write the bundle and shares"
+    )
+    p_key_share.set_defaults(func=_cmd_key_share)
+    p_key_recover = key_sub.add_parser(
+        "recover", help="rebuild a vault keyfile from a recovery bundle and a quorum of shares"
+    )
+    p_key_recover.add_argument("vault", type=Path)
+    p_key_recover.add_argument(
+        "--bundle", required=True, type=Path, help="the recovery bundle file (from key share)"
+    )
+    p_key_recover.add_argument(
+        "--share",
+        action="append",
+        default=[],
+        metavar="FILE",
+        dest="shares",
+        help="a steward's share file (repeat; you need at least M of them)",
+    )
+    p_key_recover.add_argument("--new-passphrase", help="new vault passphrase (else prompt)")
+    p_key_recover.set_defaults(func=_cmd_key_recover)
 
     p_demo = sub.add_parser("demo", help="walk a synthetic case end to end (no real data)")
     p_demo.set_defaults(func=_cmd_demo)
@@ -512,6 +548,57 @@ def _cmd_key_restore(args: argparse.Namespace) -> int:
     Vault.restore_keyfile(args.vault, blob, recovery, new)
     print(f"habitable: keyfile restored for {args.vault}; open it with the new passphrase.")
     return 0
+
+
+def _cmd_key_share(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    stewards: list[str] = list(args.steward)
+    if not stewards:
+        raise HabitableError("give a --steward NAME for each share (at least two)")
+    if args.threshold < 2 or args.threshold > len(stewards):
+        raise HabitableError(
+            f"--threshold M must satisfy 2 <= M <= number of stewards "
+            f"(M={args.threshold}, N={len(stewards)})"
+        )
+    bundle, shares = vault.export_social_shares(args.threshold, stewards)
+
+    out_dir: Path = args.out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    bundle_path = out_dir / "recovery-bundle.json"
+    bundle_path.write_text(bundle, encoding="utf-8")
+    share_paths: list[Path] = []
+    for i, (steward, share) in enumerate(zip(stewards, shares, strict=True), start=1):
+        share_path = out_dir / f"share-{i:02d}-{_slug(steward)}.json"
+        share_path.write_text(share, encoding="utf-8")
+        share_paths.append(share_path)
+
+    print(
+        f"habitable: split recovery into {len(shares)} shares; "
+        f"any {args.threshold} can recover together."
+    )
+    print(f"           bundle:  {bundle_path}")
+    for steward, share_path in zip(stewards, share_paths, strict=True):
+        print(f"           share:   {share_path}  →  give to {steward}")
+    print("           Hand each share to a DIFFERENT steward and keep them apart.")
+    print(f"           No single steward can recover; any {args.threshold} together can.")
+    print("           The bundle is not secret, but is useless without a quorum of shares.")
+    return 0
+
+
+def _cmd_key_recover(args: argparse.Namespace) -> int:
+    if len(args.shares) < 2:
+        raise HabitableError("pass at least two --share FILE values (a quorum of stewards)")
+    new = _new_passphrase(args.new_passphrase)
+    bundle = args.bundle.read_text(encoding="utf-8")
+    share_blobs = [Path(p).read_text(encoding="utf-8") for p in args.shares]
+    Vault.restore_from_shares(args.vault, bundle, share_blobs, new)
+    print(f"habitable: keyfile restored for {args.vault}; open it with the new passphrase.")
+    return 0
+
+
+def _slug(name: str) -> str:
+    cleaned = "".join(c if c.isalnum() else "-" for c in name.strip().lower())
+    return "-".join(filter(None, cleaned.split("-"))) or "steward"
 
 
 def _cmd_demo(_args: argparse.Namespace) -> int:
