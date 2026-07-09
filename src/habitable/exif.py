@@ -10,8 +10,9 @@ both behaviours explicit and reports exactly what each output retains or removes
 no silent disclosure, no silent loss.
 
 Scope: still images (JPEG/TIFF via piexif; other raster formats via Pillow).
-Video metadata stripping is a separate concern and is intentionally not claimed
-here; :func:`make_shared_copy` refuses files it cannot safely sanitize.
+Video/audio metadata stripping lives in :mod:`habitable.media` instead (a
+different toolchain -- ffmpeg -- and a different optional-dependency story, see
+EXP-07); :func:`make_shared_copy` refuses files it cannot safely sanitize.
 """
 
 from __future__ import annotations

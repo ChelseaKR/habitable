@@ -234,21 +234,65 @@ def _render_issue(
         story.append(Spacer(1, 0.1 * inch))
 
     for item in items_by_issue.get(issue_id, []):
-        shared_name = _s(item, "shared_name")
-        caption = (
-            f"Captured {_s(item, 'captured_at')} · hash {_s(item, 'content_hash')[:16]}… · "
-            + ("timestamped" if item.get("timestamp") else "awaiting timestamp")
-        )
-        media_path = media_dir / shared_name if shared_name else None
-        if media_path is not None and media_path.exists():
+        _render_evidence_item(story, item, media_dir, styles)
+
+
+def _render_evidence_item(
+    story: list[Any], item: Mapping[str, JSONValue], media_dir: Path, styles: Any
+) -> None:
+    media_type = _s(item, "media_type")
+    shared_name = _s(item, "shared_name")
+    poster_name = _s(item, "poster_name")
+    transcript = _s(item, "transcript")
+    is_video = media_type.startswith("video/")
+    is_audio = media_type.startswith("audio/")
+    caption = f"Captured {_s(item, 'captured_at')} · hash {_s(item, 'content_hash')[:16]}… · " + (
+        "timestamped" if item.get("timestamp") else "awaiting timestamp"
+    )
+
+    # Video/audio (EXP-07): never embedded as playable media in a static PDF --
+    # show the poster frame (video only) and the plain-text transcript, the same
+    # accessible fallback packet.html uses, plus a pointer to the shared file.
+    if is_video or is_audio:
+        kind = "video" if is_video else "audio"
+        poster_path = media_dir / poster_name if poster_name else None
+        if poster_path is not None and poster_path.exists():
             try:
                 story.append(
-                    Image(str(media_path), width=2.4 * inch, height=2.4 * inch, kind="proportional")
+                    Image(
+                        str(poster_path), width=2.4 * inch, height=2.4 * inch, kind="proportional"
+                    )
                 )
             except Exception:
-                story.append(Paragraph("[image could not be rendered]", styles["Small"]))
+                story.append(Paragraph("[poster frame could not be rendered]", styles["Small"]))
+        if transcript:
+            story.append(Paragraph(f"Transcript: {escape(transcript)}", styles["Small"]))
+        elif not poster_name:
+            story.append(
+                Paragraph(
+                    f"[no transcript or poster frame recorded for this {kind}]", styles["Small"]
+                )
+            )
+        if shared_name:
+            story.append(
+                Paragraph(
+                    f"Shared {kind} file: {escape(shared_name)} (see packet.html)", styles["Small"]
+                )
+            )
         story.append(_para(caption, styles["Small"]))
         story.append(Spacer(1, 0.12 * inch))
+        return
+
+    media_path = media_dir / shared_name if shared_name else None
+    if media_path is not None and media_path.exists():
+        try:
+            story.append(
+                Image(str(media_path), width=2.4 * inch, height=2.4 * inch, kind="proportional")
+            )
+        except Exception:
+            story.append(Paragraph("[image could not be rendered]", styles["Small"]))
+    story.append(_para(caption, styles["Small"]))
+    story.append(Spacer(1, 0.12 * inch))
 
 
 def _appendix_table(bundle: Mapping[str, JSONValue], styles: Any) -> Any:

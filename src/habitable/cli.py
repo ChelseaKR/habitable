@@ -21,13 +21,13 @@ from pathlib import Path
 
 from cryptography import x509
 
-from . import __version__
+from . import __version__, campaign
 from .capture import capture, resolve_deferred, retimestamp_all
 from .commons import DEFAULT_K, build_commons, summarize_case
 from .config import TSAConfig
 from .crypto import PublicIdentity
 from .errors import HabitableError
-from .i18n import cli_text, format_datetime, resolve_locale
+from .i18n import DEFAULT_LOCALE, cli_text, format_datetime, resolve_locale
 from .packet import build_packet
 from .sync import LocalDirTransport, RelayClient, Transport, sync
 from .tsa import DevTSA, Rfc3161HttpTSA, TimestampAuthority
@@ -94,6 +94,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p_capture.add_argument("--issue", required=True)
     p_capture.add_argument("--dev-tsa", action="store_true", help="use the offline dev TSA")
     p_capture.add_argument("--no-timestamp", action="store_true", help="defer timestamping")
+    p_capture.add_argument(
+        "--transcript",
+        default="",
+        help="plain-text transcript/caption for video or audio (EXP-07 accessibility fallback)",
+    )
     p_capture.set_defaults(func=_cmd_capture)
 
     p_tl = sub.add_parser("timeline", help="add a timeline entry")
@@ -133,6 +138,45 @@ def _build_parser() -> argparse.ArgumentParser:
     p_export.add_argument("--include-originals", action="store_true")
     p_export.add_argument("--no-pdf", action="store_true")
     p_export.set_defaults(func=_cmd_export)
+
+    def add_campaign_vaults(p: argparse.ArgumentParser) -> None:
+        p.add_argument(
+            "--vault",
+            dest="vaults",
+            required=True,
+            type=Path,
+            action="append",
+            metavar="PATH",
+            help="path to a case vault this organizer holds keys to; repeatable, one per unit/case",
+        )
+        p.add_argument(
+            "--passphrase",
+            help="passphrase for every vault above (else HABITABLE_PASSPHRASE, "
+            "or a prompt per vault)",
+        )
+
+    p_campaign = sub.add_parser(
+        "campaign",
+        help="on-device evidence-health roll-up across several vaults (EXP-08)",
+    )
+    campaign_sub = p_campaign.add_subparsers(dest="campaign_action")
+
+    p_campaign_status = campaign_sub.add_parser(
+        "status", help="building-level evidence-health roll-up, read-only"
+    )
+    add_campaign_vaults(p_campaign_status)
+    p_campaign_status.set_defaults(func=_cmd_campaign_status)
+
+    p_campaign_export = campaign_sub.add_parser(
+        "export", help="assemble a combined multi-unit building packet"
+    )
+    add_campaign_vaults(p_campaign_export)
+    p_campaign_export.add_argument(
+        "--out", required=True, type=Path, help="output directory for the combined packet"
+    )
+    p_campaign_export.add_argument("--include-originals", action="store_true")
+    p_campaign_export.add_argument("--no-pdf", action="store_true")
+    p_campaign_export.set_defaults(func=_cmd_campaign_export)
 
     p_verify = sub.add_parser("verify", help="independently verify a packet")
     p_verify.add_argument("packet", type=Path)
@@ -337,7 +381,14 @@ def _cmd_capture(args: argparse.Namespace) -> int:
     vault = _open(args)
     tsa = None if args.no_timestamp else _tsa_for(vault, dev=args.dev_tsa)
     extra_tsas = [] if args.no_timestamp else _extra_tsas_for(vault, dev=args.dev_tsa)
-    result = capture(vault, args.media, issue_id=args.issue, tsa=tsa, extra_tsas=extra_tsas)
+    result = capture(
+        vault,
+        args.media,
+        issue_id=args.issue,
+        tsa=tsa,
+        extra_tsas=extra_tsas,
+        transcript=args.transcript,
+    )
     locale = resolve_locale(vault.config.language)
     status = (
         cli_text(
@@ -480,6 +531,88 @@ def _cmd_export(args: argparse.Namespace) -> int:
     for note in result.disclosures:
         print(f"           {note}")
     print(f"           packet written to {result.out_dir}")
+    return 0
+
+
+def _open_campaign_vaults(args: argparse.Namespace) -> list[tuple[Path, Vault]]:
+    """Open every vault named on the command line (EXP-08).
+
+    A shared ``--passphrase``/``HABITABLE_PASSPHRASE`` covers vaults that share
+    one passphrase; otherwise each vault is prompted for individually, exactly
+    like the single-vault commands. Opening is read-only: nothing is written
+    until (and unless) ``campaign export`` explicitly assembles a packet.
+    """
+    shared = args.passphrase or os.environ.get("HABITABLE_PASSPHRASE")
+    vaults: list[tuple[Path, Vault]] = []
+    for path in args.vaults:
+        passphrase = shared or getpass.getpass(f"Passphrase for {path}: ")
+        vaults.append((path, Vault.open(path, passphrase)))
+    return vaults
+
+
+def _campaign_locale(vaults: list[tuple[Path, Vault]]) -> str:
+    return resolve_locale(vaults[0][1].config.language) if vaults else DEFAULT_LOCALE
+
+
+def _cmd_campaign_status(args: argparse.Namespace) -> int:
+    vaults = _open_campaign_vaults(args)
+    report = campaign.build_campaign_report(vaults)
+    locale = _campaign_locale(vaults)
+    summary = cli_text(
+        "campaign_summary",
+        locale,
+        units=report.unit_count,
+        ready=report.export_ready_count,
+        broken=report.broken_custody_count,
+        awaiting=report.awaiting_timestamp_count,
+    )
+    print(f"habitable: {summary}")
+    for unit in report.units:
+        flag_key = (
+            "campaign_flag_ready"
+            if unit.export_ready
+            else "campaign_flag_broken"
+            if not unit.custody_intact
+            else "campaign_flag_awaiting"
+            if unit.awaiting_count
+            else "campaign_flag_empty"
+        )
+        custody = cli_text("custody_intact" if unit.custody_intact else "custody_broken", locale)
+        line = cli_text(
+            "campaign_unit_line",
+            locale,
+            unit=unit.unit,
+            issues=unit.issue_count,
+            timestamped=unit.timestamped_count,
+            captures=unit.capture_count,
+            custody=custody,
+            flag=cli_text(flag_key, locale),
+        )
+        print(f"  · {line}")
+    return 0
+
+
+def _cmd_campaign_export(args: argparse.Namespace) -> int:
+    vaults = _open_campaign_vaults(args)
+    result = campaign.build_campaign_packet(
+        vaults,
+        args.out,
+        include_originals=args.include_originals,
+        make_pdf=not args.no_pdf,
+    )
+    locale = _campaign_locale(vaults)
+    done = cli_text(
+        "campaign_export_done", locale, units=result.report.unit_count, out=result.out_dir
+    )
+    print(f"habitable: {done}")
+    for unit_result in result.units:
+        h = unit_result.health
+        print(
+            f"  · {h.unit}: {unit_result.packet.item_count} item(s), "
+            f"{unit_result.packet.timestamped_count} timestamped -> {unit_result.out_dir}"
+        )
+    print(f"           manifest: {result.manifest_path}")
+    print(f"           index: {result.index_path}")
     return 0
 
 

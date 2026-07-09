@@ -139,6 +139,7 @@ def verify_packet(
     signature_ok = _verify_signature(packet_dir, bundle_bytes)
     custody_ok, custody_length, custody = _verify_custody(bundle)
     bindings = _sharing_bindings(custody)
+    poster_bindings = _poster_bindings(custody)
 
     problems: list[str] = []
     items: list[ItemVerdict] = []
@@ -146,7 +147,7 @@ def verify_packet(
         if not isinstance(raw_item, dict):
             problems.append("malformed item in bundle")
             continue
-        items.append(_verify_item(raw_item, packet_dir, bindings, trusted_certs))
+        items.append(_verify_item(raw_item, packet_dir, bindings, poster_bindings, trusted_certs))
 
     return VerificationReport(
         packet_dir=packet_dir,
@@ -163,12 +164,17 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
     item: Mapping[str, JSONValue],
     packet_dir: Path,
     bindings: dict[str, set[tuple[str, str]]],
+    poster_bindings: dict[str, set[tuple[str, str]]],
     trusted_certs: list[x509.Certificate] | None,
 ) -> ItemVerdict:
     capture_id = _s(item, "capture_id")
     content_hash = _s(item, "content_hash")
+    media_type = _s(item, "media_type")
     shared_name = _s(item, "shared_name")
     shared_hash = _s(item, "shared_hash")
+    poster_name = _s(item, "poster_name")
+    poster_hash = _s(item, "poster_hash")
+    transcript = _s(item, "transcript")
     notes: list[str] = []
 
     # 1. Trusted timestamp(s) over the original content hash. The primary token plus any
@@ -249,6 +255,25 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
         custody_binding_ok = (content_hash, shared_hash) in bindings.get(capture_id, set())
         if not custody_binding_ok:
             notes.append("no signed custody entry binds the shared copy to the original")
+
+    # 3b. Video's poster frame (EXP-07), if present, hashes and binds the same way.
+    if poster_name:
+        poster_path = packet_dir / _MEDIA / poster_name
+        if not poster_path.exists():
+            shared_media_ok = False
+            notes.append("poster frame file missing")
+        elif sha256_file(poster_path) != poster_hash:
+            shared_media_ok = False
+            notes.append("poster frame does not match its recorded hash")
+        elif (content_hash, poster_hash) not in poster_bindings.get(capture_id, set()):
+            custody_binding_ok = False
+            notes.append("no signed custody entry binds the poster frame to the original")
+
+    # 3c. Video/audio needs a transcript or poster frame to meet the accessibility
+    #     gate (EXP-07 excellence bar); surfaced as a note, not a hard failure --
+    #     this is a completeness signal, not a cryptographic integrity failure.
+    if media_type.startswith(("video/", "audio/")) and not transcript and not poster_name:
+        notes.append("no transcript or poster frame recorded for this item (accessibility gap)")
 
     # 4. If the sealed original is embedded, re-derive its content hash.
     original_fixity_ok: bool | None = None
@@ -332,6 +357,18 @@ def _sharing_bindings(custody: CustodyLog) -> dict[str, set[tuple[str, str]]]:
             content_hash = entry.details.get("content_hash", "")
             shared_hash = entry.details.get("shared_hash", "")
             bindings.setdefault(entry.item_id, set()).add((content_hash, shared_hash))
+    return bindings
+
+
+def _poster_bindings(custody: CustodyLog) -> dict[str, set[tuple[str, str]]]:
+    """Map capture_id -> {(content_hash, poster_hash)} attested in custody (EXP-07)."""
+    bindings: dict[str, set[tuple[str, str]]] = {}
+    for entry in custody.entries:
+        if entry.action == "copied_for_sharing":
+            poster_hash = entry.details.get("poster_hash", "")
+            if poster_hash:
+                content_hash = entry.details.get("content_hash", "")
+                bindings.setdefault(entry.item_id, set()).add((content_hash, poster_hash))
     return bindings
 
 

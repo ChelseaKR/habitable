@@ -347,6 +347,26 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "synced — merged {messages, plural, one {# message} other {# messages}}, "
             "imported {captures, plural, one {# capture} other {# captures}}"
         ),
+        "campaign_summary": (
+            "building roll-up — {units, plural, one {# unit} other {# units}}, "
+            "{ready, plural, one {# export-ready} other {# export-ready}}, "
+            "{broken, plural, one {# broken custody chain} other {# broken custody chains}}, "
+            "{awaiting, plural, one {# capture awaiting a timestamp} "
+            "other {# captures awaiting a timestamp}}"
+        ),
+        "campaign_unit_line": (
+            "{unit}: {issues, plural, one {# issue} other {# issues}}, "
+            "{timestamped}/{captures, plural, one {# capture} other {# captures}} "
+            "timestamped, custody {custody} — {flag}"
+        ),
+        "campaign_flag_ready": "export-ready",
+        "campaign_flag_broken": "custody broken",
+        "campaign_flag_awaiting": "needs timestamps",
+        "campaign_flag_empty": "no captures yet",
+        "campaign_export_done": (
+            "{units, plural, one {# unit} other {# units}} packaged into one "
+            "building packet at {out}"
+        ),
     },
     "es": {
         "status_summary": (
@@ -403,6 +423,27 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "sincronizado — {messages, plural, one {se fusionó # mensaje} "
             "other {se fusionaron # mensajes}}, "
             "{captures, plural, one {se importó # captura} other {se importaron # capturas}}"
+        ),
+        "campaign_summary": (
+            "resumen del edificio — {units, plural, one {# vivienda} other {# viviendas}}, "
+            "{ready, plural, one {# lista para exportar} other {# listas para exportar}}, "
+            "{broken, plural, one {# cadena de custodia rota} "
+            "other {# cadenas de custodia rotas}}, "
+            "{awaiting, plural, one {# captura pendiente de sello de tiempo} "
+            "other {# capturas pendientes de sello de tiempo}}"
+        ),
+        "campaign_unit_line": (
+            "{unit}: {issues, plural, one {# problema} other {# problemas}}, "
+            "{timestamped}/{captures, plural, one {# captura} other {# capturas}} "
+            "con sello de tiempo, custodia {custody} — {flag}"
+        ),
+        "campaign_flag_ready": "lista para exportar",
+        "campaign_flag_broken": "cadena de custodia rota",
+        "campaign_flag_awaiting": "necesita sellos de tiempo",
+        "campaign_flag_empty": "sin capturas todavía",
+        "campaign_export_done": (
+            "{units, plural, one {# vivienda empaquetada} "
+            "other {# viviendas empaquetadas}} en un solo paquete del edificio en {out}"
         ),
     },
 }

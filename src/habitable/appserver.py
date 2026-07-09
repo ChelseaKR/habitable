@@ -121,8 +121,9 @@ class AppServer:
         tmp.mkdir(exist_ok=True)
         staged = tmp / Path(filename).name
         staged.write_bytes(media)
+        transcript = _opt_str(body, "transcript")
         try:
-            result = capture(self.vault, staged, issue_id=issue_id, tsa=tsa)
+            result = capture(self.vault, staged, issue_id=issue_id, tsa=tsa, transcript=transcript)
         finally:
             staged.unlink(missing_ok=True)
         return {
