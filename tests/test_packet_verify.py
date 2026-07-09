@@ -174,12 +174,12 @@ def test_redundant_authority_satisfies_when_primary_absent(
         )
 
     # No primary token, but a valid independent authority over the same hash → verified.
-    verdict = _verify_item(item_for(sha256_bytes(b"some sealed bytes")), tmp_path, {}, None)
+    verdict = _verify_item(item_for(sha256_bytes(b"some sealed bytes")), tmp_path, {}, {}, None)
     assert verdict.timestamp_verified and verdict.ok
     assert verdict.verified_authorities == ("test-rfc3161",)
 
     # An additional token over a *different* hash does not satisfy the item.
-    other = _verify_item(item_for(sha256_bytes(b"other")), tmp_path, {}, None)
+    other = _verify_item(item_for(sha256_bytes(b"other")), tmp_path, {}, {}, None)
     assert not other.timestamp_verified and not other.ok
 
 

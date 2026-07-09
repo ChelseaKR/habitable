@@ -33,6 +33,7 @@ from .config import SharingPolicy
 from .errors import PacketError
 from .evidence import CustodyAction
 from .exif import make_shared_copy
+from .media import extract_poster_frame, make_shared_media_copy
 from .model import Capture, Issue, TimelineEntry
 from .vault import Vault
 
@@ -51,6 +52,12 @@ _EXT_BY_TYPE = {
     "image/png": ".png",
     "image/tiff": ".tif",
     "image/webp": ".webp",
+    # Video/audio (EXP-07): stripped via ffmpeg in habitable.media, not exif.py.
+    "video/mp4": ".mp4",
+    "video/quicktime": ".mov",
+    "audio/mp4": ".m4a",
+    "audio/mpeg": ".mp3",
+    "audio/wav": ".wav",
 }
 
 
@@ -217,27 +224,48 @@ def _build_item(
 
     original_bytes = vault.read_original(capture_id, content_hash)
     ext = _EXT_BY_TYPE.get(media_type, "")
+    is_video = media_type.startswith("video/")
+    is_audio = media_type.startswith("audio/")
     shared_name = ""
     shared_hash = ""
     stripped = "skipped"
+    poster_name = ""
+    poster_hash = ""
 
-    if ext:  # an image we know how to sanitize
+    if ext:  # a media type we know how to sanitize (image, or video/audio via ffmpeg)
         source = tmp_dir / f"{capture_id}{ext}"
         source.write_bytes(original_bytes)
         shared_name = f"{capture_id}{ext}"
-        report = make_shared_copy(source, media_dir / shared_name, sharing)
+        if is_video or is_audio:
+            report = make_shared_media_copy(source, media_dir / shared_name, sharing)
+        else:
+            report = make_shared_copy(source, media_dir / shared_name, sharing)
         shared_hash = sha256_file(media_dir / shared_name)
         stripped = ", ".join(report.removed) or "none"
+
+        # A poster frame is the accessible fallback for video (E-03/R-06-style alt
+        # text has nothing to attach to for a moving image); best-effort -- a
+        # missing ffmpeg or an unreadable frame degrades to transcript-only, it
+        # never blocks packet assembly (R-03: media handling stays optional).
+        if is_video:
+            poster_path = media_dir / f"{capture_id}-poster.jpg"
+            if extract_poster_frame(source, poster_path):
+                poster_name = poster_path.name
+                poster_hash = sha256_file(poster_path)
+
+        custody_details: dict[str, str] = {
+            "content_hash": content_hash,
+            "shared_hash": shared_hash,
+            "stripped": stripped,
+        }
+        if poster_name:
+            custody_details["poster_hash"] = poster_hash
         vault.custody.append(
             CustodyAction.COPIED_FOR_SHARING,
             capture_id,
             actor=actor,
             hlc=vault.document.clock.now().encode(),
-            details={
-                "content_hash": content_hash,
-                "shared_hash": shared_hash,
-                "stripped": stripped,
-            },
+            details=custody_details,
             identity=vault.identity,
         )
 
@@ -256,6 +284,9 @@ def _build_item(
         "shared_name": shared_name,
         "shared_hash": shared_hash,
         "stripped": stripped,
+        "poster_name": poster_name,
+        "poster_hash": poster_hash,
+        "transcript": capture.transcript,
         "has_original": include_originals,
         "timestamp": cast(JSONValue, token.to_dict()) if token is not None else None,
         "archive_timestamps": cast(JSONValue, [a.to_dict() for a in archives]),

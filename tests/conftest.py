@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
@@ -86,6 +87,49 @@ def local_tsa() -> LocalRfc3161TSA:
 @pytest.fixture
 def dev_tsa() -> DevTSA:
     return DevTSA("test-dev-tsa", time_source=lambda: FIXED_EPOCH_SECONDS)
+
+
+@pytest.fixture
+def make_mp4(tmp_path: Path) -> Callable[..., Path]:
+    """Factory for tiny synthetic MP4s (a solid color, no real footage), built
+    entirely by ffmpeg's ``lavfi`` test source, optionally tagged with a fake
+    location so metadata-stripping can be exercised honestly."""
+
+    def _make(
+        name: str = "clip.mp4", *, with_location: bool = False, duration: float = 0.5
+    ) -> Path:
+        path = tmp_path / name
+        cmd = ["ffmpeg", "-y", "-f", "lavfi", "-i", f"color=c=blue:s=32x32:d={duration}"]
+        if with_location:
+            cmd += ["-metadata", "location=+38.5816-121.4944/"]
+        cmd += ["-metadata", "comment=synthetic-test-clip", "-pix_fmt", "yuv420p", str(path)]
+        subprocess.run(cmd, capture_output=True, check=True, timeout=30)
+        return path
+
+    return _make
+
+
+@pytest.fixture
+def make_wav(tmp_path: Path) -> Callable[..., Path]:
+    """Factory for tiny synthetic WAV files (a sine tone), built by ffmpeg."""
+
+    def _make(name: str = "clip.wav", *, duration: float = 0.5) -> Path:
+        path = tmp_path / name
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=440:duration={duration}",
+            "-metadata",
+            "comment=synthetic-test-tone",
+            str(path),
+        ]
+        subprocess.run(cmd, capture_output=True, check=True, timeout=30)
+        return path
+
+    return _make
 
 
 @pytest.fixture
