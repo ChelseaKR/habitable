@@ -15,7 +15,13 @@ from habitable import relay as relay_mod
 from habitable.capture import capture
 from habitable.errors import SyncError
 from habitable.relay import RelayStore, make_server
-from habitable.sync import LocalDirTransport, RelayClient, import_messages, sync
+from habitable.sync import (
+    LocalDirTransport,
+    PaddingTransport,
+    RelayClient,
+    import_messages,
+    sync,
+)
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
 
@@ -187,3 +193,110 @@ def test_localdir_mailbox_holds_only_ciphertext(
     for marker in _no_content_markers(a, image_bytes):
         assert marker not in raw
         assert marker not in decoded
+
+
+# --- metadata-resistant transport (EXP-12) ------------------------------------
+
+
+def test_padding_transport_round_trips_a_full_sync(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """Wrapping a transport in padding + cover traffic must not break real delivery."""
+    a = make_vault("A")
+    b = make_vault("B", passphrase="pw-b")
+    _seed(a, make_jpeg, local_tsa)
+    inner = LocalDirTransport(tmp_path / "mbox")
+    ta = PaddingTransport(inner, block_size=4096, batch_size=4)
+    tb = PaddingTransport(inner, block_size=4096, batch_size=4)
+    sync(a, b.identity.public(), ta, channel="room")
+    result = sync(b, a.identity.public(), tb, channel="room")
+
+    # The real message survives the padding/decoy round-trip; decoys are dropped silently.
+    assert result.captures_imported == 1
+    assert [i.issue_id for i in b.document.issues()] == ["i1"]
+    assert b.custody.verify().ok
+
+    # Idempotent even through padding: re-importing changes nothing.
+    again = import_messages(b, tb.fetch("room"))
+    assert again.captures_imported == 0
+
+
+def test_padding_transport_emits_uniform_block_sized_cover_batch(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """One real post must leave the relay a full batch of identical-size blobs."""
+    a = make_vault("A")
+    b = make_vault("B", passphrase="pw-b")
+    _seed(a, make_jpeg, local_tsa)
+    inner = LocalDirTransport(tmp_path / "mbox")
+    transport = PaddingTransport(inner, block_size=4096, batch_size=4)
+    sync(a, b.identity.public(), transport, channel="room")
+
+    # What the relay actually stored: read the raw framed blobs via the inner transport.
+    raw_blobs = inner.fetch("room")
+    # Exactly batch_size blobs left the sender (1 real + 3 decoys) — the relay cannot tell
+    # from the count how many were real.
+    assert len(raw_blobs) == 4
+    # Every blob in the flush is padded to one identical, block-aligned size, so neither
+    # size nor position distinguishes the real message from its decoys.
+    sizes = {len(blob) for blob in raw_blobs}
+    assert len(sizes) == 1
+    assert next(iter(sizes)) % 4096 == 0
+
+
+def test_padding_transport_drops_decoys_on_import(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """A channel of mostly decoys imports exactly the one real message, no more."""
+    a = make_vault("A")
+    b = make_vault("B", passphrase="pw-b")
+    _seed(a, make_jpeg, local_tsa)
+    inner = LocalDirTransport(tmp_path / "mbox")
+    # A large batch means many decoys accompany the single real message.
+    transport = PaddingTransport(inner, block_size=4096, batch_size=8)
+    sync(a, b.identity.public(), transport, channel="room")
+    assert len(inner.fetch("room")) == 8  # 1 real + 7 decoys on the wire
+
+    tb = PaddingTransport(inner, block_size=4096, batch_size=8)
+    result = import_messages(b, tb.fetch("room"))
+    assert result.messages_merged == 1
+    assert result.captures_imported == 1
+
+
+def test_padding_transport_batches_multiple_posts_when_not_auto_flushing(
+    make_vault: Callable[..., Vault],
+    tmp_path: Path,
+) -> None:
+    """auto_flush=False buffers posts until one flush emits a single padded batch."""
+    inner = LocalDirTransport(tmp_path / "mbox")
+    transport = PaddingTransport(inner, block_size=1024, batch_size=4, auto_flush=False)
+    transport.post("room", b"one")
+    transport.post("room", b"two")
+    # Nothing has left the sender yet: buffered, not posted.
+    assert inner.fetch("room") == []
+
+    transport.flush("room")
+    raw_blobs = inner.fetch("room")
+    # Two real + two decoys, all one block, emitted together in a single batch.
+    assert len(raw_blobs) == 4
+    assert {len(blob) for blob in raw_blobs} == {1024}
+    # Both real payloads are recoverable (order is shuffled, so compare as a set).
+    recovered = {transport._unframe(blob) for blob in raw_blobs}
+    assert {b"one", b"two"} <= recovered
+
+
+def test_padding_transport_passes_through_unframed_blobs(tmp_path: Path) -> None:
+    """A channel that also carries plain (unpadded) blobs still delivers them."""
+    inner = LocalDirTransport(tmp_path / "mbox")
+    inner.post("room", b"legacy-unframed-message")
+    transport = PaddingTransport(inner, block_size=1024, batch_size=2)
+    assert b"legacy-unframed-message" in transport.fetch("room")

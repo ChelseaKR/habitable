@@ -11,6 +11,10 @@ re-checks fixity, sync is idempotent: re-delivering a message changes nothing.
 Transports decide how the sealed bytes travel — a shared directory
 (:class:`LocalDirTransport`, also good for USB/AirDrop-style transfer) or a relay
 (:class:`RelayClient`).
+
+:class:`PaddingTransport` wraps any of those to reduce the *metadata* a relay
+operator can infer about a sync — see its docstring and
+``docs/relay-observability-matrix.md`` for exactly what it does and does not hide.
 """
 
 from __future__ import annotations
@@ -18,6 +22,9 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
+import secrets
+import struct
 import urllib.error
 import urllib.request
 from collections.abc import Mapping
@@ -34,6 +41,7 @@ from .vault import Vault
 
 __all__ = [
     "LocalDirTransport",
+    "PaddingTransport",
     "RelayClient",
     "SyncResult",
     "Transport",
@@ -280,6 +288,137 @@ class RelayClient:
         if not isinstance(payload, dict) or not isinstance(payload.get("messages"), list):
             raise SyncError("malformed relay response")
         return [base64.b64decode(item) for item in payload["messages"] if isinstance(item, str)]
+
+
+# --- metadata-resistant transport (EXP-12) ------------------------------------
+
+# Frame layout for a padded blob:
+#   MAGIC (4) | VERSION (1) | payload length (4, big-endian) | payload | random pad
+# The whole frame is padded with random bytes to the next multiple of ``block_size``,
+# so what leaves the sender reveals the payload size only to block granularity. A frame
+# that carries a *decoy* is byte-for-byte indistinguishable from a real one to the relay
+# (same magic, same size distribution, random-looking body) but its payload does not open
+# to any recipient, so ``import_messages`` drops it as "not addressed to us".
+_PAD_MAGIC = b"HbP1"
+_PAD_VERSION = 1
+_PAD_HEADER = struct.Struct(">4sBI")  # magic, version, length
+_PAD_HEADER_LEN = _PAD_HEADER.size
+_DEFAULT_BLOCK_SIZE = 64 * 1024
+
+
+def _round_up(value: int, block: int) -> int:
+    return ((value + block - 1) // block) * block
+
+
+class PaddingTransport:
+    """Wrap a transport to shrink the *metadata* a relay can infer from a sync.
+
+    This is the opt-in, honest core of **EXP-12** (see
+    ``docs/relay-observability-matrix.md`` §5 and ``docs/threat-model.md`` §5). It does
+    **two** concrete, testable things and nothing more:
+
+    1. **Size padding.** Every posted blob is framed and padded with random bytes to the
+       next multiple of ``block_size``. The relay therefore learns each message's size
+       only to block granularity (default 64 KiB), not its exact byte length, so blob
+       size no longer tracks real payload size.
+    2. **Cover traffic.** Each *flush* posts a fixed ``batch_size`` of blobs that are all
+       padded to the **same** size — the largest real frame in that batch, rounded to a
+       block. Short real messages and **decoys** (correctly-framed random blobs that no
+       recipient can open and that :func:`import_messages` silently discards) are padded up
+       to match. The relay thus sees a constant number of indistinguishable-size posts per
+       flush and can tell neither how many were real (up to ``batch_size``) nor which ones.
+
+    With ``auto_flush=True`` (the default) each :meth:`post` immediately emits one full
+    padded, cover-filled batch, so it is a drop-in wrapper for :func:`sync` with no API
+    change. With ``auto_flush=False`` you may :meth:`post` several messages and then
+    :meth:`flush` once, batching real events together to also blunt per-message timing and
+    count.
+
+    **What this does NOT hide (honest residual — do not overclaim).** The relay still
+    sees the **room id** (``channel``), the **peer IP addresses** (at the network/proxy
+    layer), and **that a room is active and roughly when**. Cover traffic hides the real
+    message count only up to ``batch_size``; the uniform batch size still reveals the size
+    of the *largest* real message (rounded to a block), and padding costs real bandwidth (a
+    tension with tight data caps). This wrapper is **not** an anonymity network — it does
+    not mix across senders or defeat IP-level correlation — and has **not** had the
+    external traffic-analysis review the project's own principle requires before such a
+    property is relied upon. To remove relay metadata entirely, use no relay: sync
+    peer-to-peer with :class:`LocalDirTransport`.
+    """
+
+    def __init__(
+        self,
+        inner: Transport,
+        *,
+        block_size: int = _DEFAULT_BLOCK_SIZE,
+        batch_size: int = 4,
+        auto_flush: bool = True,
+    ) -> None:
+        if block_size <= _PAD_HEADER_LEN:
+            raise SyncError(f"block_size must exceed {_PAD_HEADER_LEN}")
+        if batch_size < 1:
+            raise SyncError("batch_size must be at least 1")
+        self._inner = inner
+        self._block_size = block_size
+        self._batch_size = batch_size
+        self._auto_flush = auto_flush
+        self._pending: dict[str, list[bytes]] = {}
+
+    def post(self, channel: str, blob: bytes) -> None:
+        """Frame + pad ``blob`` and queue it; emit a batch now if ``auto_flush``."""
+        self._pending.setdefault(channel, []).append(self._frame(blob))
+        if self._auto_flush:
+            self.flush(channel)
+
+    def flush(self, channel: str) -> None:
+        """Post ``channel``'s queued frames + cover, all padded to one uniform size."""
+        frames = self._pending.pop(channel, [])
+        # Round the batch count up so a full multiple of ``batch_size`` leaves the sender;
+        # a partial final batch is filled with decoys rather than revealing the remainder.
+        count = max(self._batch_size, _round_up(len(frames), self._batch_size))
+        # Every blob in this flush is padded to the same size — the largest real frame,
+        # rounded to a block — so size distinguishes neither real-from-decoy nor one real
+        # message from another within the batch.
+        target = max((len(f) for f in frames), default=self._block_size)
+        blobs = [self._pad_to(frame, target) for frame in frames]
+        while len(blobs) < count:
+            blobs.append(self._decoy(target))
+        secrets.SystemRandom().shuffle(blobs)  # don't leak real-vs-decoy by position
+        for blob in blobs:
+            self._inner.post(channel, blob)
+
+    def fetch(self, channel: str) -> list[bytes]:
+        """Fetch, unframe, and strip padding; decoys pass through as un-openable bytes."""
+        return [self._unframe(raw) for raw in self._inner.fetch(channel)]
+
+    def _frame(self, payload: bytes) -> bytes:
+        header = _PAD_HEADER.pack(_PAD_MAGIC, _PAD_VERSION, len(payload))
+        return self._pad_to(header + payload, self._block_size)
+
+    def _pad_to(self, body: bytes, target: int) -> bytes:
+        # Pad ``body`` with random bytes up to at least ``target``, rounded to a block.
+        # Trailing bytes past the header's declared length are ignored on unframe.
+        padded_len = max(target, _round_up(len(body), self._block_size))
+        return body + secrets.token_bytes(padded_len - len(body))
+
+    def _decoy(self, target: int) -> bytes:
+        # A decoy is a real frame over random "payload" bytes, padded to the batch size:
+        # same magic and size as a genuine message, but it opens for no one.
+        size = secrets.randbelow(max(1, self._block_size - _PAD_HEADER_LEN))
+        header = _PAD_HEADER.pack(_PAD_MAGIC, _PAD_VERSION, size)
+        return self._pad_to(header + os.urandom(size), target)
+
+    def _unframe(self, raw: bytes) -> bytes:
+        # Pass through anything not framed by us, so a mixed channel still delivers.
+        if len(raw) < _PAD_HEADER_LEN:
+            return raw
+        magic, version, length = _PAD_HEADER.unpack(raw[:_PAD_HEADER_LEN])
+        if magic != _PAD_MAGIC or version != _PAD_VERSION:
+            return raw
+        end = _PAD_HEADER_LEN + length
+        if end > len(raw):
+            raise SyncError("padded frame claims more payload than it carries")
+        return raw[_PAD_HEADER_LEN:end]
 
 
 # --- helpers ------------------------------------------------------------------
