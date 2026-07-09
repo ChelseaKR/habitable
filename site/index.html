@@ -5,13 +5,132 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#16424f" />
-    <title>habitable — court-ready habitability evidence for tenant unions</title>
+    <title>Habitable Evidence — Offline Tenant Repair Documentation</title>
     <meta
       name="description"
-      content="A privacy-first, offline-capable, end-to-end-encrypted tool that turns tenant photos
-      into court-ready evidence: trusted timestamps, content hashing, chain of custody, and
-      independently verifiable packets. Local-first; no server holds your data."
+      content="Habitable Evidence helps tenants and unions document repairs, notices, photos, and timelines offline—then share a packet anyone can verify."
     />
+    <meta name="author" content="Chelsea Kelly-Reif" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <link rel="canonical" href="https://chelseakr.github.io/habitable/" />
+    <link rel="icon" href="img/icon.svg" type="image/svg+xml" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:site_name" content="Habitable Evidence" />
+    <meta property="og:url" content="https://chelseakr.github.io/habitable/" />
+    <meta
+      property="og:title"
+      content="Habitable Evidence — Offline Tenant Repair Documentation"
+    />
+    <meta
+      property="og:description"
+      content="Habitable Evidence helps tenants and unions document repairs, notices, photos, and timelines offline—then share a packet anyone can verify."
+    />
+    <meta
+      property="og:image"
+      content="https://chelseakr.github.io/habitable/img/app-en.png"
+    />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="2200" />
+    <meta property="og:image:height" content="3000" />
+    <meta
+      property="og:image:alt"
+      content="The Habitable Evidence app showing a case status panel, issues, and an add-issue form."
+    />
+
+    <meta name="twitter:card" content="summary" />
+    <meta
+      name="twitter:title"
+      content="Habitable Evidence — Offline Tenant Repair Documentation"
+    />
+    <meta
+      name="twitter:description"
+      content="Habitable Evidence helps tenants and unions document repairs, notices, photos, and timelines offline—then share a packet anyone can verify."
+    />
+    <meta
+      name="twitter:image"
+      content="https://chelseakr.github.io/habitable/img/app-en.png"
+    />
+    <meta
+      name="twitter:image:alt"
+      content="The Habitable Evidence app showing a case status panel, issues, and an add-issue form."
+    />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Person",
+            "@id": "https://github.com/ChelseaKR#person",
+            "name": "Chelsea Kelly-Reif",
+            "url": "https://github.com/ChelseaKR"
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://chelseakr.github.io/habitable/#website",
+            "url": "https://chelseakr.github.io/habitable/",
+            "name": "Habitable Evidence",
+            "alternateName": "habitable",
+            "inLanguage": "en",
+            "publisher": { "@id": "https://github.com/ChelseaKR#person" }
+          },
+          {
+            "@type": "ImageObject",
+            "@id": "https://chelseakr.github.io/habitable/#primaryimage",
+            "contentUrl": "https://chelseakr.github.io/habitable/img/app-en.png",
+            "width": 2200,
+            "height": 3000,
+            "caption": "The Habitable Evidence app in English."
+          },
+          {
+            "@type": "WebPage",
+            "@id": "https://chelseakr.github.io/habitable/#webpage",
+            "url": "https://chelseakr.github.io/habitable/",
+            "name": "Habitable Evidence — Offline Tenant Repair Documentation",
+            "description": "Habitable Evidence helps tenants and unions document repairs, notices, photos, and timelines offline—then share a packet anyone can verify.",
+            "inLanguage": "en",
+            "isPartOf": { "@id": "https://chelseakr.github.io/habitable/#website" },
+            "about": { "@id": "https://chelseakr.github.io/habitable/#software" },
+            "primaryImageOfPage": {
+              "@id": "https://chelseakr.github.io/habitable/#primaryimage"
+            }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://chelseakr.github.io/habitable/#software",
+            "name": "habitable",
+            "alternateName": "Habitable Evidence",
+            "url": "https://chelseakr.github.io/habitable/",
+            "sameAs": "https://github.com/ChelseaKR/habitable",
+            "description": "A privacy-first, offline-capable tool for tenants and tenant unions to document repair and habitability problems and export independently verifiable evidence packets.",
+            "applicationCategory": "UtilitiesApplication",
+            "applicationSubCategory": "Tenant repair documentation",
+            "operatingSystem": "Any operating system that supports Python 3.14",
+            "softwareRequirements": "Python 3.14 and uv",
+            "isAccessibleForFree": true,
+            "offers": { "@type": "Offer", "price": 0 },
+            "license": "https://spdx.org/licenses/AGPL-3.0-or-later.html",
+            "creator": { "@id": "https://github.com/ChelseaKR#person" },
+            "image": { "@id": "https://chelseakr.github.io/habitable/#primaryimage" },
+            "subjectOf": { "@id": "https://github.com/ChelseaKR/habitable#source" }
+          },
+          {
+            "@type": "SoftwareSourceCode",
+            "@id": "https://github.com/ChelseaKR/habitable#source",
+            "name": "habitable source code",
+            "url": "https://github.com/ChelseaKR/habitable",
+            "codeRepository": "https://github.com/ChelseaKR/habitable",
+            "programmingLanguage": "Python",
+            "runtimePlatform": "Python 3.14",
+            "license": "https://spdx.org/licenses/AGPL-3.0-or-later.html",
+            "creator": { "@id": "https://github.com/ChelseaKR#person" },
+            "targetProduct": { "@id": "https://chelseakr.github.io/habitable/#software" }
+          }
+        ]
+      }
+    </script>
     <style>
       :root { color-scheme: light dark; }
       * { box-sizing: border-box; }
@@ -97,21 +216,24 @@
         <h2 id="see-h">See it</h2>
         <div class="shots">
           <figure>
-            <img src="img/app-en.png" alt="The habitable app: a Case status panel showing unit 4B,
-              device fingerprint, issue and capture counts, and an intact chain of custody, above an
-              Issues list and an Add issue form." />
+            <img src="img/app-en.png" width="2200" height="3000" loading="lazy" decoding="async"
+              alt="The habitable app: a Case status panel showing unit 4B, device fingerprint, issue
+              and capture counts, and an intact chain of custody, above an Issues list and an Add
+              issue form." />
             <figcaption>The local app (English) — runs on your device, not a server.</figcaption>
           </figure>
           <figure>
-            <img src="img/app-es.png" alt="The same habitable app shown in Spanish, with all labels
-              and buttons translated." />
+            <img src="img/app-es.png" width="2200" height="3000" loading="lazy" decoding="async"
+              alt="The same habitable app shown in Spanish, with all labels and buttons translated."
+            />
             <figcaption>Bilingual: the full interface in Español.</figcaption>
           </figure>
         </div>
         <figure>
-          <img src="img/packet.png" alt="A habitability evidence packet rendered as an accessible
-            web page: title, generated date and counts, an issue with its timeline and a captured
-            photo, and an evidence appendix table of content hashes and timestamp status." />
+          <img src="img/packet.png" width="2448" height="3038" loading="lazy" decoding="async"
+            alt="A habitability evidence packet rendered as an accessible web page: title, generated
+            date and counts, an issue with its timeline and a captured photo, and an evidence
+            appendix table of content hashes and timestamp status." />
           <figcaption>
             An exported packet (synthetic data). Open the
             <a href="sample-packet/packet.html">live sample packet</a> — it is the actual accessible
@@ -149,8 +271,8 @@ uv run habitable app      # the accessible local web app (English / Español)</c
 
     <footer>
       <p>
-        habitable — an independent, personal open-source project. AGPL-3.0 (the standalone verifier
-        also under Apache-2.0). Not legal advice.
+        habitable — an independent, personal open-source project by Chelsea Kelly-Reif. AGPL-3.0
+        (the standalone verifier also under Apache-2.0). Not legal advice.
       </p>
     </footer>
   </body>

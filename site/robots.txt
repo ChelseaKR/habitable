@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /habitable/
+
+Sitemap: https://chelseakr.github.io/habitable/sitemap.xml
