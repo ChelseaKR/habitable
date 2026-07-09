@@ -87,6 +87,7 @@ class Vault:
         *,
         case_id: str,
         unit: str = "",
+        building: str = "",
         language: str = "en",
         time_source: Callable[[], int] = wall_clock_ms,
     ) -> Vault:
@@ -112,6 +113,8 @@ class Vault:
         document.ensure_case_salt()  # so exported ids are opaque from the first mint
         if unit:
             document.set_meta("unit", unit)
+        if building:
+            document.set_meta("building", building)
         vault = cls(path, config, dek, identity, document, CustodyLog(), [])
         vault._write_blob(_IDENTITY, identity.serialize())
         vault.save()
