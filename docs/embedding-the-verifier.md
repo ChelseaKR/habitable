@@ -11,6 +11,12 @@
 > ship verification in your own product without the AGPL reaching your code. (Merely *running* the
 > verifier never triggers copyleft regardless.)
 
+> **Adopting the whole evidence spine, not just the packet verifier?** See
+> [`evidence-kernel.md`](evidence-kernel.md) — the reusable, semver-contracted kernel
+> (`habitable.kernel`: canonical + custody + timestamps + signatures + verify) with a
+> language-independent golden corpus for cross-checking two implementations. This page is the
+> packet-verification recipe that sits inside it.
+
 ## What "the verifier subset" is
 
 The independently-licensed subset is `habitable.verify` plus the pure modules it imports:

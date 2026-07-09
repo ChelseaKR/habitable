@@ -15,7 +15,7 @@ surfaces as an error rather than a quietly altered exhibit.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,6 +33,7 @@ from .crypto import (
 from .errors import FixityError, VaultError
 from .evidence import CustodyLog
 from .model import CaseDocument
+from .threshold import create_recovery_bundle, recover_dek
 from .tsa import TimestampToken
 
 __all__ = ["DeferredItem", "Vault"]
@@ -179,6 +180,28 @@ class Vault:
     ) -> None:
         """Rebuild a vault's keyfile from a recovery backup, under a new passphrase."""
         dek = import_recovery_blob(recovery_blob, recovery_passphrase)
+        (path / _KEYFILE).write_text(export_recovery_blob(dek, new_passphrase), encoding="utf-8")
+
+    def export_social_shares(
+        self, threshold: int, stewards: Sequence[str]
+    ) -> tuple[str, list[str]]:
+        """Split recovery custody so any ``threshold`` of ``stewards`` can recover (EXP-11).
+
+        Returns ``(bundle_json, [share_json, ...])`` — one share per steward. No
+        single steward can reconstruct the data key; any ``threshold`` of them
+        can, together with the (non-secret) bundle. This makes distributed
+        custody cryptographic rather than a matter of social convention, so no
+        one custodian is the honeypot. Store shares apart, held by different
+        people.
+        """
+        return create_recovery_bundle(self._dek, threshold, stewards)
+
+    @staticmethod
+    def restore_from_shares(
+        path: Path, bundle_blob: str, share_blobs: Sequence[str], new_passphrase: str
+    ) -> None:
+        """Rebuild a vault's keyfile from a recovery bundle and a quorum of shares (EXP-11)."""
+        dek = recover_dek(bundle_blob, share_blobs)
         (path / _KEYFILE).write_text(export_recovery_blob(dek, new_passphrase), encoding="utf-8")
 
     def save(self) -> None:
