@@ -348,6 +348,14 @@ def test_authorization_bearer_header_is_accepted(app: App) -> None:
     assert _status_code(app.url, {"Authorization": f"Bearer {app.token}"}) == 200
 
 
+def test_non_ascii_token_is_rejected_not_crashed(app: App) -> None:
+    """Header values are attacker-controlled latin-1 text. ``hmac.compare_digest``
+    raises TypeError on non-ASCII *str*, so a naive str comparison would turn this
+    request into an unhandled exception in the handler thread; it must be a 401."""
+    assert _status_code(app.url, {"X-Habitable-Token": "café-über-token"}) == 401
+    assert _status_code(app.url, {"Authorization": "Bearer café"}) == 401
+
+
 def test_static_shell_is_served_without_a_token(app: App) -> None:
     """The app shell must load unauthenticated so it can read the token from the URL;
     only the /api surface is gated. (404 here is fine — it proves it is not a 401.)"""

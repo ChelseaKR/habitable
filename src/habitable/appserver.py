@@ -421,7 +421,12 @@ class _AppRequestHandler(BaseHTTPRequestHandler):
             auth = self.headers.get("Authorization", "")
             if auth.startswith("Bearer "):
                 presented = auth[len("Bearer ") :]
-        if presented and hmac.compare_digest(presented, self._server.session_token):
+        # Compare as bytes: ``hmac.compare_digest`` raises TypeError on non-ASCII
+        # *str* input, and header values are attacker-controlled (latin-1 decoded),
+        # so a str comparison would turn a garbage token into an unhandled
+        # exception in the handler thread instead of this clean 401.
+        expected = self._server.session_token.encode("utf-8")
+        if presented and hmac.compare_digest(presented.encode("utf-8"), expected):
             return True
         self._json(401, {"error": "unauthorized: missing or invalid session token"})
         return False
