@@ -18,7 +18,9 @@
   "status_issues": "Issues",
   "status_captures": "Captures",
   "status_timestamped": "Timestamped",
-  "status_awaiting": "Awaiting timestamp",
+  "status_awaiting": "Waiting for a trusted timestamp",
+  "status_awaiting_help": "Your photo is already sealed and safe on this device. The timestamp just proves when — it will attach automatically next time you're online. A wait, even a long one, does not weaken the evidence.",
+  "status_timestamped_help": "Sealed and timestamped — nothing more to do.",
   "status_custody": "Chain of custody",
   "custody_intact": "Intact",
   "custody_broken": "Broken — verify the record",
@@ -29,6 +31,7 @@
 
   "issues_heading": "Issues",
   "issues_empty": "No issues recorded yet.",
+  "issues_empty_next": "No issues yet — start by adding one below in 'Add an issue'.",
   "issue_untitled": "Untitled issue",
   "issue_label_category": "Category",
   "issue_label_room": "Room",
@@ -37,7 +40,7 @@
   "issue_captures_count": "{count, plural, one {# capture} other {# captures}}",
   "issue_timeline_count": "{count, plural, one {# timeline entry} other {# timeline entries}}",
   "issue_all": "All issues",
-  "issue_none_available": "No issues available yet",
+  "issue_none_available": "No issues yet — add one in 'Add an issue' first",
 
   "add_issue_heading": "Add an issue",
   "add_issue_legend": "New issue details",
