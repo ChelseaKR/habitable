@@ -7,7 +7,7 @@
 # Build from the repository root:
 #   docker build -f relay/Dockerfile -t habitable-relay .
 # Pinned by digest for reproducible, tamper-evident builds (Dependabot bumps it).
-FROM python:3.14-slim@sha256:63a4c7f612a00f92042cbdcc7cdc6a306f38485af0a200b9c89de7d9b1607d15
+FROM python:3.14-slim@sha256:b877e50bd90de10af8d82c57a022fc2e0dc731c5320d762a27986facfc3355c1
 
 # Run as a non-root user.
 RUN useradd --system --uid 10001 --no-create-home relay
