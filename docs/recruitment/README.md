@@ -43,9 +43,9 @@ commitment.
 
 | Role | What you'd actually do | Time shape | Brief / intake |
 | --- | --- | --- | --- |
-| **Independent security + cryptographic auditor** | Check whether the code keeps its promises: vault-at-rest (scrypt-KEK + ChaCha20-Poly1305), X25519 sealed-box sync, Ed25519 signing, custody + fixity, the RFC 3161 path, and the standalone verifier. | A fixed-scope mini-engagement (e.g. ~2 weeks) | [role-auditor.md](role-auditor.md) · [offer a review](../../issues/new?template=reviewer-intake.yml) |
-| **Accessibility tester who uses assistive technology** | A **recorded** NVDA + VoiceOver pass of `packet.html` and the local web app, in **English and Spanish**, against WCAG 2.2 AA. | One recorded session | [role-accessibility-tester.md](role-accessibility-tester.md) · [offer a pass](../../issues/new?template=reviewer-intake.yml) |
-| **Independent threat-model reviewer** | Read [`threat-model.md`](../threat-model.md) against the frozen baseline B1: re-confirm or challenge the residual-risk list and the out-of-scope boundaries. | A short, bounded read | _brief in [onboarding §1](../audits/onboarding.md)_ · [offer a review](../../issues/new?template=reviewer-intake.yml) |
+| **Independent security + cryptographic auditor** | Check whether the code keeps its promises: vault-at-rest (scrypt-KEK + ChaCha20-Poly1305), X25519 sealed-box sync, Ed25519 signing, custody + fixity, the RFC 3161 path, and the standalone verifier. | A fixed-scope mini-engagement (e.g. ~2 weeks) | [role-auditor.md](role-auditor.md) · [offer a review](https://github.com/ChelseaKR/habitable/issues/new?template=reviewer-intake.yml) |
+| **Accessibility tester who uses assistive technology** | A **recorded** NVDA + VoiceOver pass of `packet.html` and the local web app, in **English and Spanish**, against WCAG 2.2 AA. | One recorded session | [role-accessibility-tester.md](role-accessibility-tester.md) · [offer a pass](https://github.com/ChelseaKR/habitable/issues/new?template=reviewer-intake.yml) |
+| **Independent threat-model reviewer** | Read [`threat-model.md`](../threat-model.md) against the frozen baseline B1: re-confirm or challenge the residual-risk list and the out-of-scope boundaries. | A short, bounded read | _brief in [onboarding §1](../audits/onboarding.md)_ · [offer a review](https://github.com/ChelseaKR/habitable/issues/new?template=reviewer-intake.yml) |
 
 **Two more roles, with their own briefs** (currently scoped to **California**): a
 **housing/tenant lawyer** to review the "not legal advice / no admissibility guarantee"
@@ -53,7 +53,7 @@ framing ([role-legal-reviewer.md](role-legal-reviewer.md)), and a **tenant-union
 legal-aid pilot partner** ([role-pilot-partner.md](role-pilot-partner.md)). Both are
 external gate items on the
 [v1.0 gate](../../ROADMAP.md#the-v10-gate-when-alpha-comes-off); use the **same**
-[intake form](../../issues/new?template=reviewer-intake.yml) and pick the matching role.
+[intake form](https://github.com/ChelseaKR/habitable/issues/new?template=reviewer-intake.yml) and pick the matching role.
 
 ## Pick your path — one click to the right form
 
@@ -62,11 +62,11 @@ that fits you; the intake form captures fit and scope so the maintainer can say 
 async.
 
 - **You audit security / cryptography** → file the
-  [security + crypto reviewer form](../../issues/new?template=reviewer-intake.yml).
+  [security + crypto reviewer form](https://github.com/ChelseaKR/habitable/issues/new?template=reviewer-intake.yml).
 - **You use assistive technology and can record a screen-reader pass** → file the
-  [accessibility reviewer form](../../issues/new?template=reviewer-intake.yml).
+  [accessibility reviewer form](https://github.com/ChelseaKR/habitable/issues/new?template=reviewer-intake.yml).
 - **You model threats for at-risk or surveilled communities** → file the
-  [threat-model reviewer form](../../issues/new?template=reviewer-intake.yml).
+  [threat-model reviewer form](https://github.com/ChelseaKR/habitable/issues/new?template=reviewer-intake.yml).
 
 The forms route interest; they do not duplicate scope. The procedural depth — exact
 scope, run instructions, synthetic-data rules, how findings get recorded — lives in
@@ -146,7 +146,7 @@ is more hands on the code and docs:
   independent of vault/sync, and **synthetic data only** — see
   [CONTRIBUTING.md](../../CONTRIBUTING.md) and
   [CONTRIBUTING.md](../../CONTRIBUTING.md) and the
-  [open issues](../../issues) to claim or propose a starter task (or use the intake
+  [open issues](https://github.com/ChelseaKR/habitable/issues) to claim or propose a starter task (or use the intake
   form above and pick "Other").
 
 ## How to reach the maintainer — no meeting required

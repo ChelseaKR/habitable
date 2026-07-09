@@ -6,7 +6,7 @@
 > most valuable part of the tool (a correct, fail-closed, RFC 3161-backed, custody-linked
 > evidence spine with an independent verifier) packaged so **other civic tools can adopt it
 > without copying code**. Realizes **EXP-13** in
-> [`docs/ideation/03-expansions.md`](ideation/03-expansions.md).
+> [`docs/ideation/02-large-scale-fixes.md`](ideation/02-large-scale-fixes.md).
 >
 > **You may redistribute this.** Everything the kernel exposes is offered under **Apache-2.0**
 > as an additional permission (GPLv3 §7) — see [`NOTICE`](../NOTICE). A wage-theft documenter,
