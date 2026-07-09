@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from pathlib import Path
 
@@ -151,3 +152,70 @@ def test_sealed_original_fixity_on_read(
     sealed.write_bytes(bytes(data))
     with pytest.raises(HabitableError):
         vault.read_original(result.capture_id, capture_record.content_hash)
+
+
+def test_rotate_dek_reencrypts_blobs_and_originals(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """FIX-08: `rotate_dek` replaces the data key and re-encrypts everything under it,
+    without disturbing the data itself or its fixity."""
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", issue_id="i1")
+    result = capture(vault, make_jpeg(), issue_id=issue, tsa=local_tsa)
+    vault.document.add_timeline_entry(issue, "observed", "wet ceiling")
+    vault.save()
+    original_bytes = vault.read_original(result.capture_id, result.content_hash)
+
+    sealed_path = vault.path / "originals" / f"{result.capture_id}.enc"
+    case_path = vault.path / "case.enc"
+    before_sealed = sealed_path.read_bytes()
+    before_case = case_path.read_bytes()
+
+    vault.rotate_dek("test-passphrase")
+
+    # The ciphertext on disk actually changed (new key, new nonce) ...
+    assert sealed_path.read_bytes() != before_sealed
+    assert case_path.read_bytes() != before_case
+    # ... but every *.new staging file was cleaned up (swapped into place).
+    assert not list(vault.path.glob("*.new"))
+    assert not list((vault.path / "originals").glob("*.new"))
+
+    # The in-memory vault keeps working immediately after rotation.
+    assert vault.read_original(result.capture_id, result.content_hash) == original_bytes
+    assert vault.custody.verify().ok
+
+    # Reopening from disk with the *same* passphrase proves the keyfile was re-wrapped
+    # around the *new* DEK (opening with the passphrase alone recovers everything).
+    reopened = Vault.open(tmp_path / "vault", "test-passphrase")
+    assert [i.issue_id for i in reopened.document.issues()] == ["i1"]
+    assert len(reopened.document.timeline()) == 1
+    assert reopened.read_original(result.capture_id, result.content_hash) == original_bytes
+
+    # Fixity checking still guards the re-encrypted original.
+    corrupted = bytearray(sealed_path.read_bytes())
+    corrupted[-1] ^= 0xFF
+    sealed_path.write_bytes(bytes(corrupted))
+    with pytest.raises(HabitableError):
+        reopened.read_original(result.capture_id, result.content_hash)
+
+
+def test_harden_key_then_open_with_same_passphrase(
+    make_vault: Callable[..., Vault], tmp_path: Path
+) -> None:
+    """FIX-08: `harden_key` changes the KDF cost but the same passphrase still opens
+    the vault -- and the wrong one still doesn't."""
+    vault = make_vault()
+    vault.document.add_issue(category="mold", issue_id="i1")
+    vault.save()
+
+    vault.harden_key("test-passphrase", profile="hardened")
+    keyfile = json.loads((tmp_path / "vault" / "keyfile.json").read_text(encoding="utf-8"))
+    assert keyfile["kdf"]["n"] == 2**17
+
+    reopened = Vault.open(tmp_path / "vault", "test-passphrase")
+    assert [i.issue_id for i in reopened.document.issues()] == ["i1"]
+    with pytest.raises(HabitableError):
+        Vault.open(tmp_path / "vault", "WRONG")

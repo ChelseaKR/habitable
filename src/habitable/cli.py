@@ -25,7 +25,7 @@ from . import __version__, campaign
 from .capture import capture, resolve_deferred, retimestamp_all
 from .commons import DEFAULT_K, build_commons, summarize_case
 from .config import TSAConfig
-from .crypto import PublicIdentity
+from .crypto import KDF_PROFILES, PublicIdentity
 from .errors import HabitableError
 from .i18n import DEFAULT_LOCALE, cli_text, format_datetime, resolve_locale
 from .packet import build_packet
@@ -223,7 +223,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_app.add_argument("--no-browser", action="store_true", help="do not open a browser")
     p_app.set_defaults(func=_cmd_app)
 
-    p_key = sub.add_parser("key", help="manage vault keys: rotate, backup, restore, share, recover")
+    p_key = sub.add_parser(
+        "key",
+        help="manage vault keys: rotate, harden, rotate-dek, backup, restore, share, recover",
+    )
     key_sub = p_key.add_subparsers(dest="key_action")
     p_key_rotate = key_sub.add_parser("rotate", help="change the vault passphrase")
     add_vault(p_key_rotate)
@@ -246,6 +249,23 @@ def _build_parser() -> argparse.ArgumentParser:
     p_key_restore.add_argument("--recovery-passphrase", help="backup passphrase (else prompt)")
     p_key_restore.add_argument("--new-passphrase", help="new vault passphrase (else prompt)")
     p_key_restore.set_defaults(func=_cmd_key_restore)
+    p_key_harden = key_sub.add_parser(
+        "harden", help="re-derive the KDF at a stronger cost profile (FIX-08)"
+    )
+    add_vault(p_key_harden)
+    p_key_harden.add_argument(
+        "--profile",
+        choices=sorted(KDF_PROFILES),
+        default="hardened",
+        help="target KDF cost profile (default: hardened; see docs/crypto-spec.md)",
+    )
+    p_key_harden.set_defaults(func=_cmd_key_harden)
+    p_key_rotate_dek = key_sub.add_parser(
+        "rotate-dek",
+        help="generate a new data key and re-encrypt the whole vault under it",
+    )
+    add_vault(p_key_rotate_dek)
+    p_key_rotate_dek.set_defaults(func=_cmd_key_rotate_dek)
     p_key_share = key_sub.add_parser(
         "share",
         help="split recovery so any M of N stewards can recover (threshold social custody)",
@@ -736,6 +756,25 @@ def _cmd_key_restore(args: argparse.Namespace) -> int:
     blob = args.recovery_file.read_text(encoding="utf-8")
     Vault.restore_keyfile(args.vault, blob, recovery, new)
     print(f"habitable: keyfile restored for {args.vault}; open it with the new passphrase.")
+    return 0
+
+
+def _cmd_key_harden(args: argparse.Namespace) -> int:
+    passphrase = _passphrase(args)  # validates the current passphrase
+    vault = Vault.open(args.vault, passphrase)
+    vault.harden_key(passphrase, profile=args.profile)
+    n = KDF_PROFILES[args.profile]
+    print(f"habitable: KDF hardened to the {args.profile!r} profile (scrypt N={n}).")
+    print("           unlocking will take longer from now on; that is the point.")
+    return 0
+
+
+def _cmd_key_rotate_dek(args: argparse.Namespace) -> int:
+    passphrase = _passphrase(args)  # validates the current passphrase
+    vault = Vault.open(args.vault, passphrase)
+    vault.rotate_dek(passphrase)
+    print("habitable: data key rotated. Every vault blob and sealed original was")
+    print("           re-encrypted under the new key; fixity was re-checked throughout.")
     return 0
 
 

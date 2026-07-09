@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.metadata
+import json
 from pathlib import Path
 
 import pytest
@@ -17,11 +18,14 @@ from habitable.canonical import canonical_json, sha256_bytes, sha256_file
 from habitable.clock import HLCTimestamp, HybridLogicalClock
 from habitable.config import Config, default_config_toml
 from habitable.crypto import (
+    KDF_PROFILES,
     Identity,
+    KdfParams,
     PublicIdentity,
     SymmetricKey,
     create_keyfile,
     export_recovery_blob,
+    harden_keyfile,
     import_recovery_blob,
     open_keyfile,
     open_sealed,
@@ -132,6 +136,27 @@ class TestCrypto:
         recovery = export_recovery_blob(dek, "recovery words")
         recovered = import_recovery_blob(recovery, "recovery words")
         assert recovered.decrypt(blob, aad=b"ctx") == b"secret"
+
+    def test_harden_keeps_same_dek_and_passphrase_at_higher_cost(self) -> None:
+        """FIX-08: `key harden` re-derives the KEK at a stronger profile, same DEK."""
+        keyfile, dek = create_keyfile("pw")
+        blob = dek.encrypt(b"secret", aad=b"ctx")
+
+        hardened = harden_keyfile(dek, "pw", profile="hardened")
+        assert json.loads(hardened)["kdf"]["n"] == KDF_PROFILES["hardened"]
+        assert json.loads(keyfile)["kdf"]["n"] == KDF_PROFILES["standard"]
+
+        opened = open_keyfile(hardened, "pw")
+        assert opened.decrypt(blob, aad=b"ctx") == b"secret"  # same DEK, still opens old data
+        with pytest.raises(CryptoError):
+            open_keyfile(hardened, "WRONG")
+
+    def test_harden_unknown_profile_rejected(self) -> None:
+        _, dek = create_keyfile("pw")
+        with pytest.raises(CryptoError, match="unknown KDF profile"):
+            harden_keyfile(dek, "pw", profile="nonexistent")
+        with pytest.raises(CryptoError, match="unknown KDF profile"):
+            KdfParams.for_profile("nonexistent", salt=b"0" * 16)
 
     def test_sign_and_verify(self) -> None:
         identity = Identity.generate()
