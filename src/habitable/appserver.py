@@ -18,8 +18,8 @@ import base64
 import json
 import re
 import threading
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import cast
@@ -56,6 +56,7 @@ class AppServer:
     tsa: TimestampAuthority | None
     static_root: Path
     lock: threading.Lock
+    extra_tsas: Sequence[TimestampAuthority] = field(default_factory=tuple)
 
     # --- API actions (called under the lock) ---------------------------------
 
@@ -135,7 +136,7 @@ class AppServer:
     def resolve(self) -> dict[str, object]:
         if self.tsa is None:
             raise HabitableError("no timestamp authority configured")
-        results = resolve_deferred(self.vault, self.tsa)
+        results = resolve_deferred(self.vault, self.tsa, extra_tsas=self.extra_tsas)
         return {"resolved": len(results)}
 
     def export(self, body: dict[str, object]) -> dict[str, object]:
@@ -290,14 +291,23 @@ def make_app_server(
     vault: Vault,
     *,
     tsa: TimestampAuthority | None = None,
+    extra_tsas: Sequence[TimestampAuthority] = (),
     static_root: Path | None = None,
 ) -> ThreadingHTTPServer:
-    """Build (but do not start) the loopback app server."""
+    """Build (but do not start) the loopback app server.
+
+    ``extra_tsas`` are the case's redundant timestamp authorities (every
+    authority beyond the primary, as ``cli._extra_tsas_for`` derives them from
+    ``config.timestamp_authorities[1:]``); the ``/api/resolve`` endpoint stamps
+    each queued capture against them so deferred captures get the same
+    multiple-authority proof as online ones (item R-16).
+    """
     app = AppServer(
         vault=vault,
         tsa=tsa,
         static_root=static_root or _STATIC_ROOT,
         lock=threading.Lock(),
+        extra_tsas=tuple(extra_tsas),
     )
     return _AppHTTPServer((host, port), _AppRequestHandler, app=app)
 

@@ -20,6 +20,9 @@ Three CRDT shapes cover the domain:
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import secrets
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import cast
@@ -39,6 +42,11 @@ __all__ = [
 ]
 
 CASE_SCHEMA_VERSION = 1
+
+# The per-case id salt lives in the document meta under this key, so it merges and
+# syncs to peers exactly like ``unit`` (an LWWRegister). It is the secret that turns a
+# wall-clock/node-bearing HLC into an opaque exported id — see :meth:`CaseDocument.opaque_id`.
+_CASE_SALT_META = "case_salt"
 
 
 def _greater(a: JSONValue, b: JSONValue) -> bool:
@@ -233,6 +241,35 @@ class CaseDocument:
             return default
         return register.value
 
+    # --- opaque identifiers ---------------------------------------------------
+
+    def ensure_case_salt(self) -> None:
+        """Generate and store this case's id salt if the document lacks one.
+
+        Called at case creation so exported ids are opaque from the first mint;
+        documents that predate the salt get one lazily on their next mint.
+        """
+        self._case_salt()
+
+    def opaque_id(self, prefix: str, hlc_str: str) -> str:
+        """Mint a stable, opaque id for an event from the per-case salt.
+
+        The id is ``f"{prefix}-{HMAC(salt, hlc)[:16]}"`` — deterministic per
+        ``(salt, hlc)`` and therefore identical on every device that shares the case
+        salt, yet it reveals neither the device wall clock nor the node id encoded in
+        ``hlc_str``. HLC stays the internal ordering key for CRDT merge; this is only
+        the externally visible name.
+        """
+        digest = hmac.new(self._case_salt(), hlc_str.encode(), hashlib.sha256).hexdigest()
+        return f"{prefix}-{digest[:16]}"
+
+    def _case_salt(self) -> bytes:
+        salt_hex = self.get_meta(_CASE_SALT_META)
+        if not salt_hex:
+            salt_hex = secrets.token_bytes(16).hex()
+            self.set_meta(_CASE_SALT_META, salt_hex)
+        return bytes.fromhex(salt_hex)
+
     def add_issue(
         self,
         *,
@@ -246,7 +283,7 @@ class CaseDocument:
     ) -> str:
         stamp = self._clock.now()
         tag = stamp.encode()
-        resolved_id = issue_id or f"issue-{tag}"
+        resolved_id = issue_id or self.opaque_id("issue", tag)
         self._issues = self._issues.add(resolved_id, tag)
         fields = {
             "category": category,
@@ -275,7 +312,7 @@ class CaseDocument:
 
     def add_timeline_entry(self, issue_id: str, kind: str, text: str) -> str:
         stamp = self._clock.now()
-        entry_id = f"tl-{stamp.encode()}"
+        entry_id = self.opaque_id("tl", stamp.encode())
         self._timeline = self._timeline.add(
             entry_id,
             {"issue_id": issue_id, "kind": kind, "text": text, "hlc": stamp.encode()},
@@ -293,7 +330,7 @@ class CaseDocument:
         capture_id: str | None = None,
     ) -> str:
         stamp = self._clock.now()
-        resolved_id = capture_id or f"cap-{stamp.encode()}"
+        resolved_id = capture_id or self.opaque_id("cap", stamp.encode())
         self._captures = self._captures.add(
             resolved_id,
             {

@@ -28,6 +28,8 @@ Observability (per the portfolio OBSERVABILITY-STANDARD, metadata-only):
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -35,18 +37,54 @@ import re
 import secrets
 import sys
 import time
-from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import TextIO
 
-__all__ = ["RelayStore", "configure_logging", "make_server", "serve"]
+__all__ = [
+    "RelayStore",
+    "RoomAuthError",
+    "RoomFullError",
+    "configure_logging",
+    "make_server",
+    "serve",
+]
 
 _MAX_BODY = 128 * 1024 * 1024  # 128 MiB ceiling per message
 _MAX_MESSAGES_PER_ROOM = 10_000
 _ROOM_RE = re.compile(r"^/rooms/([A-Za-z0-9_-]{1,128})$")
+
+# Per-message time-to-live. Undelivered ciphertext older than this is expired
+# lazily on the next post/fetch touching its room (a non-positive value disables
+# expiry). The default is 30 days; operators tune it with the
+# ``HABITABLE_RELAY_TTL_SECONDS`` environment variable.
+_DEFAULT_TTL_SECONDS = 30 * 24 * 60 * 60
+
+
+def _ttl_from_env() -> float:
+    raw = os.environ.get("HABITABLE_RELAY_TTL_SECONDS")
+    if raw is None:
+        return float(_DEFAULT_TTL_SECONDS)
+    try:
+        return float(raw)
+    except ValueError:
+        return float(_DEFAULT_TTL_SECONDS)
+
+
+_MESSAGE_TTL_SECONDS = _ttl_from_env()
+
+# Ceiling on one room's on-disk journal (only used when persistence is enabled).
+# When a journal outgrows this it is compacted from the in-memory, TTL-filtered
+# queue so it can never grow without bound.
+_MAX_PERSIST_BYTES_PER_ROOM = 256 * 1024 * 1024
+
+# Header carrying a room's write-capability token (see RelayStore._check_write).
+# The token is a capability, never a secret to log: it is compared with
+# ``hmac.compare_digest`` and never enters the access log or any error body.
+_ROOM_TOKEN_HEADER = "X-Habitable-Room-Token"  # noqa: S105 - header name, not a secret
 
 _LOGGER_NAME = "habitable.relay"
 _LOG = logging.getLogger(_LOGGER_NAME)
@@ -56,25 +94,77 @@ _LOG = logging.getLogger(_LOGGER_NAME)
 _HEALTH_ROUTES = frozenset({"/livez", "/readyz", "/healthz"})
 
 
+class RoomFullError(Exception):
+    """A room is at its message cap; the relay rejects the post (HTTP 413).
+
+    This replaces the old silent ``pop(0)`` eviction: a full room now fails
+    loudly, so a peer learns its message was not accepted instead of silently
+    displacing an earlier, still-undelivered message.
+    """
+
+
+class RoomAuthError(Exception):
+    """A room write presented a missing or mismatched capability token (HTTP 403)."""
+
+
 @dataclass(slots=True)
 class RelayStore:
-    """In-memory ciphertext mailbox plus passthrough metrics (no contents logged)."""
+    """Ciphertext mailbox with a write-capability token, TTL, and opt-in persistence.
 
-    rooms: dict[str, list[bytes]] = field(default_factory=lambda: defaultdict(list))
+    The store is a dumb per-room queue of opaque ciphertext blobs (never
+    plaintext, never keys). Three properties make relay rooms authenticated and
+    durable without the relay ever seeing plaintext:
+
+    - **Write capability.** The first token presented for a room binds it
+      (trust-on-first-use); later posts must present the same token or are
+      rejected with :class:`RoomAuthError`. Tokens are compared with
+      :func:`hmac.compare_digest` and never logged.
+    - **TTL, not silent eviction.** Each message carries a store timestamp;
+      messages older than ``_MESSAGE_TTL_SECONDS`` expire lazily on the next
+      post/fetch. A room at its message cap raises :class:`RoomFullError`
+      (surfaced as HTTP 413) instead of silently dropping the oldest message.
+    - **Opt-in persistence.** With ``persist_dir`` set, each accepted message is
+      appended to an at-rest ciphertext journal and reloaded (honoring TTL) on
+      the next startup. The default is memory-only: no ``persist_dir``, nothing
+      touches disk.
+    """
+
+    rooms: dict[str, list[tuple[float, bytes]]] = field(default_factory=dict)
+    tokens: dict[str, str] = field(default_factory=dict)
     posted: int = 0
     fetched: int = 0
     bytes_relayed: int = 0
+    persist_dir: Path | None = None
+    clock: Callable[[], float] = time.time
 
-    def post(self, room: str, blob: bytes) -> None:
+    def __post_init__(self) -> None:
+        if self.persist_dir is not None:
+            self.persist_dir = Path(self.persist_dir)
+            self.persist_dir.mkdir(parents=True, exist_ok=True)
+            self._load()
+
+    def post(self, room: str, blob: bytes, *, token: str | None = None) -> None:
+        """Accept a sealed blob for ``room`` after verifying its write capability.
+
+        Raises :class:`RoomAuthError` for a missing/mismatched token, and
+        :class:`RoomFullError` when the room (after lazy expiry) is at its cap.
+        """
+        self._check_write(room, token)
+        self._expire(room)
         queue = self.rooms.setdefault(room, [])
         if len(queue) >= _MAX_MESSAGES_PER_ROOM:
-            queue.pop(0)
-        queue.append(blob)
+            raise RoomFullError("room full")
+        ts = self.clock()
+        queue.append((ts, blob))
         self.posted += 1
         self.bytes_relayed += len(blob)
+        if self.persist_dir is not None:
+            # token is non-None here: _check_write rejects a missing token first.
+            self._persist(room, self.tokens[room], ts, blob)
 
     def fetch(self, room: str) -> list[bytes]:
-        messages = list(self.rooms.get(room, []))
+        self._expire(room)
+        messages = [blob for _ts, blob in self.rooms.get(room, [])]
         self.fetched += len(messages)
         return messages
 
@@ -85,6 +175,109 @@ class RelayStore:
             "fetched": self.fetched,
             "bytes_relayed": self.bytes_relayed,
         }
+
+    # --- write capability (trust-on-first-use) --------------------------------
+
+    def _check_write(self, room: str, token: str | None) -> None:
+        if not token:
+            raise RoomAuthError("room write requires a token")
+        bound = self.tokens.get(room)
+        if bound is None:
+            self.tokens[room] = token  # trust on first use
+            return
+        if not hmac.compare_digest(bound, token):
+            raise RoomAuthError("room token mismatch")
+
+    # --- per-message TTL ------------------------------------------------------
+
+    def _expire(self, room: str) -> None:
+        queue = self.rooms.get(room)
+        if not queue:
+            return
+        ttl = _MESSAGE_TTL_SECONDS
+        if ttl <= 0:
+            return  # expiry disabled
+        cutoff = self.clock() - ttl
+        fresh = [(ts, blob) for ts, blob in queue if ts >= cutoff]
+        if len(fresh) != len(queue):
+            self.rooms[room] = fresh
+
+    # --- opt-in on-disk persistence -------------------------------------------
+
+    def _room_file(self, room: str) -> Path:
+        # sha256 of the room id, so a raw room id never becomes a filename on disk.
+        assert self.persist_dir is not None
+        digest = hashlib.sha256(room.encode("utf-8")).hexdigest()
+        return self.persist_dir / f"{digest}.jsonl"
+
+    @staticmethod
+    def _journal_line(room: str, token: str, ts: float, blob: bytes) -> str:
+        return json.dumps(
+            {
+                "room": room,
+                "token": token,
+                "ts": ts,
+                "blob": base64.b64encode(blob).decode("ascii"),
+            },
+            separators=(",", ":"),
+        )
+
+    def _persist(self, room: str, token: str, ts: float, blob: bytes) -> None:
+        path = self._room_file(room)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(self._journal_line(room, token, ts, blob) + "\n")
+        try:
+            oversized = path.stat().st_size > _MAX_PERSIST_BYTES_PER_ROOM
+        except OSError:
+            oversized = False
+        if oversized:
+            self._compact(room)
+
+    def _compact(self, room: str) -> None:
+        # Rewrite the journal from the current TTL-filtered in-memory queue, so it
+        # cannot grow without bound; expired/rejected lines are dropped.
+        self._expire(room)
+        path = self._room_file(room)
+        token = self.tokens.get(room, "")
+        tmp = path.with_suffix(".tmp")
+        with tmp.open("w", encoding="utf-8") as handle:
+            for ts, blob in self.rooms.get(room, []):
+                handle.write(self._journal_line(room, token, ts, blob) + "\n")
+        tmp.replace(path)
+
+    def _load(self) -> None:
+        assert self.persist_dir is not None
+        ttl = _MESSAGE_TTL_SECONDS
+        cutoff = self.clock() - ttl if ttl > 0 else None
+        for path in sorted(self.persist_dir.glob("*.jsonl")):
+            for raw in path.read_text("utf-8").splitlines():
+                if raw.strip():
+                    self._load_line(raw, cutoff)
+
+    def _load_line(self, raw: str, cutoff: float | None) -> None:
+        try:
+            obj = json.loads(raw)
+        except ValueError:
+            return
+        if not isinstance(obj, dict):
+            return
+        room = obj.get("room")
+        token = obj.get("token")
+        ts = obj.get("ts")
+        blob_b64 = obj.get("blob")
+        if not isinstance(room, str) or not isinstance(blob_b64, str):
+            return
+        if not isinstance(ts, (int, float)):
+            return
+        if cutoff is not None and ts < cutoff:
+            return  # already expired; do not resurrect it
+        try:
+            blob = base64.b64decode(blob_b64)
+        except ValueError:
+            return
+        self.rooms.setdefault(room, []).append((float(ts), blob))
+        if isinstance(token, str) and room not in self.tokens:
+            self.tokens[room] = token  # TOFU binding survives a restart
 
 
 class _JsonFormatter(logging.Formatter):
@@ -182,15 +375,18 @@ def make_server(  # noqa: C901 -- P1-4 follow-up: split route dispatch out of th
     *,
     ready_check: Callable[[], bool] | None = None,
     access_log: bool = False,
+    persist_dir: Path | None = None,
 ) -> ThreadingHTTPServer:
     """Build (but do not start) a relay HTTP server.
 
     ``ready_check`` backs ``/readyz``; the default verifies the in-memory store. Pass
     a stub returning ``False`` to exercise the fail-closed 503 path. ``access_log``
     enables the per-request structured JSON line (off by default; call
-    :func:`configure_logging` first so the line is actually emitted).
+    :func:`configure_logging` first so the line is actually emitted). ``persist_dir``
+    (only used when ``store`` is not supplied) turns on the opt-in at-rest ciphertext
+    journal; the default is memory-only.
     """
-    shared_store = store or RelayStore()
+    shared_store = store or RelayStore(persist_dir=persist_dir)
     readiness: Callable[[], bool] = ready_check or (lambda: _store_ready(shared_store))
     emit_access_log = access_log
 
@@ -248,8 +444,18 @@ def make_server(  # noqa: C901 -- P1-4 follow-up: split route dispatch out of th
             if length <= 0 or length > _MAX_BODY:
                 self._json(413, {"error": "bad or oversized body"})
                 return
+            token = self.headers.get(_ROOM_TOKEN_HEADER)
             blob = self.rfile.read(length)
-            self.store.post(match.group(1), blob)
+            try:
+                self.store.post(match.group(1), blob, token=token)
+            except RoomAuthError as exc:
+                # str(exc) is metadata-only ("room token mismatch" / "...requires a
+                # token"); the token value itself is never echoed.
+                self._json(403, {"error": str(exc)})
+                return
+            except RoomFullError:
+                self._json(413, {"error": "room full"})
+                return
             self._json(200, {"status": "stored"})
 
         def _readyz(self) -> None:
@@ -296,13 +502,26 @@ def serve(
     store: RelayStore | None = None,
     *,
     access_log: bool = False,
+    persist_dir: Path | None = None,
 ) -> None:
-    """Run the relay until interrupted."""
+    """Run the relay until interrupted.
+
+    ``persist_dir`` (opt-in) enables the at-rest ciphertext journal; the default
+    is memory-only. The startup line logs only whether persistence is on, never
+    the path itself.
+    """
     configure_logging()
-    server = make_server(host, port, store, access_log=access_log)
+    server = make_server(host, port, store, access_log=access_log, persist_dir=persist_dir)
     _LOG.info(
         "relay listening (ciphertext passthrough only)",
-        extra={"event_fields": {"host": host, "port": port, "access_log": access_log}},
+        extra={
+            "event_fields": {
+                "host": host,
+                "port": port,
+                "access_log": access_log,
+                "persist": persist_dir is not None,
+            }
+        },
     )
     try:
         server.serve_forever()
@@ -318,7 +537,8 @@ def _main() -> None:
     Host/port come from the environment so the dependency-free relay can run with
     only the standard library and the source tree on PYTHONPATH. Per-request access
     logging is opt-in via ``HABITABLE_RELAY_LOG`` (``json``/``1``/``true``/``on``),
-    keeping the no-request-log default the threat model documents.
+    keeping the no-request-log default the threat model documents. On-disk
+    persistence is opt-in via ``HABITABLE_RELAY_PERSIST_DIR`` (unset = memory-only).
     """
     host = os.environ.get("HABITABLE_RELAY_HOST", "127.0.0.1")
     port = int(os.environ.get("HABITABLE_RELAY_PORT", "8787"))
@@ -328,7 +548,9 @@ def _main() -> None:
         "true",
         "on",
     }
-    serve(host, port, access_log=access_log)
+    persist_raw = os.environ.get("HABITABLE_RELAY_PERSIST_DIR", "").strip()
+    persist_dir = Path(persist_raw) if persist_raw else None
+    serve(host, port, access_log=access_log, persist_dir=persist_dir)
 
 
 if __name__ == "__main__":

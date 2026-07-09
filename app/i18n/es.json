@@ -18,7 +18,9 @@
   "status_issues": "Problemas",
   "status_captures": "Capturas",
   "status_timestamped": "Con sello de tiempo",
-  "status_awaiting": "Pendientes de sello de tiempo",
+  "status_awaiting": "Esperando un sello de tiempo confiable",
+  "status_awaiting_help": "Tu foto ya está sellada y a salvo en este dispositivo. El sello de tiempo solo prueba cuándo se tomó, y se adjuntará solo la próxima vez que tengas conexión. Una espera, aunque sea larga, no debilita la evidencia.",
+  "status_timestamped_help": "Sellada y con sello de tiempo: no queda nada más por hacer.",
   "status_custody": "Cadena de custodia",
   "custody_intact": "Intacta",
   "custody_broken": "Rota: verifica el registro",
@@ -29,6 +31,7 @@
 
   "issues_heading": "Problemas",
   "issues_empty": "Aún no hay problemas registrados.",
+  "issues_empty_next": "Aún no hay problemas: empieza agregando uno abajo, en 'Agregar un problema'.",
   "issue_untitled": "Problema sin título",
   "issue_label_category": "Categoría",
   "issue_label_room": "Habitación",
@@ -37,7 +40,7 @@
   "issue_captures_count": "{count, plural, one {# captura} other {# capturas}}",
   "issue_timeline_count": "{count, plural, one {# entrada de cronología} other {# entradas de cronología}}",
   "issue_all": "Todos los problemas",
-  "issue_none_available": "Aún no hay problemas disponibles",
+  "issue_none_available": "Aún no hay problemas: agrega uno en 'Agregar un problema' primero",
 
   "add_issue_heading": "Agregar un problema",
   "add_issue_legend": "Datos del nuevo problema",
