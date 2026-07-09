@@ -14,9 +14,11 @@ from pathlib import Path
 
 import pytest
 
-from habitable.appserver import make_app_server
+from habitable.appserver import _awaiting_only, make_app_server
+from habitable.capture import capture
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
+from habitable.verify import ItemVerdict, VerificationReport
 
 
 @pytest.fixture
@@ -81,6 +83,90 @@ def test_full_api_flow(app: str, make_jpeg: Callable[..., Path]) -> None:
 
     status, export = _call(app, "POST", "/api/export", {})
     assert status == 200 and export["verified"] is True and export["item_count"] == 1
+    # A fully-timestamped packet is not in the degraded awaiting state.
+    assert export["awaiting"] == 0 and export["awaiting_only"] is False
+
+
+def test_export_reports_awaiting_state_honestly(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """An export whose only defect is awaiting timestamps says so, distinctly.
+
+    FIX-09 / R-01 / R-17: the packet correctly verifies NOT intact while items
+    await a trusted timestamp, but the API must let the UI tell that state apart
+    from a broken chain or a failed hash — the tenant needs a next step, not an
+    integrity alarm.
+    """
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", title="Mold", issue_id="i1")
+    capture(vault, make_jpeg("a.jpg"), issue_id=issue, tsa=local_tsa)
+    capture(vault, make_jpeg("b.jpg"), issue_id=issue, tsa=None)  # queued offline
+
+    server = make_app_server("127.0.0.1", 0, vault, tsa=None, static_root=tmp_path / "noapp")
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, export = _call(f"http://127.0.0.1:{port}", "POST", "/api/export", {})
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    assert status == 200
+    assert export["verified"] is False  # degraded is still honestly NOT intact
+    assert export["item_count"] == 2 and export["timestamped_count"] == 1
+    assert export["awaiting"] == 1
+    assert export["awaiting_only"] is True
+
+
+def _verdict(**overrides: object) -> ItemVerdict:
+    base: dict[str, object] = {
+        "capture_id": "cap-1",
+        "content_hash": "0" * 64,
+        "timestamp_verified": True,
+        "gen_time": "2026-01-02T00:00:00Z",
+        "tsa_name": "test",
+        "shared_media_ok": True,
+        "custody_binding_ok": True,
+        "original_fixity_ok": None,
+    }
+    base.update(overrides)
+    return ItemVerdict(**base)  # type: ignore[arg-type]
+
+
+def _report(items: tuple[ItemVerdict, ...], **overrides: object) -> VerificationReport:
+    base: dict[str, object] = {
+        "packet_dir": Path("unused"),
+        "signature_ok": True,
+        "custody_ok": True,
+        "custody_length": 1,
+        "items": items,
+        "problems": (),
+    }
+    base.update(overrides)
+    return VerificationReport(**base)  # type: ignore[arg-type]
+
+
+def test_awaiting_only_is_false_for_real_failures() -> None:
+    """Only a pure awaiting-timestamp degradation earns the calm state."""
+    awaiting = _verdict(timestamp_verified=False, gen_time="", tsa_name="")
+    # Purely awaiting -> True.
+    assert _awaiting_only(_report((awaiting,))) is True
+    # A fully-verified packet is not "awaiting only".
+    assert _awaiting_only(_report((_verdict(),))) is False
+    # A broken signature, custody chain, or structural problem is an alarm.
+    assert _awaiting_only(_report((awaiting,), signature_ok=False)) is False
+    assert _awaiting_only(_report((awaiting,), custody_ok=False)) is False
+    assert _awaiting_only(_report((awaiting,), problems=("malformed item in bundle",))) is False
+    # An item that also fails a hash or binding check is an alarm, not a wait.
+    tampered = _verdict(timestamp_verified=False, shared_media_ok=False)
+    assert _awaiting_only(_report((awaiting, tampered))) is False
+    bad_original = _verdict(timestamp_verified=False, original_fixity_ok=False)
+    assert _awaiting_only(_report((bad_original,))) is False
 
 
 def test_missing_field_is_400(app: str) -> None:

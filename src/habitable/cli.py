@@ -21,13 +21,13 @@ from pathlib import Path
 
 from cryptography import x509
 
-from . import __version__
+from . import __version__, campaign
 from .capture import capture, resolve_deferred, retimestamp_all
 from .commons import DEFAULT_K, build_commons, summarize_case
 from .config import TSAConfig
-from .crypto import PublicIdentity
+from .crypto import KDF_PROFILES, PublicIdentity
 from .errors import HabitableError
-from .i18n import cli_text, format_datetime, resolve_locale
+from .i18n import DEFAULT_LOCALE, cli_text, format_datetime, resolve_locale
 from .packet import build_packet
 from .sync import LocalDirTransport, RelayClient, Transport, sync
 from .tsa import DevTSA, Rfc3161HttpTSA, TimestampAuthority
@@ -94,6 +94,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p_capture.add_argument("--issue", required=True)
     p_capture.add_argument("--dev-tsa", action="store_true", help="use the offline dev TSA")
     p_capture.add_argument("--no-timestamp", action="store_true", help="defer timestamping")
+    p_capture.add_argument(
+        "--transcript",
+        default="",
+        help="plain-text transcript/caption for video or audio (EXP-07 accessibility fallback)",
+    )
     p_capture.set_defaults(func=_cmd_capture)
 
     p_tl = sub.add_parser("timeline", help="add a timeline entry")
@@ -133,6 +138,45 @@ def _build_parser() -> argparse.ArgumentParser:
     p_export.add_argument("--include-originals", action="store_true")
     p_export.add_argument("--no-pdf", action="store_true")
     p_export.set_defaults(func=_cmd_export)
+
+    def add_campaign_vaults(p: argparse.ArgumentParser) -> None:
+        p.add_argument(
+            "--vault",
+            dest="vaults",
+            required=True,
+            type=Path,
+            action="append",
+            metavar="PATH",
+            help="path to a case vault this organizer holds keys to; repeatable, one per unit/case",
+        )
+        p.add_argument(
+            "--passphrase",
+            help="passphrase for every vault above (else HABITABLE_PASSPHRASE, "
+            "or a prompt per vault)",
+        )
+
+    p_campaign = sub.add_parser(
+        "campaign",
+        help="on-device evidence-health roll-up across several vaults (EXP-08)",
+    )
+    campaign_sub = p_campaign.add_subparsers(dest="campaign_action")
+
+    p_campaign_status = campaign_sub.add_parser(
+        "status", help="building-level evidence-health roll-up, read-only"
+    )
+    add_campaign_vaults(p_campaign_status)
+    p_campaign_status.set_defaults(func=_cmd_campaign_status)
+
+    p_campaign_export = campaign_sub.add_parser(
+        "export", help="assemble a combined multi-unit building packet"
+    )
+    add_campaign_vaults(p_campaign_export)
+    p_campaign_export.add_argument(
+        "--out", required=True, type=Path, help="output directory for the combined packet"
+    )
+    p_campaign_export.add_argument("--include-originals", action="store_true")
+    p_campaign_export.add_argument("--no-pdf", action="store_true")
+    p_campaign_export.set_defaults(func=_cmd_campaign_export)
 
     p_verify = sub.add_parser("verify", help="independently verify a packet")
     p_verify.add_argument("packet", type=Path)
@@ -179,7 +223,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_app.add_argument("--no-browser", action="store_true", help="do not open a browser")
     p_app.set_defaults(func=_cmd_app)
 
-    p_key = sub.add_parser("key", help="manage vault keys: rotate, backup, restore, share, recover")
+    p_key = sub.add_parser(
+        "key",
+        help="manage vault keys: rotate, harden, rotate-dek, backup, restore, share, recover",
+    )
     key_sub = p_key.add_subparsers(dest="key_action")
     p_key_rotate = key_sub.add_parser("rotate", help="change the vault passphrase")
     add_vault(p_key_rotate)
@@ -202,6 +249,23 @@ def _build_parser() -> argparse.ArgumentParser:
     p_key_restore.add_argument("--recovery-passphrase", help="backup passphrase (else prompt)")
     p_key_restore.add_argument("--new-passphrase", help="new vault passphrase (else prompt)")
     p_key_restore.set_defaults(func=_cmd_key_restore)
+    p_key_harden = key_sub.add_parser(
+        "harden", help="re-derive the KDF at a stronger cost profile (FIX-08)"
+    )
+    add_vault(p_key_harden)
+    p_key_harden.add_argument(
+        "--profile",
+        choices=sorted(KDF_PROFILES),
+        default="hardened",
+        help="target KDF cost profile (default: hardened; see docs/crypto-spec.md)",
+    )
+    p_key_harden.set_defaults(func=_cmd_key_harden)
+    p_key_rotate_dek = key_sub.add_parser(
+        "rotate-dek",
+        help="generate a new data key and re-encrypt the whole vault under it",
+    )
+    add_vault(p_key_rotate_dek)
+    p_key_rotate_dek.set_defaults(func=_cmd_key_rotate_dek)
     p_key_share = key_sub.add_parser(
         "share",
         help="split recovery so any M of N stewards can recover (threshold social custody)",
@@ -337,7 +401,14 @@ def _cmd_capture(args: argparse.Namespace) -> int:
     vault = _open(args)
     tsa = None if args.no_timestamp else _tsa_for(vault, dev=args.dev_tsa)
     extra_tsas = [] if args.no_timestamp else _extra_tsas_for(vault, dev=args.dev_tsa)
-    result = capture(vault, args.media, issue_id=args.issue, tsa=tsa, extra_tsas=extra_tsas)
+    result = capture(
+        vault,
+        args.media,
+        issue_id=args.issue,
+        tsa=tsa,
+        extra_tsas=extra_tsas,
+        transcript=args.transcript,
+    )
     locale = resolve_locale(vault.config.language)
     status = (
         cli_text(
@@ -470,9 +541,98 @@ def _cmd_export(args: argparse.Namespace) -> int:
         total=result.item_count,
     )
     print(f"           {stamped}")
+    awaiting = result.item_count - result.timestamped_count
+    if awaiting > 0:
+        # An awaiting-timestamp packet reports NOT intact under `habitable verify` —
+        # correct, degraded behavior. Say so at export time, with the next step,
+        # rather than letting a recipient's verify run be the first notice (FIX-09).
+        hint = cli_text("export_awaiting_hint", locale, awaiting=awaiting)
+        print(f"           {hint}")
     for note in result.disclosures:
         print(f"           {note}")
     print(f"           packet written to {result.out_dir}")
+    return 0
+
+
+def _open_campaign_vaults(args: argparse.Namespace) -> list[tuple[Path, Vault]]:
+    """Open every vault named on the command line (EXP-08).
+
+    A shared ``--passphrase``/``HABITABLE_PASSPHRASE`` covers vaults that share
+    one passphrase; otherwise each vault is prompted for individually, exactly
+    like the single-vault commands. Opening is read-only: nothing is written
+    until (and unless) ``campaign export`` explicitly assembles a packet.
+    """
+    shared = args.passphrase or os.environ.get("HABITABLE_PASSPHRASE")
+    vaults: list[tuple[Path, Vault]] = []
+    for path in args.vaults:
+        passphrase = shared or getpass.getpass(f"Passphrase for {path}: ")
+        vaults.append((path, Vault.open(path, passphrase)))
+    return vaults
+
+
+def _campaign_locale(vaults: list[tuple[Path, Vault]]) -> str:
+    return resolve_locale(vaults[0][1].config.language) if vaults else DEFAULT_LOCALE
+
+
+def _cmd_campaign_status(args: argparse.Namespace) -> int:
+    vaults = _open_campaign_vaults(args)
+    report = campaign.build_campaign_report(vaults)
+    locale = _campaign_locale(vaults)
+    summary = cli_text(
+        "campaign_summary",
+        locale,
+        units=report.unit_count,
+        ready=report.export_ready_count,
+        broken=report.broken_custody_count,
+        awaiting=report.awaiting_timestamp_count,
+    )
+    print(f"habitable: {summary}")
+    for unit in report.units:
+        flag_key = (
+            "campaign_flag_ready"
+            if unit.export_ready
+            else "campaign_flag_broken"
+            if not unit.custody_intact
+            else "campaign_flag_awaiting"
+            if unit.awaiting_count
+            else "campaign_flag_empty"
+        )
+        custody = cli_text("custody_intact" if unit.custody_intact else "custody_broken", locale)
+        line = cli_text(
+            "campaign_unit_line",
+            locale,
+            unit=unit.unit,
+            issues=unit.issue_count,
+            timestamped=unit.timestamped_count,
+            captures=unit.capture_count,
+            custody=custody,
+            flag=cli_text(flag_key, locale),
+        )
+        print(f"  · {line}")
+    return 0
+
+
+def _cmd_campaign_export(args: argparse.Namespace) -> int:
+    vaults = _open_campaign_vaults(args)
+    result = campaign.build_campaign_packet(
+        vaults,
+        args.out,
+        include_originals=args.include_originals,
+        make_pdf=not args.no_pdf,
+    )
+    locale = _campaign_locale(vaults)
+    done = cli_text(
+        "campaign_export_done", locale, units=result.report.unit_count, out=result.out_dir
+    )
+    print(f"habitable: {done}")
+    for unit_result in result.units:
+        h = unit_result.health
+        print(
+            f"  · {h.unit}: {unit_result.packet.item_count} item(s), "
+            f"{unit_result.packet.timestamped_count} timestamped -> {unit_result.out_dir}"
+        )
+    print(f"           manifest: {result.manifest_path}")
+    print(f"           index: {result.index_path}")
     return 0
 
 
@@ -596,6 +756,25 @@ def _cmd_key_restore(args: argparse.Namespace) -> int:
     blob = args.recovery_file.read_text(encoding="utf-8")
     Vault.restore_keyfile(args.vault, blob, recovery, new)
     print(f"habitable: keyfile restored for {args.vault}; open it with the new passphrase.")
+    return 0
+
+
+def _cmd_key_harden(args: argparse.Namespace) -> int:
+    passphrase = _passphrase(args)  # validates the current passphrase
+    vault = Vault.open(args.vault, passphrase)
+    vault.harden_key(passphrase, profile=args.profile)
+    n = KDF_PROFILES[args.profile]
+    print(f"habitable: KDF hardened to the {args.profile!r} profile (scrypt N={n}).")
+    print("           unlocking will take longer from now on; that is the point.")
+    return 0
+
+
+def _cmd_key_rotate_dek(args: argparse.Namespace) -> int:
+    passphrase = _passphrase(args)  # validates the current passphrase
+    vault = Vault.open(args.vault, passphrase)
+    vault.rotate_dek(passphrase)
+    print("habitable: data key rotated. Every vault blob and sealed original was")
+    print("           re-encrypted under the new key; fixity was re-checked throughout.")
     return 0
 
 

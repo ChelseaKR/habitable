@@ -105,6 +105,10 @@ max-complexity = 10
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "N802", "N803"]
+# media.py shells out to a fixed ffmpeg/ffprobe binary (never a shell, executable
+# is a module constant, args are file paths passed as a list) -- S603's "untrusted
+# input" concern does not apply to these controlled invocations (EXP-07).
+"src/habitable/media.py" = ["S603"]
 
 [tool.mypy]
 python_version = "3.14"

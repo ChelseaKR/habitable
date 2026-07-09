@@ -39,7 +39,7 @@ parsing). habitable implements no primitive itself.
 | Purpose | Primitive | Parameters |
 | --- | --- | --- |
 | Authenticated encryption (AEAD) | **ChaCha20-Poly1305** | 256-bit key, 96-bit nonce |
-| Password-based key derivation | **scrypt** | N=2¹⁵, r=8, p=1, 32-byte output |
+| Password-based key derivation | **scrypt** | N=2¹⁵–2²⁰ (profile-selected), r=8, p=1, 32-byte output |
 | Key agreement (sync) | **X25519** | ephemeral–static ECDH |
 | Key derivation (sync) | **HKDF-SHA256** | 32-byte output, context-bound `info` |
 | Signatures | **Ed25519** | over a SHA-256 hex digest (ASCII) |
@@ -76,19 +76,55 @@ passphrase ──scrypt(salt,N,r,p)──▶ KEK ──AEAD-unwrap──▶ DEK 
 }
 ```
 
+`kdf.n` is the only field that varies between the named cost profiles below (`r`/`p` are fixed);
+`open_keyfile` reads whatever `n` the keyfile carries, so different vaults — or the same vault
+before and after hardening — can run at different costs with no format change.
+
 Every authentication failure (wrong passphrase, tampered keyfile, malformed base64) surfaces as a
 single `CryptoError` — "decryption failed (wrong key or tampered data)" — never a bare library
 exception and never a distinguishable oracle beyond pass/fail.
 
-### 3.1 Key lifecycle (R-38)
+### 3.1 Key lifecycle (R-38, FIX-08)
 
 - **Rotation** (`habitable key rotate`): re-derive a KEK from the *new* passphrase over a *fresh*
   salt and re-wrap the **same** DEK. Bulk data is untouched. Old keyfiles for the old passphrase
-  remain valid until discarded — rotation is not revocation of a leaked DEK (see tradeoffs).
+  remain valid until discarded — passphrase rotation is not revocation of a leaked DEK (that's DEK
+  rotation, below).
+- **KDF hardening** (`habitable key harden`, `crypto.harden_keyfile` / `Vault.harden_key`):
+  re-derive the KEK from the *same* passphrase at a **stronger named cost profile**, over a fresh
+  salt, and re-wrap the **same** DEK. Cheap (only the keyfile changes) but every future unlock pays
+  the new cost. Named profiles (`crypto.KDF_PROFILES`):
+
+  | Profile | scrypt N | ~memory | Notes |
+  | --- | --- | --- | --- |
+  | `standard` | 2¹⁵ | ~32 MiB | default at vault creation; interactive unlock on a low-end phone |
+  | `hardened` | 2¹⁷ | ~128 MiB | `key harden`'s default target; OWASP's current scrypt-minimum |
+  | `paranoid` | 2²⁰ | ~1 GiB | for a device that can spare the time and memory |
+
+  **Bump procedure**: raising the cost is *not* automatic (no vault silently gets slower); an
+  organizer runs `key harden` explicitly, per device, when they judge their hardware can bear it —
+  the interactive-unlock-on-old-hardware constraint (see [tradeoffs](#7-review-focus--known-tradeoffs))
+  is a per-device judgment call, not a global one. Raising `KDF_PROFILES` values in a future release
+  (or adding a profile) does not by itself change any existing keyfile; only re-running `key harden`
+  does.
+- **DEK rotation** (`habitable key rotate-dek`, `Vault.rotate_dek`): generates a **fresh** DEK and
+  re-encrypts *every* vault blob (`case.enc`, `custody.enc`, `deferred.enc`, `identity.enc`) and
+  *every* sealed original under it, then re-wraps the new DEK under the **same** passphrase. This is
+  the actual remedy for a suspected DEK compromise that rotation alone cannot provide. Unlike
+  rotation/hardening it is O(vault size), not O(1) — expensive but bounded, and meant to be rare.
+  Each sealed original is decrypted and its fixity **re-checked** against the content hash already
+  recorded in the case document before being re-sealed (a corrupt original is caught before, not
+  after, it is carried into the new encryption). All re-encryption happens to staged `*.new`
+  siblings before any file is modified in place; a final pass swaps each one in with a same-filesystem
+  rename. A crash during the (slow) staging phase leaves the vault untouched; a crash during the
+  (fast, metadata-only) swap phase could leave a partially migrated vault recoverable by hand from
+  the leftover `*.new`/`*.enc` files — an accepted tradeoff at this effort tier, not a full
+  transactional guarantee (see [tradeoffs](#7-review-focus--known-tradeoffs)).
 - **Recovery blob** (`habitable key backup` / `restore`): the same DEK wrapped under an
   **independent** recovery passphrase, producing a standalone keyfile-format blob. Possession of
   the blob **and** the recovery passphrase reconstructs the DEK. This is the *only* way to recover
-  a vault whose primary passphrase is lost.
+  a vault whose primary passphrase is lost. **After a DEK rotation, old recovery blobs wrap the old
+  DEK and no longer open the vault** — take a fresh backup once rotation completes.
 - **Unrecoverability by design**: there is no escrow, no operator key, no backdoor. Lose every
   passphrase and every recovery blob and the data is cryptographically gone. This is a deliberate
   safety property, documented for organizers in [`key-management.md`](key-management.md) and
@@ -250,9 +286,12 @@ verifier accepts an item if at least one authority verifies and reports all that
 
 Stated plainly so a reviewer can target effort (and so the project isn't accused of hiding them):
 
-- **scrypt cost.** N=2¹⁵ (≈32 MiB) targets an interactive unlock on a low-end phone. For a
-  high-value at-rest secret this is on the lower side; evaluate raising it or offering a profile,
-  against the reality that the tool runs on a tenant's only, possibly old, device.
+- **scrypt cost.** N=2¹⁵ (≈32 MiB), the `standard` profile, targets an interactive unlock on a
+  low-end phone and is still what new vaults get by default — that reality (a tenant's only,
+  possibly old, device) doesn't go away. FIX-08 addressed the "no path to raise it" half of the
+  problem with per-device, opt-in `key harden` profiles (§3.1) rather than by silently raising the
+  default; whether `standard` itself should move is a judgment call for the crypto audit, not
+  resolved here.
 - **Random 96-bit nonces.** Safe at habitable's message volumes; confirm no key is driven near the
   birthday bound, especially for the long-lived DEK.
 - **Sender authentication of sync payloads** is *not* provided by the sealed box (anonymous sender
@@ -266,8 +305,14 @@ Stated plainly so a reviewer can target effort (and so the project isn't accused
   collision and casual substitution; not a cryptographic commitment to the full key. Consider
   surfacing the full hash for high-assurance comparison.
 - **Memory zeroization** of key bytes is not guaranteed under CPython.
-- **DEK rotation ≠ DEK revocation.** Rotating the passphrase does not re-key bulk data; a leaked
-  DEK stays valid for existing blobs. Document/΄design a re-key path if that is in scope.
+- **DEK rotation's multi-file swap is not fully transactional.** `Vault.rotate_dek` (§3.1) stages
+  every re-encrypted file before touching anything in place, so the expensive, failure-prone work
+  (decrypt, re-verify fixity, re-encrypt) can't corrupt the live vault. The final swap is a tight
+  loop of same-filesystem renames (each individually atomic), but a crash *inside* that loop —
+  not during staging — can still leave a vault whose keyfile and blobs disagree about which DEK is
+  current, recoverable by hand from the `*.new`/`*.enc` files left behind. A reviewer should weigh
+  whether that residual window is acceptable for the threat model or needs a real journal/commit
+  marker.
 
 ## 8. Cross-references
 

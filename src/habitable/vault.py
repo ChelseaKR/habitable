@@ -27,6 +27,7 @@ from .crypto import (
     SymmetricKey,
     create_keyfile,
     export_recovery_blob,
+    harden_keyfile,
     import_recovery_blob,
     open_keyfile,
 )
@@ -164,6 +165,86 @@ class Vault:
         (self.path / _KEYFILE).write_text(
             export_recovery_blob(self._dek, new_passphrase), encoding="utf-8"
         )
+
+    def harden_key(self, passphrase: str, *, profile: str = "hardened") -> None:
+        """Re-derive the KEK at a stronger KDF cost profile (FIX-08's `key harden`).
+
+        Same DEK, same passphrase -- only the KDF cost that protects the keyfile
+        against offline brute force goes up. Cheap by design (only the small wrapped
+        key is rewritten), but every future unlock pays the new profile's cost. See
+        ``KDF_PROFILES`` in :mod:`habitable.crypto` and docs/crypto-spec.md sec 3.1.
+        """
+        (self.path / _KEYFILE).write_text(
+            harden_keyfile(self._dek, passphrase, profile=profile), encoding="utf-8"
+        )
+
+    def rotate_dek(self, passphrase: str) -> None:
+        """Generate a fresh data key and re-encrypt every blob and sealed original under it.
+
+        Unlike :meth:`rotate_passphrase` (which only re-wraps the *same* DEK), this
+        replaces the key itself -- the correct remedy when the DEK, not just the
+        passphrase, is suspected compromised. Expensive (touches every encrypted blob
+        and every sealed original) but bounded and rare.
+
+        Every sealed original is decrypted and its fixity re-checked against the
+        content_hash already recorded in the case document (via :meth:`read_original`)
+        before it is re-sealed under the new key, so silent corruption cannot ride
+        along into the re-encryption. All of that slow work happens *before* any file
+        on disk is touched: each new-key ciphertext is first staged next to its
+        original as a ``*.new`` sibling, and only once every one of them has been
+        written does a final pass swap them into place with a same-filesystem rename
+        (an atomic operation per file). A crash during the slow staging phase leaves
+        the old, still-valid vault completely untouched. A crash during the brief swap
+        phase (fast metadata-only renames, no cryptography) could leave a partially
+        migrated vault whose ``*.new`` leftovers make manual recovery possible -- an
+        accepted, documented tradeoff (see docs/crypto-spec.md sec 7) rather than a
+        full transactional guarantee.
+        """
+        new_dek = SymmetricKey.generate()
+        staged: list[tuple[Path, Path]] = []
+        try:
+            originals_dir = self.path / _ORIGINALS
+            for cap in self.document.captures():
+                sealed = originals_dir / cap.sealed_name
+                if not cap.sealed_name or not sealed.exists():
+                    continue
+                raw = self.read_original(cap.capture_id, cap.content_hash)
+                aad = f"original:{cap.capture_id}:{cap.content_hash}".encode()
+                dest = sealed.with_name(sealed.name + ".new")
+                dest.write_bytes(new_dek.encrypt(raw, aad=aad))
+                staged.append((sealed, dest))
+
+            for name, plaintext in self._blob_plaintexts():
+                final = self.path / name
+                dest = final.with_name(final.name + ".new")
+                dest.write_bytes(new_dek.encrypt(plaintext, aad=name.encode()))
+                staged.append((final, dest))
+
+            keyfile_final = self.path / _KEYFILE
+            keyfile_dest = keyfile_final.with_name(keyfile_final.name + ".new")
+            keyfile_dest.write_text(export_recovery_blob(new_dek, passphrase), encoding="utf-8")
+            staged.append((keyfile_final, keyfile_dest))
+
+            for final, dest in staged:
+                dest.replace(final)
+        except BaseException:
+            for _final, dest in staged:
+                dest.unlink(missing_ok=True)
+            raise
+
+        self._dek = new_dek
+
+    def _blob_plaintexts(self) -> list[tuple[str, bytes]]:
+        """Plaintext contents of every non-original encrypted blob (for DEK rotation)."""
+        deferred_json: JSONValue = [
+            {"capture_id": item.capture_id, "digest": item.digest} for item in self._deferred
+        ]
+        return [
+            (_CASE, canonical_json(self.document.to_state())),
+            (_CUSTODY, canonical_json(_records_to_json(self.custody.to_vault_records()))),
+            (_DEFERRED, canonical_json(deferred_json)),
+            (_IDENTITY, self.identity.serialize()),
+        ]
 
     def export_recovery(self, recovery_passphrase: str) -> str:
         """Return an encrypted recovery backup of the data key.

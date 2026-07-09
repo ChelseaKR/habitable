@@ -194,6 +194,9 @@ class Capture:
     sealed_name: str
     hlc: str
     captured_at: str
+    transcript: str = ""
+    """Plain-text description of a video/audio recording (EXP-07): the
+    accessible fallback for temporal evidence, analogous to a photo's alt text."""
 
 
 _ISSUE_FIELDS = ("category", "room", "title", "status", "severity", "description")
@@ -328,6 +331,7 @@ class CaseDocument:
         sealed_name: str,
         captured_at: str,
         capture_id: str | None = None,
+        transcript: str = "",
     ) -> str:
         stamp = self._clock.now()
         resolved_id = capture_id or self.opaque_id("cap", stamp.encode())
@@ -340,6 +344,7 @@ class CaseDocument:
                 "sealed_name": sealed_name,
                 "hlc": stamp.encode(),
                 "captured_at": captured_at,
+                "transcript": transcript,
             },
         )
         return resolved_id
@@ -393,6 +398,7 @@ class CaseDocument:
                 sealed_name=str(payload.get("sealed_name", "")),
                 hlc=str(payload.get("hlc", "")),
                 captured_at=str(payload.get("captured_at", "")),
+                transcript=str(payload.get("transcript", "")),
             )
             if issue_id is None or capture.issue_id == issue_id:
                 out.append(capture)
