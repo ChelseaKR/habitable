@@ -441,6 +441,12 @@ def _load_node_id(path: Path, dek: SymmetricKey) -> str:
         record = _decode_json(_read_blob(path, dek, _NODE))
         node_id = record.get("node_id") if isinstance(record, dict) else None
         if isinstance(node_id, str) and node_id:
+            # A migration interrupted between writing the encrypted blob and
+            # stripping the plaintext line would otherwise leave the leaked,
+            # passphrase-derived value in config.toml forever (this branch
+            # returns early on every later open). Re-strip: a no-op on healthy
+            # vaults, the missing half of the migration on interrupted ones.
+            _strip_plaintext_node_id(path / _CONFIG)
             return node_id
         raise VaultError("corrupt node identity record")
 

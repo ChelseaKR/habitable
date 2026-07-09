@@ -75,6 +75,28 @@ def test_legacy_plaintext_node_id_migrates_on_open(
     assert again.document.clock.node_id == node_id
 
 
+def test_interrupted_migration_still_strips_plaintext_node_id(
+    make_vault: Callable[..., Vault], tmp_path: Path
+) -> None:
+    """FIX-01 crash window: the migration writes node.enc *then* strips the plaintext
+    line. If it dies in between, node.enc exists, so every later open takes the fast
+    path — it must still remove the leaked passphrase-derived value from config.toml
+    rather than leave it in plaintext forever."""
+    vault = make_vault()
+    node_id = vault.document.clock.node_id
+
+    # Simulate the interrupted state: node.enc present AND the plaintext line present.
+    assert (tmp_path / "vault" / "node.enc").exists()
+    config = tmp_path / "vault" / "config.toml"
+    config.write_text(
+        f'node_id = "{node_id}"\n' + config.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+
+    reopened = Vault.open(tmp_path / "vault", "test-passphrase")
+    assert reopened.document.clock.node_id == node_id  # value unchanged
+    assert "node_id" not in config.read_text(encoding="utf-8")  # leak removed
+
+
 def test_wrong_passphrase_rejected(make_vault: Callable[..., Vault], tmp_path: Path) -> None:
     make_vault()
     with pytest.raises(HabitableError):
