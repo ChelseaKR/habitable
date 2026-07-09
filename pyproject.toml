@@ -41,6 +41,12 @@ dependencies = [
 # court or legal-aid group can run it without pulling the whole stack. It is also
 # offered under Apache-2.0 (see NOTICE) for embedding.
 verify = ["cryptography>=44", "asn1crypto>=1.5"]
+# The reusable, local-first evidence kernel (EXP-13): canonical + evidence + tsa +
+# verify + crypto-verify, exposed as the stable, embeddable public surface
+# `habitable.kernel`, under the same Apache-2.0 additional permission. Same minimal
+# runtime as `verify`; other civic tools adopt this subset without copying code. See
+# docs/evidence-kernel.md for the API + semver contract and the golden corpus.
+kernel = ["cryptography>=44", "asn1crypto>=1.5"]
 
 [project.scripts]
 habitable = "habitable.cli:main"
