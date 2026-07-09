@@ -120,7 +120,11 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   are distinguished from recipient-anchored authority trust; automated accessibility is
   distinguished from the still-open human pass; and court readiness, duress mode, pilot
   completion, PDF/UA, and signed native packaging are no longer implied as shipped.
-
+- **The published sample packet verifies again.** The GitHub Pages sample is now a
+  current signed export with its required `bundle.sig.json`, opaque public IDs,
+  sanitized shared media, and explicit synthetic-data labeling. A regression test
+  runs the standalone verifier against the literal committed sample and fails CI if
+  its signature, custody chain, packet version, or privacy properties drift.
 - **Verifier subset now imports on Python < 3.14 again.** Three multi-type `except`
   clauses in the Apache-2.0 verification subset (`verify.py`, `tsa.py`, `exif.py`)
   used the PEP 758 parenthesis-free form, a `SyntaxError` before Python 3.14 — which

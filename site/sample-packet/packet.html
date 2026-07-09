@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Habitability evidence packet — unit 4B</title>
+<title>Habitability evidence packet — unit 4B (synthetic)</title>
 <style>
 :root { color-scheme: light dark; }
 body { max-width: 50rem; margin: 0 auto; padding: 1.5rem;
@@ -30,39 +30,69 @@ footer { margin-top: 2rem; border-top: 1px solid #ccc; padding-top: 1rem;
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<header><h1>Habitability evidence packet — unit 4B</h1>
-<p class="meta">Generated 2026-01-02T09:30:00Z · 3 item(s), 3 trusted-timestamped · producer 9636-7c84-aed5-ab6f</p>
+<header><h1>Habitability evidence packet — unit 4B (synthetic)</h1>
+<p class="meta">Generated 2026-01-02T09:30:00Z · 3 item(s), 3 trusted-timestamped · producer db74-b0d8-9050-cff0</p>
+<p class="meta">SYNTHETIC DEMONSTRATION — NOT A REAL TENANT CASE</p>
 <p class="warning">This packet is evidence, not legal advice, and does not guarantee admissibility. Verify integrity with <code>habitable verify</code> against the accompanying bundle.json.</p>
 </header>
 <main id="main">
+<section aria-labelledby="proves-heading">
+<h2 id="proves-heading">What this packet proves — and what it does not</h2>
+<h3>What this packet proves</h3>
+<ul>
+<li>Each photo&#x27;s content has not been altered since it was captured (a SHA-256 content hash that can be re-checked against the file).</li>
+<li>Each item existed no later than the date on its trusted timestamp (an RFC 3161 token over the hash) — an upper bound on when it was created.</li>
+<li>The record of events was not reordered or edited after the fact (an append-only, hash-linked chain of custody).</li>
+</ul>
+<h3>What this packet does not prove</h3>
+<ul>
+<li>Who took a photo, or that it depicts a particular home or unit.</li>
+<li>That the underlying condition was as described — that rests on the tenant&#x27;s own account, not on the cryptography.</li>
+<li>That a timestamp is the exact moment of capture — it is only an upper bound (the content existed by then).</li>
+<li>Admissibility or any legal outcome. This is documentation, not legal advice.</li>
+</ul>
+<p>How to verify: run `habitable verify` against the accompanying bundle.json, or cross-check the hashes and RFC 3161 tokens with standard tools. The accessible reading of this packet is packet.html.</p>
+</section>
+<section aria-labelledby="discloses-heading">
+<h2 id="discloses-heading">What this packet discloses</h2>
+<ul>
+<li>The shared photos in this packet have had location (GPS) removed, so they do not reveal where the tenant lives.</li>
+</ul>
+</section>
 <section>
-<h2>Issue: Black mold on ceiling</h2>
-<p class="meta">Category: mold · Room: bathroom · Severity: high · Status: open</p>
+<h2>Issue: No heat overnight</h2>
+<p class="meta">Category: heat · Room: bedroom · Severity: urgent · Status: open</p>
+<p>Synthetic scenario: the room remained cold while the heater was set to warm.</p>
 <h3>Timeline</h3><ul>
-<li><strong>observed:</strong> Mold spreading after roof leak</li>
-<li><strong>sent_request:</strong> Emailed landlord requesting repair</li>
+<li><strong>observed:</strong> Synthetic thermostat display read 49 F during the night.</li>
 </ul>
 <h3>Captured evidence</h3>
 <figure>
-<img src="media/cap-001767312000006.000000.a561aba5562888f6.jpg" alt="Evidence photo for this issue, captured 2026-01-02T09:15:00Z, content hash d283e0b6b0a6, trusted-timestamped.">
-<figcaption>Captured 2026-01-02T09:15:00Z · hash d283e0b6b0a6411b… · trusted-timestamped</figcaption>
-</figure>
-<figure>
-<img src="media/cap-001767312000010.000000.a561aba5562888f6.jpg" alt="Evidence photo for this issue, captured 2026-01-02T09:15:00Z, content hash 687fead7fb01, trusted-timestamped.">
-<figcaption>Captured 2026-01-02T09:15:00Z · hash 687fead7fb018d53… · trusted-timestamped</figcaption>
+<img src="media/cap-0c2a8d9326ee98ae.jpg" alt="Evidence photo for this issue, captured 2026-01-02T09:15:00Z, content hash 81dc3e113fba, trusted-timestamped.">
+<figcaption>Captured 2026-01-02T09:15:00Z · hash 81dc3e113fbab34c… · trusted-timestamped</figcaption>
 </figure>
 </section>
 <section>
-<h2>Issue: No heat</h2>
-<p class="meta">Category: heat · Room: bedroom · Severity: urgent · Status: open</p>
+<h2>Issue: Recurring ceiling leak and mold-like spotting</h2>
+<p class="meta">Category: moisture · Room: bathroom · Severity: high · Status: open</p>
+<p>Synthetic scenario: staining returned after rain and spread across the ceiling.</p>
+<h3>Timeline</h3><ul>
+<li><strong>observed:</strong> Synthetic tenant observed new staining after rainfall.</li>
+<li><strong>sent_request:</strong> Synthetic repair request sent to the property manager.</li>
+<li><strong>follow_up:</strong> Synthetic follow-up recorded after the staining expanded.</li>
+</ul>
 <h3>Captured evidence</h3>
 <figure>
-<img src="media/cap-001767312000014.000000.a561aba5562888f6.jpg" alt="Evidence photo for this issue, captured 2026-01-02T09:15:00Z, content hash 83668853a196, trusted-timestamped.">
-<figcaption>Captured 2026-01-02T09:15:00Z · hash 83668853a196988e… · trusted-timestamped</figcaption>
+<img src="media/cap-d871ce0e4d965b97.jpg" alt="Evidence photo for this issue, captured 2026-01-02T09:05:00Z, content hash 3b8407885635, trusted-timestamped.">
+<figcaption>Captured 2026-01-02T09:05:00Z · hash 3b8407885635d168… · trusted-timestamped</figcaption>
+</figure>
+<figure>
+<img src="media/cap-7f59015c8a322b59.jpg" alt="Evidence photo for this issue, captured 2026-01-02T09:10:00Z, content hash 3ee3f8106e17, trusted-timestamped.">
+<figcaption>Captured 2026-01-02T09:10:00Z · hash 3ee3f8106e1718fd… · trusted-timestamped</figcaption>
 </figure>
 </section>
 <h2>Evidence appendix</h2>
-<table><caption>Per-item content hash, trusted-timestamp status, and authority (verify independently against bundle.json).</caption><thead><tr><th scope="col">Capture</th><th scope="col">Content hash (SHA-256)</th><th scope="col">Timestamp</th><th scope="col">Authority</th></tr></thead><tbody><tr><td>cap-001767312000006.000000.a561aba5562888f6</td><td>d283e0b6b0a6411b2a97856c3456bc93340e40dfd7e4a1a331a0d4acf4f97929</td><td>verified</td><td>demo-rfc3161-tsa</td></tr><tr><td>cap-001767312000010.000000.a561aba5562888f6</td><td>687fead7fb018d53824056eb84a6ab694d40f51e4280f42cf0adc1518ff4adf1</td><td>verified</td><td>demo-rfc3161-tsa</td></tr><tr><td>cap-001767312000014.000000.a561aba5562888f6</td><td>83668853a196988ed3563461e7c5efa0cc5b4ebdb93b30073b3b0cb69a6de149</td><td>verified</td><td>demo-rfc3161-tsa</td></tr></tbody></table>
+<table><caption>Per-item content hash, trusted-timestamp status, and authority (verify independently against bundle.json).</caption><thead><tr><th scope="col">Capture</th><th scope="col">Content hash (SHA-256)</th><th scope="col">Timestamp</th><th scope="col">Authority</th></tr></thead><tbody><tr><td>cap-d871ce0e4d965b97</td><td>3b8407885635d168ac0a676d18c194cd170403f4b559e69df29af8ef02be9ec8</td><td>verified</td><td>sample-offline-rfc3161</td></tr><tr><td>cap-7f59015c8a322b59</td><td>3ee3f8106e1718fdc4699c3bfa99ff005446008d54f0a71499c5aeb58dff8103</td><td>verified</td><td>sample-offline-rfc3161</td></tr><tr><td>cap-0c2a8d9326ee98ae</td><td>81dc3e113fbab34c8134646e2856cd546d668a6169d958aff5012a1c4e26e95d</td><td>verified</td><td>sample-offline-rfc3161</td></tr></tbody></table>
 </main>
-<footer><p>habitable — local-first, end-to-end-encrypted habitability evidence.</p></footer>
+<footer><p>Generated sample data only. Not legal advice and not evidence from a real home.</p></footer>
 </body></html>
