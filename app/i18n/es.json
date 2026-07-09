@@ -86,6 +86,7 @@
   "export_disclosures": "Divulgaciones",
   "verify_intact": "Paquete íntegro",
   "verify_failed": "Paquete NO íntegro",
+  "verify_awaiting": "Sellado: sellos de tiempo confiables pendientes",
 
   "footer_note": "habitable funciona por completo en este dispositivo. Nada sale de tu computadora.",
 
@@ -94,6 +95,8 @@
   "msg_timeline_added": "Entrada de cronología agregada.",
   "msg_export_done_ok": "Paquete exportado y verificado como íntegro.",
   "msg_export_done_warn": "Paquete exportado, pero la verificación no fue satisfactoria.",
+  "msg_export_done_awaiting": "{count, plural, one {Paquete exportado. # elemento sigue pendiente de un sello de tiempo confiable, así que el paquete aún no se verifica como completo.} other {Paquete exportado. # elementos siguen pendientes de un sello de tiempo confiable, así que el paquete aún no se verifica como completo.}}",
+  "export_awaiting_next": "El hash del contenido ya ancla cada elemento pendiente en el momento de la captura. Siguiente paso: usa 'Resolver marcas de tiempo pendientes' cuando tengas conexión y vuelve a exportar.",
   "msg_refreshed": "Estado del caso actualizado.",
 
   "error_prefix": "Algo salió mal:",

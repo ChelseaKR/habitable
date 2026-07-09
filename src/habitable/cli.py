@@ -521,6 +521,13 @@ def _cmd_export(args: argparse.Namespace) -> int:
         total=result.item_count,
     )
     print(f"           {stamped}")
+    awaiting = result.item_count - result.timestamped_count
+    if awaiting > 0:
+        # An awaiting-timestamp packet reports NOT intact under `habitable verify` —
+        # correct, degraded behavior. Say so at export time, with the next step,
+        # rather than letting a recipient's verify run be the first notice (FIX-09).
+        hint = cli_text("export_awaiting_hint", locale, awaiting=awaiting)
+        print(f"           {hint}")
     for note in result.disclosures:
         print(f"           {note}")
     print(f"           packet written to {result.out_dir}")

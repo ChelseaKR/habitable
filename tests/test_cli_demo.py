@@ -129,3 +129,40 @@ def test_cli_sync_requires_transport(
     # No --relay or --dir: the command reports a clear error and exits non-zero.
     assert main(["sync", "--vault", str(vault), "--peer", peer, "--channel", "r"]) == 1
     assert "transport" in capsys.readouterr().err
+
+
+def test_cli_export_discloses_awaiting_state(
+    tmp_path: Path,
+    make_jpeg: Callable[..., Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Exporting with queued-offline items states the degraded state and next step.
+
+    FIX-09: a packet with awaiting items reports NOT intact under `habitable verify`
+    (correct, degraded behavior) — the export must say so up front, with the
+    `habitable resolve` next step, instead of the recipient discovering it.
+    """
+    monkeypatch.setenv("HABITABLE_PASSPHRASE", "pw")
+    vault = tmp_path / "vault"
+    assert main(["init", str(vault), "--case", "bldg-12", "--unit", "4B"]) == 0
+    assert main(["issue", "--vault", str(vault), "--category", "mold", "--title", "Mold"]) == 0
+    out = capsys.readouterr().out
+    issue_id = next(token for token in out.split() if token.startswith("issue-"))
+
+    photo = make_jpeg()
+    capture_args = ["capture", str(photo), "--vault", str(vault), "--issue", issue_id]
+    assert main([*capture_args, "--no-timestamp"]) == 0
+    capsys.readouterr()
+
+    assert main(["export", "--vault", str(vault), "--out", str(tmp_path / "p1")]) == 0
+    out = capsys.readouterr().out
+    assert "awaiting a trusted timestamp" in out
+    assert "habitable resolve" in out
+
+    # Once every item is timestamped, the hint disappears — nothing cries wolf.
+    assert main(["resolve", "--vault", str(vault), "--dev-tsa"]) == 0
+    capsys.readouterr()
+    assert main(["export", "--vault", str(vault), "--out", str(tmp_path / "p2")]) == 0
+    out = capsys.readouterr().out
+    assert "awaiting a trusted timestamp" not in out

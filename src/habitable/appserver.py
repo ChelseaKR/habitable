@@ -29,7 +29,7 @@ from .errors import HabitableError
 from .packet import build_packet
 from .tsa import DevTSA, TimestampAuthority
 from .vault import Vault
-from .verify import verify_packet
+from .verify import VerificationReport, verify_packet
 
 __all__ = ["AppServer", "make_app_server"]
 
@@ -155,10 +155,33 @@ class AppServer:
             "out_dir": str(out),
             "item_count": result.item_count,
             "timestamped_count": result.timestamped_count,
+            "awaiting": result.item_count - result.timestamped_count,
+            "awaiting_only": _awaiting_only(report),
             "disclosures": list(result.disclosures),
             "verified": report.ok,
             "summary": report.summary(),
         }
+
+
+def _awaiting_only(report: VerificationReport) -> bool:
+    """Whether the packet fails verification *solely* because items await a timestamp.
+
+    An un-timestamped item makes the whole packet report NOT intact — correct,
+    degraded behavior (see docs/verifier-decision-table.md §0). But for the person
+    exporting, "awaiting a trusted timestamp" is a different situation from a broken
+    chain or a failed hash, and the UI must not present the two identically (FIX-09,
+    R-01/R-17): the first has a clear next step, the second is an integrity alarm.
+    """
+    if report.ok or not report.signature_ok or not report.custody_ok or report.problems:
+        return False
+    failing = [item for item in report.items if not item.ok]
+    return bool(failing) and all(
+        not item.timestamp_verified
+        and item.shared_media_ok
+        and item.custody_binding_ok
+        and item.original_fixity_ok is not False
+        for item in failing
+    )
 
 
 # POST routes: path -> a call against the AppServer with the parsed JSON body.

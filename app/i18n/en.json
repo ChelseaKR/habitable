@@ -86,6 +86,7 @@
   "export_disclosures": "Disclosures",
   "verify_intact": "Packet intact",
   "verify_failed": "Packet NOT intact",
+  "verify_awaiting": "Sealed — awaiting trusted timestamps",
 
   "footer_note": "habitable runs entirely on this device. Nothing leaves your computer.",
 
@@ -94,6 +95,8 @@
   "msg_timeline_added": "Timeline entry added.",
   "msg_export_done_ok": "Packet exported and verified intact.",
   "msg_export_done_warn": "Packet exported, but verification did not pass.",
+  "msg_export_done_awaiting": "{count, plural, one {Packet exported. # item is still awaiting a trusted timestamp, so the packet does not verify as complete yet.} other {Packet exported. # items are still awaiting a trusted timestamp, so the packet does not verify as complete yet.}}",
+  "export_awaiting_next": "The content hash already anchors each awaiting item at capture. Next step: use 'Resolve awaiting timestamps' when you have a connection, then export again.",
   "msg_refreshed": "Case status refreshed.",
 
   "error_prefix": "Something went wrong:",
