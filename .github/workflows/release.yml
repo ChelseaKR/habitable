@@ -103,6 +103,11 @@ jobs:
 
       - name: Build wheel + sdist
         run: uv build
+      - name: Smoke-test the installed wheel and packaged app
+        run: |
+          uv venv --python 3.14 /tmp/habitable-wheel-smoke
+          uv pip install --python /tmp/habitable-wheel-smoke/bin/python dist/*.whl
+          /tmp/habitable-wheel-smoke/bin/python scripts/smoke_test_installed_wheel.py
       - name: Generate a runtime SBOM (CycloneDX)
         run: |
           uv sync --frozen --no-dev

@@ -157,6 +157,11 @@ jobs:
           version: "0.11.19"
       - name: Build distributions
         run: uv build
+      - name: Smoke-test the installed wheel and packaged app
+        run: |
+          uv venv --python 3.14 /tmp/habitable-wheel-smoke
+          uv pip install --python /tmp/habitable-wheel-smoke/bin/python dist/*.whl
+          /tmp/habitable-wheel-smoke/bin/python scripts/smoke_test_installed_wheel.py
       - name: Upload distributions
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

@@ -15,7 +15,7 @@ from typing import cast
 
 import pytest
 
-from habitable.appserver import _awaiting_only, make_app_server
+from habitable.appserver import _STATIC_ROOT, _awaiting_only, make_app_server
 from habitable.capture import capture
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
@@ -56,6 +56,21 @@ def _call(
         payload = json.loads(exc.read())
         exc.close()
         return exc.code, payload
+
+
+def test_default_static_root_contains_complete_app() -> None:
+    """The default server root works in source and installed-wheel layouts."""
+    required = {
+        "index.html",
+        "app.js",
+        "styles.css",
+        "manifest.webmanifest",
+        "service-worker.js",
+        "i18n/en.json",
+        "i18n/es.json",
+        "icons/icon.svg",
+    }
+    assert {path for path in required if not (_STATIC_ROOT / path).is_file()} == set()
 
 
 def test_full_api_flow(app: str, make_jpeg: Callable[..., Path]) -> None:
