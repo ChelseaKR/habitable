@@ -16,7 +16,9 @@ Transports decide how the sealed bytes travel — a shared directory
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
+import urllib.error
 import urllib.request
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -206,8 +208,22 @@ class LocalDirTransport:
         return [base64.b64decode(line) for line in path.read_text("ascii").splitlines() if line]
 
 
+def _room_token(channel: str) -> str:
+    """Derive a room write-capability token both peers can compute from the channel.
+
+    Peers already agree on the ``channel`` string, so a keyed digest of it gives a
+    deterministic per-room token without any extra key exchange. The relay binds
+    the first token it sees for a room (trust-on-first-use) and rejects mismatched
+    writes; it never sees this value in the clear beyond an opaque header it only
+    ``hmac.compare_digest``-checks and never logs.
+    """
+    return hashlib.sha256(b"habitable room token v1:" + channel.encode("utf-8")).hexdigest()
+
+
 class RelayClient:
     """Posts/fetches ciphertext to a habitable relay room over HTTP."""
+
+    _TOKEN_HEADER = "X-Habitable-Room-Token"  # noqa: S105 - header name, not a secret
 
     def __init__(self, base_url: str, *, timeout: float = 15.0) -> None:
         if not base_url.lower().startswith(("http://", "https://")):
@@ -217,21 +233,48 @@ class RelayClient:
 
     def post(self, channel: str, blob: bytes) -> None:
         url = f"{self._base}/rooms/{channel}"
+        headers = {
+            "Content-Type": "application/octet-stream",
+            self._TOKEN_HEADER: _room_token(channel),
+        }
         request = urllib.request.Request(  # noqa: S310 - scheme validated in __init__
-            url, data=blob, headers={"Content-Type": "application/octet-stream"}, method="POST"
+            url, data=blob, headers=headers, method="POST"
         )
         try:
             with urllib.request.urlopen(request, timeout=self._timeout) as response:  # noqa: S310
                 response.read()
+        except urllib.error.HTTPError as exc:
+            raise self._post_error(exc) from exc
         except OSError as exc:
             raise SyncError(f"relay post failed: {exc}") from exc
 
+    @staticmethod
+    def _post_error(exc: urllib.error.HTTPError) -> SyncError:
+        exc.close()
+        if exc.code == 413:
+            return SyncError(
+                "relay room is full — peers must fetch and clear it, or the operator "
+                "must raise the room cap"
+            )
+        if exc.code == 403:
+            return SyncError(
+                "relay rejected the room write token — the room was claimed by a "
+                "different channel/key (trust-on-first-use)"
+            )
+        return SyncError(f"relay post failed: HTTP {exc.code}")
+
     def fetch(self, channel: str) -> list[bytes]:
         url = f"{self._base}/rooms/{channel}"
-        request = urllib.request.Request(url, method="GET")  # noqa: S310 - scheme validated
+        headers = {self._TOKEN_HEADER: _room_token(channel)}
+        request = urllib.request.Request(  # noqa: S310 - scheme validated in __init__
+            url, headers=headers, method="GET"
+        )
         try:
             with urllib.request.urlopen(request, timeout=self._timeout) as response:  # noqa: S310
                 payload = json.loads(response.read())
+        except urllib.error.HTTPError as exc:
+            exc.close()
+            raise SyncError(f"relay fetch failed: HTTP {exc.code}") from exc
         except OSError as exc:
             raise SyncError(f"relay fetch failed: {exc}") from exc
         if not isinstance(payload, dict) or not isinstance(payload.get("messages"), list):

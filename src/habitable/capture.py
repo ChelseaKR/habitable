@@ -20,7 +20,7 @@ from .canonical import sha256_file
 from .errors import CaptureError, TimestampError
 from .evidence import CustodyAction
 from .exif import read_metadata
-from .tsa import TimestampAuthority, TimestampInfo, retimestamp, verify_token
+from .tsa import TimestampAuthority, TimestampInfo, TimestampToken, retimestamp, verify_token
 from .vault import Vault
 
 __all__ = ["CaptureResult", "capture", "resolve_deferred", "retimestamp_all"]
@@ -80,7 +80,7 @@ def capture(
     actor_id = actor or vault.identity.public().fingerprint
 
     stamp = vault.document.clock.now()
-    capture_id = f"cap-{stamp.encode()}"
+    capture_id = vault.document.opaque_id("cap", stamp.encode())
 
     # 1. Seal the original immutably (encrypted), bound to its content hash.
     sealed_name = vault.seal_original(capture_id, src, digest)
@@ -137,12 +137,26 @@ def capture(
     )
 
 
-def resolve_deferred(vault: Vault, tsa: TimestampAuthority) -> list[CaptureResult]:
-    """Fetch trusted timestamps for every capture queued while offline."""
+def resolve_deferred(
+    vault: Vault,
+    tsa: TimestampAuthority,
+    extra_tsas: Sequence[TimestampAuthority] = (),
+) -> list[CaptureResult]:
+    """Fetch trusted timestamps for every capture queued while offline.
+
+    Once the primary token is fetched, each item is *also* stamped against every
+    configured redundant authority (``extra_tsas``), so a capture made in a dead
+    zone gets the same multiple-authority proof as the online path (item R-16).
+    The most at-risk captures — taken with no signal — no longer rest on a single
+    TSA. An unreachable redundant authority is skipped, exactly as on capture.
+    """
     results: list[CaptureResult] = []
     actor_id = vault.identity.public().fingerprint
     for item in vault.deferred():
         info = _stamp_and_record(vault, item.capture_id, item.digest, actor_id, tsa)
+        extra_authorities = _stamp_additional(
+            vault, item.capture_id, item.digest, actor_id, extra_tsas
+        )
         vault.clear_deferred(item.capture_id)
         results.append(
             CaptureResult(
@@ -152,18 +166,28 @@ def resolve_deferred(vault: Vault, tsa: TimestampAuthority) -> list[CaptureResul
                 timestamp_info=info,
                 had_location=False,
                 media_type="",
+                extra_authorities=extra_authorities,
             )
         )
     vault.save()
     return results
 
 
-def retimestamp_all(vault: Vault, tsa: TimestampAuthority) -> int:
+def retimestamp_all(
+    vault: Vault,
+    tsa: TimestampAuthority,
+    extra_tsas: Sequence[TimestampAuthority] = (),
+) -> int:
     """Archive-(re)timestamp every timestamped capture, extending proof lifetime.
 
     Stamps over each capture's most recent token so the proof survives the
-    original authority's certificate or hash algorithm aging out. Returns the
-    number of items archived.
+    original authority's certificate or hash algorithm aging out. When
+    ``extra_tsas`` are configured, each redundant authority adds a further link
+    over the previous one in the same pass, threading multiple independent
+    authorities into the (still strictly linear) archive chain — so the archive
+    proof, like online capture, does not rest on a single authority (item R-16).
+    A redundant authority that is unreachable is skipped and never fails the pass.
+    Returns the number of captures archived.
     """
     actor = vault.identity.public().fingerprint
     count = 0
@@ -181,9 +205,43 @@ def retimestamp_all(vault: Vault, tsa: TimestampAuthority) -> int:
             details={"kind": "archive", "tsa": archive.tsa_name},
             identity=vault.identity,
         )
+        _archive_against_extras(vault, capture_record.capture_id, archive, actor, extra_tsas)
         count += 1
     vault.save()
     return count
+
+
+def _archive_against_extras(
+    vault: Vault,
+    capture_id: str,
+    previous: TimestampToken,
+    actor_id: str,
+    extra_tsas: Sequence[TimestampAuthority],
+) -> None:
+    """Extend the archive chain with a link from each redundant authority.
+
+    Each extra authority re-timestamps the *previous* link, so the additional
+    authorities thread into the same verifiable chain (``verify_archive_chain``
+    requires each link to cover the one before it) rather than resting the
+    re-timestamp on the primary authority alone (item R-16). An unreachable
+    authority is skipped — a re-timestamp pass never fails because one redundant
+    TSA is down.
+    """
+    for extra in extra_tsas:
+        try:
+            archive = retimestamp(previous, extra)
+        except TimestampError:
+            continue
+        vault.add_archive_token(capture_id, archive)
+        vault.custody.append(
+            CustodyAction.TIMESTAMPED,
+            capture_id,
+            actor=actor_id,
+            hlc=vault.document.clock.now().encode(),
+            details={"kind": "archive", "tsa": archive.tsa_name, "role": "additional"},
+            identity=vault.identity,
+        )
+        previous = archive
 
 
 def _try_timestamp(

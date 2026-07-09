@@ -11,7 +11,9 @@ from pathlib import Path
 
 import pytest
 
+from habitable import relay as relay_mod
 from habitable.capture import capture
+from habitable.errors import SyncError
 from habitable.relay import RelayStore, make_server
 from habitable.sync import LocalDirTransport, RelayClient, import_messages, sync
 from habitable.tsa import LocalRfc3161TSA
@@ -124,6 +126,40 @@ def test_relay_sync_is_end_to_end_encrypted(
             assert marker not in blob
         assert marker not in served_back
     assert store.metrics()["posted"] >= 2
+
+
+def test_relay_client_sends_a_matching_room_token(
+    relay_url: tuple[str, RelayStore],
+) -> None:
+    """Both peers derive the same per-channel token, so writes round-trip (no 403)."""
+    url, store = relay_url
+    client = RelayClient(url)
+    client.post("room-token", b"sealed-1")
+    client.post("room-token", b"sealed-2")  # same channel -> same token -> accepted
+    assert store.fetch("room-token") == [b"sealed-1", b"sealed-2"]
+
+
+def test_relay_client_raises_clear_error_when_room_full(
+    relay_url: tuple[str, RelayStore],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    url, _store = relay_url
+    monkeypatch.setattr(relay_mod, "_MAX_MESSAGES_PER_ROOM", 1)
+    client = RelayClient(url)
+    client.post("room-full", b"first")  # fills the room
+    with pytest.raises(SyncError, match="full"):
+        client.post("room-full", b"second")
+
+
+def test_relay_client_raises_clear_error_when_token_rejected(
+    relay_url: tuple[str, RelayStore],
+) -> None:
+    url, store = relay_url
+    # Someone else claims the room first with a different token (trust-on-first-use).
+    store.post("room-claimed", b"squatter", token="not-the-derived-token")
+    client = RelayClient(url)
+    with pytest.raises(SyncError, match="token"):
+        client.post("room-claimed", b"mine")
 
 
 def test_localdir_mailbox_holds_only_ciphertext(

@@ -218,9 +218,13 @@ Exposed wiring in a kitchen.
   hashed, that there's an invariant guard test proving no plaintext hits the relay, and that
   it's AGPL to close the hosted-service loophole. "This is the first one that didn't insult
   my intelligence."
-- ⚠️ "I want to *see* the ciphertext-only claim myself, not just read that a test asserts
-  it. Give me a `--prove-no-plaintext` or a documented packet capture I can run against a
-  relay." → make the invariant externally demonstrable, not only internally tested. [E-07]
+- ✅ **Shipped [E-07].** "I want to *see* the ciphertext-only claim myself, not just read that a
+  test asserts it. Give me a `--prove-no-plaintext` or a documented packet capture I can run against
+  a relay." → `habitable prove-no-plaintext` now runs a real sync through an in-process relay,
+  captures every byte on the wire verbatim, and greps it for planted plaintext markers (failing on
+  any hit); [`docs/prove-no-plaintext.md`](../prove-no-plaintext.md) documents the equivalent
+  `tcpdump`/`tshark` procedure against a self-hosted relay. The invariant is now externally
+  demonstrable, not only internally tested.
 - ⚠️ Wants reproducible builds finished so she can verify the binary matches source. (Knows
   it's roadmapped.) [planned, E-coverage]
 - ⚠️ "Multiple TSAs by default — is it on by default or do I have to know to configure it?
@@ -228,7 +232,10 @@ Exposed wiring in a kitchen.
 
 **On the future.** A "transparency dashboard" *local to her device* (no telemetry) that
 shows, for her own case, exactly what each component would expose externally — a personal
-data-flow X-ray. [E-08]
+data-flow X-ray. [E-08] — ✅ **shipped** as `habitable status --xray`: a fully-local,
+telemetry-free per-component table (capture → nothing, TSA → a hash, relay → sealed blobs + a
+mailbox id, export → a plaintext packet you initiate) derived from her own vault, with no network
+calls.
 
 #### P-06 · Marcus — prepaid data, dead zone at home, exurban
 
@@ -598,23 +605,23 @@ broadest dividend:
 
 | ID | Remediation | Sources | Sev | Effort | WS | Roadmap | Invariant check |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| R-01 | Rewrite evidence-status labels in plain, reassuring language (EN+ES): what "awaiting timestamp" means, that the photo is *already safe*, what to do next | P-01,P-06,P-16 | critical | S | B | implied | clean |
-| R-02 | Eliminate dead-end screens: every state shows a clear next action; no screen leaves a stressed user stuck | P-01,P-16 | high | S | B | implied | clean |
+| R-01 | Rewrite evidence-status labels in plain, reassuring language (EN+ES): what "awaiting timestamp" means, that the photo is *already safe*, what to do next — **✅ shipped in-app** | P-01,P-06,P-16 | critical | S | B | implied | clean |
+| R-02 | Eliminate dead-end screens: every state shows a clear next action; no screen leaves a stressed user stuck — **✅ shipped in-app** | P-01,P-16 | high | S | B | implied | clean |
 | R-03 | Storage-footprint UX on low-end devices: show case size; document sealed-original + shared-copy doubling; safe offload path | P-01 | high | M | C | net-new | clean |
 | R-04 | Plain-language Spanish pass — correct but human, not "lawyerly"; reading-level target | P-01,P-16 | high | M | B | planned | clean |
 | R-05 | Fix recurrence modeling so a relapse links to the *same* issue's timeline, not a new orphan issue | P-01 | critical | M | C | net-new | clean |
 | R-06 | Audited AT walkthrough of the *capture* moment (photo fired + sealed announced), not just static pages | P-02,P-15 | critical | M | B | planned | clean |
-| R-07 | ARIA live-region announcements for awaiting-timestamp→timestamped and all async transitions; test with AT | P-02,P-15 | high | S | B | implied | clean |
+| R-07 | ARIA live-region announcements for awaiting-timestamp→timestamped and all async transitions; test with AT — **✅ shipped in-app** | P-02,P-15 | high | S | B | implied | clean |
 | R-08 | Structure `habitable verify` output (and a summary line) so it's parseable and AT-readable | P-02 | medium | S | A | implied | clean |
 | R-09 | Confirm + **undo** on all destructive actions; tolerate imprecise pointers (verify the stated goal holds) | P-03,P-16 | high | M | B/C | implied | clean |
-| R-10 | Non-auditory equivalents (haptic/visual) for every sound cue (shutter/success) | P-03 | medium | S | B | implied | clean |
+| R-10 | Non-auditory equivalents (haptic/visual) for every sound cue (shutter/success) — **✅ shipped in-app** (success cue) | P-03 | medium | S | B | implied | clean |
 | R-11 | Recovery UX: communicate by-design unrecoverability *before* it bites; guided backup at setup | P-03,P-08 | high | M | C | planned | clean (no server) |
 | R-12 | Reduce discreet-presence leakage on shared phones: review app name/icon visibility; document limits | P-04 | high | M | C | net-new | clean |
 | R-13 | Per-case/per-user separation on a shared device so a roommate can't see another's case | P-04 | high | L | C | net-new | clean |
 | R-14 | Audit notification + recents/app-switcher surfaces for case-name leakage | P-04 | high | S | C | net-new | clean |
 | R-15 | Surface duress-mode's forensic/coercion limits *in plain language at the moment it's enabled* | P-04,P-22 | critical | S | B/C | implied | clean (honesty) |
 | R-16 | Make multiple-TSA redundancy a sane **default**, not opt-in-if-you-know | P-05 | high | M | A | planned | clean |
-| R-17 | Document the integrity meaning of a long awaiting-timestamp gap; reassure the hash anchors content at capture | P-06 | medium | S | A | implied | clean |
+| R-17 | Document the integrity meaning of a long awaiting-timestamp gap; reassure the hash anchors content at capture — **✅ shipped in-app** (status reassurance copy) | P-06 | medium | S | A | implied | clean |
 | R-18 | Data-cost transparency for sync/timestamp over cellular | P-06 | medium | S | C | net-new | clean |
 | R-19 | Wi-Fi-only / metered-connection options for sync and timestamp fetch | P-06 | medium | S | C | net-new | clean |
 | R-20 | Turn the setup guide into a workshop-ready quick-start (printable, EN/ES) | P-07,P-13 | high | M | D | planned | clean |
@@ -645,7 +652,7 @@ broadest dividend:
 | R-45 | Relay operator no-log self-audit + a documented log schema to attest to the union | P-19 | medium | M | C | net-new | clean |
 | R-46 | Document precisely what a relay operator can/cannot observe; advance metadata resistance | P-19,P-22 | medium | L | C | planned | clean |
 | R-47 | Localization-contributor workflow + flag legally-sensitive strings that must not be casually translated | P-20 | medium | S | B | planned | clean |
-| R-48 | RTL readiness, date/number formats, and text-expansion layout robustness | P-20 | medium | M | B | net-new | clean |
+| R-48 | ✅ **done** — RTL readiness, date/number formats, and text-expansion layout robustness (CSS logical properties only; `dir` flipped per language via `RTL_LANGS`; `Intl`-keyed date/number formatting; wrap-tolerant chrome; static guards in `tests/test_app_i18n.py`) | P-20 | medium | M | B | net-new | clean |
 | R-49 | Harden at-rest defaults against device-forensic recovery; document residual risk | P-22 | high | M | A/C | implied | clean |
 | R-50 | Partner/reviewer vetting guidance; keep security disclosures private; confirm no central access to grant | P-22 | low | S | D | implied | clean |
 | R-51 | Publish the packet/bundle as a documented, versioned schema with a stability contract | P-23 | medium | M | A | implied | clean |
@@ -662,8 +669,8 @@ broadest dividend:
 | E-04 | "Assisted / calm mode": large-type, high-contrast, one-task-at-a-time capture for stressed/low-vision/low-dexterity users | P-03,P-16 | high | M | B | net-new | clean |
 | E-05 | Assisted/social backup path + printable recovery card — no server, no honeypot | P-03,P-08 | high | M | C | net-new | shape: no central store |
 | E-06 | Stronger panic/duress action (configurable) + "shared device" hardening setup, with documented limits | P-04,P-22 | high | L | C | net-new | shape: never overpromise |
-| E-07 | Externally demonstrable "no plaintext to relay" — a `--prove-no-plaintext` / documented packet-capture procedure | P-05 | medium | M | A | net-new | clean |
-| E-08 | On-device, telemetry-free "data-flow X-ray": show the user exactly what each component would expose externally | P-05 | medium | M | A | net-new | clean (local only) |
+| E-07 | ✅ **done** — Externally demonstrable "no plaintext to relay": `habitable prove-no-plaintext` (real sync through an in-process relay + verbatim wire capture + marker grep) and a `tcpdump`/`tshark` procedure in [`prove-no-plaintext.md`](../prove-no-plaintext.md) | P-05 | medium | M | A | shipped | clean |
+| E-08 | ✅ **done** — On-device, telemetry-free "data-flow X-ray": `habitable status --xray` prints a per-component account (capture → nothing, TSA → hash, relay → sealed blobs + mailbox id, export → plaintext, user-initiated) from the user's own vault, no network | P-05 | medium | M | A | shipped | clean (local only) |
 | E-09 | First-class **sneakernet sync**: export/import an encrypted delta via USB/SD, no relay, no data plan | P-06 | high | M | C | implied | clean |
 | E-10 | "Adopt habitable" workshop kit: slides, facilitator script, EN/ES quick-start, train-the-trainer | P-07,P-13 | high | M | D | planned | clean |
 | E-11 | Local multi-case **campaign/organizer view** with per-unit evidence-health badges | P-07 | high | L | C | net-new | clean (on-device) |

@@ -109,6 +109,7 @@ class Vault:
         identity = Identity.generate()
         clock = HybridLogicalClock(node_id, time_source=time_source)
         document = CaseDocument(case_id, clock)
+        document.ensure_case_salt()  # so exported ids are opaque from the first mint
         if unit:
             document.set_meta("unit", unit)
         if building:

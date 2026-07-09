@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" dir="ltr">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -79,14 +79,19 @@
             <dd id="st-timestamped">—</dd>
           </div>
           <div class="status-item">
-            <dt data-i18n="status_awaiting">Awaiting timestamp</dt>
-            <dd id="st-awaiting">—</dd>
+            <dt data-i18n="status_awaiting">Waiting for a trusted timestamp</dt>
+            <dd id="st-awaiting" aria-describedby="st-awaiting-help">—</dd>
           </div>
           <div class="status-item status-item-wide">
             <dt data-i18n="status_custody">Chain of custody</dt>
             <dd id="st-custody">—</dd>
           </div>
         </dl>
+        <p class="status-help" id="st-awaiting-help"
+           data-i18n="status_awaiting_help">Your photo is already sealed and safe on
+          this device. The timestamp just proves when — it will attach automatically
+          next time you're online. A wait, even a long one, does not weaken the
+          evidence.</p>
         <div class="card-actions">
           <button type="button" id="resolve-btn" class="btn btn-quiet"
                   aria-describedby="resolve-help"
@@ -99,8 +104,8 @@
       <!-- Issues list -->
       <section class="card" aria-labelledby="issues-h">
         <h2 id="issues-h" data-i18n="issues_heading">Issues</h2>
-        <p id="issues-empty" class="muted" hidden data-i18n="issues_empty">No issues
-          recorded yet.</p>
+        <p id="issues-empty" class="muted" hidden data-i18n="issues_empty_next">No issues
+          yet — start by adding one below in 'Add an issue'.</p>
         <ul id="issues-list" class="issues-list"></ul>
       </section>
 

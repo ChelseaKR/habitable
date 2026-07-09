@@ -21,10 +21,11 @@ from __future__ import annotations
 
 import base64
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
+from typing import cast
 
 from .canonical import HASH_ALGORITHM, JSONValue, canonical_json, sha256_bytes, sha256_file
 from .crypto import Identity, verify
@@ -302,27 +303,68 @@ class CustodyLog:
             signatures_checked=sigs_checked,
         )
 
-    def integrity_proof(self) -> dict[str, JSONValue]:
+    def integrity_proof(
+        self, *, hlc_map: Callable[[str], str] | None = None
+    ) -> dict[str, JSONValue]:
         """A compact, identity-free proof that the chain is intact.
 
         Includes the redacted entries (which verify standalone) plus a summary, so
         a packet can demonstrate custody without exporting who did what.
+
+        ``hlc_map`` rewrites each entry's ``hlc`` in the *exported* proof — used to
+        strip recoverable wall-clock/node metadata from a shared packet. The chain is
+        re-derived over the mapped values so it still verifies standalone; the vault's
+        own chain (:meth:`to_vault_records`) is untouched, so internal custody is
+        unchanged.
         """
-        verification = self.verify()
+        verification = self.verify()  # validate the real chain first (raises on a break)
+        if hlc_map is None:
+            entries = [entry.redacted().to_export_dict() for entry in self._entries]
+            head_hash = verification.head_hash
+            length = verification.length
+            summaries = verification.items
+        else:
+            length = len(self._entries)
+            head_hash, summaries, exported = self._rehash_with_hlc(hlc_map)
+            entries = [entry.to_export_dict() for entry in exported]
         return {
             "algorithm": HASH_ALGORITHM,
-            "length": verification.length,
-            "head_hash": verification.head_hash,
+            "length": length,
+            "head_hash": head_hash,
             "items": {
                 item_id: {
                     "entries": summary.entries,
                     "last_action": summary.last_action,
                     "head_hash": summary.head_hash,
                 }
-                for item_id, summary in sorted(verification.items.items())
+                for item_id, summary in sorted(summaries.items())
             },
-            "entries": [entry.redacted().to_export_dict() for entry in self._entries],
+            "entries": cast(JSONValue, entries),
         }
+
+    def _rehash_with_hlc(
+        self, hlc_map: Callable[[str], str]
+    ) -> tuple[str, dict[str, ItemCustodySummary], list[CustodyEntry]]:
+        """Re-link the redacted chain over opaque-mapped HLC values."""
+        exported: list[CustodyEntry] = []
+        summaries: dict[str, ItemCustodySummary] = {}
+        prev = GENESIS_PREV_HASH
+        for entry in self._entries:
+            skeleton = replace(
+                entry.redacted(), hlc=hlc_map(entry.hlc), prev_hash=prev, entry_hash=""
+            )
+            new_hash = skeleton.recompute_hash()
+            mapped = replace(skeleton, entry_hash=new_hash)
+            exported.append(mapped)
+            prior = summaries.get(mapped.item_id)
+            summaries[mapped.item_id] = ItemCustodySummary(
+                item_id=mapped.item_id,
+                entries=(prior.entries + 1) if prior else 1,
+                last_action=mapped.action,
+                head_hash=new_hash,
+            )
+            prev = new_hash
+        return prev, summaries, exported
 
     # --- serialization --------------------------------------------------------
 
