@@ -71,6 +71,26 @@
 | R-16 | Multiple-TSA redundancy by default | Capture stamps every configured authority (`extra_tsas`); the primary token stays in `timestamp`, independent tokens go in `additional_timestamps`; the verifier accepts an item if ≥1 authority verifies and reports `verified_authorities`. Backward-compatible (additive; old single-authority packets unchanged). Covered by `tests/test_packet_verify.py`. |
 | BUG-01 | Verifier-subset cross-Python portability | Named-tuple `except` form + regression guard test (see above). |
 
+## Done (✅) — in-app status legibility & a11y copy (third pass)
+
+Plain, reassuring EN/ES status copy; no dead-end empty states; an ARIA live-region
+announcement on every async transition (kept clear-then-set so repeats re-announce); and a
+non-auditory success cue (a short haptic buzz plus a `prefers-reduced-motion`-guarded visual
+pulse on the announcer). Static-shell only — no new dependencies, offline-first preserved.
+
+| ID | Item | Deliverable |
+| --- | --- | --- |
+| R-01 | Plain, reassuring evidence-status labels (EN+ES) | `app/i18n/{en,es}.json` (`status_awaiting` reworded; new `status_awaiting_help`, `status_timestamped_help`); visible help `<p id="st-awaiting-help">` in `app/index.html` (associated via `aria-describedby`), toggled by `renderStatus` in `app/app.js`. |
+| R-17 | Reassure that a long awaiting-timestamp gap does not weaken the evidence | Same `status_awaiting_help` copy — the photo is already sealed at capture; the timestamp only proves *when* and attaches automatically once back online. |
+| R-02 | No dead-end empty states — every idle state names a next action | `issues_empty_next` (wired into `#issues-empty`) and a next-action `issue_none_available`, EN+ES. |
+| R-07 | ARIA live-region announcements on async transitions | Existing clear-then-set `announce()` retained; capture / resolve / export announce their outcome (awaiting→timestamped via `msg_resolved`). |
+| R-10 | Non-auditory equivalent for the success cue | `signalSuccess()` in `app/app.js` — `navigator.vibrate(35)` plus a `.flash-ok` pulse (`app/styles.css`, reduced-motion-guarded) — on capture, resolve, and verified export. |
+
+Covered by the existing structural a11y gate (`tests/test_app_accessibility.py`, incl.
+`aria-describedby` target check), the EN/ES parity gates (`tests/test_app_i18n.py`,
+`scripts/check_i18n_parity.py`), and the browser axe/keyboard scans. **Left (R-41):** a full
+reading-level pass and in-app jargon glossary remain deferred.
+
 ## Spec written, code deferred (📝)
 
 The canonical text/contract now exists; wiring it into the app needs further work.
@@ -78,7 +98,6 @@ The canonical text/contract now exists; wiring it into the app needs further wor
 | ID | Item | What exists now / what's left |
 | --- | --- | --- |
 | R-04 | Plain-language Spanish ("not lawyerly") | Human-Spanish quick-start (`quickstart-es.md`) **and** the localized packet disclosure (ES) now shipped; **left:** the in-app `app/i18n/es.json` copy pass. |
-| R-17 | Meaning of a long awaiting-timestamp gap | Explained in `crypto-spec.md`/`verifier-decision-table.md`; **left:** surface in-app at the status. |
 | R-23 | Custodial recovery-blob storage without a honeypot | Practices shipped in `key-custody-playbook.md`; **left:** any helper tooling. |
 | R-50 | Partner/reviewer vetting guidance | Addressed in the red-team doc (A11); **left:** a short standalone note if wanted. |
 
@@ -86,7 +105,8 @@ The canonical text/contract now exists; wiring it into the app needs further wor
 
 App/library/UX work, not safe to ship unvalidated here. Grouped by the persona study's themes.
 
-- **Status legibility & a11y copy:** R-01, R-02, R-07, R-10, R-41.
+- **Status legibility & a11y copy:** R-01, R-02, R-07, R-10, R-17 **done in-app** (see the ✅
+  section above); **R-41** (full reading-level pass + in-app jargon glossary) still deferred.
 - **Tenant capture/recurrence/storage:** R-03, R-05, R-18, R-19, E-01, E-02.
 - **Safety / shared-device / duress:** R-12, R-13, R-14, R-15, R-49, E-06.
 - **Recovery & key lifecycle UX:** R-09, R-11, R-24, E-05, E-13.
