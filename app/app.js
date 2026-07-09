@@ -398,17 +398,38 @@
     var timelineCount = (issue.timeline || []).length;
     counts.appendChild(badge(fm("issue_captures_count", { count: captureCount })));
     counts.appendChild(badge(fm("issue_timeline_count", { count: timelineCount })));
+    if (issue.record_strength) {
+      counts.appendChild(strengthBadge(issue.record_strength));
+    }
     li.appendChild(counts);
 
     return li;
   }
 
-  function badge(text) {
+  function badge(text, extraClass) {
     var li = document.createElement("li");
     var span = document.createElement("span");
-    span.className = "badge";
+    span.className = extraClass ? "badge " + extraClass : "badge";
     span.textContent = text;
     li.appendChild(span);
+    return li;
+  }
+
+  // EXP-03: an on-device, honest record-strength badge — never a legal or
+  // admissibility claim (see the caveat rendered once above the issues list).
+  function strengthBadge(rs) {
+    var level = rs.level || "minimal";
+    var label = t("strength_label") + ": " + t("strength_level_" + level);
+    var li = badge(label, "strength-" + level);
+    var span = li.firstChild;
+    if (span) {
+      span.title = fm("strength_detail", {
+        strong: rs.strong_count || 0,
+        developing: rs.developing_count || 0,
+        minimal: rs.minimal_count || 0,
+        timeline: rs.timeline_entries || 0
+      });
+    }
     return li;
   }
 

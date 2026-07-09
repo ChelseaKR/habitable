@@ -315,6 +315,19 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         "status_custody": (
             "chain of custody: {verdict} ({links, plural, one {# entry} other {# entries}})"
         ),
+        "status_issue_strength": (
+            "record strength: {level} — {strong} strong, {developing} developing, "
+            "{minimal} minimal; "
+            "{timeline, plural, one {# linked timeline entry} "
+            "other {# linked timeline entries}}"
+        ),
+        "strength_level_minimal": "minimal",
+        "strength_level_developing": "developing",
+        "strength_level_strong": "strong",
+        "status_strength_caveat": (
+            "record strength reflects what is in this record (timestamps, custody, "
+            "corroborating timeline) — not a legal judgment, and not admissibility"
+        ),
         "custody_intact": "intact",
         "custody_broken": "BROKEN",
         "capture_timestamped": "timestamped ({when})",
@@ -384,6 +397,20 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         ),
         "status_custody": (
             "cadena de custodia: {verdict} ({links, plural, one {# entrada} other {# entradas}})"
+        ),
+        "status_issue_strength": (
+            "solidez del registro: {level} — {strong} sólidas, {developing} en desarrollo, "
+            "{minimal} mínimas; "
+            "{timeline, plural, one {# entrada de cronología vinculada} "
+            "other {# entradas de cronología vinculadas}}"
+        ),
+        "strength_level_minimal": "mínima",
+        "strength_level_developing": "en desarrollo",
+        "strength_level_strong": "sólida",
+        "status_strength_caveat": (
+            "la solidez del registro refleja lo que contiene este registro (sellos de "
+            "tiempo, custodia, cronología corroborante); no es un juicio legal ni implica "
+            "admisibilidad"
         ),
         "custody_intact": "intacta",
         "custody_broken": "ROTA",

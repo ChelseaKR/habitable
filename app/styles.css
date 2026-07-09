@@ -234,6 +234,11 @@ h2 { font-size: 1.3rem; margin: 0; }
   white-space: normal;
   overflow-wrap: anywhere;
 }
+/* EXP-03 record-strength badges — color is paired with the level's own words
+   (never color-only), matching the .custody-ok/.custody-bad convention. */
+.strength-strong { border-color: var(--ok); color: var(--ok); }
+.strength-developing { border-color: var(--focus); color: var(--warn-ink); }
+.strength-minimal { border-color: var(--bad); color: var(--bad); }
 
 /* --- Forms --- */
 form { margin: 0; }

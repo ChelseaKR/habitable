@@ -29,6 +29,7 @@ from .crypto import KDF_PROFILES, PublicIdentity
 from .errors import HabitableError
 from .i18n import DEFAULT_LOCALE, cli_text, format_datetime, resolve_locale
 from .packet import build_packet
+from .strength import assess_issue
 from .sync import LocalDirTransport, RelayClient, Transport, sync
 from .tsa import DevTSA, Rfc3161HttpTSA, TimestampAuthority
 from .vault import Vault
@@ -463,7 +464,9 @@ def _cmd_status(args: argparse.Namespace) -> int:
         timeline=len(timeline),
     )
     print(f"habitable: {summary}")
+    any_issues = False
     for issue in issues:
+        any_issues = True
         n = len(vault.document.captures(issue.issue_id))
         line = cli_text(
             "status_issue_line",
@@ -474,6 +477,18 @@ def _cmd_status(args: argparse.Namespace) -> int:
             captures=n,
         )
         print(f"  · {line}")
+        strength = assess_issue(vault, issue.issue_id)
+        level = cli_text(f"strength_level_{strength.level.value}", locale)
+        strength_line = cli_text(
+            "status_issue_strength",
+            locale,
+            level=level,
+            strong=strength.strong_count,
+            developing=strength.developing_count,
+            minimal=strength.minimal_count,
+            timeline=strength.timeline_entries,
+        )
+        print(f"      {strength_line}")
     timestamped = sum(1 for c in captures if vault.get_token(c.capture_id) is not None)
     stamps = cli_text(
         "status_timestamps",
@@ -486,6 +501,8 @@ def _cmd_status(args: argparse.Namespace) -> int:
     custody = vault.custody.verify()
     verdict = cli_text("custody_intact" if custody.ok else "custody_broken", locale)
     print(f"  {cli_text('status_custody', locale, verdict=verdict, links=custody.length)}")
+    if any_issues:
+        print(f"  {cli_text('status_strength_caveat', locale)}")
     return 0
 
 

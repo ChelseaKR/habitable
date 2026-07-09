@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -80,6 +81,14 @@ def test_full_api_flow(app: str, make_jpeg: Callable[..., Path]) -> None:
     status, state = _call(app, "GET", "/api/status")
     assert status == 200 and state["unit"] == "4B"
     assert state["capture_count"] == 1 and state["custody_ok"] is True
+
+    # EXP-03: an on-device record-strength summary rides along on each issue —
+    # one capture, one authority, so it reads as "developing", not "strong".
+    issues = cast("list[dict[str, object]]", state["issues"])
+    strength = cast("dict[str, object]", issues[0]["record_strength"])
+    assert strength["item_count"] == 1
+    assert strength["level"] == "developing"
+    assert strength["timeline_entries"] == 1
 
     status, export = _call(app, "POST", "/api/export", {})
     assert status == 200 and export["verified"] is True and export["item_count"] == 1

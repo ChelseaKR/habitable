@@ -42,6 +42,13 @@
   "issue_all": "All issues",
   "issue_none_available": "No issues yet — add one in 'Add an issue' first",
 
+  "strength_label": "Record strength",
+  "strength_level_minimal": "Minimal",
+  "strength_level_developing": "Developing",
+  "strength_level_strong": "Strong",
+  "strength_detail": "{strong} strong, {developing} developing, {minimal} minimal · {timeline, plural, one {# linked timeline entry} other {# linked timeline entries}}",
+  "strength_caveat": "Record strength reflects what's in this record — timestamps, custody, corroborating timeline — not a legal judgment, and not admissibility.",
+
   "add_issue_heading": "Add an issue",
   "add_issue_legend": "New issue details",
   "field_category": "Category",

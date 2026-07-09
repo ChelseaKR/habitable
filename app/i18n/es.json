@@ -42,6 +42,13 @@
   "issue_all": "Todos los problemas",
   "issue_none_available": "Aún no hay problemas: agrega uno en 'Agregar un problema' primero",
 
+  "strength_label": "Solidez del registro",
+  "strength_level_minimal": "Mínima",
+  "strength_level_developing": "En desarrollo",
+  "strength_level_strong": "Sólida",
+  "strength_detail": "{strong} sólidas, {developing} en desarrollo, {minimal} mínimas · {timeline, plural, one {# entrada de cronología vinculada} other {# entradas de cronología vinculadas}}",
+  "strength_caveat": "La solidez del registro refleja lo que contiene este registro — sellos de tiempo, custodia, cronología corroborante — no es un juicio legal ni implica admisibilidad.",
+
   "add_issue_heading": "Agregar un problema",
   "add_issue_legend": "Datos del nuevo problema",
   "field_category": "Categoría",
