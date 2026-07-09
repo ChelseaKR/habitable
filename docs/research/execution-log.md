@@ -54,6 +54,7 @@
 | R-47 | Localization-contributor workflow + legally-sensitive-string flagging | `docs/localization-guide.md` |
 | E-24 | Localization guide (incl. RTL/glossary cautions) | `docs/localization-guide.md` |
 | E-14 | "Key custody for unions" playbook | `docs/key-custody-playbook.md` |
+| R-36 | Custody-transfer / membership-churn flow (manual, on existing commands) | `docs/custody-transfer.md` (linked from `key-custody-playbook.md`, `adoption/board-risk-briefing.md`, `adoption/README.md`) |
 | R-45 | Relay operator no-log self-audit + log schema | `docs/relay-operator-self-audit.md` |
 | R-46 | What a relay operator can/cannot observe | `docs/relay-observability-matrix.md` |
 | R-33 | Make relay-metadata disclosure prominent | `docs/relay-observability-matrix.md` |
