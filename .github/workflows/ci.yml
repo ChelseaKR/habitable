@@ -76,6 +76,47 @@ jobs:
           # organization, so gitleaks-action does not require a license key.
           # No mute: default config, no .gitleaksignore, non-zero exit fails the job.
 
+  verifier-portability:
+    name: verifier subset compiles on older Pythons
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # The Apache-2.0 verifier subset must byte-compile on interpreters older than the
+      # project's 3.14 dev target so legal-aid embedders can vendor it (see NOTICE,
+      # verify.py docstring). This is the CI counterpart to the BUG-01 guard test
+      # (test_verifier_subset_avoids_py314_only_except_syntax): it catches PEP 758
+      # parenthesis-free `except A, B:` and any other 3.14-only syntax before merge.
+      # Floor is 3.12: canonical.py uses PEP 695 `type` statements (3.12+), so 3.9–3.11
+      # cannot parse the subset regardless of the except form.
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - name: Harden Runner (audit mode)
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Install uv (pinned)
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: "0.11.19"
+          enable-cache: true
+      - name: Provision Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+      - name: Byte-compile the verifier subset (stdlib parse only, no deps)
+        run: >
+          uv run --python ${{ matrix.python-version }} --no-project
+          python -m py_compile
+          src/habitable/canonical.py
+          src/habitable/crypto.py
+          src/habitable/errors.py
+          src/habitable/evidence.py
+          src/habitable/tsa.py
+          src/habitable/verify.py
+
   audit:
     name: dependency vulnerability audit
     runs-on: ubuntu-latest
