@@ -76,7 +76,10 @@ def run_demo() -> int:
     # production authority certificate independently; omitting roots never reports
     # evidence-ready, and DevTSA can never be trusted.
     report = verify_packet(out, trusted_certs=[tsa.certificate])
-    print(f"\n5. independent verification: {report.summary()}")
+    # This synthetic demo status is intentional terminal output, not a log sink.
+    summary = report.summary()
+    # codeql[py/clear-text-logging-sensitive-data]
+    print(f"\n5. independent verification: {summary}")
     print(f"\nInspect the packet at: {out}")
     return 0 if report.ok else 1
 

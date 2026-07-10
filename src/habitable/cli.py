@@ -1033,8 +1033,16 @@ def _cmd_verify(args: argparse.Namespace) -> int:
                 for item in report.items
             ],
         }
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        # This is the explicit result of the user-requested `verify --json`
+        # command, not application logging; packet identifiers are intentionally
+        # returned to the local caller for machine processing.
+        encoded = json.dumps(payload, indent=2, sort_keys=True)
+        # codeql[py/clear-text-logging-sensitive-data]
+        print(encoded)
         return 0 if report.evidence_ready else 1
+    # Verification status is intentional CLI output to the local caller, not a
+    # persistent log sink. The summary contains only fixed status vocabulary and counts.
+    # codeql[py/clear-text-logging-sensitive-data]
     print(f"habitable: {summary}")
     print(f"           {guidance}", file=sys.stderr if not report.evidence_ready else sys.stdout)
     if not report.evidence_ready:
