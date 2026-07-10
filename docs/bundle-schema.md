@@ -10,6 +10,13 @@
 
 `habitable export` (or `build_packet`) produces a self-contained directory:
 
+Packet construction happens in a fresh sibling staging directory. The completed
+directory is renamed into place only after its bundle, signature, media, HTML, and
+optional PDF have all rendered successfully. Re-exporting to an existing path
+replaces the entire directory instead of writing into it, preventing stale media
+or sealed originals from a broader prior export from leaking into a narrower one.
+An ordinary publication failure restores the previous complete directory.
+
 ```
 4B-packet/
 ├── bundle.json            # the canonical, signed manifest (this document)

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import base64
 import json
+import shutil
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -32,7 +33,7 @@ from .canonical import JSONValue, canonical_json, sha256_bytes, sha256_file
 from .config import SharingPolicy
 from .disclosure import ScopeStatement, proof_statement, scope_statement
 from .errors import PacketError
-from .evidence import CustodyAction
+from .evidence import CustodyAction, CustodyLog
 from .exif import make_shared_copy
 from .media import extract_poster_frame, make_shared_media_copy
 from .model import Capture, Issue, TimelineEntry
@@ -99,7 +100,74 @@ def build_packet(
     generated_at: str | None = None,
     policy: SharingPolicy | None = None,
 ) -> PacketResult:
-    """Assemble an evidence packet for one issue or a whole unit."""
+    """Assemble and publish a complete packet without exposing partial output.
+
+    Rendering happens in a fresh sibling directory. Only after every artifact is
+    complete and the updated custody log is persisted is that directory renamed
+    into place. Re-exporting replaces the entire prior directory, so files from a
+    broader or originals-including export cannot survive a narrower one.
+    """
+    parent = out_dir.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    if out_dir.is_symlink() or (out_dir.exists() and not out_dir.is_dir()):
+        raise PacketError(f"packet output must be a directory path: {out_dir}")
+
+    stage = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.stage-", dir=parent))
+    custody_before = vault.custody.to_vault_records()
+    vault_saved = False
+    try:
+        staged = _build_packet_in_dir(
+            vault,
+            stage,
+            packet_name=out_dir.name,
+            issue_id=issue_id,
+            since=since,
+            include_originals=include_originals,
+            make_pdf=make_pdf,
+            inspector_view=inspector_view,
+            generated_at=generated_at,
+            policy=policy,
+        )
+        vault.save()
+        vault_saved = True
+        _publish_staged_packet(stage, out_dir)
+    except BaseException:
+        # Packet construction appends sharing/export custody entries. If no
+        # packet is published, restore both memory and the persisted log.
+        vault.custody = CustodyLog.from_records(custody_before)
+        if vault_saved:
+            vault.save()
+        raise
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+
+    return PacketResult(
+        out_dir=out_dir,
+        bundle_path=out_dir / _BUNDLE,
+        pdf_path=(out_dir / _PDF) if staged.pdf_path is not None else None,
+        html_path=(out_dir / _HTML) if staged.html_path is not None else None,
+        inspector_path=(out_dir / _INSPECTOR) if staged.inspector_path is not None else None,
+        item_count=staged.item_count,
+        timestamped_count=staged.timestamped_count,
+        includes_originals=staged.includes_originals,
+        disclosures=staged.disclosures,
+    )
+
+
+def _build_packet_in_dir(
+    vault: Vault,
+    out_dir: Path,
+    *,
+    packet_name: str,
+    issue_id: str | None,
+    since: str | None,
+    include_originals: bool,
+    make_pdf: bool,
+    inspector_view: bool,
+    generated_at: str | None,
+    policy: SharingPolicy | None,
+) -> PacketResult:
+    """Build every packet artifact inside a new, unpublished directory."""
     sharing = policy or vault.config.sharing
     out_dir.mkdir(parents=True, exist_ok=True)
     media_dir = out_dir / _MEDIA
@@ -142,7 +210,7 @@ def build_packet(
             str(item["capture_id"]),
             actor=actor,
             hlc=vault.document.clock.now().encode(),
-            details={"packet": out_dir.name},
+            details={"packet": packet_name},
             identity=vault.identity,
         )
 
@@ -203,8 +271,6 @@ def build_packet(
     bundle_path = out_dir / _BUNDLE
     bundle_path.write_bytes(bundle_bytes)
     _write_signature(vault, out_dir, bundle_bytes)
-    vault.save()
-
     # An accessible HTML rendering always accompanies the packet (the conformant
     # human-readable view; see docs/accessibility/ACR.md).
     from . import htmlpacket
@@ -237,6 +303,38 @@ def build_packet(
         includes_originals=include_originals,
         disclosures=disclosures,
     )
+
+
+def _publish_staged_packet(staged: Path, target: Path) -> None:
+    """Rename a complete sibling directory into place, restoring on failure.
+
+    A directory containing files cannot be atomically overwritten portably. For
+    an existing target, use two same-filesystem renames and retain the old packet
+    only for the few instructions needed to install the new one. Any ordinary
+    exception restores the old directory; successful publication removes it.
+    """
+    if not target.exists():
+        staged.replace(target)
+        return
+
+    backup = Path(tempfile.mkdtemp(prefix=f".{target.name}.backup-", dir=target.parent))
+    backup.rmdir()  # reserve a unique absent path for the rename
+    target.replace(backup)
+    try:
+        staged.replace(target)
+    except BaseException:
+        backup.replace(target)
+        raise
+
+    try:
+        shutil.rmtree(backup)
+    except BaseException:
+        # A stale broader export is a privacy failure. Roll back the newly
+        # published directory instead of leaving the old packet in a hidden
+        # backup beside it.
+        target.replace(staged)
+        backup.replace(target)
+        raise
 
 
 def _build_item(
