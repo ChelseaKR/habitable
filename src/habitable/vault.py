@@ -37,7 +37,7 @@ from .model import CaseDocument
 from .threshold import create_recovery_bundle, recover_dek
 from .tsa import TimestampToken
 
-__all__ = ["DeferredItem", "Vault"]
+__all__ = ["CaptureSize", "DeferredItem", "StorageFootprint", "Vault", "human_bytes"]
 
 _CONFIG = "config.toml"
 _KEYFILE = "keyfile.json"
@@ -55,6 +55,44 @@ class DeferredItem:
 
     capture_id: str
     digest: str
+
+
+@dataclass(frozen=True, slots=True)
+class CaptureSize:
+    """The on-disk cost of one capture's sealed original."""
+
+    capture_id: str
+    sealed_bytes: int
+
+
+@dataclass(frozen=True, slots=True)
+class StorageFootprint:
+    """How much space a case occupies on the device, and why (item R-03).
+
+    A sealed original is kept twice by design: the encrypted original stays in
+    the vault forever, and a location-stripped *shared copy* of roughly the same
+    size is produced whenever the case is exported. Surfacing both — plus the
+    small metadata overhead — lets a tenant on a low-end device budget honestly
+    instead of being surprised by the doubling.
+    """
+
+    sealed_originals_bytes: int
+    shared_copies_bytes: int
+    metadata_bytes: int
+    total_bytes: int
+    per_capture: tuple[CaptureSize, ...]
+
+
+def human_bytes(count: int) -> str:
+    """A short, human-readable size using decimal (SI) units: ``6100000`` → ``6.1 MB``."""
+    if count < 1000:
+        return f"{count} bytes"
+    size = float(count)
+    for unit in ("KB", "MB", "GB", "TB"):
+        size /= 1000.0
+        if size < 1000.0:
+            return f"{size:.1f} {unit}"
+    return f"{size:.1f} PB"
 
 
 class Vault:
@@ -327,6 +365,39 @@ class Vault:
         if sha256_bytes(raw) != content_hash:
             raise FixityError(f"sealed original for {capture_id} failed fixity on read")
         return raw
+
+    # --- storage footprint (R-03) ---------------------------------------------
+
+    def storage_footprint(self) -> StorageFootprint:
+        """Measure the case's on-device storage, distinguishing kept-twice copies.
+
+        Sealed originals live under ``originals/`` (one ``.enc`` per capture);
+        everything else in the vault (encrypted state blobs, tokens, config, the
+        keyfile) is counted as metadata. The *shared copies* line reports the
+        by-design doubling: each sealed original is copied again, at roughly the
+        same size, into any exported packet, so a with-originals export needs
+        about twice the sealed-originals space. Reporting it up front keeps the
+        footprint honest on low-end devices.
+        """
+        originals_dir = self.path / _ORIGINALS
+        per_capture: list[CaptureSize] = []
+        sealed = 0
+        if originals_dir.is_dir():
+            for entry in sorted(originals_dir.iterdir()):
+                if entry.is_file() and entry.suffix == ".enc":
+                    size = entry.stat().st_size
+                    sealed += size
+                    per_capture.append(CaptureSize(capture_id=entry.stem, sealed_bytes=size))
+        on_disk = sum(f.stat().st_size for f in self.path.rglob("*") if f.is_file())
+        metadata = on_disk - sealed
+        shared = sealed  # the shareable copy kept (by design) once the case is exported
+        return StorageFootprint(
+            sealed_originals_bytes=sealed,
+            shared_copies_bytes=shared,
+            metadata_bytes=metadata,
+            total_bytes=sealed + shared + metadata,
+            per_capture=tuple(per_capture),
+        )
 
     # --- timestamp tokens -----------------------------------------------------
 

@@ -22,6 +22,7 @@ __all__ = [
     "CONFIG_SCHEMA_VERSION",
     "Config",
     "LetterTemplate",
+    "NetworkPolicy",
     "PacketTemplate",
     "PeerConfig",
     "SharingPolicy",
@@ -81,6 +82,19 @@ class SharingPolicy:
 
 
 @dataclass(frozen=True, slots=True)
+class NetworkPolicy:
+    """When habitable is allowed to use a (possibly paid) network link (item R-19).
+
+    A desktop CLI cannot reliably tell a metered cellular link from free Wi-Fi, so
+    this is an explicit *gate*, not an auto-detected state: with ``allow_metered``
+    false, network operations (relay sync, RFC 3161 timestamp fetches) refuse until
+    the user re-runs with ``--allow-metered`` or on a link they consider free.
+    """
+
+    allow_metered: bool = True
+
+
+@dataclass(frozen=True, slots=True)
 class PacketTemplate:
     """Jurisdiction-specific wording for exported packets (presentation only).
 
@@ -124,6 +138,7 @@ class Config:
     timestamp_authorities: Sequence[TSAConfig] = field(default_factory=tuple)
     sync_peers: Sequence[PeerConfig] = field(default_factory=tuple)
     sharing: SharingPolicy = field(default_factory=SharingPolicy)
+    network: NetworkPolicy = field(default_factory=NetworkPolicy)
     packet_template: PacketTemplate = field(default_factory=PacketTemplate)
     letter: LetterTemplate = field(default_factory=LetterTemplate)
 
@@ -189,6 +204,14 @@ class Config:
                     sharing_raw, "export_custody_identities", False
                 ),
             )
+        network_raw = raw.get("network")
+        network = NetworkPolicy()
+        if network_raw is not None:
+            if not isinstance(network_raw, Mapping):
+                raise ConfigError("[network] must be a table")
+            network = NetworkPolicy(
+                allow_metered=_opt_bool(network_raw, "allow_metered", True),
+            )
         template_raw = raw.get("packet_template")
         template = PacketTemplate()
         if template_raw is not None:
@@ -220,6 +243,7 @@ class Config:
             timestamp_authorities=tsas,
             sync_peers=peers,
             sharing=sharing,
+            network=network,
             packet_template=template,
             letter=letter,
         )
@@ -239,6 +263,13 @@ def default_config_toml(node_id: str, *, language: str = "en") -> str:
         "strip_location = true",
         "strip_all_metadata = true",
         "export_custody_identities = false",
+        "",
+        "[network]",
+        "# Whether habitable may use a possibly-metered link for relay sync and",
+        "# RFC 3161 timestamp fetches. A desktop CLI cannot detect metered links,",
+        "# so this is an explicit gate: set false (or pass --wifi-only) to refuse",
+        "# network operations until you re-run with --allow-metered or on Wi-Fi.",
+        "allow_metered = true",
         "",
         "# Trusted timestamp authorities (RFC 3161). Multiple = no single point of trust.",
     ]

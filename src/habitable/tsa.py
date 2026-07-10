@@ -383,9 +383,14 @@ class Rfc3161HttpTSA:
         self.name = name
         self.url = url
         self.timeout = timeout
+        # Running totals of the network cost of this authority's fetches (item R-18),
+        # so the CLI can report "network bytes used" after resolve/retimestamp.
+        self.bytes_sent = 0
+        self.bytes_received = 0
 
     def stamp(self, digest_hex: str) -> TimestampToken:
         request_der = _build_request(digest_hex)
+        self.bytes_sent += len(request_der)
         http_request = urllib.request.Request(  # noqa: S310 - scheme validated below
             self.url,
             data=request_der,
@@ -402,6 +407,7 @@ class Rfc3161HttpTSA:
                 body = response.read()
         except (OSError, ValueError) as exc:
             raise TimestampError(f"timestamp request to {self.name} failed: {exc}") from exc
+        self.bytes_received += len(body)
         token_der = _extract_token_from_response(body)
         return TimestampToken(kind=TokenKind.RFC3161.value, tsa_name=self.name, data=token_der)
 

@@ -43,6 +43,23 @@
     }
   }
 
+  // Human-readable byte size using decimal (SI) units, mirroring the Python
+  // side (habitable.vault.human_bytes): 6100000 -> "6.1 MB". The numeric part is
+  // locale-formatted so the decimal separator matches the active language.
+  function humanBytes(n) {
+    if (typeof n !== "number" || !isFinite(n) || n < 0) { n = 0; }
+    if (n < 1000) { return formatNumber(n) + " bytes"; }
+    var size = n;
+    var units = ["KB", "MB", "GB", "TB"];
+    for (var i = 0; i < units.length; i++) {
+      size /= 1000;
+      if (size < 1000) {
+        return formatNumber(Math.round(size * 10) / 10) + " " + units[i];
+      }
+    }
+    return formatNumber(Math.round(size * 10) / 10) + " PB";
+  }
+
   function formatDateTime(value) {
     // gen_time and friends arrive as ISO 8601 UTC strings.
     var date = value instanceof Date ? value : new Date(value);
@@ -348,6 +365,21 @@
       custody.textContent = label + suffix;
       custody.className = ok ? "custody-ok" : "custody-bad";
     }
+
+    var storage = document.getElementById("st-storage");
+    if (storage) {
+      var s = status.storage || {};
+      storage.textContent = fm("storage_summary", {
+        total: humanBytes(s.total_bytes || 0),
+        sealed: humanBytes(s.sealed_originals_bytes || 0),
+        shared: humanBytes(s.shared_copies_bytes || 0)
+      });
+    }
+
+    setText(
+      "st-network",
+      status.allow_metered === false ? t("network_wifi_only") : t("network_metered_ok")
+    );
 
     renderIssues(status.issues || []);
     populateIssueSelects(status.issues || []);
