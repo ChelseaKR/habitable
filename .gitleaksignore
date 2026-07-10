@@ -19,4 +19,4 @@ cf55f34c7ad4f29b097c90b7187b37f66d56b2f9:tests/golden/packet-v3/bundle.json:gene
 # Regenerated signed sample from PR #80. The three findings share this
 # commit/path/rule/line fingerprint because bundle.json is canonical one-line JSON;
 # each match is an RFC 3161 CMS SignedData token produced by the synthetic sample TSA.
-467ecfc5608393608a3d04b92e6a5677a4f17212:site/sample-packet/bundle.json:generic-api-key:1
+eb12dc66ffe15fb16b9d669cde7f6948fa57e75c:site/sample-packet/bundle.json:generic-api-key:1
