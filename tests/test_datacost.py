@@ -177,7 +177,7 @@ def test_network_section_must_be_a_table() -> None:
 
 
 def test_default_config_toml_round_trips_network() -> None:
-    toml = default_config_toml("node-x")
+    toml = default_config_toml()
     assert "[network]" in toml and "allow_metered = true" in toml
     cfg = Config.from_mapping(tomllib.loads(toml))
     assert cfg.network.allow_metered is True
