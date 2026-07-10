@@ -27,7 +27,10 @@ and are not signed).
    `.github/allowed_signers`, and its version must match `pyproject.toml`. It
    then re-runs `make verify` at the tagged commit — a red commit cannot ship.
    Only then does it:
-   - build the wheel + sdist (`uv build`);
+   - build the wheel + sdist **twice, from two independent clean copies of the
+     tracked source, and verify the two builds are byte-identical**
+     (`make repro` → `scripts/check_reproducible_build.py`) — a
+     non-reproducible build fails the release rather than shipping;
    - install the wheel into a clean environment and serve the packaged local app;
    - generate a runtime **SBOM** (CycloneDX) into `dist/sbom.cdx.json`;
    - produce a **signed build-provenance attestation** for the artifacts
@@ -75,6 +78,27 @@ $ gh attestation verify habitable-X.Y.Z-py3-none-any.whl --repo ChelseaKR/habita
 
 The SBOM (`sbom.cdx.json`) lists the runtime dependency set for that release.
 
+## Verifying reproducibility yourself
+
+Beyond the provenance attestation (which proves *this repo's CI* built the
+artifact), anyone can independently rebuild a tagged release from source and
+confirm the artifact matches — proving the *source*, not just the builder,
+determines the bytes:
+
+```console
+$ git checkout vX.Y.Z
+$ make repro
+```
+
+This builds the wheel and sdist twice, from two independent clean copies of
+the git-tracked source, with a normalized `SOURCE_DATE_EPOCH` (the tagged
+commit's timestamp) and `PYTHONHASHSEED`, and fails loudly — naming the
+differing file(s) — if the two builds don't match byte for byte. On success the
+verified artifacts land in `dist/`, so `make repro` is a drop-in replacement
+for `make build` that also proves determinism. The release workflow runs this
+same check as part of every release; a non-reproducible build blocks the
+release rather than shipping.
+
 ## Versioning contract
 
 SemVer for the package. The **packet format** and **verification protocol** are
@@ -83,10 +107,10 @@ golden-packet corpus and the version-contract test (see
 [`evidence-method.md`](evidence-method.md) and `tests/test_golden.py`), not by
 prose.
 
-## Not yet wired (tracked for v1.0)
-
-- **Reproducible-build verification:** document and verify a byte-identical
-  rebuild of the wheel. Until then, note that the GitHub-release artifacts and
-  the PyPI artifacts are produced by two independent `uv build` invocations of
-  the same tagged source, each independently attested (Sigstore build-provenance
-  for the release artifacts, PEP 740 for the PyPI artifacts).
+Note that the GitHub-release artifacts and the PyPI artifacts are still
+produced by two independent `uv build` invocations of the same tagged source
+(one in the `release` job, one in `pypi-publish`), each independently attested
+(Sigstore build-provenance for the release artifacts, PEP 740 for the PyPI
+artifacts) — `make repro`'s reproducibility check runs in the `release` job
+before either publish step, so a divergence there would already have failed
+the release.

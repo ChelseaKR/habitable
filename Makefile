@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # habitable — developer entry points. `make verify` reproduces the full CI gate.
 .DEFAULT_GOAL := help
-.PHONY: help bootstrap install fmt lint type test cov i18n doc-links markers verify audit a11y integration demo build clean
+.PHONY: help bootstrap install fmt lint type test cov i18n doc-links markers verify audit a11y integration demo build repro clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -15,12 +15,12 @@ install: ## Create the env and install the project + dev tools (Python 3.14 via 
 	uv run python -c "import sys; print('habitable env on Python', sys.version.split()[0])"
 
 fmt: ## Auto-format and auto-fix
-	uv run ruff format src tests scripts/check_doc_links.py
-	uv run ruff check --fix src tests scripts/check_doc_links.py
+	uv run ruff format src tests scripts/check_doc_links.py scripts/check_reproducible_build.py
+	uv run ruff check --fix src tests scripts/check_doc_links.py scripts/check_reproducible_build.py
 
 lint: ## Lint (no changes)
-	uv run ruff format --check src tests scripts/check_doc_links.py
-	uv run ruff check src tests scripts/check_doc_links.py
+	uv run ruff format --check src tests scripts/check_doc_links.py scripts/check_reproducible_build.py
+	uv run ruff check src tests scripts/check_doc_links.py scripts/check_reproducible_build.py
 
 type: ## Strict type-check
 	uv run mypy
@@ -79,6 +79,9 @@ demo: ## Walk a synthetic case from capture to a verified packet (no real data)
 
 build: ## Build the wheel + sdist
 	uv build
+
+repro: ## Verify a byte-identical rebuild of the wheel + sdist (builds twice, compares); writes dist/ on success
+	uv run python scripts/check_reproducible_build.py --out-dir dist
 
 clean: ## Remove build/test artifacts
 	rm -rf dist build .pytest_cache .mypy_cache .ruff_cache .coverage coverage.xml htmlcov

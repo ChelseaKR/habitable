@@ -14,6 +14,16 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   row to repository evidence plus its explicit gap. A standard-library Markdown-link
   checker now runs in `make verify`, fails on missing local targets, and requires every
   ledger row to retain a live local evidence path.
+- **Reproducible-build verification for the wheel/sdist** (`make repro`,
+  `scripts/check_reproducible_build.py`). Builds the package twice from two
+  independent clean copies of the git-tracked source, with a normalized
+  `SOURCE_DATE_EPOCH` (the tagged commit's timestamp) and `PYTHONHASHSEED`, and
+  fails — naming the differing file(s) — if the two builds aren't byte-identical.
+  The `release` workflow now runs this as a release-blocking gate before the SBOM,
+  provenance attestation, and publish steps, so a downloader's provenance
+  verification and an independent rebuild agree on the same artifact. Documented
+  in `docs/releasing.md`. The relay container image is not yet covered by an
+  equivalent check (tracked in `ROADMAP.md`).
 
 - **Reusable, local-first evidence kernel (`habitable.kernel`)** — EXP-13. The
   verification-facing spine (canonical serialization + SHA-256, chain-of-custody model +
