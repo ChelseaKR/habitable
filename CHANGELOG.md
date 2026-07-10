@@ -25,6 +25,14 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   in `docs/releasing.md`. The relay container image is not yet covered by an
   equivalent check (tracked in `ROADMAP.md`).
 
+- **Authenticated sync protocol v2.** Sync and redactable sharing now require
+  signed, recipient-sealed, case-bound pairing. Messages enforce exact peer
+  allowlists, pairing-key authentication, recipient/case binding, replay
+  protection, signed import receipts, and downgrade-resistant signed per-field
+  CRDT provenance (with explicit legacy migration attestations).
+  Round trips preserve primary, additional, and archive timestamp tokens plus
+  verified source custody material.
+
 - **Reusable, local-first evidence kernel (`habitable.kernel`)** — EXP-13. The
   verification-facing spine (canonical serialization + SHA-256, chain-of-custody model +
   verification, RFC 3161 timestamp verification, Ed25519 signature verification, and the

@@ -20,6 +20,7 @@ Three CRDT shapes cover the domain:
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import secrets
@@ -29,16 +30,20 @@ from typing import cast
 
 from .canonical import JSONValue, canonical_json
 from .clock import HLCTimestamp, HybridLogicalClock
+from .crypto import Identity
+from .crypto import verify as verify_signature
 from .errors import HabitableError
 
 __all__ = [
     "Capture",
     "CaseDocument",
+    "FieldProvenance",
     "GrowLog",
     "Issue",
     "LWWRegister",
     "ORSet",
     "TimelineEntry",
+    "verify_state_provenance",
 ]
 
 CASE_SCHEMA_VERSION = 1
@@ -54,12 +59,35 @@ def _greater(a: JSONValue, b: JSONValue) -> bool:
     return canonical_json(a) > canonical_json(b)
 
 
+def _provenance_payload(case_id: str, target: str, value: JSONValue, ts: str, kind: str) -> bytes:
+    """Canonical bytes binding a field write to its case, target, value, and clock."""
+    return canonical_json(
+        cast(
+            JSONValue,
+            {"case_id": case_id, "kind": kind, "target": target, "ts": ts, "value": value},
+        )
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class FieldProvenance:
+    """The device attribution carried by the current value of one field."""
+
+    actor: str
+    ts: str
+    signed: bool
+    kind: str
+
+
 @dataclass(frozen=True, slots=True)
 class LWWRegister:
-    """A last-writer-wins register: a value tagged with an HLC timestamp."""
+    """A last-writer-wins value with optional signed device provenance."""
 
     value: JSONValue
     ts: str  # encoded HLCTimestamp
+    actor: str = ""
+    sig: str = ""
+    provenance_kind: str = ""
 
     def merge(self, other: LWWRegister) -> LWWRegister:
         mine, theirs = HLCTimestamp.decode(self.ts), HLCTimestamp.decode(other.ts)
@@ -67,18 +95,55 @@ class LWWRegister:
             return other
         if mine > theirs:
             return self
-        # Equal timestamps (same node+counter): break ties deterministically.
-        return other if _greater(other.value, self.value) else self
+        # Equal timestamps (same node+counter): break ties over the whole
+        # register, including provenance. Two legacy replicas can attest the
+        # same old value with different device keys; merge order must still not
+        # decide which attestation survives.
+        mine_json = cast(JSONValue, self.to_json())
+        other_json = cast(JSONValue, other.to_json())
+        return other if _greater(other_json, mine_json) else self
 
     def to_json(self) -> dict[str, JSONValue]:
-        return {"value": self.value, "ts": self.ts}
+        payload: dict[str, JSONValue] = {"value": self.value, "ts": self.ts}
+        if self.actor:
+            payload["actor"] = self.actor
+        if self.sig:
+            payload["sig"] = self.sig
+        if self.provenance_kind:
+            payload["provenance_kind"] = self.provenance_kind
+        return payload
 
     @classmethod
     def from_json(cls, raw: Mapping[str, JSONValue]) -> LWWRegister:
         ts = raw.get("ts")
         if not isinstance(ts, str):
             raise HabitableError("LWWRegister 'ts' must be a string")
-        return cls(value=raw.get("value"), ts=ts)
+        actor = raw.get("actor", "")
+        signature = raw.get("sig", "")
+        kind = raw.get("provenance_kind", "")
+        if (
+            not isinstance(actor, str)
+            or not isinstance(signature, str)
+            or not isinstance(kind, str)
+        ):
+            raise HabitableError("LWWRegister provenance fields must be strings")
+        return cls(
+            value=raw.get("value"),
+            ts=ts,
+            actor=actor,
+            sig=signature,
+            provenance_kind=kind,
+        )
+
+    def verify(self, case_id: str, target: str, public_key: bytes) -> bool:
+        if not self.sig or self.provenance_kind not in {"authored", "attested_legacy"}:
+            return False
+        try:
+            signature = base64.b64decode(self.sig, validate=True)
+        except ValueError, TypeError:
+            return False
+        payload = _provenance_payload(case_id, target, self.value, self.ts, self.provenance_kind)
+        return verify_signature(public_key, payload, signature)
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,15 +274,19 @@ class CaseDocument:
         "_captures",
         "_case_id",
         "_clock",
+        "_identity",
         "_issue_fields",
         "_issues",
         "_meta",
         "_timeline",
     )
 
-    def __init__(self, case_id: str, clock: HybridLogicalClock) -> None:
+    def __init__(
+        self, case_id: str, clock: HybridLogicalClock, identity: Identity | None = None
+    ) -> None:
         self._case_id = case_id
         self._clock = clock
+        self._identity = identity
         self._meta: dict[str, LWWRegister] = {}
         self._issues = ORSet.empty()
         self._issue_fields: dict[str, dict[str, LWWRegister]] = {}
@@ -232,11 +301,58 @@ class CaseDocument:
     def clock(self) -> HybridLogicalClock:
         return self._clock
 
+    def set_identity(self, identity: Identity | None) -> None:
+        """Set the device key used to sign subsequent mutable field writes."""
+        self._identity = identity
+
     # --- mutations ------------------------------------------------------------
+
+    def _stamp(
+        self, target: str, value: JSONValue, ts: str, *, kind: str = "authored"
+    ) -> LWWRegister:
+        if self._identity is None:
+            return LWWRegister(value=value, ts=ts)
+        actor = self._identity.public().fingerprint
+        signature = self._identity.sign(_provenance_payload(self._case_id, target, value, ts, kind))
+        return LWWRegister(
+            value=value,
+            ts=ts,
+            actor=actor,
+            sig=base64.b64encode(signature).decode("ascii"),
+            provenance_kind=kind,
+        )
+
+    def attest_unsigned_fields(self) -> int:
+        """Sign legacy mutable values without changing their CRDT timestamps.
+
+        This is an explicit migration attestation, not a claim that this device
+        originally authored the value. Protocol v2 rejects unsigned mutable
+        fields on import, so a peer cannot strip provenance and call it legacy.
+        """
+        if self._identity is None:
+            raise HabitableError("cannot attest legacy fields without a device identity")
+        changed = 0
+        for key, register in tuple(self._meta.items()):
+            if not register.actor and not register.sig and not register.provenance_kind:
+                self._meta[key] = self._stamp(
+                    f"meta:{key}", register.value, register.ts, kind="attested_legacy"
+                )
+                changed += 1
+        for issue_id, registers in self._issue_fields.items():
+            for name, register in tuple(registers.items()):
+                if not register.actor and not register.sig and not register.provenance_kind:
+                    registers[name] = self._stamp(
+                        f"issue:{issue_id}:{name}",
+                        register.value,
+                        register.ts,
+                        kind="attested_legacy",
+                    )
+                    changed += 1
+        return changed
 
     def set_meta(self, key: str, value: str) -> None:
         ts = self._clock.now().encode()
-        self._meta[key] = LWWRegister(value=value, ts=ts)
+        self._meta[key] = self._stamp(f"meta:{key}", value, ts)
 
     def get_meta(self, key: str, default: str = "") -> str:
         register = self._meta.get(key)
@@ -273,6 +389,22 @@ class CaseDocument:
             self.set_meta(_CASE_SALT_META, salt_hex)
         return bytes.fromhex(salt_hex)
 
+    def meta_provenance(self, key: str) -> FieldProvenance | None:
+        register = self._meta.get(key)
+        if register is None:
+            return None
+        return FieldProvenance(
+            register.actor, register.ts, bool(register.sig), register.provenance_kind
+        )
+
+    def field_provenance(self, issue_id: str, field: str) -> FieldProvenance | None:
+        register = self._issue_fields.get(issue_id, {}).get(field)
+        if register is None:
+            return None
+        return FieldProvenance(
+            register.actor, register.ts, bool(register.sig), register.provenance_kind
+        )
+
     def add_issue(
         self,
         *,
@@ -297,7 +429,8 @@ class CaseDocument:
             "description": description,
         }
         self._issue_fields[resolved_id] = {
-            name: LWWRegister(value=value, ts=tag) for name, value in fields.items()
+            name: self._stamp(f"issue:{resolved_id}:{name}", value, tag)
+            for name, value in fields.items()
         }
         return resolved_id
 
@@ -308,7 +441,8 @@ class CaseDocument:
         for name, value in fields.items():
             if name not in _ISSUE_FIELDS:
                 raise HabitableError(f"unknown issue field: {name!r}")
-            registers[name] = LWWRegister(value=value, ts=self._clock.now().encode())
+            ts = self._clock.now().encode()
+            registers[name] = self._stamp(f"issue:{issue_id}:{name}", value, ts)
 
     def remove_issue(self, issue_id: str) -> None:
         self._issues = self._issues.remove(issue_id)
@@ -527,6 +661,43 @@ class CaseDocument:
                 max_ts = _max_ts(max_ts, str(payload["hlc"]))
         if max_ts is not None:
             self._clock.update(max_ts)
+
+
+def verify_state_provenance(
+    case_id: str, state: Mapping[str, JSONValue], actor: str, public_key: bytes
+) -> list[str]:
+    """Return every field claiming ``actor`` whose signature is invalid."""
+    failures: list[str] = []
+    for key, raw in _as_dict(state, "meta").items():
+        if isinstance(raw, dict):
+            _check_provenance(case_id, f"meta:{key}", raw, actor, public_key, failures)
+    for issue_id, registers in _as_dict(state, "issue_fields").items():
+        if not isinstance(registers, dict):
+            continue
+        for name, raw in registers.items():
+            if isinstance(raw, dict):
+                _check_provenance(
+                    case_id,
+                    f"issue:{issue_id}:{name}",
+                    raw,
+                    actor,
+                    public_key,
+                    failures,
+                )
+    return failures
+
+
+def _check_provenance(
+    case_id: str,
+    target: str,
+    raw: Mapping[str, JSONValue],
+    actor: str,
+    public_key: bytes,
+    failures: list[str],
+) -> None:
+    register = LWWRegister.from_json(raw)
+    if register.actor == actor and not register.verify(case_id, target, public_key):
+        failures.append(target)
 
 
 # --- helpers ------------------------------------------------------------------

@@ -44,10 +44,15 @@ server to compromise or subpoena. Trust is established directly between two huma
    man-in-the-middle.* A fingerprint is a hash over both public keys, short enough to read
    aloud but long enough (64 bits shown) to make collision forgery impractical for this
    threat model.
-3. **The tenant shares to that key.** `habitable share --peer <public-id>` seals the
+3. **The devices pair for this case.** The tenant creates signed,
+   recipient-sealed `.hpair` material with `sync-pair-create`; the organizer
+   accepts it with `sync-pair-accept`. This pins the complete expected identity,
+   case, and pairing key in each encrypted vault. A public id alone is not
+   authorization.
+4. **The tenant shares to that key.** `habitable share --peer <public-id>` seals the
    (possibly redacted) subset to exactly that key and prints back the fingerprint so the
    tenant can re-confirm before sending.
-4. **The organizer receives.** `habitable receive` opens the box with their private key,
+5. **The organizer receives.** `habitable receive` opens the box with their private key,
    verifies the tenant's signature, checks the share is for the case they opened, re-checks
    each original's fixity (SHA-256) and any RFC 3161 token, and merges the CRDT subset.
 
@@ -57,7 +62,7 @@ server to compromise or subpoena. Trust is established directly between two huma
 | --- | --- | --- |
 | Relay / courier / cloud drive | Move the sealed blob; see its size and timing | Read contents (sealed), forge it (signed), or learn the unit (redactable) |
 | A wrong recipient | — | Open a box not sealed to their key (`receive` opens nothing and errors) |
-| Active network attacker | Drop or replay the blob (replay is idempotent — no effect) | Substitute a different recipient key *if* the tenant verified the fingerprint; tamper undetected (AEAD + signature) |
+| Active network attacker | Drop or replay the blob (replay is detected and skipped) | Authenticate as an unpaired key; substitute the case/recipient; tamper undetected (AEAD + signature + pairing MAC) |
 | The organizer (trusted recipient) | Read everything the tenant chose to share, including sealed originals with their original metadata | Learn about issues the tenant did **not** include (they never leave the device) |
 
 ## Redaction levers (what a tenant can withhold)

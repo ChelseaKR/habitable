@@ -32,6 +32,7 @@ from pathlib import Path
 
 from .capture import capture
 from .demo import _make_photos
+from .pairing import accept_pairing_material, create_pairing_material
 from .relay import RelayStore, make_server
 from .sync import RelayClient, sync
 from .tsa import DevTSA
@@ -170,6 +171,7 @@ def prove_no_plaintext(capture_dir: Path | None = None) -> ProveReport:
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
+    tap: _WireTap | None = None
     try:
         # Fabricate images with demo's helper, then give one a distinctive source
         # filename so we can prove even the vault-only filename never crosses.
@@ -181,6 +183,8 @@ def prove_no_plaintext(capture_dir: Path | None = None) -> ProveReport:
         tsa = DevTSA("prove-dev-tsa")
         alice = Vault.create(work / "alice", _MARKER_PASSPHRASE, case_id=_CASE_ID, unit="4B")
         bob = Vault.create(work / "bob", "prove-bob-passphrase", case_id=_CASE_ID, unit="4B")
+        pairing = create_pairing_material(alice, bob.identity.public())
+        accept_pairing_material(bob, pairing)
 
         issue = alice.document.add_issue(
             category="mold", room="bathroom", title=_MARKER_TITLE, severity="high"
@@ -209,6 +213,8 @@ def prove_no_plaintext(capture_dir: Path | None = None) -> ProveReport:
             hits=hits,
         )
     finally:
+        if tap is not None:
+            tap.close()
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)

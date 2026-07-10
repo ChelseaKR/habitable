@@ -12,6 +12,7 @@ import piexif
 import pytest
 from PIL import Image
 
+from habitable.pairing import accept_pairing_material, create_pairing_material
 from habitable.tsa import DevTSA, LocalRfc3161TSA
 from habitable.vault import Vault
 
@@ -134,8 +135,14 @@ def make_wav(tmp_path: Path) -> Callable[..., Path]:
 
 @pytest.fixture
 def make_vault(tmp_path: Path) -> Callable[..., Vault]:
-    """Factory for vaults with deterministic clocks under the test's tmp_path."""
+    """Factory for deterministic vaults, pairing same-case peers as test setup.
+
+    Production sync never auto-pairs. The fixture performs the explicit signed,
+    sealed invitation exchange so legacy sync-focused tests exercise protocol v2
+    without repeating ceremony in every case.
+    """
     seq = {"n": 0}
+    peers: list[Vault] = []
 
     def _make(
         name: str = "vault",
@@ -146,8 +153,15 @@ def make_vault(tmp_path: Path) -> Callable[..., Vault]:
     ) -> Vault:
         seq["n"] += 1
         clock = counter_clock(FIXED_EPOCH_SECONDS * 1000 + seq["n"] * 1_000_000)
-        return Vault.create(
+        vault = Vault.create(
             tmp_path / name, passphrase, case_id=case_id, unit=unit, time_source=clock
         )
+        for existing in peers:
+            if existing.document.case_id != case_id:
+                continue
+            material = create_pairing_material(existing, vault.identity.public())
+            accept_pairing_material(vault, material)
+        peers.append(vault)
+        return vault
 
     return _make

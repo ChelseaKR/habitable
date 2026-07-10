@@ -28,6 +28,7 @@ from .clock import HybridLogicalClock, wall_clock_ms
 from .config import Config, default_config_toml
 from .crypto import (
     Identity,
+    PublicIdentity,
     SymmetricKey,
     create_keyfile,
     export_recovery_blob,
@@ -38,6 +39,7 @@ from .crypto import (
 from .errors import FixityError, VaultError
 from .evidence import CustodyLog
 from .model import CaseDocument
+from .syncstate import PeerAuthorization
 from .threshold import create_recovery_bundle, recover_dek
 from .tsa import TimestampToken
 
@@ -57,6 +59,9 @@ _TOKENS = "tokens"
 # it is purely an optimization so a later ``sync.export_message`` can skip re-sending
 # sealed originals a peer already told us they have.
 _PEER_HAVE = "peer_have.enc"
+# Pairing keys, exact allowlisted identities, replay ids, receipts, and imported
+# source-custody proofs. This is encrypted local policy state, never CRDT-merged.
+_SYNC_SECURITY = "sync_security.enc"
 
 # Pre-FIX-01 vaults wrote the device node_id into plaintext config.toml; this
 # matches that line so a legacy vault can be migrated (the value moves into the
@@ -123,6 +128,7 @@ class Vault:
         custody: CustodyLog,
         deferred: list[DeferredItem],
         peer_have: Mapping[str, Iterable[str]] | None = None,
+        sync_peers: Mapping[str, PeerAuthorization] | None = None,
     ) -> None:
         self.path = path
         self.config = config
@@ -134,6 +140,7 @@ class Vault:
         self._peer_have: dict[str, set[str]] = {
             fingerprint: set(capture_ids) for fingerprint, capture_ids in (peer_have or {}).items()
         }
+        self._sync_peers = dict(sync_peers or {})
 
     # --- lifecycle ------------------------------------------------------------
 
@@ -170,7 +177,7 @@ class Vault:
 
         identity = Identity.generate()
         clock = HybridLogicalClock(node_id, time_source=time_source)
-        document = CaseDocument(case_id, clock)
+        document = CaseDocument(case_id, clock, identity=identity)
         document.ensure_case_salt()  # so exported ids are opaque from the first mint
         if unit:
             document.set_meta("unit", unit)
@@ -204,6 +211,7 @@ class Vault:
         if not isinstance(case_state, dict):
             raise VaultError("corrupt case state")
         document = CaseDocument.from_state(case_state, clock)
+        document.set_identity(identity)
         document.catch_up_clock()
 
         custody_records = _decode_json(_read_blob(path, dek, _CUSTODY))
@@ -215,7 +223,18 @@ class Vault:
             for item in _as_record_list(deferred_raw)
         ]
         peer_have = _load_peer_have(path, dek)
-        return cls(path, config, dek, identity, document, custody, deferred, peer_have)
+        sync_peers = _load_sync_peers(path, dek)
+        return cls(
+            path,
+            config,
+            dek,
+            identity,
+            document,
+            custody,
+            deferred,
+            peer_have,
+            sync_peers,
+        )
 
     # --- key management -------------------------------------------------------
 
@@ -306,6 +325,9 @@ class Vault:
             fingerprint: cast(JSONValue, sorted(capture_ids))
             for fingerprint, capture_ids in self._peer_have.items()
         }
+        sync_security_json: JSONValue = {
+            fingerprint: peer.to_json() for fingerprint, peer in sorted(self._sync_peers.items())
+        }
         return [
             (_CASE, canonical_json(self.document.to_state())),
             (_CUSTODY, canonical_json(_records_to_json(self.custody.to_vault_records()))),
@@ -313,6 +335,7 @@ class Vault:
             (_IDENTITY, self.identity.serialize()),
             (_NODE, canonical_json({"node_id": self.document.clock.node_id})),
             (_PEER_HAVE, canonical_json(peer_have_json)),
+            (_SYNC_SECURITY, canonical_json(sync_security_json)),
         ]
 
     def export_recovery(self, recovery_passphrase: str) -> str:
@@ -355,7 +378,7 @@ class Vault:
         (path / _KEYFILE).write_text(export_recovery_blob(dek, new_passphrase), encoding="utf-8")
 
     def save(self) -> None:
-        """Persist the document, custody log, deferred queue, and peer-have record."""
+        """Persist document, custody, deferred work, inventory, and sync trust state."""
         self._write_blob(_CASE, canonical_json(self.document.to_state()))
         self._write_blob(
             _CUSTODY, canonical_json(_records_to_json(self.custody.to_vault_records()))
@@ -369,6 +392,127 @@ class Vault:
             for fingerprint, capture_ids in self._peer_have.items()
         }
         self._write_blob(_PEER_HAVE, canonical_json(peer_have_json))
+
+        sync_security_json: JSONValue = {
+            fingerprint: peer.to_json() for fingerprint, peer in sorted(self._sync_peers.items())
+        }
+        self._write_blob(_SYNC_SECURITY, canonical_json(sync_security_json))
+
+    # --- authenticated sync peers --------------------------------------------
+
+    def authorize_sync_peer(
+        self,
+        identity: PublicIdentity,
+        pairing_id: str,
+        key: bytes,
+        *,
+        replace: bool = False,
+    ) -> None:
+        """Allowlist one exact identity under authenticated pairing material.
+
+        Replacing an existing pairing is never implicit: the invitation issuer
+        must explicitly request replacement, while accepting a stale invitation
+        fails closed instead of rolling a newer key back.
+        """
+        if len(key) != 32 or not pairing_id:
+            raise VaultError("invalid sync pairing material")
+        fingerprint = identity.fingerprint
+        existing = self._sync_peers.get(fingerprint)
+        if existing is not None:
+            same = (
+                existing.identity == identity.encode()
+                and existing.pairing_id == pairing_id
+                and existing.key == key
+            )
+            if same:
+                return
+            if not replace:
+                raise VaultError(
+                    f"peer {fingerprint} is already paired; create a fresh pairing explicitly"
+                )
+        self._sync_peers[fingerprint] = PeerAuthorization(
+            identity=identity.encode(), pairing_id=pairing_id, key=key
+        )
+
+    def sync_peer(self, identity: PublicIdentity) -> PeerAuthorization | None:
+        """Return the authorization only when the complete identity matches."""
+        peer = self._sync_peers.get(identity.fingerprint)
+        if peer is None or peer.identity != identity.encode():
+            return None
+        return peer
+
+    def sync_peer_by_fingerprint(self, fingerprint: str) -> PeerAuthorization | None:
+        """Return an allowlisted peer by fingerprint (callers still check full identity)."""
+        return self._sync_peers.get(fingerprint)
+
+    def record_sync_message_sent(
+        self, identity: PublicIdentity, message_id: str, message_digest: str
+    ) -> None:
+        peer = self.sync_peer(identity)
+        if peer is None:
+            raise VaultError("cannot record a message for an unauthorized peer")
+        peer.sent_messages[message_id] = message_digest
+
+    def has_seen_sync_message(self, identity: PublicIdentity, message_id: str) -> bool:
+        peer = self.sync_peer(identity)
+        return peer is not None and message_id in peer.seen_message_ids
+
+    def mark_sync_message_seen(self, identity: PublicIdentity, message_id: str) -> None:
+        peer = self.sync_peer(identity)
+        if peer is None:
+            raise VaultError("cannot record replay state for an unauthorized peer")
+        peer.seen_message_ids.add(message_id)
+
+    def queue_sync_receipt(
+        self, identity: PublicIdentity, message_id: str, receipt: dict[str, JSONValue]
+    ) -> None:
+        peer = self.sync_peer(identity)
+        if peer is None:
+            raise VaultError("cannot queue a receipt for an unauthorized peer")
+        peer.pending_receipts[message_id] = receipt
+
+    def pending_sync_receipts(self, identity: PublicIdentity) -> tuple[dict[str, JSONValue], ...]:
+        peer = self.sync_peer(identity)
+        if peer is None:
+            return ()
+        return tuple(peer.pending_receipts[key] for key in sorted(peer.pending_receipts))
+
+    def record_verified_sync_receipt(
+        self, identity: PublicIdentity, message_id: str, receipt: dict[str, JSONValue]
+    ) -> None:
+        peer = self.sync_peer(identity)
+        if peer is None:
+            raise VaultError("cannot record a receipt from an unauthorized peer")
+        peer.verified_receipts[message_id] = receipt
+
+    def verified_sync_receipt(
+        self, identity: PublicIdentity, message_id: str
+    ) -> Mapping[str, JSONValue] | None:
+        peer = self.sync_peer(identity)
+        return None if peer is None else peer.verified_receipts.get(message_id)
+
+    def sent_sync_message_digest(self, identity: PublicIdentity, message_id: str) -> str | None:
+        peer = self.sync_peer(identity)
+        return None if peer is None else peer.sent_messages.get(message_id)
+
+    def record_source_custody(
+        self, identity: PublicIdentity, capture_id: str, proof: dict[str, JSONValue]
+    ) -> None:
+        peer = self.sync_peer(identity)
+        if peer is None:
+            raise VaultError("cannot record source custody from an unauthorized peer")
+        proof_id = sha256_bytes(canonical_json(proof))
+        peer.source_custody_proofs[proof_id] = proof
+        peer.capture_custody[capture_id] = proof_id
+
+    def source_custody(
+        self, identity: PublicIdentity, capture_id: str
+    ) -> Mapping[str, JSONValue] | None:
+        peer = self.sync_peer(identity)
+        if peer is None:
+            return None
+        proof_id = peer.capture_custody.get(capture_id)
+        return None if proof_id is None else peer.source_custody_proofs.get(proof_id)
 
     # --- sync peer inventory (FIX-02) ------------------------------------------
 
@@ -608,6 +752,26 @@ def _load_peer_have(path: Path, dek: SymmetricKey) -> dict[str, set[str]]:
             raise VaultError("corrupt peer-have record")
         result[fingerprint] = {cid for cid in capture_ids if isinstance(cid, str)}
     return result
+
+
+def _load_sync_peers(path: Path, dek: SymmetricKey) -> dict[str, PeerAuthorization]:
+    """Load local sync authorization; legacy vaults start with no authorized peers."""
+    if not (path / _SYNC_SECURITY).exists():
+        return {}
+    raw = _decode_json(_read_blob(path, dek, _SYNC_SECURITY))
+    if not isinstance(raw, dict):
+        raise VaultError("corrupt sync security record")
+    peers: dict[str, PeerAuthorization] = {}
+    for fingerprint, record in raw.items():
+        peer = PeerAuthorization.from_json(record)
+        try:
+            identity = PublicIdentity.decode(peer.identity)
+        except Exception as exc:
+            raise VaultError("corrupt sync peer identity") from exc
+        if identity.fingerprint != fingerprint:
+            raise VaultError("sync peer fingerprint does not match its identity")
+        peers[fingerprint] = peer
+    return peers
 
 
 def _decode_json(data: bytes) -> JSONValue:

@@ -32,6 +32,7 @@ from .i18n import DEFAULT_LOCALE, cli_text, format_datetime, resolve_locale
 from .letter import LetterOptions, build_letter, render_letter_html
 from .obslog import configure_logging, enabled_from_env, log_event
 from .packet import build_packet
+from .pairing import accept_pairing_material, create_pairing_material
 from .share import decode_share, encode_share, export_share, import_share
 from .strength import assess_issue
 from .sync import (
@@ -171,6 +172,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_status.set_defaults(func=_cmd_status)
 
+    p_provenance = sub.add_parser(
+        "provenance", help="show the signed device attribution for each current issue field"
+    )
+    add_vault(p_provenance)
+    p_provenance.add_argument("--issue", required=True, help="issue id from `habitable status`")
+    p_provenance.set_defaults(func=_cmd_provenance)
+
     p_resolve = sub.add_parser("resolve", help="fetch timestamps for items queued offline")
     add_vault(p_resolve)
     p_resolve.add_argument("--dev-tsa", action="store_true")
@@ -303,6 +311,27 @@ def _build_parser() -> argparse.ArgumentParser:
     p_sync.add_argument("--dir", type=Path, help="shared directory transport")
     add_metered(p_sync)
     p_sync.set_defaults(func=_cmd_sync)
+
+    p_pair_create = sub.add_parser(
+        "sync-pair-create",
+        help="authorize one peer and write authenticated, case-bound pairing material",
+    )
+    add_vault(p_pair_create)
+    p_pair_create.add_argument(
+        "--peer", required=True, help="exact recipient public identity (from `habitable id`)"
+    )
+    p_pair_create.add_argument(
+        "--out", required=True, type=Path, help="one-line .hpair file to transfer or encode as QR"
+    )
+    p_pair_create.set_defaults(func=_cmd_sync_pair_create)
+
+    p_pair_accept = sub.add_parser(
+        "sync-pair-accept",
+        help="accept authenticated pairing material addressed to this case and device",
+    )
+    add_vault(p_pair_accept)
+    p_pair_accept.add_argument("--in", dest="in_file", required=True, type=Path)
+    p_pair_accept.set_defaults(func=_cmd_sync_pair_accept)
 
     p_sync_export = sub.add_parser(
         "sync-export",
@@ -571,6 +600,26 @@ def _cmd_timeline(args: argparse.Namespace) -> int:
     entry_id = vault.document.add_timeline_entry(args.issue, args.kind, args.text)
     vault.save()
     print(f"habitable: added timeline entry {entry_id} ({args.kind})")
+    return 0
+
+
+def _cmd_provenance(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    issues = {issue.issue_id for issue in vault.document.issues()}
+    if args.issue not in issues:
+        raise HabitableError(f"unknown issue {args.issue!r}")
+    print(f"habitable: field provenance for issue {args.issue}")
+    for field in ("category", "room", "title", "status", "severity", "description"):
+        provenance = vault.document.field_provenance(args.issue, field)
+        if provenance is None:
+            continue
+        actor = provenance.actor or "legacy/unknown device"
+        status = (
+            "signed legacy attestation"
+            if provenance.kind == "attested_legacy"
+            else ("signed authorship" if provenance.signed else "unsigned legacy value")
+        )
+        print(f"  · {field}: {actor} at {provenance.ts} — {status}")
     return 0
 
 
@@ -948,6 +997,27 @@ def _cmd_sync(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_sync_pair_create(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    peer = PublicIdentity.decode(args.peer)
+    material = create_pairing_material(vault, peer)
+    args.out.write_text(material + "\n", encoding="ascii")
+    print(f"habitable: wrote pairing material for {peer.fingerprint} to {args.out}")
+    print("           verify that fingerprint out of band before transferring the file.")
+    return 0
+
+
+def _cmd_sync_pair_accept(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    try:
+        material = args.in_file.read_text(encoding="ascii").strip()
+    except OSError as exc:
+        raise SyncError(f"could not read pairing material: {exc}") from exc
+    peer = accept_pairing_material(vault, material)
+    print(f"habitable: authorized paired peer {peer.fingerprint} for this case")
+    return 0
+
+
 def _cmd_sync_export(args: argparse.Namespace) -> int:
     vault = _open(args)
     peer = PublicIdentity.decode(args.peer)
@@ -970,6 +1040,12 @@ def _cmd_sync_import(args: argparse.Namespace) -> int:
             raise HabitableError(f"could not read {path}: {exc}") from exc
     result = import_messages(vault, blobs)
     if result.messages_merged == 0:
+        if result.replays_skipped:
+            print(
+                "habitable: replay protection skipped "
+                f"{result.replays_skipped} already-imported delta(s); nothing changed."
+            )
+            return 0
         # Not a silent no-op: say plainly that nothing here was addressed to us.
         raise SyncError(
             "no delta in these files was sealed to this device — nothing imported. "

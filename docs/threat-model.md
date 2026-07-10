@@ -86,6 +86,10 @@ It is deliberately a dumb mailbox: ciphertext in, ciphertext out.
 - Every sync message is **sealed to the recipient's public key before it leaves the sender**
   (`seal_to` in `crypto.py`), so the relay only ever stores opaque blobs per room and hands them
   back. It **cannot read anything**.
+- A sender key is not implicitly trusted. Peers exchange signed, recipient-sealed,
+  case-bound pairing material first; import requires the complete allowlisted
+  identity, pairing-key authentication, matching message/state case ids, and an
+  unseen replay id. See [`sync-threat-model.md`](sync-threat-model.md).
 - The relay writes **no per-request logs by default**; per-request access logging is opt-in
   (`HABITABLE_RELAY_LOG=json`). Its logs are always **metadata-only** — a structured JSON line
   never carries a peer address, a room id (the logged route is redacted to `/rooms/{room}`), or
@@ -121,7 +125,7 @@ learns nothing about the contents.
 | Property | How it is achieved | Where |
 | --- | --- | --- |
 | **Confidentiality at rest** | Every vault blob and sealed original is encrypted with ChaCha20-Poly1305 under the DEK, which is wrapped under a scrypt-derived KEK from the user's passphrase. | `crypto.py`, `vault.py` |
-| **End-to-end encryption in sync** | Each sync message is sealed to the recipient's X25519 public key via an ECIES-style sealed box (ephemeral X25519 → HKDF → ChaCha20-Poly1305) and signed by the sender's Ed25519 key. The relay never holds a key that can open it. | `crypto.py` (`seal_to` / `open_sealed`), `sync.py` |
+| **End-to-end encryption and peer authorization in sync** | Each sync message is sealed to the recipient's X25519 key, signed by the sender's Ed25519 key, and HMAC-authenticated with signed-and-sealed, case-bound pairing material. Exact allowlists, mandatory case/recipient checks, and replay ids fail closed before merge. | `pairing.py`, `sync.py`, `crypto.py` |
 | **Tamper-evidence (content)** | Originals are hashed (SHA-256) at capture and sealed byte-for-byte; every read re-checks the hash, so silent corruption or tampering surfaces as a `FixityError` instead of a quietly altered exhibit. | `evidence.py` (`verify_fixity`), `vault.py` (`read_original`) |
 | **Tamper-evidence (sequence)** | The chain of custody is an append-only, hash-linked log: each entry commits to the previous entry's hash, so any insertion, deletion, or reordering breaks the chain detectably. Entries can also be Ed25519-signed. | `evidence.py` (`CustodyLog`) |
 | **Upper-bound timestamps** | A SHA-256 hash is sent to an RFC 3161 authority, which returns a signed token proving the content existed *no later than* that time. Tokens travel inside the packet for offline verification, and the verifier checks the signature and certificate chain. | `tsa.py` (`Rfc3161HttpTSA`, `verify_token`) |

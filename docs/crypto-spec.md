@@ -192,9 +192,9 @@ vault**. The corresponding **PublicIdentity** is `sign_public ‖ box_public` (6
 - **`sign(message)`** → Ed25519 signature. **`verify(pub, message, sig)`** returns `False` on any
   failure (bad signature, malformed key) rather than raising — verification is total and
   side-effect-free.
-- Signatures in habitable are taken over the **ASCII hex** of a SHA-256 digest (e.g. the custody
-  `entry_hash`, the `bundle_sha256`), not over raw payloads — so signers commit to a hash, and the
-  verifier independently recomputes that hash before checking the signature.
+- Custody and packet signatures are taken over the **ASCII hex** of a SHA-256 digest. Sync-v2
+  messages and pairing invitations instead sign their canonical JSON bytes directly; both sides
+  deterministically reproduce those bytes with `canonical_json`.
 
 ## 5. Sync confidentiality — the sealed box
 
@@ -215,12 +215,13 @@ wire       = eph_pub(32) ‖ nonce(12) ‖ ciphertext
   secret and open the box.
 - **Forward secrecy for the sender.** The sender's contribution is ephemeral and discarded;
   compromising the sender later does not decrypt past boxes.
-- **Anonymous sender, by design.** The sealed box itself does **not** authenticate who sent it
+- **Anonymous sender at this primitive, by design.** The sealed box itself does **not** authenticate who sent it
   (there is no sender static key in the handshake). The HKDF `info` and the `aad` bind the
   ciphertext to *this* ephemeral and recipient public key, preventing key-reuse/cross-protocol
-  confusion, but **sender authenticity is established at a higher layer** by the Ed25519 signatures
-  on the custody entries and the packet bundle — not by the transport. Reviewers should confirm
-  the sync layer (`sync.py`) enforces that expectation; see [§7](#7-review-focus--known-tradeoffs).
+  confusion. Protocol v2 establishes sender authenticity and authorization at the higher layer:
+  signed, recipient-sealed, case-bound pairing pins an exact identity and random pairing key, then
+  each canonical message is Ed25519-signed and HMAC-authenticated before sealing. See
+  [`sync-protocol-v2.md`](sync-protocol-v2.md).
 
 The guard tests in `tests/test_guards.py` assert that no plaintext (note text, image bytes, or a
 sender identity) reaches a relay or an on-disk mailbox — only sealed boxes and metadata.
@@ -294,10 +295,9 @@ Stated plainly so a reviewer can target effort (and so the project isn't accused
   resolved here.
 - **Random 96-bit nonces.** Safe at habitable's message volumes; confirm no key is driven near the
   birthday bound, especially for the long-lived DEK.
-- **Sender authentication of sync payloads** is *not* provided by the sealed box (anonymous sender
-  by design). Confirm `sync.py` authenticates senders via the entry/bundle signatures and that an
-  unauthenticated injected box cannot corrupt a peer's state (it should fail signature/custody
-  checks downstream).
+- **Sender authentication of sync payloads** is not provided by the sealed-box primitive. Confirm
+  protocol v2's exact encrypted allowlist, Ed25519 signature, pairing HMAC, case/recipient binding,
+  and replay database all fail closed before merge.
 - **Actor commitment** is unkeyed SHA-256 over `salt:actor`; the salt is exported so the commitment
   is openable *with the actor*, not brute-force-resistant against a known small actor set absent the
   salt. By design the salt stays in the vault; confirm it never leaks into an export.
