@@ -89,10 +89,20 @@ def test_full_api_flow(app: str, make_jpeg: Callable[..., Path]) -> None:
     )
     assert status == 200 and cap["timestamped"] is True and cap["had_location"] is True
 
-    status, _ = _call(
-        app, "POST", f"/api/issues/{issue_id}/timeline", {"kind": "observed", "text": "spreading"}
+    status, timeline = _call(
+        app,
+        "POST",
+        f"/api/issues/{issue_id}/timeline",
+        {
+            "event_type": "condition_observed",
+            "occurred_at": "2026-01-03",
+            "source": "firsthand",
+            "text": "spreading",
+            "capture_ids": [cap["capture_id"]],
+        },
     )
     assert status == 200
+    assert timeline["status"] == "open"
 
     status, state = _call(app, "GET", "/api/status")
     assert status == 200 and state["unit"] == "4B"
@@ -105,6 +115,10 @@ def test_full_api_flow(app: str, make_jpeg: Callable[..., Path]) -> None:
     assert strength["item_count"] == 1
     assert strength["level"] == "developing"
     assert strength["timeline_entries"] == 1
+    timeline_entries = cast("list[dict[str, object]]", issues[0]["timeline"])
+    assert timeline_entries[0]["event_type"] == "condition_observed"
+    assert timeline_entries[0]["kind"] == "condition_observed"  # pre-v3 API compatibility
+    assert timeline_entries[0]["occurred_at"] == "2026-01-03"
 
     status, export = _call(app, "POST", "/api/export", {})
     assert status == 200 and export["verified"] is True and export["item_count"] == 1

@@ -33,6 +33,17 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   Round trips preserve primary, additional, and archive timestamp tokens plus
   verified source custody material.
 
+- **Timeline 2.0 / packet v3.** Timeline events now separate the reported occurrence date from the
+  device recording time and record a reviewed source; use reviewed condition/notice/delivery/
+  response/inspection/repair/recurrence/impact choices or an explicit Other label. Events can link
+  captures and the notice→delivery→response chain, recurrence reopens the same issue, and every new
+  event is committed into a signed local custody entry. Packet v3 uses `order_token` rather than
+  reusing v2 `hlc`, carries the semantic commitment and binding stage, renders the same signed fields
+  deterministically in EN/ES app/HTML/PDF views, and verifies the commitment/link types. Legacy case
+  entries migrate without invented occurrence/source facts; committed packet-v1/v2/v3 goldens keep
+  backward verification executable. See
+  [`docs/migrations/packet-v3-timeline.md`](docs/migrations/packet-v3-timeline.md).
+
 - **Reusable, local-first evidence kernel (`habitable.kernel`)** — EXP-13. The
   verification-facing spine (canonical serialization + SHA-256, chain-of-custody model +
   verification, RFC 3161 timestamp verification, Ed25519 signature verification, and the

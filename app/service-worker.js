@@ -2,7 +2,7 @@
 // habitable — offline shell cache. API responses are never cached.
 "use strict";
 
-var CACHE = "habitable-shell-v2";
+var CACHE = "habitable-shell-v3";
 
 // Relative URLs so the worker matches however the shell is served.
 var SHELL = [

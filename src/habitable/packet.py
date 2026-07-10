@@ -42,7 +42,7 @@ from .vault import Vault
 
 __all__ = ["PACKET_VERSION", "PacketResult", "build_packet"]
 
-PACKET_VERSION = 2
+PACKET_VERSION = 3
 _BUNDLE = "bundle.json"
 _SIGNATURE = "bundle.sig.json"
 _MEDIA = "media"
@@ -176,6 +176,12 @@ def _build_packet_in_dir(
     if include_originals:
         originals_dir.mkdir(exist_ok=True)
 
+    # Packet v3 requires every timeline assertion to be bound into custody.  New
+    # entries are bound when recorded; legacy case entries receive an explicitly
+    # labelled migration/backfill binding here (never a false claim of original-time
+    # protection).
+    vault.ensure_timeline_custody(persist=False)
+
     actor = vault.identity.public().fingerprint
     selected_issues = _select_issues(vault, issue_id)
     issue_ids = {issue.issue_id for issue in selected_issues}
@@ -235,6 +241,7 @@ def _build_packet_in_dir(
         awaiting=len(items) - timestamped,
         total=len(items),
     )
+    timeline_entries = _timeline(vault, issue_ids)
     bundle: dict[str, JSONValue] = {
         "packet_version": PACKET_VERSION,
         "case_id": vault.document.case_id,
@@ -256,7 +263,7 @@ def _build_packet_in_dir(
         },
         "issues": cast(JSONValue, [_issue_json(issue) for issue in selected_issues]),
         "timeline": cast(
-            JSONValue, [_timeline_json(e, opaque_hlc) for e in _timeline(vault, issue_ids)]
+            JSONValue, [_timeline_json(vault, entry, opaque_hlc) for entry in timeline_entries]
         ),
         "items": cast(JSONValue, items),
         "custody_proof": vault.custody.integrity_proof(hlc_map=opaque_hlc),
@@ -264,6 +271,8 @@ def _build_packet_in_dir(
             "item_count": len(items),
             "timestamped_count": timestamped,
             "includes_originals": include_originals,
+            "timeline_count": len(timeline_entries),
+            "custody_bound_timeline_count": len(timeline_entries),
         },
         "disclosures": cast(JSONValue, list(disclosures)),
     }
@@ -474,16 +483,28 @@ def _issue_json(issue: Issue) -> dict[str, JSONValue]:
     }
 
 
-def _timeline_json(entry: TimelineEntry, opaque_hlc: Callable[[str], str]) -> dict[str, JSONValue]:
-    # ``hlc`` is pseudonymized: the entries are already sorted and keyed by an opaque
-    # entry_id, so the exported value is only a stable, non-identifying ordering token.
-    return {
-        "entry_id": entry.entry_id,
-        "issue_id": entry.issue_id,
-        "kind": entry.kind,
-        "text": entry.text,
-        "hlc": opaque_hlc(entry.hlc),
+def _timeline_json(
+    vault: Vault, entry: TimelineEntry, opaque_hlc: Callable[[str], str]
+) -> dict[str, JSONValue]:
+    """Render a v3 timeline entry without reusing packet-v2 field meanings."""
+    payload = entry.semantic_payload()
+    commitment = entry.commitment()
+    stage = vault.timeline_binding_stage(entry.entry_id, commitment)
+    payload["order_token"] = opaque_hlc(entry.hlc)
+    payload["integrity"] = {
+        "algorithm": "sha256",
+        "commitment": commitment,
+        "custody_action": "note_added",
+        "binding_stage": stage,
     }
+    if entry.schema_version < 2:
+        payload["migration"] = {
+            "from_case_timeline_schema": entry.schema_version,
+            "legacy_kind_preserved_as_other_label": True,
+            "occurred_at_unknown": True,
+            "source_unknown": True,
+        }
+    return payload
 
 
 def _write_signature(vault: Vault, out_dir: Path, bundle_bytes: bytes) -> None:

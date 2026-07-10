@@ -30,6 +30,7 @@ What this method does **not** establish is stated plainly in
 - [Fixity: pinning exact content](#fixity-pinning-exact-content)
 - [Trusted timestamps: an upper bound on existence](#trusted-timestamps-an-upper-bound-on-existence)
 - [Chain of custody: append-only and identity-free on export](#chain-of-custody-append-only-and-identity-free-on-export)
+- [Timeline events: occurrence, recording, source, and custody](#timeline-events-occurrence-recording-source-and-custody)
 - [Packet binding: the privacy/verifiability bridge](#packet-binding-the-privacyverifiability-bridge)
 - [Independent verification procedure](#independent-verification-procedure)
 - [Versioning: old packets keep verifying](#versioning-old-packets-keep-verifying)
@@ -263,6 +264,41 @@ a proof for a chain that does not itself verify.
 
 ---
 
+## Timeline events: occurrence, recording, source, and custody
+
+Packet v3 introduces Timeline 2.0 without assigning new meanings to the older packet fields.
+Packet v1/v2 timeline entries remain `{kind, text, hlc}` records; v1 exposed a raw HLC and v2
+made it opaque. A verifier never decodes a v2 opaque token as a date.
+
+A new event keeps three different facts separate:
+
+- **`occurred_at`** is the date/time the person recording the event says it happened. It may be a
+  date when an exact time is unknown. It is a factual assertion, not a cryptographic time proof.
+- **`recorded_at`** is the device's UTC time when the immutable entry was appended. It says when
+  Habitable recorded the assertion, not necessarily when the event happened. It is not RFC 3161.
+- **`source`** says how the recorder knows: firsthand observation, message/conversation,
+  document/receipt, inspector/official record, or a named Other source.
+
+Reviewed event types cover condition, notice, delivery, response, inspection, repair, recurrence,
+and impact; Other remains available without turning every label into an unreviewed free-text type.
+Typed links connect captures and the notice/delivery/response sequence. Link ids and the source/date
+fields are part of the same canonical semantic payload.
+
+At creation, the device hashes that payload and appends a signed `note_added` custody entry carrying
+the commitment. On export, `bundle.sig.json` authenticates the identity-redacted custody proof and
+timeline together. The v3 verifier recomputes the semantic hash and requires the matching custody
+entry. This detects alteration of a date, source, note, or link, including an outer-only re-sign that
+does not also rewrite custody. It does **not** prove the event happened as described, that the claimed
+occurrence date is true, or stop a compromised vault keyholder from rewriting the whole still-local
+history before a peer or external anchor has seen it.
+
+Old case entries migrate without made-up facts: their free-form kind is preserved as an Other label,
+occurrence/source are explicitly unknown, and the custody binding says `stage=migration`. That later
+binding protects the migrated representation; it does not retroactively prove protection existed when
+the original note was written.
+
+---
+
 ## Packet binding: the privacy/verifiability bridge
 
 This is the crux that reconciles two goals that otherwise conflict: *do not leak where a
@@ -364,6 +400,9 @@ packets produced today keep verifying years later, after the code has moved on.
   the algorithm.
 - A new format version adds a code path rather than redefining the old one; verification
   is expected to be backward compatible across the supported range.
+- Packet v3 is the concrete compatibility example: it adds explicit event/source/time/link fields
+  and a custody commitment while the committed v1 and v2 golden packets keep using and verifying
+  their historical timeline shape.
 - This is what keeps the [archive / re-timestamping](#archive--re-timestamping-expiring-tsa-certificates)
   longevity path workable: a packet re-timestamped years later is still a known,
   versioned format the verifier can read.

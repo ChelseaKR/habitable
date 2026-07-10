@@ -165,7 +165,7 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
     story.append(Spacer(1, 0.3 * inch))
 
     # Chronological evidence timeline: notes and photos interleaved across issues.
-    _render_chronology(story, chronology(bundle), styles)
+    _render_chronology(story, chronology(bundle), styles, lang)
 
     items_by_issue = _items_by_issue(bundle)
     for issue in _list(bundle, "issues"):
@@ -281,26 +281,49 @@ def _render_cover_sheet(story: list[Any], cover: CoverSheet, styles: Any) -> Non
     story.append(table)
 
 
-def _render_chronology(story: list[Any], entries: tuple[ChronologyEntry, ...], styles: Any) -> None:
+def _render_chronology(
+    story: list[Any], entries: tuple[ChronologyEntry, ...], styles: Any, lang: str
+) -> None:
     """Append the unified, chronological evidence timeline (notes + photos)."""
-    story.append(Paragraph("Chronological evidence timeline", styles["Heading2"]))
+    spanish = lang.lower().startswith("es")
+    story.append(
+        _para(
+            "Cronología de la evidencia" if spanish else "Chronological evidence timeline",
+            styles["Heading2"],
+        )
+    )
     if not entries:
-        story.append(_para("No timeline entries or captures recorded.", styles["Small"]))
+        story.append(
+            _para(
+                "No hay eventos ni capturas registrados."
+                if spanish
+                else "No timeline events or captures recorded.",
+                styles["Small"],
+            )
+        )
         story.append(Spacer(1, 0.2 * inch))
         return
     story.append(
-        Paragraph(
-            "Notes are placed when they were logged; photos when they were captured. "
-            "The order of record is fixed by the append-only chain of custody.",
+        _para(
+            (
+                "La fecha de ocurrencia es la que informa la persona; la fecha de registro "
+                "la agrega el dispositivo. Los eventos de la versión 3 están vinculados "
+                "a la custodia. Las fotos aparecen cuando fueron capturadas."
+                if spanish
+                else "Occurred is the date reported by the person; recorded is the separate "
+                "device time when the entry was added. Version 3 events are custody-bound. "
+                "Photos appear when captured."
+            ),
             styles["Small"],
         )
     )
     for entry in entries:
-        when = escape(entry.when or "undated")
+        when = escape(entry.when or ("sin fecha" if spanish else "undated"))
+        when_label = escape(entry.when_label)
         label = escape(entry.label)
         issue = escape(entry.issue_title)
         text = escape(entry.text)
-        line = f"· <b>{when}</b> — [{label}] {issue}: {text}"
+        line = f"· <b>{when_label}: {when}</b> — [{label}] {issue}: {text}"
         if entry.detail:
             line = f"{line} ({escape(entry.detail)})"
         story.append(Paragraph(line, styles["Small"]))
@@ -381,17 +404,23 @@ def _render_issue(
 
     timeline = [
         entry
-        for entry in _list(bundle, "timeline")
-        if isinstance(entry, dict) and _s(entry, "issue_id") == issue_id
+        for entry in chronology(bundle)
+        if entry.issue_id == issue_id and entry.kind in {"event", "note"}
     ]
     if timeline:
         story.append(Paragraph("Timeline", styles["Heading3"]))
         for entry in timeline:
-            if isinstance(entry, dict):
-                # Keep the literal <b> formatting, but escape the dynamic parts.
-                kind = escape(_s(entry, "kind"))
-                text = escape(_s(entry, "text"))
-                story.append(Paragraph(f"· <b>{kind}</b>: {text}", styles["Small"]))
+            # Keep the literal <b> formatting, but escape the dynamic parts.
+            label = escape(entry.label)
+            text = escape(entry.text)
+            when = escape(entry.when or "undated")
+            detail = f" ({escape(entry.detail)})" if entry.detail else ""
+            story.append(
+                Paragraph(
+                    f"· <b>{escape(entry.when_label)}: {when} · {label}</b>: {text}{detail}",
+                    styles["Small"],
+                )
+            )
         story.append(Spacer(1, 0.1 * inch))
 
     for item in items_by_issue.get(issue_id, []):

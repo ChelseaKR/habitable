@@ -45,7 +45,8 @@ from habitable.kernel import (
 )
 ```
 
-`import habitable.kernel` pulls in **only** this verification subset — no relay, sync, CLI,
+`import habitable.kernel` pulls in **only** this verification subset (including the pure
+packet-v3 timeline vocabulary/normalization module) — no relay, sync, CLI,
 app, capture, or vault code — enforced in a fresh process by
 [`tests/test_kernel_golden.py`](../tests/test_kernel_golden.py) (mirroring the verifier guard in
 [`tests/test_guards.py`](../tests/test_guards.py)). Runtime dependencies are just
@@ -131,7 +132,7 @@ maintenance commitment for a single maintainer and, per EXP-13's own risk note, 
 if a second adopter is real." When that second adopter exists, the split is mechanical because the
 boundary, license, contract, and corpus are already in place:
 
-1. move `canonical.py`, `crypto.py`, `errors.py`, `evidence.py`, `tsa.py`, `verify.py`, `kernel.py`
+1. move `canonical.py`, `crypto.py`, `errors.py`, `evidence.py`, `timeline.py`, `tsa.py`, `verify.py`, `kernel.py`
    and `tests/golden/kernel/` + `tests/test_kernel_golden.py` into a new `evidence-kernel` package;
 2. ship it under Apache-2.0 with `KERNEL_API_VERSION` as its release version;
 3. make habitable depend on it and re-export `habitable.kernel` from it for continuity.

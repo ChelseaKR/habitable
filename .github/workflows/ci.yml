@@ -114,6 +114,7 @@ jobs:
           src/habitable/crypto.py
           src/habitable/errors.py
           src/habitable/evidence.py
+          src/habitable/timeline.py
           src/habitable/tsa.py
           src/habitable/verify.py
 

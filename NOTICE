@@ -30,7 +30,8 @@ together with the pure, side-effect-free helpers it relies on to do its job:
 `src/habitable/canonical.py` (canonical serialization + SHA-256), the timestamp
 verification routines and token model in `src/habitable/tsa.py`, the
 chain-of-custody verification in `src/habitable/evidence.py`, and the signature
-verification (`verify`) in `src/habitable/crypto.py`. This grant exists so that a
+verification (`verify`) in `src/habitable/crypto.py`, plus the pure packet-v3
+timeline vocabulary/normalization helpers in `src/habitable/timeline.py`. This grant exists so that a
 court, a housing inspector, a legal-aid organization, or an opposing party can
 embed verification of a habitable evidence packet (hashes, RFC 3161 timestamp
 tokens, and the chain-of-custody integrity proof) into their own software and

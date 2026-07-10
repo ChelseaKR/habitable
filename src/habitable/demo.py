@@ -41,9 +41,20 @@ def run_demo() -> int:
     issue = vault.document.add_issue(
         category="mold", room="bathroom", title="Black mold on bathroom ceiling", severity="high"
     )
-    vault.document.add_timeline_entry(issue, "observed", "mold spreading after roof leak")
-    vault.document.add_timeline_entry(issue, "sent_request", "emailed landlord requesting repair")
-    vault.save()
+    vault.add_timeline_event(
+        issue,
+        event_type="condition_observed",
+        text="mold spreading after roof leak",
+        occurred_at="2026-01-02",
+        source="firsthand",
+    )
+    vault.add_timeline_event(
+        issue,
+        event_type="notice_sent",
+        text="emailed landlord requesting repair",
+        occurred_at="2026-01-02",
+        source="message",
+    )
     print(f"2. opened issue {issue} and logged a 2-entry timeline")
 
     for photo in photos:

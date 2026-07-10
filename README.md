@@ -5,11 +5,11 @@
 [`docs/audits/scorecard-2026-07.md`](docs/audits/scorecard-2026-07.md) for what the current number means and what moves it.
 
 > A privacy-first, offline-capable tool that lets tenants and their unions document repair and
-> habitability problems with dated media, condition notes, and a timeline. Captured media receives
-> a content hash, an RFC 3161 timestamp token, and chain-of-custody records; timeline entries are
-> narrative records included in the signed packet, not individually hashed or timestamped. The
-> result is a review packet for a tenant, organizer, lawyer, court, or housing inspector—without a
-> promise that any forum will accept it. Everything is local-first and
+> habitability problems as a checkable record. Captured media receives a content hash, an RFC 3161
+> timestamp token, and chain-of-custody records; sourced timeline events separately record when
+> something reportedly happened, when it was added, and how it is known, then bind that assertion to
+> custody. The result is a signed review packet for a tenant, organizer, lawyer, court, or housing
+> inspector—without a promise that any forum will accept it. Everything is local-first and
 > end-to-end encrypted; organizers sync directly between devices without a central server. The threat
 > model assumes a landlord who retaliates, so there is no server-side personal data, no central
 > authority over a union's records, and no third party who can be subpoenaed for what the union holds.
@@ -57,9 +57,11 @@ auditability, accessibility, and saying plainly what the tool does not do.
   accepted certificate anchor. EXIF is handled explicitly: the original (including its embedded capture
   time and any GPS) is retained sealed for evidentiary integrity, while any copy a tenant chooses to
   share can have location stripped.
-- **Logs a timeline** per issue: repair requests sent, landlord responses or silence, inspections,
-  and worsening conditions. Entries are append-only CRDT records ordered by a hybrid logical clock
-  and included in the signed packet; they do not receive the media hash/timestamp/custody pipeline.
+- **Logs a sourced timeline** per issue: reviewed event choices for conditions, repair notices,
+  delivery, responses, inspections, repairs, recurrence, and impact, plus an honest Other choice.
+  Each entry separates the reported `occurred_at` date from device-generated `recorded_at`, can link
+  captures/notices/receipts/responses, and is committed into the signed custody chain. Timeline device
+  time is not an RFC 3161 timestamp and does not independently prove when the event happened.
 - **Syncs peer to peer.** An organizer and the tenants on a case keep records in step over
   end-to-end-encrypted, direct device-to-device sync using a CRDT, so two people editing the same
   case offline merge cleanly when they reconnect. Signed, recipient-sealed pairing pins the exact
@@ -264,10 +266,10 @@ An evidence tool under an adversarial threat model lives or dies on integrity, c
 verifiability, so those clusters carry the most weight.
 
 ### Integrity, evidence, and trust in the record
-**Correctness** and **accuracy** — captures preserve original bytes and metadata; the timeline
-stores user-authored entries in deterministic CRDT order. **Precision** and **fidelity** — originals
-are sealed byte-for-byte with no re-encoding; hashes pin exact content and timestamp tokens bound
-existence no later than their stated time. **Integrity**
+**Correctness** and **accuracy** — captures preserve original bytes and metadata; the timeline keeps
+reported occurrence time, device recording time, source, and related records distinct. **Precision**
+and **fidelity** — originals are sealed byte-for-byte with no re-encoding; hashes pin exact content,
+and timestamp tokens bound existence no later than their stated time. **Integrity**
 — content hashing plus append-only, hash-linked custody makes any alteration detectable. **Auditability**
 — every item carries its hash, timestamp token, and a verifiable custody-integrity proof, while the
 full who-did-what trail stays in the union's vault rather than being exported.

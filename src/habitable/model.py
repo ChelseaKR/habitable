@@ -33,6 +33,7 @@ from .clock import HLCTimestamp, HybridLogicalClock
 from .crypto import Identity
 from .crypto import verify as verify_signature
 from .errors import HabitableError
+from .timeline import EVENT_TYPES, SOURCES, normalize_occurred_at, recorded_at_from_hlc
 
 __all__ = [
     "Capture",
@@ -46,7 +47,8 @@ __all__ = [
     "verify_state_provenance",
 ]
 
-CASE_SCHEMA_VERSION = 1
+CASE_SCHEMA_VERSION = 2
+TIMELINE_SCHEMA_VERSION = 2
 
 # The per-case id salt lives in the document meta under this key, so it merges and
 # syncs to peers exactly like ``unit`` (an LWWRegister). It is the secret that turns a
@@ -245,9 +247,54 @@ class Issue:
 class TimelineEntry:
     entry_id: str
     issue_id: str
-    kind: str
+    event_type: str
+    other_label: str
     text: str
+    occurred_at: str
+    source: str
+    source_detail: str
+    recorded_at: str
+    capture_ids: tuple[str, ...]
+    notice_entry_id: str
+    receipt_entry_id: str
+    response_entry_id: str
     hlc: str
+    schema_version: int = TIMELINE_SCHEMA_VERSION
+    legacy_kind: str = ""
+
+    @property
+    def kind(self) -> str:
+        """Compatibility view for callers written against the v1 case model."""
+        return self.legacy_kind or self.event_type
+
+    def semantic_payload(self) -> dict[str, JSONValue]:
+        """Fields protected by the v3 timeline commitment.
+
+        The internal HLC and packet-only opaque ordering token are deliberately
+        excluded: they order replicas but do not change the human assertion.
+        """
+        return {
+            "timeline_schema": TIMELINE_SCHEMA_VERSION,
+            "entry_id": self.entry_id,
+            "issue_id": self.issue_id,
+            "event_type": self.event_type,
+            "other_label": self.other_label,
+            "text": self.text,
+            "occurred_at": self.occurred_at,
+            "source": self.source,
+            "source_detail": self.source_detail,
+            "recorded_at": self.recorded_at,
+            "links": {
+                "capture_ids": list(self.capture_ids),
+                "notice_entry_id": self.notice_entry_id,
+                "receipt_entry_id": self.receipt_entry_id,
+                "response_entry_id": self.response_entry_id,
+            },
+        }
+
+    def commitment(self) -> str:
+        """SHA-256 commitment used by the signed custody chain and packet v3."""
+        return hashlib.sha256(canonical_json(self.semantic_payload())).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -447,7 +494,108 @@ class CaseDocument:
     def remove_issue(self, issue_id: str) -> None:
         self._issues = self._issues.remove(issue_id)
 
+    def add_timeline_event(
+        self,
+        issue_id: str,
+        *,
+        event_type: str,
+        text: str,
+        occurred_at: str,
+        source: str,
+        other_label: str = "",
+        source_detail: str = "",
+        capture_ids: tuple[str, ...] = (),
+        notice_entry_id: str = "",
+        receipt_entry_id: str = "",
+        response_entry_id: str = "",
+    ) -> str:
+        """Append one immutable Timeline 2.0 event.
+
+        ``occurred_at`` is the person's claim about when the event happened;
+        ``recorded_at`` is generated separately from the local HLC at append time.
+        Links are validated against records already present in this replica and are
+        immutable once the grow-log entry is written.
+        """
+        _validate_timeline_fields(event_type, other_label, source, source_detail, text)
+        if issue_id not in self._issues.elements():
+            raise HabitableError(f"unknown issue: {issue_id!r}")
+
+        normalized_captures = tuple(dict.fromkeys(capture_ids))
+        self._validate_timeline_capture_links(issue_id, normalized_captures)
+        self._validate_timeline_event_links(
+            issue_id,
+            notice_entry_id=notice_entry_id,
+            receipt_entry_id=receipt_entry_id,
+            response_entry_id=response_entry_id,
+        )
+
+        stamp = self._clock.now()
+        entry_id = self.opaque_id("tl", stamp.encode())
+        self._timeline = self._timeline.add(
+            entry_id,
+            {
+                "timeline_schema": TIMELINE_SCHEMA_VERSION,
+                "issue_id": issue_id,
+                "event_type": event_type,
+                "other_label": other_label.strip(),
+                "text": text.strip(),
+                "occurred_at": normalize_occurred_at(occurred_at),
+                "source": source,
+                "source_detail": source_detail.strip(),
+                "recorded_at": recorded_at_from_hlc(stamp.encode()),
+                "capture_ids": list(normalized_captures),
+                "notice_entry_id": notice_entry_id,
+                "receipt_entry_id": receipt_entry_id,
+                "response_entry_id": response_entry_id,
+                "hlc": stamp.encode(),
+            },
+        )
+        return entry_id
+
+    def _validate_timeline_capture_links(self, issue_id: str, capture_ids: tuple[str, ...]) -> None:
+        captures = {capture.capture_id: capture for capture in self.captures()}
+        for capture_id in capture_ids:
+            capture = captures.get(capture_id)
+            if capture is None:
+                raise HabitableError(f"unknown capture: {capture_id!r}")
+            if capture.issue_id != issue_id:
+                raise HabitableError(f"capture {capture_id!r} belongs to another issue")
+
+    def _validate_timeline_event_links(
+        self,
+        issue_id: str,
+        *,
+        notice_entry_id: str,
+        receipt_entry_id: str,
+        response_entry_id: str,
+    ) -> None:
+        existing = {entry.entry_id: entry for entry in self.timeline()}
+        expected_types = {
+            "notice_entry_id": (notice_entry_id, "notice_sent"),
+            "receipt_entry_id": (receipt_entry_id, "delivery_confirmed"),
+            "response_entry_id": (response_entry_id, "response_received"),
+        }
+        for field_name, (target_id, expected_type) in expected_types.items():
+            if not target_id:
+                continue
+            target = existing.get(target_id)
+            if target is None:
+                raise HabitableError(f"unknown timeline link in {field_name}: {target_id!r}")
+            if target.issue_id != issue_id:
+                raise HabitableError(f"timeline link {target_id!r} belongs to another issue")
+            if target.event_type != expected_type:
+                raise HabitableError(
+                    f"{field_name} must point to a {expected_type!r} timeline event"
+                )
+
     def add_timeline_entry(self, issue_id: str, kind: str, text: str) -> str:
+        """Append a legacy-compatible note without inventing occurrence semantics.
+
+        Kept for API/source compatibility.  New UI and CLI paths use
+        :meth:`add_timeline_event`.  The free-form ``kind`` is preserved as an
+        Other label, ``occurred_at`` stays unknown, and ``source`` is explicitly
+        unspecified when the entry is migrated into a packet-v3 view.
+        """
         stamp = self._clock.now()
         entry_id = self.opaque_id("tl", stamp.encode())
         self._timeline = self._timeline.add(
@@ -507,13 +655,53 @@ class CaseDocument:
         for entry_id, payload in self._timeline.entries.items():
             if not isinstance(payload, dict):
                 continue
-            entry = TimelineEntry(
-                entry_id=entry_id,
-                issue_id=str(payload.get("issue_id", "")),
-                kind=str(payload.get("kind", "")),
-                text=str(payload.get("text", "")),
-                hlc=str(payload.get("hlc", "")),
-            )
+            timeline_schema = payload.get("timeline_schema")
+            if timeline_schema == TIMELINE_SCHEMA_VERSION:
+                raw_capture_ids = payload.get("capture_ids", [])
+                capture_ids = (
+                    tuple(str(value) for value in raw_capture_ids)
+                    if isinstance(raw_capture_ids, list)
+                    else ()
+                )
+                entry = TimelineEntry(
+                    entry_id=entry_id,
+                    issue_id=str(payload.get("issue_id", "")),
+                    event_type=str(payload.get("event_type", "")),
+                    other_label=str(payload.get("other_label", "")),
+                    text=str(payload.get("text", "")),
+                    occurred_at=str(payload.get("occurred_at", "")),
+                    source=str(payload.get("source", "")),
+                    source_detail=str(payload.get("source_detail", "")),
+                    recorded_at=str(payload.get("recorded_at", "")),
+                    capture_ids=capture_ids,
+                    notice_entry_id=str(payload.get("notice_entry_id", "")),
+                    receipt_entry_id=str(payload.get("receipt_entry_id", "")),
+                    response_entry_id=str(payload.get("response_entry_id", "")),
+                    hlc=str(payload.get("hlc", "")),
+                )
+            else:
+                # Case-schema-v1 migration is a read view, not a rewrite of the
+                # append-only payload.  Unknown facts remain unknown.
+                legacy_kind = str(payload.get("kind", ""))
+                raw_hlc = str(payload.get("hlc", ""))
+                entry = TimelineEntry(
+                    entry_id=entry_id,
+                    issue_id=str(payload.get("issue_id", "")),
+                    event_type="other",
+                    other_label=legacy_kind or "Legacy note",
+                    text=str(payload.get("text", "")),
+                    occurred_at="",
+                    source="unspecified",
+                    source_detail="",
+                    recorded_at=recorded_at_from_hlc(raw_hlc),
+                    capture_ids=(),
+                    notice_entry_id="",
+                    receipt_entry_id="",
+                    response_entry_id="",
+                    hlc=raw_hlc,
+                    schema_version=1,
+                    legacy_kind=legacy_kind,
+                )
             if issue_id is None or entry.issue_id == issue_id:
                 entries.append(entry)
         entries.sort(key=lambda e: e.hlc)
@@ -617,6 +805,13 @@ class CaseDocument:
 
     @classmethod
     def from_state(cls, state: Mapping[str, JSONValue], clock: HybridLogicalClock) -> CaseDocument:
+        version = state.get("schema_version", 1)
+        if not isinstance(version, int) or isinstance(version, bool):
+            raise HabitableError("case state schema_version must be an integer")
+        if version > CASE_SCHEMA_VERSION:
+            raise HabitableError(
+                f"case schema_version {version} is newer than supported {CASE_SCHEMA_VERSION}"
+            )
         case_id = state.get("case_id")
         if not isinstance(case_id, str):
             raise HabitableError("case state missing case_id")
@@ -701,6 +896,25 @@ def _check_provenance(
 
 
 # --- helpers ------------------------------------------------------------------
+
+
+def _validate_timeline_fields(
+    event_type: str, other_label: str, source: str, source_detail: str, text: str
+) -> None:
+    if event_type not in EVENT_TYPES:
+        raise HabitableError(f"unknown timeline event type: {event_type!r}")
+    if event_type == "other" and not other_label.strip():
+        raise HabitableError("other_label is required for an Other timeline event")
+    if event_type != "other" and other_label.strip():
+        raise HabitableError("other_label is only allowed for an Other timeline event")
+    if source not in SOURCES or source == "unspecified":
+        raise HabitableError(f"unknown timeline source: {source!r}")
+    if source == "other" and not source_detail.strip():
+        raise HabitableError("source_detail is required for an Other source")
+    if source != "other" and source_detail.strip():
+        raise HabitableError("source_detail is only allowed for an Other source")
+    if not text.strip():
+        raise HabitableError("timeline text is required")
 
 
 def _reg_str(fields: Mapping[str, LWWRegister], name: str, default: str = "") -> str:

@@ -5,14 +5,16 @@
 This is the module a skeptic runs. Given only a packet directory (and, optionally,
 trusted TSA root certificates), it re-derives every hash, validates each trusted
 timestamp against its authority, checks the producer's signature over the whole
-bundle, and walks the chain of custody — confirming the packet has not been
-altered after the fact, without access to the union's other data.
+bundle, validates packet-v3 timeline commitments/links, and walks the chain of
+custody — confirming the packet has not been altered after the fact, without access
+to the union's other data.
 
 Licensing: this verifier, together with the pure modules it imports
 (:mod:`habitable.canonical`, :mod:`habitable.crypto`, :mod:`habitable.evidence`,
-:mod:`habitable.tsa`), is the "verification subset" offered under Apache-2.0 as an
-additional permission (see NOTICE), so a court or legal-aid group can embed and
-redistribute verification without the AGPL reaching their code.
+:mod:`habitable.timeline`, :mod:`habitable.tsa`), is the "verification subset"
+offered under Apache-2.0 as an additional permission (see NOTICE), so a court or
+legal-aid group can embed and redistribute verification without the AGPL reaching
+their code.
 """
 
 from __future__ import annotations
@@ -21,13 +23,15 @@ import base64
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .canonical import JSONValue, sha256_bytes, sha256_file
+from .canonical import JSONValue, canonical_json, sha256_bytes, sha256_file
 from .crypto import verify as verify_signature
 from .errors import VerificationError
 from .evidence import CustodyLog
+from .timeline import EVENT_TYPES, SOURCES, normalize_occurred_at
 from .tsa import TimestampToken, verify_archive_chain, verify_token
 
 if TYPE_CHECKING:
@@ -44,7 +48,7 @@ _ORIGINALS = "originals"
 # from 1..SUPPORTED_PACKET_VERSION still verifies (guarded by the golden-packet
 # corpus in tests/), and a newer-than-supported packet is rejected with a clear,
 # non-crashing error rather than mis-verified.
-SUPPORTED_PACKET_VERSION = 2
+SUPPORTED_PACKET_VERSION = 3
 
 # Referenced by name (not an inline `except (...)`) so the formatter cannot rewrite it
 # to the parenthesis-free PEP 758 form, a SyntaxError on Python < 3.14. verify.py is
@@ -148,6 +152,9 @@ def verify_packet(
             problems.append("malformed item in bundle")
             continue
         items.append(_verify_item(raw_item, packet_dir, bindings, poster_bindings, trusted_certs))
+
+    if bundle.get("packet_version") == 3:
+        problems.extend(_verify_v3_timeline(bundle, custody))
 
     return VerificationReport(
         packet_dir=packet_dir,
@@ -302,12 +309,306 @@ def _check_packet_version(bundle: Mapping[str, JSONValue]) -> str | None:
     version = bundle.get("packet_version")
     if not isinstance(version, int) or isinstance(version, bool):
         return "bundle has no integer packet_version"
+    if version < 1:
+        return f"packet_version {version} is invalid; the oldest supported version is 1"
     if version > SUPPORTED_PACKET_VERSION:
         return (
             f"packet_version {version} is newer than supported "
             f"{SUPPORTED_PACKET_VERSION}; upgrade habitable to verify this packet"
         )
     return None
+
+
+def _verify_v3_timeline(bundle: Mapping[str, JSONValue], custody: CustodyLog) -> list[str]:
+    """Verify packet-v3 timeline semantics and custody commitments.
+
+    This path is intentionally gated to v3.  Packet v1/v2 ``kind`` and ``hlc``
+    retain their historical meanings and are never reinterpreted as the fields
+    introduced here.
+    """
+    problems: list[str] = []
+    raw_entries = _v3_array(bundle, "timeline", problems)
+    raw_issues = _v3_array(bundle, "issues", problems)
+    raw_items = _v3_array(bundle, "items", problems)
+    appendix = _v3_object(bundle, "appendix", problems)
+
+    entry_ids = [
+        _s(raw, "entry_id") for raw in raw_entries if isinstance(raw, dict) and _s(raw, "entry_id")
+    ]
+    if len(entry_ids) != len(set(entry_ids)):
+        problems.append("packet-v3 timeline contains duplicate entry_id values")
+    event_by_id: dict[str, Mapping[str, JSONValue]] = {
+        _s(raw, "entry_id"): raw
+        for raw in raw_entries
+        if isinstance(raw, dict) and _s(raw, "entry_id")
+    }
+    items_by_id: dict[str, Mapping[str, JSONValue]] = {
+        _s(raw, "capture_id"): raw
+        for raw in raw_items
+        if isinstance(raw, dict) and _s(raw, "capture_id")
+    }
+    issue_ids = {
+        _s(raw, "issue_id") for raw in raw_issues if isinstance(raw, dict) and _s(raw, "issue_id")
+    }
+    if appendix.get("timeline_count") != len(raw_entries):
+        problems.append("appendix.timeline_count does not match timeline length")
+    if appendix.get("custody_bound_timeline_count") != len(raw_entries):
+        problems.append("appendix.custody_bound_timeline_count does not match timeline length")
+
+    for raw in raw_entries:
+        if not isinstance(raw, dict):
+            problems.append("malformed packet-v3 timeline entry")
+            continue
+        entry_id = _s(raw, "entry_id") or "<missing>"
+        if _s(raw, "issue_id") not in issue_ids:
+            problems.append(f"timeline {entry_id}: issue_id is not present in this packet")
+        problem = _verify_v3_timeline_entry(raw, custody)
+        problems.extend(f"timeline {entry_id}: {message}" for message in problem)
+        problems.extend(
+            f"timeline {entry_id}: {message}"
+            for message in _verify_v3_links(raw, event_by_id, items_by_id)
+        )
+    return problems
+
+
+def _v3_array(bundle: Mapping[str, JSONValue], key: str, problems: list[str]) -> list[JSONValue]:
+    value = bundle.get(key)
+    if isinstance(value, list):
+        return value
+    problems.append(f"packet-v3 {key} must be an array")
+    return []
+
+
+def _v3_object(
+    bundle: Mapping[str, JSONValue], key: str, problems: list[str]
+) -> Mapping[str, JSONValue]:
+    value = bundle.get(key)
+    if isinstance(value, dict):
+        return value
+    problems.append(f"packet-v3 {key} must be an object")
+    return {}
+
+
+def _verify_v3_timeline_entry(entry: Mapping[str, JSONValue], custody: CustodyLog) -> list[str]:
+    return [
+        *_v3_required_field_problems(entry),
+        *_v3_event_source_problems(entry),
+        *_v3_time_text_problems(entry),
+        *_v3_link_shape_problems(entry),
+        *_v3_integrity_problems(entry, custody),
+    ]
+
+
+def _v3_required_field_problems(entry: Mapping[str, JSONValue]) -> list[str]:
+    problems = [] if entry.get("timeline_schema") == 2 else ["timeline_schema must be 2"]
+    required = (
+        "entry_id",
+        "issue_id",
+        "event_type",
+        "other_label",
+        "text",
+        "occurred_at",
+        "source",
+        "source_detail",
+        "recorded_at",
+        "order_token",
+    )
+    for key in required:
+        if not isinstance(entry.get(key), str):
+            problems.append(f"{key} must be a string")
+    for key in ("entry_id", "issue_id", "order_token"):
+        value = entry.get(key)
+        if isinstance(value, str) and not value.strip():
+            problems.append(f"{key} must not be empty")
+    for legacy_key in ("kind", "hlc"):
+        if legacy_key in entry:
+            problems.append(f"packet v3 must not reuse legacy field {legacy_key!r}")
+    return problems
+
+
+def _v3_event_source_problems(entry: Mapping[str, JSONValue]) -> list[str]:
+    problems: list[str] = []
+    event_type = _s(entry, "event_type")
+    other_label = _s(entry, "other_label")
+    source = _s(entry, "source")
+    source_detail = _s(entry, "source_detail")
+    migration = _map(entry, "migration")
+    if event_type not in EVENT_TYPES:
+        problems.append(f"unknown event_type {event_type!r}")
+    if event_type == "other" and not other_label.strip():
+        problems.append("Other event is missing other_label")
+    if event_type != "other" and other_label.strip():
+        problems.append("other_label is only valid for an Other event")
+    if source not in SOURCES:
+        problems.append(f"unknown source {source!r}")
+    if source == "unspecified" and not migration:
+        problems.append("source unspecified is only valid on an explicit legacy migration")
+    if source == "other" and not source_detail.strip():
+        problems.append("Other source is missing source_detail")
+    if source != "other" and source_detail.strip():
+        problems.append("source_detail is only valid for an Other source")
+    return problems
+
+
+def _v3_time_text_problems(entry: Mapping[str, JSONValue]) -> list[str]:
+    problems: list[str] = []
+    migration = _map(entry, "migration")
+    occurred_at = _s(entry, "occurred_at")
+    if not occurred_at and not migration:
+        problems.append("occurred_at may be empty only on an explicit legacy migration")
+    elif occurred_at:
+        try:
+            if normalize_occurred_at(occurred_at) != occurred_at:
+                problems.append("occurred_at is not normalized")
+        except Exception:
+            problems.append("occurred_at is not a valid ISO date/time")
+    if not _valid_recorded_at(_s(entry, "recorded_at")):
+        problems.append("recorded_at must be an ISO UTC timestamp")
+    if not _s(entry, "text").strip():
+        problems.append("text must not be empty")
+    problems.extend(_v3_migration_problems(entry))
+    return problems
+
+
+def _v3_migration_problems(entry: Mapping[str, JSONValue]) -> list[str]:
+    if "migration" not in entry:
+        return []
+    raw_migration = entry.get("migration")
+    if not isinstance(raw_migration, dict):
+        return ["migration must be an object"]
+    migration = raw_migration
+    expected: dict[str, JSONValue] = {
+        "from_case_timeline_schema": 1,
+        "legacy_kind_preserved_as_other_label": True,
+        "occurred_at_unknown": True,
+        "source_unknown": True,
+    }
+    return [
+        f"migration.{key} must be {value!r}"
+        for key, value in expected.items()
+        if migration.get(key) != value
+    ]
+
+
+def _v3_link_shape_problems(entry: Mapping[str, JSONValue]) -> list[str]:
+    problems: list[str] = []
+    links = _map(entry, "links")
+    capture_ids = links.get("capture_ids")
+    if not isinstance(capture_ids, list) or any(
+        not isinstance(value, str) for value in capture_ids
+    ):
+        problems.append("links.capture_ids must be an array of strings")
+    elif len(capture_ids) != len(set(capture_ids)):
+        problems.append("links.capture_ids must not contain duplicates")
+    for key in ("notice_entry_id", "receipt_entry_id", "response_entry_id"):
+        if not isinstance(links.get(key), str):
+            problems.append(f"links.{key} must be a string")
+    return problems
+
+
+def _v3_integrity_problems(entry: Mapping[str, JSONValue], custody: CustodyLog) -> list[str]:
+    problems: list[str] = []
+    semantic = _v3_timeline_semantic_payload(entry)
+    expected_commitment = sha256_bytes(canonical_json(semantic))
+    integrity = _map(entry, "integrity")
+    migration = _map(entry, "migration")
+    declared = _s(integrity, "commitment")
+    stage = _s(integrity, "binding_stage")
+    if integrity.get("algorithm") != "sha256":
+        problems.append("integrity.algorithm must be sha256")
+    if integrity.get("custody_action") != "note_added":
+        problems.append("integrity.custody_action must be note_added")
+    if declared != expected_commitment:
+        problems.append("timeline commitment does not match the signed event fields")
+    if stage not in {"recorded", "backfill", "migration"}:
+        problems.append("timeline binding_stage is invalid")
+    if migration and stage != "migration":
+        problems.append("legacy migration must carry binding_stage=migration")
+    if not migration and stage == "migration":
+        problems.append("binding_stage=migration requires an explicit legacy migration")
+    if not any(
+        custody_entry.action == "note_added"
+        and custody_entry.item_id == _s(entry, "entry_id")
+        and custody_entry.details.get("timeline_schema") == "2"
+        and custody_entry.details.get("timeline_sha256") == expected_commitment
+        and custody_entry.details.get("stage") == stage
+        for custody_entry in custody.entries
+    ):
+        problems.append("no custody entry binds this timeline commitment")
+    return problems
+
+
+def _verify_v3_links(
+    entry: Mapping[str, JSONValue],
+    events: Mapping[str, Mapping[str, JSONValue]],
+    items: Mapping[str, Mapping[str, JSONValue]],
+) -> list[str]:
+    problems: list[str] = []
+    links = _map(entry, "links")
+    issue_id = _s(entry, "issue_id")
+    raw_capture_ids = links.get("capture_ids")
+    if isinstance(raw_capture_ids, list):
+        for value in raw_capture_ids:
+            if not isinstance(value, str):
+                continue
+            target = items.get(value)
+            # A capture can be deliberately omitted by a packet's ``since`` scope;
+            # the signed reference remains meaningful and is rendered as omitted.
+            if target is not None and _s(target, "issue_id") != issue_id:
+                problems.append(f"linked capture {value!r} belongs to another issue")
+
+    expected_types = {
+        "notice_entry_id": "notice_sent",
+        "receipt_entry_id": "delivery_confirmed",
+        "response_entry_id": "response_received",
+    }
+    for field_key, expected_type in expected_types.items():
+        target_id = _s(links, field_key)
+        if not target_id:
+            continue
+        target = events.get(target_id)
+        if target is None:
+            problems.append(f"links.{field_key} points to a missing timeline event")
+        elif _s(target, "issue_id") != issue_id:
+            problems.append(f"links.{field_key} points to another issue")
+        elif _s(target, "event_type") != expected_type:
+            problems.append(f"links.{field_key} does not point to a {expected_type} event")
+    return problems
+
+
+def _v3_timeline_semantic_payload(entry: Mapping[str, JSONValue]) -> dict[str, JSONValue]:
+    """The exact packet-v3 fields committed by ``timeline_sha256``."""
+    links = _map(entry, "links")
+    capture_ids = links.get("capture_ids")
+    safe_capture_ids: list[JSONValue] = capture_ids if isinstance(capture_ids, list) else []
+    return {
+        "timeline_schema": 2,
+        "entry_id": _s(entry, "entry_id"),
+        "issue_id": _s(entry, "issue_id"),
+        "event_type": _s(entry, "event_type"),
+        "other_label": _s(entry, "other_label"),
+        "text": _s(entry, "text"),
+        "occurred_at": _s(entry, "occurred_at"),
+        "source": _s(entry, "source"),
+        "source_detail": _s(entry, "source_detail"),
+        "recorded_at": _s(entry, "recorded_at"),
+        "links": {
+            "capture_ids": safe_capture_ids,
+            "notice_entry_id": _s(links, "notice_entry_id"),
+            "receipt_entry_id": _s(links, "receipt_entry_id"),
+            "response_entry_id": _s(links, "response_entry_id"),
+        },
+    }
+
+
+def _valid_recorded_at(value: str) -> bool:
+    if not value.endswith("Z"):
+        return False
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None
 
 
 def _verify_signature(packet_dir: Path, bundle_bytes: bytes) -> bool:

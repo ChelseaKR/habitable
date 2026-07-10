@@ -44,6 +44,7 @@ from .sync import (
     suggested_delta_filename,
     sync,
 )
+from .timeline import EVENT_TYPES, SOURCES
 from .tsa import DevTSA, Rfc3161HttpTSA, TimestampAuthority
 from .vault import Vault, human_bytes
 from .verify import verify_packet
@@ -155,11 +156,29 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_capture.set_defaults(func=_cmd_capture)
 
-    p_tl = sub.add_parser("timeline", help="add a timeline entry")
+    p_tl = sub.add_parser("timeline", help="add a sourced, dated timeline event")
     add_vault(p_tl)
     p_tl.add_argument("--issue", required=True)
-    p_tl.add_argument("--kind", required=True, help="e.g. observed, sent_request, inspection")
+    event_group = p_tl.add_mutually_exclusive_group(required=True)
+    event_group.add_argument("--type", choices=EVENT_TYPES, dest="event_type")
+    event_group.add_argument("--kind", help=argparse.SUPPRESS)  # pre-v3 compatibility
     p_tl.add_argument("--text", required=True)
+    p_tl.add_argument(
+        "--occurred-at",
+        default="",
+        help="when it happened: YYYY-MM-DD or ISO timestamp with UTC offset",
+    )
+    p_tl.add_argument(
+        "--source", choices=tuple(source for source in SOURCES if source != "unspecified")
+    )
+    p_tl.add_argument("--other-label", default="", help="required with --type other")
+    p_tl.add_argument("--source-detail", default="", help="required with --source other")
+    p_tl.add_argument(
+        "--capture", action="append", default=[], help="related capture id; repeatable"
+    )
+    p_tl.add_argument("--notice", default="", help="related notice_sent timeline entry id")
+    p_tl.add_argument("--receipt", default="", help="related delivery_confirmed entry id")
+    p_tl.add_argument("--response", default="", help="related response_received entry id")
     p_tl.set_defaults(func=_cmd_timeline)
 
     p_status = sub.add_parser("status", help="show the state of the case")
@@ -597,9 +616,29 @@ def _cmd_capture(args: argparse.Namespace) -> int:
 
 def _cmd_timeline(args: argparse.Namespace) -> int:
     vault = _open(args)
-    entry_id = vault.document.add_timeline_entry(args.issue, args.kind, args.text)
-    vault.save()
-    print(f"habitable: added timeline entry {entry_id} ({args.kind})")
+    if args.event_type is None:
+        entry_id = vault.document.add_timeline_entry(args.issue, args.kind, args.text)
+        vault.save()
+        print(f"habitable: added legacy timeline entry {entry_id} ({args.kind})")
+        return 0
+    if not args.occurred_at:
+        raise HabitableError("--occurred-at is required with --type")
+    if not args.source:
+        raise HabitableError("--source is required with --type")
+    entry_id = vault.add_timeline_event(
+        args.issue,
+        event_type=args.event_type,
+        text=args.text,
+        occurred_at=args.occurred_at,
+        source=args.source,
+        other_label=args.other_label,
+        source_detail=args.source_detail,
+        capture_ids=tuple(args.capture),
+        notice_entry_id=args.notice,
+        receipt_entry_id=args.receipt,
+        response_entry_id=args.response,
+    )
+    print(f"habitable: added timeline event {entry_id} ({args.event_type})")
     return 0
 
 

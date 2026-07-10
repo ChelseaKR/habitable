@@ -383,6 +383,7 @@
 
     renderIssues(status.issues || []);
     populateIssueSelects(status.issues || []);
+    populateTimelineLinks(status.issues || []);
   }
 
   function renderIssues(issues) {
@@ -500,6 +501,66 @@
         sel.value = prev;
       }
     }
+  }
+
+  function populateTimelineLinks(issues) {
+    var issueSelect = document.getElementById("tl-issue");
+    if (!issueSelect) { return; }
+    var issue = null;
+    for (var i = 0; i < issues.length; i++) {
+      if (issues[i].issue_id === issueSelect.value) {
+        issue = issues[i];
+        break;
+      }
+    }
+    populateCaptureLinks((issue && issue.capture_items) || []);
+    populateEventLink("tl-notice", (issue && issue.timeline) || [], "notice_sent");
+    populateEventLink("tl-receipt", (issue && issue.timeline) || [], "delivery_confirmed");
+    populateEventLink("tl-response", (issue && issue.timeline) || [], "response_received");
+  }
+
+  function populateCaptureLinks(captures) {
+    var select = document.getElementById("tl-captures");
+    if (!select) { return; }
+    var selected = selectedValues(select);
+    select.textContent = "";
+    for (var i = 0; i < captures.length; i++) {
+      var option = document.createElement("option");
+      option.value = captures[i].capture_id;
+      option.textContent = (captures[i].captured_at || t("capture_date_unknown")) +
+        " · " + (captures[i].media_type || t("capture_media_unknown"));
+      option.selected = selected.indexOf(option.value) >= 0;
+      select.appendChild(option);
+    }
+  }
+
+  function populateEventLink(id, entries, eventType) {
+    var select = document.getElementById(id);
+    if (!select) { return; }
+    var previous = select.value;
+    select.textContent = "";
+    var blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = t("link_none");
+    select.appendChild(blank);
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].event_type !== eventType) { continue; }
+      var option = document.createElement("option");
+      option.value = entries[i].entry_id;
+      option.textContent = (entries[i].occurred_at || entries[i].recorded_at || "—") +
+        " · " + entries[i].text;
+      select.appendChild(option);
+    }
+    select.value = previous;
+  }
+
+  function selectedValues(select) {
+    var values = [];
+    if (!select || !select.options) { return values; }
+    for (var i = 0; i < select.options.length; i++) {
+      if (select.options[i].selected) { values.push(select.options[i].value); }
+    }
+    return values;
   }
 
   function refreshStatus() {
@@ -632,19 +693,53 @@
   function wireTimeline() {
     var form = document.getElementById("timeline-form");
     if (!form) { return; }
+    var issueSel = document.getElementById("tl-issue");
+    var eventType = document.getElementById("tl-type");
+    var source = document.getElementById("tl-source");
+    var occurred = document.getElementById("tl-occurred");
+    function updateConditionalFields() {
+      document.getElementById("tl-other-field").hidden = eventType.value !== "other";
+      document.getElementById("tl-source-other-field").hidden = source.value !== "other";
+    }
+    issueSel.addEventListener("change", function () {
+      populateTimelineLinks((lastStatus && lastStatus.issues) || []);
+    });
+    eventType.addEventListener("change", updateConditionalFields);
+    source.addEventListener("change", updateConditionalFields);
+    if (!occurred.value) {
+      var now = new Date();
+      var local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+      occurred.value = local.toISOString().slice(0, 10);
+    }
+    updateConditionalFields();
     form.addEventListener("submit", function (ev) {
       ev.preventDefault();
-      var issueSel = document.getElementById("tl-issue");
-      var kind = document.getElementById("tl-kind");
       var text = document.getElementById("tl-text");
       if (!issueSel.value) {
         announce(t("error_issue_required"), "error");
         issueSel.focus();
         return;
       }
-      if (!kind.value.trim()) {
-        announce(t("error_kind_required"), "error");
-        kind.focus();
+      if (!eventType.value) {
+        announce(t("error_event_type_required"), "error");
+        eventType.focus();
+        return;
+      }
+      var otherLabel = document.getElementById("tl-other");
+      if (eventType.value === "other" && !otherLabel.value.trim()) {
+        announce(t("error_other_label_required"), "error");
+        otherLabel.focus();
+        return;
+      }
+      if (!occurred.value) {
+        announce(t("error_occurred_at_required"), "error");
+        occurred.focus();
+        return;
+      }
+      var sourceOther = document.getElementById("tl-source-other");
+      if (source.value === "other" && !sourceOther.value.trim()) {
+        announce(t("error_source_detail_required"), "error");
+        sourceOther.focus();
         return;
       }
       if (!text.value.trim()) {
@@ -655,11 +750,23 @@
       var btn = form.querySelector('button[type="submit"]');
       withBusy(btn, function () {
         return apiPost("/api/issues/" + encodeURIComponent(issueSel.value) + "/timeline", {
-          kind: kind.value.trim(),
-          text: text.value.trim()
+          event_type: eventType.value,
+          other_label: otherLabel.value.trim(),
+          occurred_at: occurred.value,
+          source: source.value,
+          source_detail: sourceOther.value.trim(),
+          text: text.value.trim(),
+          capture_ids: selectedValues(document.getElementById("tl-captures")),
+          notice_entry_id: document.getElementById("tl-notice").value,
+          receipt_entry_id: document.getElementById("tl-receipt").value,
+          response_entry_id: document.getElementById("tl-response").value
         });
       }).then(function () {
         form.reset();
+        var now = new Date();
+        var local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+        occurred.value = local.toISOString().slice(0, 10);
+        updateConditionalFields();
         announce(t("msg_timeline_added"), "ok");
         return refreshStatus();
       }, announceError);
