@@ -239,7 +239,9 @@ def _letter_issue(vault: Vault, issue_id: str) -> LetterIssue:
     else:
         timeline = vault.document.timeline(issue_id)
         if timeline:
-            first = _hlc_to_iso(timeline[0].hlc)
+            first = (
+                timeline[0].occurred_at or timeline[0].recorded_at or _hlc_to_iso(timeline[0].hlc)
+            )
     return LetterIssue(
         issue_id=issue_id,
         title=issue.title or issue.category or issue_id,

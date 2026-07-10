@@ -29,9 +29,10 @@ An ordinary publication failure restores the previous complete directory.
 
 `bundle.json` is the source of truth a verifier reads. The other rendered files (`packet.html`,
 `packet.pdf`) are presentation; they are not what verification trusts. Those renderings present a
-court-ready layout — a cover sheet, a single chronological timeline interleaving notes and photos,
+court-organized layout — a cover sheet, a single chronological timeline interleaving events and photos,
 the per-issue detail, and a chain-of-custody / integrity summary — all **derived from the fields
-below** (no extra bundle fields, no `packet_version` change); see `src/habitable/bundleview.py`.
+below**. Timeline 2.0 is an intentional `packet_version` 3 change; v1/v2 retain their historical
+meanings. See `src/habitable/bundleview.py`.
 
 ## Canonical bytes
 
@@ -55,22 +56,50 @@ re-serialize `bundle.json` before checking the signature.
 | `language` | string | Language of the rendered packet (e.g. `en`, `es`). |
 | `template` | object | `{header, footer}` — presentation only. |
 | `issues` | array | Selected issues (see below). |
-| `timeline` | array | Timeline entries for the selected issues. |
+| `timeline` | array | Versioned timeline events for the selected issues (see below). |
 | `items` | array | The media items — the evidentiary core (see below). |
 | `custody_proof` | object | Identity-stripped chain-of-custody proof (see below). |
 | `disclosures` | array | Human-readable notes of what the packet reveals (location stripped, custody identities not exported, originals embedded). Also rendered, localized, in `packet.html`/`packet.pdf`. |
-| `appendix` | object | `{item_count, timestamped_count, includes_originals}`. |
+| `appendix` | object | `{item_count, timestamped_count, includes_originals, timeline_count, custody_bound_timeline_count}` in v3; the timeline counts are absent in older packets. |
 
 ### Opaque identifiers (packet_version ≥ 2)
 
 Every exported id — `issues[].issue_id`, `items[].capture_id`, `timeline[].entry_id`, and the
 `custody_proof` `item_id`s — is an **opaque, per-case-salted digest** (`prefix-<16 hex>`). It is
 stable (the same event yields the same id on every device that shares the case) but encodes
-**no device wall-clock time and no HLC node id**. The `hlc` fields in `timeline[]` and
-`custody_proof.entries[]` are likewise pseudonymized to opaque tokens in the export. Internally the
-tool still keeps a full hybrid logical clock for CRDT ordering and merge; that raw stamp simply never
-leaves the vault. (In `packet_version` 1 these fields carried the raw `wall_ms.counter.node_id` HLC;
-treat all ids and `hlc` values as opaque strings regardless of version.)
+**no device wall-clock time and no HLC node id**. In v2, `timeline[].hlc` and
+`custody_proof.entries[].hlc` are pseudonymized. In v3, a timeline event instead calls that opaque
+field `order_token`; this prevents a consumer from mistaking it for a date. Custody entries keep the
+historical `hlc` field but it remains opaque. Internally the tool still keeps a full hybrid logical
+clock for CRDT ordering and merge; that raw stamp never leaves the vault. In packet v1 only, the HLC
+fields carried raw `wall_ms.counter.node_id`. A v3 consumer must not reinterpret v1/v2 fields as the
+new occurrence/recording semantics.
+
+### `timeline[]` — sourced case events (packet_version 3)
+
+Packet v3 replaces the free-form v1/v2 `{kind, text, hlc}` presentation with explicit, separately
+named facts. It does **not** redefine the old fields. Every v3 event carries:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `timeline_schema` | int | Always `2`, the Timeline 2.0 event shape. |
+| `entry_id`, `issue_id` | string | Opaque event and parent-issue ids. |
+| `event_type` | enum | One of `condition_observed`, `notice_sent`, `delivery_confirmed`, `response_received`, `inspection`, `repair`, `recurrence`, `impact`, `other`. |
+| `other_label` | string | Required only with `event_type: other`; preserves a neutral custom label. |
+| `text` | string | Neutral factual note. |
+| `occurred_at` | ISO date/time | What the recorder says was the date/time of the event. It is a claim, not a device timestamp or RFC 3161 attestation. A date without a known time is allowed. |
+| `recorded_at` | ISO UTC timestamp | Device time when the append-only entry was created. It is separate from `occurred_at` and is not independently trusted time. |
+| `source` | enum | `firsthand`, `message`, `document`, `official_record`, `other`; `unspecified` only on an explicit legacy migration. |
+| `source_detail` | string | Required only with `source: other`. |
+| `links` | object | `{capture_ids[], notice_entry_id, receipt_entry_id, response_entry_id}`. Event links point to the named reviewed event type. A capture deliberately omitted by export scope may remain referenced by opaque id. |
+| `order_token` | string | Opaque CRDT ordering token. It is not a date. |
+| `integrity` | object | `{algorithm: sha256, commitment, custody_action: note_added, binding_stage}`. The verifier recomputes the commitment over the semantic fields and requires a matching custody entry. |
+| `migration` | object | Present only for an old case entry. Its free-form kind becomes an `other_label`; unknown occurrence/source remain empty/`unspecified`; `binding_stage` is `migration`. |
+
+`binding_stage` is `recorded` for a Timeline 2.0 event protected when it was added, `backfill` for a
+new-shape event that predates the custody hook, or `migration` for a legacy free-form entry. The stage
+is signed data. A later binding is useful integrity protection but is never presented as if it existed
+at the original occurrence or recording time.
 
 ### `items[]` — the evidentiary core
 
@@ -119,6 +148,15 @@ Ed25519 signature, and any identity/PII `private_details` are **vault-only** and
 so a recipient confirms the chain is intact but cannot learn the actors. See
 [`crypto-spec.md`](crypto-spec.md) §6.2.
 
+For packet v3, `note_added` details include `timeline_schema=2`, `timeline_sha256=<commitment>`, and
+`stage=<recorded|backfill|migration>`. The clear in-vault custody entry is Ed25519-signed. The exported
+entry is identity-redacted, recomputed into the public hash chain, and authenticated with the rest of
+`bundle.json` by `bundle.sig.json`. Verification requires both the exact semantic commitment and the
+matching custody link; changing a date, source, note, or related-record link fails verification even
+after an outer-only re-sign unless the custody proof is also rewritten. As with the rest of the
+local custody model, a compromised keyholder can rewrite a still-local whole history before a peer
+or external anchor has seen its head; the packet does not claim otherwise.
+
 The verifiability bridge: because a shared copy is metadata-stripped, its bytes differ from the
 original and cannot hash back to `content_hash`. A signed `copied_for_sharing` entry whose `details`
 carry `content_hash` + `shared_hash` binds the two; the verifier requires that binding for any item
@@ -154,6 +192,10 @@ for usage.
 - **Old packets keep verifying.** A change that could break verification of an existing packet is a
   **major** `packet_version` bump with a migration note — never a silent change. A committed
   golden-packet corpus enforces this in CI.
+- **The v3 migration is explicit.** V1/v2 `{kind, hlc}` retain exactly their old interpretation.
+  V3 uses `{event_type, occurred_at, recorded_at, source, order_token}` and a custody commitment.
+  Legacy case entries exported by new software carry a signed `migration` disclosure rather than
+  invented occurrence/source facts.
 - **Additive within a major.** New optional fields may appear within a `packet_version`. Consumers
   **must ignore unknown fields** (the JSON Schema sets `additionalProperties: true` at the document
   and object level for exactly this reason) and must not assume field order — the bytes are sorted,

@@ -192,7 +192,7 @@
         </form>
       </section>
 
-      <!-- Add timeline entry -->
+      <!-- Add sourced timeline event -->
       <section class="card" aria-labelledby="timeline-h">
         <h2 id="timeline-h" data-i18n="timeline_heading">Add a timeline entry</h2>
         <form id="timeline-form" novalidate>
@@ -203,15 +203,72 @@
               <select id="tl-issue" name="issue_id" required aria-required="true"></select>
             </div>
             <div class="field">
-              <label for="tl-kind" data-i18n="field_kind">Kind</label>
-              <input type="text" id="tl-kind" name="kind" required aria-required="true"
+              <label for="tl-type" data-i18n="field_event_type">What happened</label>
+              <select id="tl-type" name="event_type" required aria-required="true">
+                <option value="condition_observed" data-i18n="event_condition_observed">Condition observed</option>
+                <option value="notice_sent" data-i18n="event_notice_sent">Repair notice sent</option>
+                <option value="delivery_confirmed" data-i18n="event_delivery_confirmed">Delivery confirmed</option>
+                <option value="response_received" data-i18n="event_response_received">Response received</option>
+                <option value="inspection" data-i18n="event_inspection">Inspection</option>
+                <option value="repair" data-i18n="event_repair">Repair or attempted repair</option>
+                <option value="recurrence" data-i18n="event_recurrence">Condition happened again</option>
+                <option value="impact" data-i18n="event_impact">Impact recorded</option>
+                <option value="other" data-i18n="event_other">Other</option>
+              </select>
+            </div>
+            <div class="field" id="tl-other-field" hidden>
+              <label for="tl-other" data-i18n="field_other_label">Name the other event</label>
+              <input type="text" id="tl-other" name="other_label" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="tl-occurred" data-i18n="field_occurred_at">Date it happened</label>
+              <input type="date" id="tl-occurred" name="occurred_at" required
+                     aria-required="true" aria-describedby="tl-time-help" />
+              <p class="muted field-help" id="tl-time-help"
+                 data-i18n="field_occurred_at_help">This is the date you report. The
+                app separately records when you added this entry.</p>
+            </div>
+            <div class="field">
+              <label for="tl-source" data-i18n="field_source">How do you know?</label>
+              <select id="tl-source" name="source" required aria-required="true">
+                <option value="firsthand" data-i18n="source_firsthand">Firsthand observation</option>
+                <option value="message" data-i18n="source_message">Message or conversation</option>
+                <option value="document" data-i18n="source_document">Document or receipt</option>
+                <option value="official_record" data-i18n="source_official_record">Inspector or official record</option>
+                <option value="other" data-i18n="source_other">Other source</option>
+              </select>
+            </div>
+            <div class="field" id="tl-source-other-field" hidden>
+              <label for="tl-source-other" data-i18n="field_source_detail">Name the other source</label>
+              <input type="text" id="tl-source-other" name="source_detail"
                      autocomplete="off" />
             </div>
             <div class="field">
-              <label for="tl-text" data-i18n="field_text">Text</label>
+              <label for="tl-text" data-i18n="field_text">Neutral factual note</label>
               <textarea id="tl-text" name="text" rows="3" required
                         aria-required="true"></textarea>
             </div>
+            <details>
+              <summary data-i18n="timeline_links_heading">Link related evidence (optional)</summary>
+              <p class="muted field-help" data-i18n="timeline_links_help">Links keep the
+                condition, notice, delivery, and response together in the exported packet.</p>
+              <div class="field">
+                <label for="tl-captures" data-i18n="field_link_captures">Related captures</label>
+                <select id="tl-captures" name="capture_ids" multiple></select>
+              </div>
+              <div class="field">
+                <label for="tl-notice" data-i18n="field_link_notice">Related repair notice</label>
+                <select id="tl-notice" name="notice_entry_id"></select>
+              </div>
+              <div class="field">
+                <label for="tl-receipt" data-i18n="field_link_receipt">Related delivery confirmation</label>
+                <select id="tl-receipt" name="receipt_entry_id"></select>
+              </div>
+              <div class="field">
+                <label for="tl-response" data-i18n="field_link_response">Related response</label>
+                <select id="tl-response" name="response_entry_id"></select>
+              </div>
+            </details>
           </fieldset>
           <button type="submit" class="btn" data-i18n="timeline_submit">Add entry</button>
         </form>

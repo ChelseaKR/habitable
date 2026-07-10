@@ -41,7 +41,7 @@ _EXPECTED = {
     "resolve-btn",
     "ai-category",
     "cap-file",
-    "tl-kind",
+    "tl-type",
     "ex-issue",
 }
 

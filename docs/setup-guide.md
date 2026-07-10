@@ -57,7 +57,9 @@ default).
 ```console
 $ uv run habitable issue   --vault ./case-4B --category mold --room bathroom --title "Black mold"
 $ uv run habitable capture ./photos/ceiling.jpg --vault ./case-4B --issue <issue-id>
-$ uv run habitable timeline --vault ./case-4B --issue <issue-id> --kind sent_request --text "Emailed landlord"
+$ uv run habitable timeline --vault ./case-4B --issue <issue-id> \
+    --type notice_sent --occurred-at 2026-01-02 --source message \
+    --text "Emailed landlord requesting repair"
 $ uv run habitable status   --vault ./case-4B
 ```
 

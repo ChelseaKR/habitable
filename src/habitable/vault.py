@@ -37,7 +37,7 @@ from .crypto import (
     open_keyfile,
 )
 from .errors import FixityError, VaultError
-from .evidence import CustodyLog
+from .evidence import CustodyAction, CustodyLog
 from .model import CaseDocument
 from .syncstate import PeerAuthorization
 from .threshold import create_recovery_bundle, recover_dek
@@ -237,6 +237,96 @@ class Vault:
         )
 
     # --- key management -------------------------------------------------------
+
+    def add_timeline_event(
+        self,
+        issue_id: str,
+        *,
+        event_type: str,
+        text: str,
+        occurred_at: str,
+        source: str,
+        other_label: str = "",
+        source_detail: str = "",
+        capture_ids: tuple[str, ...] = (),
+        notice_entry_id: str = "",
+        receipt_entry_id: str = "",
+        response_entry_id: str = "",
+    ) -> str:
+        """Record, custody-bind, and persist one Timeline 2.0 event.
+
+        The immutable event is committed into a ``note_added`` custody entry at
+        creation time.  That custody entry is Ed25519-signed inside the vault; a
+        packet-v3 export redacts the actor and signs the whole bundle while keeping
+        the commitment independently checkable.
+        """
+        entry_id = self.document.add_timeline_event(
+            issue_id,
+            event_type=event_type,
+            text=text,
+            occurred_at=occurred_at,
+            source=source,
+            other_label=other_label,
+            source_detail=source_detail,
+            capture_ids=capture_ids,
+            notice_entry_id=notice_entry_id,
+            receipt_entry_id=receipt_entry_id,
+            response_entry_id=response_entry_id,
+        )
+        if event_type == "recurrence":
+            self.document.update_issue(issue_id, status="open")
+        entry = next(item for item in self.document.timeline() if item.entry_id == entry_id)
+        self._append_timeline_binding(entry_id, entry.commitment(), stage="recorded")
+        self.save()
+        return entry_id
+
+    def ensure_timeline_custody(self, *, persist: bool = True) -> None:
+        """Backfill honest custody bindings before a packet-v3 export.
+
+        Old case states had no timeline custody event.  The backfill does not claim
+        otherwise: its exported binding carries ``stage=migration``.  New events
+        written through :meth:`add_timeline_event` already have ``stage=recorded``
+        and are left untouched, making repeat exports idempotent.
+
+        Packet staging passes ``persist=False`` so its atomic publish wrapper owns
+        the save/rollback boundary; direct callers retain the safe persisted default.
+        """
+        changed = False
+        for entry in self.document.timeline():
+            commitment = entry.commitment()
+            if self.timeline_binding_stage(entry.entry_id, commitment):
+                continue
+            stage = "migration" if entry.schema_version < 2 else "backfill"
+            self._append_timeline_binding(entry.entry_id, commitment, stage=stage)
+            changed = True
+        if changed and persist:
+            self.save()
+
+    def timeline_binding_stage(self, entry_id: str, commitment: str) -> str:
+        """Return the stage of a matching custody commitment, or ``""``."""
+        for custody_entry in reversed(self.custody.entries):
+            if (
+                custody_entry.action == CustodyAction.NOTE_ADDED
+                and custody_entry.item_id == entry_id
+                and custody_entry.details.get("timeline_sha256") == commitment
+            ):
+                return custody_entry.details.get("stage", "")
+        return ""
+
+    def _append_timeline_binding(self, entry_id: str, commitment: str, *, stage: str) -> None:
+        actor = self.identity.public().fingerprint
+        self.custody.append(
+            CustodyAction.NOTE_ADDED,
+            entry_id,
+            actor=actor,
+            hlc=self.document.clock.now().encode(),
+            details={
+                "timeline_schema": "2",
+                "timeline_sha256": commitment,
+                "stage": stage,
+            },
+            identity=self.identity,
+        )
 
     def rotate_passphrase(self, new_passphrase: str) -> None:
         """Re-wrap the in-memory data key under a new passphrase.

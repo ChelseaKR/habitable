@@ -13,7 +13,6 @@ record. Every dynamic value is HTML-escaped — bundle content is data, not mark
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
 
@@ -112,7 +111,7 @@ def render_packet_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_pat
             total=item_count,
         )
     )
-    parts.extend(_chronology_section(chronology(bundle)))
+    parts.extend(_chronology_section(chronology(bundle), lang))
 
     for issue in _list(bundle, "issues"):
         if isinstance(issue, dict):
@@ -164,29 +163,46 @@ def _cover_section(cover: CoverSheet) -> list[str]:
     return out
 
 
-def _chronology_section(entries: tuple[ChronologyEntry, ...]) -> list[str]:
+def _chronology_section(entries: tuple[ChronologyEntry, ...], lang: str) -> list[str]:
     """The unified, chronological evidence timeline (notes + photos)."""
+    spanish = lang.lower().startswith("es")
     out = [
         '<section aria-labelledby="chronology-heading">',
-        '<h2 id="chronology-heading">Chronological evidence timeline</h2>',
+        '<h2 id="chronology-heading">'
+        + ("Cronología de la evidencia" if spanish else "Chronological evidence timeline")
+        + "</h2>",
     ]
     if not entries:
-        out.append("<p>No timeline entries or captures recorded.</p>")
+        out.append(
+            "<p>"
+            + (
+                "No hay eventos ni capturas registrados."
+                if spanish
+                else "No timeline events or captures recorded."
+            )
+            + "</p>"
+        )
         out.append("</section>")
         return out
     out.append(
-        "<p>Notes are placed when they were logged; photos when they were captured. "
-        "The order of record is fixed by the append-only chain of custody.</p>"
+        "<p>La fecha de ocurrencia es la que informa la persona; la fecha de registro "
+        "la agrega el dispositivo. Los eventos de la versión 3 están vinculados a la "
+        "custodia. Las fotos aparecen cuando fueron capturadas.</p>"
+        if spanish
+        else "<p>Occurred is the date reported by the person; recorded is the separate "
+        "device time when the entry was added. Version 3 events are custody-bound. "
+        "Photos appear when captured.</p>"
     )
     out.append("<ol>")
     for entry in entries:
-        when = escape(entry.when or "undated")
+        when = escape(entry.when or ("sin fecha" if spanish else "undated"))
+        when_label = escape(entry.when_label)
         label = escape(entry.label)
         issue = escape(entry.issue_title)
         text = escape(entry.text)
         detail = f' <span class="meta">({escape(entry.detail)})</span>' if entry.detail else ""
         out.append(
-            f"<li><strong>{when}</strong> — "
+            f"<li><strong>{when_label}: {when}</strong> — "
             f'<span class="meta">[{label}] {issue}:</span> {text}{detail}</li>'
         )
     out.append("</ol>")
@@ -303,11 +319,9 @@ def render_inspector_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_
 
 def _inspector_rollup(bundle: Mapping[str, JSONValue]) -> list[str]:
     """Group issues by room → condition (category); one merged timeline per issue."""
-    items_by_issue = _items_by_issue(bundle)
-    timeline_by_issue: dict[str, list[Mapping[str, JSONValue]]] = {}
-    for entry in _list(bundle, "timeline"):
-        if isinstance(entry, dict):
-            timeline_by_issue.setdefault(_s(entry, "issue_id"), []).append(entry)
+    events_by_issue: dict[str, list[ChronologyEntry]] = {}
+    for entry in chronology(bundle):
+        events_by_issue.setdefault(entry.issue_id, []).append(entry)
 
     rooms: dict[str, list[Mapping[str, JSONValue]]] = {}
     for raw_issue in _list(bundle, "issues"):
@@ -327,15 +341,14 @@ def _inspector_rollup(bundle: Mapping[str, JSONValue]) -> list[str]:
         for condition in sorted(conditions):
             out.append(f"<h3>Condition: {escape(condition)}</h3>")
             for condition_issue in conditions[condition]:
-                out.extend(_inspector_issue(condition_issue, timeline_by_issue, items_by_issue))
+                out.extend(_inspector_issue(condition_issue, events_by_issue))
         out.append("</section>")
     return out
 
 
 def _inspector_issue(
     issue: Mapping[str, JSONValue],
-    timeline_by_issue: dict[str, list[Mapping[str, JSONValue]]],
-    items_by_issue: dict[str, list[Mapping[str, JSONValue]]],
+    events_by_issue: dict[str, list[ChronologyEntry]],
 ) -> list[str]:
     issue_id = _s(issue, "issue_id")
     label = _s(issue, "title") or _s(issue, "category") or issue_id
@@ -347,58 +360,21 @@ def _inspector_issue(
     if _s(issue, "description"):
         out.append(f"<p>{escape(_s(issue, 'description'))}</p>")
 
-    events = _merged_events(timeline_by_issue.get(issue_id, []), items_by_issue.get(issue_id, []))
+    events = events_by_issue.get(issue_id, [])
     if not events:
         out.append("<p>No timeline entries or captures recorded.</p>")
         return out
     out.append("<ol>")
-    for when, body in events:
-        stamp = f'<time datetime="{escape(when)}">{escape(when or "undated")}</time>'
-        out.append(f"<li>{stamp} — {body}</li>")
+    for event in events:
+        when = escape(event.when or "undated")
+        stamp = f'<time datetime="{escape(event.when)}">{when}</time>'
+        detail = f' <span class="meta">({escape(event.detail)})</span>' if event.detail else ""
+        out.append(
+            f"<li><strong>{escape(event.when_label)}:</strong> {stamp} — "
+            f"<strong>{escape(event.label)}:</strong> {escape(event.text)}{detail}</li>"
+        )
     out.append("</ol>")
     return out
-
-
-def _merged_events(
-    timeline: list[Mapping[str, JSONValue]],
-    items: list[Mapping[str, JSONValue]],
-) -> list[tuple[str, str]]:
-    """Merge notes and captures for one issue into a chronologically-sorted list.
-
-    Each element is ``(when_iso, escaped_html_body)``. Timeline notes are placed
-    by their HLC wall time; capture events by the item's ``captured_at``. Both
-    resolve to ``YYYY-MM-DDTHH:MM:SSZ`` strings, so a lexicographic sort is a
-    true chronological order.
-    """
-    events: list[tuple[str, str, str]] = []
-    for entry in timeline:
-        hlc = _s(entry, "hlc")
-        when = _hlc_to_iso(hlc)
-        body = (
-            f"<strong>{escape(_s(entry, 'kind') or 'note')}:</strong> {escape(_s(entry, 'text'))}"
-        )
-        events.append((when, hlc, body))
-    for item in items:
-        when = _s(item, "captured_at")
-        content_hash = _s(item, "content_hash")
-        stamp = "trusted-timestamped" if item.get("timestamp") else "awaiting timestamp"
-        body = (
-            "<strong>Evidence captured:</strong> hash "
-            f"{escape(content_hash[:16])}… · {escape(stamp)}"
-        )
-        events.append((when, content_hash, body))
-    events.sort(key=lambda event: (event[0], event[1]))
-    return [(when, body) for when, _tie, body in events]
-
-
-def _hlc_to_iso(hlc: str) -> str:
-    """The wall-clock instant an HLC timestamp encodes, as an ISO-8601 UTC string."""
-    head = hlc.split(".", 1)[0]
-    try:
-        wall_ms = int(head)
-    except ValueError:
-        return ""
-    return datetime.fromtimestamp(wall_ms / 1000, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _proof_section(lang: str) -> list[str]:
@@ -479,16 +455,19 @@ def _issue_section(
         out.append(f"<p>{escape(_s(issue, 'description'))}</p>")
 
     timeline = [
-        e
-        for e in _list(bundle, "timeline")
-        if isinstance(e, dict) and _s(e, "issue_id") == issue_id
+        entry
+        for entry in chronology(bundle)
+        if entry.issue_id == issue_id and entry.kind in {"event", "note"}
     ]
     if timeline:
         out.append("<h3>Timeline</h3><ul>")
         out += [
-            f"<li><strong>{escape(_s(e, 'kind'))}:</strong> {escape(_s(e, 'text'))}</li>"
-            for e in timeline
-            if isinstance(e, dict)
+            f"<li><strong>{escape(entry.when_label)}: "
+            f"{escape(entry.when or 'undated')} · {escape(entry.label)}:</strong> "
+            f"{escape(entry.text)}"
+            + (f' <span class="meta">({escape(entry.detail)})</span>' if entry.detail else "")
+            + "</li>"
+            for entry in timeline
         ]
         out.append("</ul>")
 

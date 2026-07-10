@@ -76,8 +76,13 @@ def main() -> int:
     issue = vault.document.add_issue(
         category="mold", room="bathroom", title="Black mold", severity="high"
     )
-    vault.document.add_timeline_entry(issue, "observed", "mold on ceiling")
-    vault.save()
+    vault.add_timeline_event(
+        issue,
+        event_type="condition_observed",
+        text="mold on ceiling",
+        occurred_at="2026-01-02",
+        source="firsthand",
+    )
 
     photo = work / "p.jpg"
     _synthetic_photo(photo)

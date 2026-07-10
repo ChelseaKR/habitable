@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chelseakr.github.io/habitable/schema/packet-bundle-v1.schema.json",
-  "title": "habitable evidence packet — bundle.json (v1)",
-  "description": "The machine-readable contract for the bundle.json at the root of a habitable evidence packet. Stable per the compatibility policy in docs/bundle-schema.md: additive within a major packet_version; a breaking change is a major bump. The signed sibling file bundle.sig.json is described by $defs/signature. Hashes are lowercase hex SHA-256 (64 chars); the chain-of-custody genesis prev_hash is 64 zeros.",
+  "$id": "https://chelseakr.github.io/habitable/schema/packet-bundle-v3.schema.json",
+  "title": "habitable evidence packet — bundle.json (v1–v3)",
+  "description": "The machine-readable contract for bundle.json through packet_version 3. Version 3 adds sourced, occurrence-dated, custody-bound timeline events without changing the historical meanings of v1/v2 kind or hlc. The signed sibling file bundle.sig.json is described by $defs/signature.",
   "type": "object",
   "required": [
     "packet_version",
@@ -19,6 +19,7 @@
     "packet_version": {
       "type": "integer",
       "minimum": 1,
+      "maximum": 3,
       "description": "Packet format version. A verifier accepts 1..SUPPORTED_PACKET_VERSION and rejects newer-than-supported packets rather than mis-verifying."
     },
     "case_id": { "type": "string" },
@@ -74,11 +75,28 @@
       "properties": {
         "item_count": { "type": "integer", "minimum": 0 },
         "timestamped_count": { "type": "integer", "minimum": 0 },
-        "includes_originals": { "type": "boolean" }
+        "includes_originals": { "type": "boolean" },
+        "timeline_count": { "type": "integer", "minimum": 0 },
+        "custody_bound_timeline_count": { "type": "integer", "minimum": 0 }
       },
       "additionalProperties": true
     }
   },
+  "allOf": [
+    {
+      "if": { "properties": { "packet_version": { "const": 3 } } },
+      "then": {
+        "properties": {
+          "timeline": { "type": "array", "items": { "$ref": "#/$defs/timelineEntryV3" } }
+        }
+      },
+      "else": {
+        "properties": {
+          "timeline": { "type": "array", "items": { "$ref": "#/$defs/timelineEntryLegacy" } }
+        }
+      }
+    }
+  ],
   "$defs": {
     "hexSha256": {
       "type": "string",
@@ -100,6 +118,12 @@
       "additionalProperties": true
     },
     "timelineEntry": {
+      "oneOf": [
+        { "$ref": "#/$defs/timelineEntryLegacy" },
+        { "$ref": "#/$defs/timelineEntryV3" }
+      ]
+    },
+    "timelineEntryLegacy": {
       "type": "object",
       "required": ["entry_id", "issue_id", "kind", "text", "hlc"],
       "properties": {
@@ -107,7 +131,61 @@
         "issue_id": { "type": "string" },
         "kind": { "type": "string" },
         "text": { "type": "string" },
-        "hlc": { "type": "string", "description": "Ordering token. Opaque, per-case-salted digest in packet_version >= 2 (no wall-clock/node metadata); the raw wall_ms.counter.node_id HLC stamp in v1." }
+        "hlc": { "type": "string", "description": "Historical field: raw wall_ms.counter.node_id HLC in packet v1; opaque ordering token in packet v2. It is never treated as occurred_at or recorded_at in packet v3." }
+      },
+      "additionalProperties": true
+    },
+    "timelineEntryV3": {
+      "type": "object",
+      "not": {
+        "anyOf": [
+          { "required": ["kind"] },
+          { "required": ["hlc"] }
+        ]
+      },
+      "required": ["timeline_schema", "entry_id", "issue_id", "event_type", "other_label", "text", "occurred_at", "source", "source_detail", "recorded_at", "links", "order_token", "integrity"],
+      "properties": {
+        "timeline_schema": { "type": "integer", "const": 2 },
+        "entry_id": { "type": "string" },
+        "issue_id": { "type": "string" },
+        "event_type": {
+          "type": "string",
+          "enum": ["condition_observed", "notice_sent", "delivery_confirmed", "response_received", "inspection", "repair", "recurrence", "impact", "other"]
+        },
+        "other_label": { "type": "string", "description": "Non-empty only when event_type is other." },
+        "text": { "type": "string", "minLength": 1 },
+        "occurred_at": { "type": "string", "description": "Date/time the recorder says the event happened. ISO date or offset-normalized UTC timestamp. Empty only for an explicit legacy migration; it never defaults to recorded_at." },
+        "source": { "type": "string", "enum": ["firsthand", "message", "document", "official_record", "other", "unspecified"] },
+        "source_detail": { "type": "string", "description": "Non-empty only when source is other." },
+        "recorded_at": { "type": "string", "description": "UTC device time at which the append-only case entry was created; not a claim about occurrence time and not an RFC 3161 timestamp." },
+        "links": {
+          "type": "object",
+          "required": ["capture_ids", "notice_entry_id", "receipt_entry_id", "response_entry_id"],
+          "properties": {
+            "capture_ids": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+            "notice_entry_id": { "type": "string", "description": "Related notice_sent timeline entry; empty when absent." },
+            "receipt_entry_id": { "type": "string", "description": "Related delivery_confirmed timeline entry; empty when absent." },
+            "response_entry_id": { "type": "string", "description": "Related response_received timeline entry; empty when absent." }
+          },
+          "additionalProperties": false
+        },
+        "order_token": { "type": "string", "description": "Opaque, per-case-salted CRDT ordering token. It is not a date." },
+        "integrity": {
+          "type": "object",
+          "required": ["algorithm", "commitment", "custody_action", "binding_stage"],
+          "properties": {
+            "algorithm": { "type": "string", "const": "sha256" },
+            "commitment": { "$ref": "#/$defs/hexSha256" },
+            "custody_action": { "type": "string", "const": "note_added" },
+            "binding_stage": { "type": "string", "enum": ["recorded", "backfill", "migration"] }
+          },
+          "additionalProperties": false
+        },
+        "migration": {
+          "type": "object",
+          "description": "Present only when a case-schema-v1 free-form timeline entry is exported into packet v3. Unknown occurrence/source facts remain explicitly unknown.",
+          "additionalProperties": true
+        }
       },
       "additionalProperties": true
     },

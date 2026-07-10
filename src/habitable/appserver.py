@@ -145,7 +145,27 @@ class AppServer:
             "severity": issue.severity,
             "description": issue.description,
             "captures": len(doc.captures(issue_id)),
-            "timeline": [{"kind": e.kind, "text": e.text} for e in doc.timeline(issue_id)],
+            "capture_items": [
+                {
+                    "capture_id": capture.capture_id,
+                    "captured_at": capture.captured_at,
+                    "media_type": capture.media_type,
+                }
+                for capture in doc.captures(issue_id)
+            ],
+            "timeline": [
+                {
+                    "entry_id": entry.entry_id,
+                    "event_type": entry.event_type,
+                    "other_label": entry.other_label,
+                    "text": entry.text,
+                    "occurred_at": entry.occurred_at,
+                    "recorded_at": entry.recorded_at,
+                    "source": entry.source,
+                    "source_detail": entry.source_detail,
+                }
+                for entry in doc.timeline(issue_id)
+            ],
             # EXP-03: an on-device, telemetry-free record-strength summary — never a
             # legal or admissibility claim, see habitable.strength module docstring.
             "record_strength": {
@@ -170,11 +190,31 @@ class AppServer:
         return {"issue_id": issue_id}
 
     def add_timeline(self, issue_id: str, body: dict[str, object]) -> dict[str, object]:
-        entry_id = self.vault.document.add_timeline_entry(
-            issue_id, _req_str(body, "kind"), _req_str(body, "text")
+        event_type = _opt_str(body, "event_type")
+        if not event_type:
+            # Compatibility for pre-v3 clients.  Preserve their free-form kind as
+            # a legacy entry; packet export later labels its unknown occurrence/source
+            # honestly and creates a migration-stage custody binding.
+            entry_id = self.vault.document.add_timeline_entry(
+                issue_id, _req_str(body, "kind"), _req_str(body, "text")
+            )
+            self.vault.save()
+            return {"entry_id": entry_id, "status": "legacy-migrated"}
+        entry_id = self.vault.add_timeline_event(
+            issue_id,
+            event_type=event_type,
+            text=_req_str(body, "text"),
+            occurred_at=_req_str(body, "occurred_at"),
+            source=_req_str(body, "source"),
+            other_label=_opt_str(body, "other_label"),
+            source_detail=_opt_str(body, "source_detail"),
+            capture_ids=_opt_str_tuple(body, "capture_ids"),
+            notice_entry_id=_opt_str(body, "notice_entry_id"),
+            receipt_entry_id=_opt_str(body, "receipt_entry_id"),
+            response_entry_id=_opt_str(body, "response_entry_id"),
         )
-        self.vault.save()
-        return {"entry_id": entry_id}
+        issue = next(item for item in self.vault.document.issues() if item.issue_id == issue_id)
+        return {"entry_id": entry_id, "status": issue.status}
 
     def capture(self, body: dict[str, object]) -> dict[str, object]:
         issue_id = _req_str(body, "issue_id")
@@ -470,3 +510,10 @@ def _opt_str(body: dict[str, object], key: str) -> str:
 
 def _opt_bool(body: dict[str, object], key: str) -> bool:
     return bool(body.get(key, False))
+
+
+def _opt_str_tuple(body: dict[str, object], key: str) -> tuple[str, ...]:
+    value = body.get(key, [])
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise HabitableError(f"field {key} must be an array of strings")
+    return tuple(value)

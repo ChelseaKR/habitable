@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from .canonical import JSONValue
+from .timeline import event_label, source_label
 
 __all__ = [
     "ChronologyEntry",
@@ -59,7 +60,8 @@ class ChronologyEntry:
     """One row of the unified, chronological evidence timeline."""
 
     when: str  # ISO 8601 UTC; "" if unknown
-    kind: str  # "note" | "photo"
+    when_label: str  # localized: Occurred / Recorded / Captured
+    kind: str  # "note" | "event" | "photo"
     label: str  # note kind (e.g. "observed") or "photo"
     issue_id: str
     issue_title: str
@@ -133,22 +135,49 @@ def chronology(bundle: Mapping[str, JSONValue]) -> tuple[ChronologyEntry, ...]:
         if isinstance(issue, dict)
     }
     entries: list[ChronologyEntry] = []
+    version = _i(bundle, "packet_version") or 1
+    language = _s(bundle, "language") or "en"
+    spanish = language.lower().startswith("es")
 
     for raw in _list(bundle, "timeline"):
         if not isinstance(raw, dict):
             continue
         issue_id = _s(raw, "issue_id")
-        entries.append(
-            ChronologyEntry(
-                when=_hlc_to_iso(_s(raw, "hlc")),
-                kind="note",
-                label=_s(raw, "kind") or "note",
-                issue_id=issue_id,
-                issue_title=titles.get(issue_id, issue_id),
-                text=_s(raw, "text"),
-                detail="",
+        if version == 3:
+            occurred_at = _s(raw, "occurred_at")
+            recorded_at = _s(raw, "recorded_at")
+            entries.append(
+                ChronologyEntry(
+                    when=occurred_at or recorded_at,
+                    when_label=(
+                        ("Ocurrió" if spanish else "Occurred")
+                        if occurred_at
+                        else ("Registrado" if spanish else "Recorded")
+                    ),
+                    kind="event",
+                    label=event_label(language, _s(raw, "event_type"), _s(raw, "other_label")),
+                    issue_id=issue_id,
+                    issue_title=titles.get(issue_id, issue_id),
+                    text=_s(raw, "text"),
+                    detail=_v3_timeline_detail(raw, language),
+                )
             )
-        )
+        else:
+            # v1 carried a raw HLC whose wall clock could be rendered. v2 made
+            # that field opaque for privacy. Never reinterpret the v2 token as a
+            # date; an unknown date is more honest than a guessed one.
+            entries.append(
+                ChronologyEntry(
+                    when=_hlc_to_iso(_s(raw, "hlc")) if version == 1 else "",
+                    when_label="Registrado" if spanish else "Recorded",
+                    kind="note",
+                    label=_s(raw, "kind") or ("nota" if spanish else "note"),
+                    issue_id=issue_id,
+                    issue_title=titles.get(issue_id, issue_id),
+                    text=_s(raw, "text"),
+                    detail="",
+                )
+            )
 
     for raw in _list(bundle, "items"):
         if not isinstance(raw, dict):
@@ -161,17 +190,68 @@ def chronology(bundle: Mapping[str, JSONValue]) -> tuple[ChronologyEntry, ...]:
         entries.append(
             ChronologyEntry(
                 when=_s(raw, "captured_at"),
+                when_label="Capturado" if spanish else "Captured",
                 kind="photo",
-                label="photo",
+                label="foto" if spanish else "photo",
                 issue_id=issue_id,
                 issue_title=titles.get(issue_id, issue_id),
-                text=f"Photo captured for {titles.get(issue_id, issue_id)}",
+                text=(
+                    f"Evidencia capturada para {titles.get(issue_id, issue_id)}"
+                    if spanish
+                    else f"Evidence captured for {titles.get(issue_id, issue_id)}"
+                ),
                 detail=detail,
             )
         )
 
     entries.sort(key=lambda e: (e.when or "9999", e.kind, e.text))
     return tuple(entries)
+
+
+def _v3_timeline_detail(entry: Mapping[str, JSONValue], language: str) -> str:
+    """Deterministic EN/ES explanation of source, recording time, and links."""
+    spanish = language.lower().startswith("es")
+    integrity = _map(entry, "integrity")
+    links = _map(entry, "links")
+    stage = _s(integrity, "binding_stage")
+    stage_labels = {
+        "recorded": "protegido por custodia al registrarse"
+        if spanish
+        else "custody-bound when recorded",
+        "backfill": "protección de custodia agregada después"
+        if spanish
+        else "custody binding added later",
+        "migration": "protección de custodia agregada durante la migración"
+        if spanish
+        else "custody binding added during migration",
+    }
+    parts = [
+        ("Fuente" if spanish else "Source")
+        + ": "
+        + source_label(language, _s(entry, "source"), _s(entry, "source_detail")),
+        ("Registrado" if spanish else "Recorded") + ": " + (_s(entry, "recorded_at") or "—"),
+    ]
+    if not _s(entry, "occurred_at"):
+        parts.append(
+            "fecha de ocurrencia no registrada" if spanish else "occurrence date not recorded"
+        )
+    if stage:
+        parts.append(stage_labels.get(stage, stage))
+    raw_capture_ids = links.get("capture_ids")
+    if isinstance(raw_capture_ids, list):
+        for capture_id in raw_capture_ids:
+            if isinstance(capture_id, str):
+                parts.append(("captura" if spanish else "capture") + f" {capture_id}")
+    link_labels = {
+        "notice_entry_id": "aviso" if spanish else "notice",
+        "receipt_entry_id": "entrega" if spanish else "delivery",
+        "response_entry_id": "respuesta" if spanish else "response",
+    }
+    for key, label in link_labels.items():
+        target = _s(links, key)
+        if target:
+            parts.append(f"{label} {target}")
+    return " · ".join(parts)
 
 
 def integrity_summary(bundle: Mapping[str, JSONValue]) -> IntegritySummary:
