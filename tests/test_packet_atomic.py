@@ -78,7 +78,8 @@ def test_narrower_reexport_replaces_entire_directory(
     assert not (out / "originals").exists()
     assert not (out / "inspector.html").exists()
     assert not (out / "stale-private-file.txt").exists()
-    assert verify_packet(out).ok
+    report = verify_packet(out, trusted_certs=[local_tsa.certificate])
+    assert report.structurally_intact and report.evidence_ready
     assert _transaction_debris(tmp_path, out.name) == []
 
 
@@ -108,7 +109,8 @@ def test_render_failure_preserves_previous_packet_and_custody(
     assert vault.custody.to_vault_records() == before_custody
     reopened = Vault.open(vault.path, "test-passphrase")
     assert reopened.custody.to_vault_records() == before_custody
-    assert verify_packet(out).ok
+    report = verify_packet(out, trusted_certs=[local_tsa.certificate])
+    assert report.structurally_intact and report.evidence_ready
     assert _transaction_debris(tmp_path, out.name) == []
 
 
