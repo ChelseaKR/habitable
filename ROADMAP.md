@@ -271,7 +271,16 @@ Per the portfolio **OBSERVABILITY-STANDARD** (which is tiered by deployment shap
 records habitable's *values*; the gates themselves live in the standard.
 
 - **CLI / library surface — Tier C.** OTel tracing/metrics/SLOs are **N/A: no network
-  surface** (offline-first, local-only). Opt-in `--log-format json` is future work.
+  surface** (offline-first, local-only). *Shipped (FIX-13):* **opt-in, on-device,
+  metadata-only structured logging** (`src/habitable/obslog.py`, mirroring the relay's
+  `_JsonFormatter`/`configure_logging`). `--log-format json` — or `HABITABLE_LOG=json` —
+  emits one JSON object per line to stderr at command boundaries (CLI) and redacted
+  request boundaries (app server), carrying only counts, durations, booleans, and event
+  names; it is **off by default**. The no-plaintext gate is absolute and pinned by
+  `tests/test_obslog.py` (`test_logs_never_leak_secrets_or_content`): no filenames,
+  paths, case/room/issue ids, passphrases, key material, request bodies, or media bytes
+  ever reach the log stream — `log_event` refuses any non-scalar field so a payload
+  cannot ride in.
 - **Optional sync relay (`src/habitable/relay.py`) — Tier A**, with deliberate
   N/A-with-reason carve-outs driven by two hard project rules — *no telemetry / no
   phone-home* and a *dependency-free relay image* (stdlib only, small attack surface):

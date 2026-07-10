@@ -36,6 +36,7 @@ from .canonical import JSONValue, canonical_json, sha256_bytes
 from .crypto import Identity, PublicIdentity, open_sealed, seal_to, verify
 from .errors import SyncError
 from .evidence import CustodyAction
+from .obslog import log_event
 from .tsa import TimestampToken, verify_token
 from .vault import Vault
 
@@ -162,7 +163,18 @@ def sync(vault: Vault, peer: PublicIdentity, transport: Transport, *, channel: s
     """Post our state to ``peer`` and merge anything waiting for us."""
     posted = export_message(vault, peer)
     transport.post(channel, posted)
-    result = import_messages(vault, transport.fetch(channel))
+    blobs = transport.fetch(channel)
+    result = import_messages(vault, blobs)
+    # Metadata-only round summary (no-op unless logging is opted in): ciphertext
+    # sizes and counts only — never the channel id, peer id, or any message content.
+    log_event(
+        "sync",
+        sent=True,
+        bytes_sent=len(posted),
+        fetched=len(blobs),
+        messages_merged=result.messages_merged,
+        captures_imported=result.captures_imported,
+    )
     return SyncResult(
         sent=True,
         messages_merged=result.messages_merged,

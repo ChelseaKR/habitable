@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import sys
+import time
 import webbrowser
 from pathlib import Path
 
@@ -29,6 +30,7 @@ from .crypto import KDF_PROFILES, PublicIdentity
 from .errors import HabitableError
 from .i18n import DEFAULT_LOCALE, cli_text, format_datetime, resolve_locale
 from .letter import LetterOptions, build_letter, render_letter_html
+from .obslog import configure_logging, enabled_from_env, log_event
 from .packet import build_packet
 from .share import decode_share, encode_share, export_share, import_share
 from .strength import assess_issue
@@ -43,20 +45,45 @@ __all__ = ["main"]
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+    # Opt-in, on-device, metadata-only structured logging (off by default). Enabled
+    # by --log-format json or HABITABLE_LOG=json; emits to stderr so command output
+    # on stdout stays clean.
+    if getattr(args, "log_format", None) == "json" or enabled_from_env():
+        configure_logging()
     if not hasattr(args, "func"):
         parser.print_help()
         return 2
+    command = getattr(args, "command", None) or "help"
+    start = time.monotonic()
+    ok = False
     try:
         result: int = args.func(args)
+        ok = result == 0
+        return result
     except HabitableError as exc:
         print(f"habitable: error: {exc}", file=sys.stderr)
         return 1
-    return result
+    finally:
+        # A metadata-only command-boundary event: name, outcome, duration — never
+        # arguments, paths, ids, or secrets.
+        log_event(
+            "command",
+            command=command,
+            ok=ok,
+            duration_ms=round((time.monotonic() - start) * 1000, 3),
+        )
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="habitable", description=__doc__)
     parser.add_argument("--version", action="version", version=f"habitable {__version__}")
+    parser.add_argument(
+        "--log-format",
+        choices=["json"],
+        default=None,
+        help="emit opt-in, on-device, metadata-only structured logs to stderr "
+        "(also enabled by HABITABLE_LOG=json); off by default",
+    )
     sub = parser.add_subparsers(dest="command")
 
     def add_vault(p: argparse.ArgumentParser) -> None:

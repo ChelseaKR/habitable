@@ -18,6 +18,7 @@ import base64
 import json
 import re
 import threading
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -27,6 +28,7 @@ from typing import cast
 from .capture import capture, resolve_deferred
 from .disclosure import proof_statement
 from .errors import HabitableError
+from .obslog import configure_logging, enabled_from_env, is_configured, log_event
 from .packet import build_packet
 from .strength import assess_issue
 from .tsa import DevTSA, TimestampAuthority
@@ -53,6 +55,32 @@ def _default_static_root() -> Path:
 
 _STATIC_ROOT = _default_static_root()
 _SAFE_PATH = re.compile(r"^[A-Za-z0-9_./-]+$")
+_TIMELINE_ROUTE = re.compile(r"^/api/issues/([A-Za-z0-9_.-]+)/timeline$")
+
+# Fixed API routes log verbatim; everything else is redacted, mirroring the relay's
+# _route_label discipline so no issue id, static path, or query value ever reaches
+# the log stream.
+_API_ROUTES = frozenset(
+    {"/api/status", "/api/issues", "/api/capture", "/api/resolve", "/api/export"}
+)
+
+
+def _route_label(path: str) -> str:
+    """Map a request path to a **redacted** route template for logging.
+
+    Fixed API routes log verbatim; the per-issue timeline route collapses to
+    ``/api/issues/{issue}/timeline`` so the issue id never enters the log; anything
+    else (static assets, arbitrary probes) collapses to ``/<static>``. Any query
+    string is dropped first so query *values* are never echoed.
+    """
+    route = path.split("?", 1)[0]
+    if route in _API_ROUTES:
+        return route
+    if _TIMELINE_ROUTE.match(route):
+        return "/api/issues/{issue}/timeline"
+    return "/<static>"
+
+
 _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -282,28 +310,49 @@ class _AppRequestHandler(BaseHTTPRequestHandler):
         return
 
     def do_GET(self) -> None:
-        if self.path == "/api/status":
-            app = self._app
-            self._guarded(lambda: app.status())
-            return
-        self._serve_static(self.path)
+        self._status = 200
+        start = time.monotonic()
+        try:
+            if self.path == "/api/status":
+                app = self._app
+                self._guarded(lambda: app.status())
+                return
+            self._serve_static(self.path)
+        finally:
+            self._access_log("GET", start)
 
     def do_POST(self) -> None:
-        body = self._read_json()
-        if body is None:
-            return
-        app = self._app
-        timeline = _TIMELINE_RE.match(self.path)
-        if timeline is not None:
-            self._guarded(lambda: app.add_timeline(timeline.group(1), body))
-            return
-        route = _POST_ROUTES.get(self.path)
-        if route is None:
-            self._json(404, {"error": "not found"})
-            return
-        self._guarded(lambda: route(app, body))
+        self._status = 200
+        start = time.monotonic()
+        try:
+            body = self._read_json()
+            if body is None:
+                return
+            app = self._app
+            timeline = _TIMELINE_RE.match(self.path)
+            if timeline is not None:
+                self._guarded(lambda: app.add_timeline(timeline.group(1), body))
+                return
+            route = _POST_ROUTES.get(self.path)
+            if route is None:
+                self._json(404, {"error": "not found"})
+                return
+            self._guarded(lambda: route(app, body))
+        finally:
+            self._access_log("POST", start)
 
     # --- helpers ----------------------------------------------------------
+
+    def _access_log(self, method: str, start: float) -> None:
+        # Metadata-only, redacted request line (no-op unless logging is opted in):
+        # method, redacted route, status, latency — never a body or query value.
+        log_event(
+            "request",
+            method=method,
+            path=_route_label(self.path),
+            status=self._status,
+            latency_ms=round((time.monotonic() - start) * 1000, 3),
+        )
 
     def _guarded(self, action: Callable[[], dict[str, object]]) -> None:
         try:
@@ -344,6 +393,7 @@ class _AppRequestHandler(BaseHTTPRequestHandler):
             return
         body = target.read_bytes()
         content_type = _CONTENT_TYPES.get(target.suffix, "application/octet-stream")
+        self._status = 200
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
@@ -351,6 +401,7 @@ class _AppRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _json(self, code: int, payload: dict[str, object]) -> None:
+        self._status = code
         body = json.dumps(payload).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -381,6 +432,12 @@ def make_app_server(
             "the unlocked app may only bind to loopback (localhost or 127.0.0.1); "
             "LAN access is not a supported phone-install path"
         )
+
+    # Honor HABITABLE_LOG=json even when not launched via the CLI flag (e.g. a direct
+    # embedder). If the CLI already configured logging, this is a no-op.
+    if enabled_from_env() and not is_configured():
+        configure_logging()
+
     app = AppServer(
         vault=vault,
         tsa=tsa,
