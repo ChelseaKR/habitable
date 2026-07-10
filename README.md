@@ -62,8 +62,9 @@ auditability, accessibility, and saying plainly what the tool does not do.
   and included in the signed packet; they do not receive the media hash/timestamp/custody pipeline.
 - **Syncs peer to peer.** An organizer and the tenants on a case keep records in step over
   end-to-end-encrypted, direct device-to-device sync using a CRDT, so two people editing the same
-  case offline merge cleanly when they reconnect. No server holds the plaintext, and no server is
-  required at all.
+  case offline merge cleanly when they reconnect. Signed, recipient-sealed pairing pins the exact
+  expected peer and case before any delta can merge; replayed deltas are detected and skipped. No
+  server holds the plaintext, and no server is required at all.
 - **Exports a court/inspector-organized review bundle.** One command assembles a paginated PDF,
   accessible HTML rendering, and structured `bundle.json` for an issue or a whole unit: a cover
   sheet, chronological evidence timeline, per-issue detail, and a chain-of-custody/integrity
@@ -212,9 +213,11 @@ habitable/
 The data model is a CRDT document per case, stored encrypted on each device, so the app is fully
 usable with no network and two organizers editing the same case offline converge without conflict
 when they sync. Capture is a pipeline: media in, original sealed and hashed, a timestamp token
-fetched over the hash, a custody entry appended. Sync moves encrypted deltas directly between peers
-or through a relay that only ever sees ciphertext, so adding a relay adds availability without adding
-a party that can read anything. Verification is a separate module with no dependency on the rest, so a
+fetched over the hash, a custody entry appended. Sync moves authenticated, case-bound encrypted
+deltas directly between explicitly paired peers or through a relay that only ever sees ciphertext,
+so adding a relay adds availability without adding a party that can read anything. See the
+[sync protocol](docs/sync-protocol-v2.md) and [sync threat model](docs/sync-threat-model.md).
+Verification is a separate module with no dependency on the rest, so a
 court or an opposing party can check a packet with a small, auditable tool.
 
 ---

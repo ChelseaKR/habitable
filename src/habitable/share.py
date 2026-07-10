@@ -14,7 +14,11 @@ A share is exactly a sync message, reusing the same primitives:
 * The tenant builds a CRDT state with :meth:`CaseDocument.subset_state`, optionally
   scoped to chosen issues and with the unit label redacted. Only the sealed
   originals for the selected issues are attached.
-* That payload is **signed** by the tenant's device key and **sealed** to the
+* The devices first exchange signed, recipient-sealed, case-bound pairing
+  material. The exact expected identity and pairing key are pinned in each
+  encrypted vault; a public id alone is not authorization.
+* The payload is **signed** by the tenant's device key, authenticated with the
+  pairing key, and **sealed** to the
   organizer's X25519 public key (:func:`habitable.crypto.seal_to`, an ephemeral-key
   ECIES box). Only the holder of the organizer's private key can open it; a relay,
   a courier, or a cloud drive used to move the ``.share`` file sees ciphertext only.
@@ -28,10 +32,9 @@ Trust / key-exchange model (see ``docs/sharing-trust-model.md``)
 Trust is **direct and out-of-band**, with no central directory. The organizer runs
 ``habitable id`` and gives the tenant their public identity; the tenant confirms the
 short fingerprint over a trusted channel (in person, a verified call) before sharing
-— this is the human step that defeats a man-in-the-middle. The tenant then seals the
-(possibly redacted) subset to that key. The server is never trusted: it cannot read,
-forge (messages are signed), or silently substitute a recipient (the tenant pins the
-fingerprint they verified).
+— this is the human step that defeats a man-in-the-middle. The devices then use
+``sync-pair-create`` / ``sync-pair-accept`` before the tenant seals the subset.
+The server is never trusted: it cannot read, forge, or authorize a recipient.
 """
 
 from __future__ import annotations
@@ -84,6 +87,7 @@ def export_share(
             raise ShareError(f"unknown issue(s) to share: {', '.join(sorted(unknown))}")
         selected = set(issue_ids)
 
+    vault.document.attest_unsigned_fields()
     state = vault.document.subset_state(selected, redact_meta=redact_unit)
     capture_ids = (
         None
@@ -103,6 +107,12 @@ def import_share(vault: Vault, blob: bytes) -> ShareResult:
     """
     result = import_messages(vault, [blob], require_case_id=vault.document.case_id)
     if result.messages_merged == 0:
+        if result.replays_skipped:
+            return ShareResult(
+                case_id=vault.document.case_id,
+                captures_imported=0,
+                merged=True,
+            )
         raise ShareError(
             "no share opened: it is not sealed to this device's key, or not a share message"
         )

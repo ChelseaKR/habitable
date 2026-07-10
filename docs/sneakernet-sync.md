@@ -13,7 +13,7 @@ it, `sync-import` merges it. A delta is **sealed to one recipient's key and
 signed by the sender**, so a stick lost on the bus leaks nothing and a forged or
 swapped file is rejected on import.
 
-## Before you start: exchange identities
+## Before you start: pair the exact devices and case
 
 Each device prints its public identity once. Share the **public-id** with your
 peer and confirm the short **fingerprint** out of band — read it aloud on a call
@@ -25,7 +25,19 @@ fingerprint: 1a2b-3c4d-5e6f-7a8b
 public-id:   MC4w...          # the long string your peer needs
 ```
 
-You only need to do this once per peer.
+After confirming the fingerprint, one side creates authenticated pairing
+material. It is signed, bound to this case, and sealed to the other device, so
+the `.hpair` line can be handed over as a file or encoded as a QR payload.
+
+```console
+$ habitable sync-pair-create --vault ./case-4B \
+    --peer <B-public-id> --out /Volumes/USB/B-case-4B.hpair
+$ habitable sync-pair-accept --vault ./case-4B \
+    --in /Volumes/USB/B-case-4B.hpair
+```
+
+You only need to do this once per peer. Merely knowing a public id is no longer
+enough: the exact identity must be locally allowlisted by pairing.
 
 ## Export a delta to the stick
 
@@ -58,10 +70,10 @@ habitable: synced — merged 1 message, imported 1 capture
 ```
 
 Import is **not silent**: it reports how many messages merged and how many
-captures came in, so you can tell a real exchange from a fumbled one. It is also
-**idempotent** — re-importing the same file merges nothing new (0 captures), so
-you can safely re-run it. Because the case is a CRDT, both sides converge with no
-lost edits no matter which order deltas are exchanged.
+captures came in, so you can tell a real exchange from a fumbled one. Replay is
+explicitly detected — re-importing the same file reports it as already accepted
+and changes neither state nor custody. Because the case is a CRDT, both sides
+converge with no lost edits no matter which order fresh deltas are exchanged.
 
 To keep two people in step, the recipient exports a delta back the same way
 (`sync-export --peer <A-public-id>`) and hands the stick back, or carries a fresh
@@ -75,9 +87,14 @@ one to the next meeting.
   recipient the file is sealed to.
 - **Wrong recipient → clean refusal.** Importing a delta sealed to someone else
   imports nothing and exits with a clear error rather than pretending to succeed.
-- **Forged or swapped file → rejected.** The delta is signed; a tampered
-  envelope, a mismatched sealed original, or a forged timestamp token is rejected
-  on import (`SyncError`) instead of being merged.
+- **Unknown or wrong-case sender → rejected.** A signature from an arbitrary key
+  is not authorization. The sender must match the paired allowlist, prove the
+  pairing key, and bind both the envelope and state to the open case.
+- **Forged or swapped file → rejected.** The delta is signed and pairing-MACed;
+  a tampered envelope, mismatched original, broken custody proof, or forged
+  timestamp token is rejected before merge.
 
-For the full guarantees and the threat model behind them, see
-[`docs/threat-model.md`](threat-model.md) and [`docs/crypto-spec.md`](crypto-spec.md).
+For the full guarantees and threat model, see
+[`sync-protocol-v2.md`](sync-protocol-v2.md),
+[`sync-threat-model.md`](sync-threat-model.md), and
+[`crypto-spec.md`](crypto-spec.md).

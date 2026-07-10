@@ -77,10 +77,13 @@ $ uv run habitable app --vault ./case-4B
 
 Each organizer runs `habitable id` and shares their **public-id**. First, read
 your **fingerprints** to each other another way — by phone or in person — and
-check that they match. Then sync one of two ways: over a shared folder (USB or a
-cloud drive), or through a relay.
+check that they match. Pair the devices for this exact case, then sync over a
+shared folder (USB or a cloud drive) or through a relay.
 
 ```console
+# Create signed, recipient-sealed pairing material; the peer accepts the file:
+$ uv run habitable sync-pair-create --vault ./case-4B --peer <their-public-id> --out ./peer.hpair
+$ uv run habitable sync-pair-accept --vault ./case-4B --in ./peer.hpair
 # Folder transport (no server):
 $ uv run habitable sync --vault ./case-4B --peer <their-public-id> --channel 4B-room --dir /path/to/shared
 # Or run your own relay. It only ever sees scrambled data — never your photos or text:

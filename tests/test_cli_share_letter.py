@@ -76,6 +76,37 @@ def test_cli_share_and_receive(tmp_path: Path) -> None:
     )
 
     peer = Vault.open(organizer, "pw").identity.public().encode()
+    pairing = tmp_path / "organizer.hpair"
+    assert (
+        main(
+            [
+                "sync-pair-create",
+                "--vault",
+                str(tenant),
+                "--passphrase",
+                "pw",
+                "--peer",
+                peer,
+                "--out",
+                str(pairing),
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "sync-pair-accept",
+                "--vault",
+                str(organizer),
+                "--passphrase",
+                "pw",
+                "--in",
+                str(pairing),
+            ]
+        )
+        == 0
+    )
     share_file = tmp_path / "case.share"
     assert (
         main(

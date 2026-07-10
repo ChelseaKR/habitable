@@ -11,6 +11,7 @@ import pytest
 
 from habitable.capture import capture
 from habitable.errors import HabitableError, ShareError
+from habitable.pairing import accept_pairing_material, create_pairing_material
 from habitable.share import decode_share, encode_share, export_share, import_share
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
@@ -108,10 +109,10 @@ def test_share_for_a_different_case_is_rejected(
     tenant = _tenant_with_two_issues(make_vault, make_jpeg, local_tsa)
     organizer = make_vault(name="org", case_id="some-other-case", unit="")
 
-    blob = export_share(tenant, organizer.identity.public())
-    # The box opens (it is sealed to the organizer), but the case_id guard fires.
+    material = create_pairing_material(tenant, organizer.identity.public())
+    # Pairing itself is case-bound, so an unsafe cross-case share cannot be created.
     with pytest.raises(HabitableError):
-        import_share(organizer, blob)
+        accept_pairing_material(organizer, material)
 
 
 def test_share_import_is_idempotent(

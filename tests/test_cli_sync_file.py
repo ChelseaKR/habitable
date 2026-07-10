@@ -83,9 +83,9 @@ def test_sneakernet_roundtrip_and_idempotent_reimport(
     assert b_reopened.get_token(record.capture_id) is not None
     assert b_reopened.custody.verify().ok
 
-    # Re-importing the same file is idempotent: still succeeds, 0 new captures.
+    # Re-importing the same file is explicitly detected and skipped as a replay.
     assert main(["sync-import", "--vault", str(b.path), "--passphrase", "pw-b", str(delta)]) == 0
-    assert "imported 0 captures" in capsys.readouterr().out
+    assert "replay protection skipped 1" in capsys.readouterr().out
 
 
 def test_sneakernet_import_wrong_recipient_errors_cleanly(
