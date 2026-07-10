@@ -57,7 +57,7 @@ Two properties matter most:
 - **Nothing depends upward.** A lower layer never imports a higher one. Domain modules
   do not know about the CLI; the foundation knows about nothing.
 - **`verify` is an island.** `habitable.verify` imports only `canonical`, `crypto`,
-  `evidence`, `tsa`, and `errors` — the "verification subset" that is dual-licensed
+  `evidence`, `timeline`, `tsa`, and `errors` — the "verification subset" that is dual-licensed
   Apache-2.0 (see `NOTICE`). It never touches `vault`, `capture`, `sync`, `packet`, or
   `pdf`, so verification can be embedded and redistributed on its own.
 

@@ -90,6 +90,10 @@ _SOURCE_LABELS = {
     },
 }
 
+# Named so the py314-targeting formatter cannot rewrite a portable tuple except
+# into PEP 758's parenthesis-free form, which does not parse on Python 3.12/3.13.
+_RECORDED_AT_ERRORS = (ValueError, OSError, OverflowError)
+
 
 def event_label(language: str, event_type: str, other_label: str = "") -> str:
     """Return the reviewed display label, using ``other_label`` only for Other."""
@@ -140,6 +144,6 @@ def recorded_at_from_hlc(hlc: str) -> str:
         return ""
     try:
         moment = datetime.fromtimestamp(int(head) / 1000, tz=UTC)
-    except ValueError, OSError, OverflowError:
+    except _RECORDED_AT_ERRORS:
         return ""
     return moment.isoformat(timespec="milliseconds").replace("+00:00", "Z")

@@ -5,14 +5,16 @@
 This is the module a skeptic runs. Given only a packet directory (and, optionally,
 trusted TSA root certificates), it re-derives every hash, validates each trusted
 timestamp against its authority, checks the producer's signature over the whole
-bundle, and walks the chain of custody — confirming the packet has not been
-altered after the fact, without access to the union's other data.
+bundle, validates packet-v3 timeline commitments/links, and walks the chain of
+custody — confirming the packet has not been altered after the fact, without access
+to the union's other data.
 
 Licensing: this verifier, together with the pure modules it imports
 (:mod:`habitable.canonical`, :mod:`habitable.crypto`, :mod:`habitable.evidence`,
-:mod:`habitable.tsa`), is the "verification subset" offered under Apache-2.0 as an
-additional permission (see NOTICE), so a court or legal-aid group can embed and
-redistribute verification without the AGPL reaching their code.
+:mod:`habitable.timeline`, :mod:`habitable.tsa`), is the "verification subset"
+offered under Apache-2.0 as an additional permission (see NOTICE), so a court or
+legal-aid group can embed and redistribute verification without the AGPL reaching
+their code.
 """
 
 from __future__ import annotations

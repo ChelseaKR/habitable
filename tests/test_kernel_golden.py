@@ -77,6 +77,7 @@ _ALLOWED_KERNEL_MODULES = {
     "habitable.errors",
     "habitable.evidence",
     "habitable.kernel",
+    "habitable.timeline",
     "habitable.tsa",
     "habitable.verify",
 }

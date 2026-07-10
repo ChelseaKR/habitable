@@ -137,6 +137,7 @@ _ALLOWED_VERIFIER_MODULES = {
     "habitable.crypto",
     "habitable.errors",
     "habitable.evidence",
+    "habitable.timeline",
     "habitable.tsa",
     "habitable.verify",
 }
@@ -169,6 +170,7 @@ _VERIFIER_SUBSET_FILES = (
     "crypto.py",
     "errors.py",
     "evidence.py",
+    "timeline.py",
     "tsa.py",
     "verify.py",
 )

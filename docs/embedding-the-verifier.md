@@ -20,7 +20,8 @@
 ## What "the verifier subset" is
 
 The independently-licensed subset is `habitable.verify` plus the pure modules it imports:
-`habitable.canonical`, `habitable.crypto`, `habitable.evidence`, and `habitable.tsa`. It pulls no
+`habitable.canonical`, `habitable.crypto`, `habitable.evidence`, `habitable.timeline`, and
+`habitable.tsa`. It pulls no
 AGPL-only or heavy modules — `import habitable.verify` brings in only this subset, and a guard test
 in `tests/test_guards.py` keeps it that way. Runtime dependencies are
 [`cryptography`](https://cryptography.io) and [`asn1crypto`](https://github.com/wbond/asn1crypto).

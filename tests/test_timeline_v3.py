@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -14,11 +15,12 @@ from habitable.canonical import canonical_json
 from habitable.capture import capture
 from habitable.clock import HybridLogicalClock
 from habitable.errors import HabitableError
+from habitable.evidence import CustodyLog
 from habitable.model import CaseDocument
 from habitable.packet import PACKET_VERSION, _write_signature, build_packet
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
-from habitable.verify import verify_packet
+from habitable.verify import _verify_v3_timeline, verify_packet
 
 
 def test_timeline_event_separates_occurrence_recording_source_and_recurrence(
@@ -238,6 +240,115 @@ def test_resigned_timeline_tamper_fails_v3_commitment_check(
     assert report.signature_ok and report.custody_ok
     assert not report.ok
     assert any("timeline commitment does not match" in problem for problem in report.problems)
+
+
+def test_v3_verifier_fails_closed_on_malformed_semantics_and_links(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """Exercise each v3 fail-closed boundary without hiding behind the outer signature."""
+    vault = make_vault()
+    _, (_, _, _, summary_id) = _linked_case(vault, make_jpeg(), local_tsa)
+    out = tmp_path / "malformed-source"
+    build_packet(vault, out, generated_at="2026-01-06T00:00:00Z", make_pdf=False)
+    base = json.loads((out / "bundle.json").read_text(encoding="utf-8"))
+    custody = CustodyLog.from_records(base["custody_proof"]["entries"])
+    index = next(i for i, entry in enumerate(base["timeline"]) if entry["entry_id"] == summary_id)
+
+    def event_problem(expected: str, **updates: object) -> None:
+        bundle = copy.deepcopy(base)
+        bundle["timeline"][index].update(updates)
+        assert expected in "\n".join(_verify_v3_timeline(bundle, custody))
+
+    event_problem("timeline_schema must be 2", timeline_schema=9)
+    event_problem("entry_id must be a string", entry_id=7)
+    event_problem("must not reuse legacy field", kind="observed", hlc="opaque")
+    event_problem("unknown event_type", event_type="free_text")
+    event_problem("Other event is missing", event_type="other", other_label="")
+    event_problem("other_label is only valid", other_label="custom")
+    event_problem("unknown source", source="rumor")
+    event_problem("source unspecified", source="unspecified")
+    event_problem("Other source is missing", source="other", source_detail="")
+    event_problem("source_detail is only valid", source_detail="extra")
+    event_problem("occurred_at may be empty", occurred_at="")
+    event_problem("occurred_at is not normalized", occurred_at="2026-01-03T00:00:00-08:00")
+    event_problem("occurred_at is not a valid", occurred_at="not-a-date")
+    event_problem("recorded_at must be", recorded_at="not-utc")
+    event_problem("recorded_at must be", recorded_at="not-a-dateZ")
+    event_problem("text must not be empty", text=" ")
+    event_problem("integrity.algorithm", integrity={})
+    event_problem(
+        "legacy migration must carry",
+        migration={"from_case_timeline_schema": 4},
+    )
+    event_problem("migration.from_case_timeline_schema", migration={"from_case_timeline_schema": 4})
+
+    def links_problem(expected: str, links: object) -> None:
+        event_problem(expected, links=links)
+
+    links_problem("capture_ids must be an array", {"capture_ids": "bad"})
+    links_problem(
+        "capture_ids must not contain duplicates",
+        {
+            "capture_ids": ["same", "same"],
+            "notice_entry_id": "",
+            "receipt_entry_id": "",
+            "response_entry_id": "",
+        },
+    )
+    links_problem(
+        "notice_entry_id must be a string",
+        {
+            "capture_ids": [7],
+            "notice_entry_id": 7,
+            "receipt_entry_id": 7,
+            "response_entry_id": 7,
+        },
+    )
+
+    malformed = copy.deepcopy(base)
+    malformed["timeline"].append("bad")
+    assert "malformed packet-v3 timeline entry" in _verify_v3_timeline(malformed, custody)
+
+    duplicate = copy.deepcopy(base)
+    duplicate["timeline"].append(copy.deepcopy(duplicate["timeline"][index]))
+    duplicate["appendix"]["timeline_count"] += 1
+    duplicate["appendix"]["custody_bound_timeline_count"] += 1
+    assert "packet-v3 timeline contains duplicate" in "\n".join(
+        _verify_v3_timeline(duplicate, custody)
+    )
+
+    counts = copy.deepcopy(base)
+    counts["appendix"]["timeline_count"] = 0
+    counts["appendix"]["custody_bound_timeline_count"] = 0
+    assert "appendix.timeline_count" in "\n".join(_verify_v3_timeline(counts, custody))
+
+    missing_issue = copy.deepcopy(base)
+    missing_issue["timeline"][index]["issue_id"] = "not-in-packet"
+    issue_problems = "\n".join(_verify_v3_timeline(missing_issue, custody))
+    assert "issue_id is not present" in issue_problems
+    assert "linked capture" in issue_problems
+
+    missing_link = copy.deepcopy(base)
+    missing_link["timeline"][index]["links"]["notice_entry_id"] = "missing"
+    assert "points to a missing timeline event" in "\n".join(
+        _verify_v3_timeline(missing_link, custody)
+    )
+
+    wrong_issue = copy.deepcopy(base)
+    notice_id = wrong_issue["timeline"][index]["links"]["notice_entry_id"]
+    notice = next(entry for entry in wrong_issue["timeline"] if entry["entry_id"] == notice_id)
+    notice["issue_id"] = "i2"
+    wrong_issue["issues"].append({"issue_id": "i2"})
+    assert "points to another issue" in "\n".join(_verify_v3_timeline(wrong_issue, custody))
+
+    wrong_type = copy.deepcopy(base)
+    notice_id = wrong_type["timeline"][index]["links"]["notice_entry_id"]
+    notice = next(entry for entry in wrong_type["timeline"] if entry["entry_id"] == notice_id)
+    notice["event_type"] = "repair"
+    assert "does not point to a notice_sent" in "\n".join(_verify_v3_timeline(wrong_type, custody))
 
 
 def test_spanish_timeline_rendering_uses_same_signed_fields(
