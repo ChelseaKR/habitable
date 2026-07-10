@@ -8,14 +8,15 @@
 > this resolves is the narrower, answerable research question: is either toolchain viable *today*,
 > and if not, what specifically is blocking it.
 
-**Bottom line.** Briefcase's Android backend is mechanically proven — a real, installable debug APK
-was built end-to-end in this spike. But packaging *habitable itself* (not a hello-world) is blocked
-on both platforms by one dependency: `cryptography` has no official iOS or Android wheels, and the
-one community-maintained Android build available (via Chaquopy) is a version below this project's
-floor and two Python versions behind its `requires-python`. Tauri is not viable at all for this app's
-Python engine on mobile — its mobile Python story (RustPython) cannot load any of habitable's three
-compiled dependencies. Recommendation: **do not build native mobile now**; re-check the one blocking
-signal (`cryptography` mobile wheels) periodically rather than re-running the full spike.
+**Bottom line.** This spike records a successful local Briefcase hello-world Android build, but the
+APK, build environment, and a reproducible recipe are not committed, so that observation is not an
+independent product-build proof. Packaging *habitable itself* has no off-the-shelf path today:
+`cryptography` has no official iOS or Android wheels, and the available Chaquopy Android build is
+below this project's version and Python floors. A maintained, reviewed cross-build remains possible
+but is substantial trust-critical work. The current Tauri community-plugin path is unsuitable:
+mobile uses RustPython, which cannot load Habitable's CPython extensions. Recommendation: **do not
+schedule a native product build now**; re-check mobile-wheel availability or a maintained cross-build
+before repeating the toolchain work.
 
 ---
 
@@ -126,12 +127,12 @@ bug — it's downstream of `cryptography` and Chaquopy simply not having built a
   project material describes it as "a full Python 3 environment entirely in Rust... no compatibility
   hacks" — i.e., it does not implement the CPython C-API/ABI that compiled extensions are built
   against. There is no path from "RustPython runs on mobile" to "RustPython can `import cryptography`."
-- **The alternative — a sidecar process running real CPython — is a dead end on iOS specifically.**
-  Tauri's sidecar mechanism (bundling and spawning an external binary) is a normal pattern on desktop,
-  but Apple's App Store Review Guidelines (2.5.2 / 4.7) prohibit apps from downloading or executing
-  separate executable code outside the app's own signed binary — exactly what spawning a bundled
-  CPython interpreter as a child process would do. It is not part of what any current Tauri mobile
-  tooling supports.
+- **A real-CPython sidecar is not a documented Tauri-mobile path.** Tauri documents sidecars for
+  bundled external binaries, but the community Python plugin does not currently support a CPython
+  backend on mobile. iOS also imposes process/runtime constraints and App Review guideline 2.5.2
+  requires app code to remain self-contained. Whether a particular embedded-runtime architecture
+  passes review is a platform/legal question; this spike does not treat the guideline as a blanket
+  legal conclusion.
 - **Conclusion:** there is no currently-documented route for Tauri to carry habitable's actual engine
   (`crypto.py`, `capture.py`, `vault.py`, `pdf.py`, `exif.py`) onto Android or iOS without either (a)
   rewriting the trust-critical crypto/evidence core in Rust, or (b) waiting for PyO3-for-mobile
@@ -193,27 +194,29 @@ build exists via Chaquopy; iOS has nothing newer than the 2021, pre-Rust 3.4.8).
 
 ### Tauri: not attempted
 
-`rustc`/`cargo` are not installed in this sandbox, and — more importantly — §2 already establishes a
-hard architectural blocker that a hello-world build would not resolve: RustPython (the only
-interpreter Tauri's mobile plugin supports today) cannot load any of habitable's compiled
-dependencies, and the sidecar alternative is against iOS App Store policy. Spending the build budget
-proving "Tauri can render an empty webview on a phone" would not move this decision, so effort went
+`rustc`/`cargo` are not installed in this sandbox, and — more importantly — §2 establishes that the
+documented community-plugin path would not resolve the app's engine: RustPython (the only interpreter
+that plugin supports on mobile today) cannot load Habitable's compiled dependencies, while a mobile
+CPython backend is not implemented there. Spending the build budget proving "Tauri can render an
+empty webview on a phone" would not move this decision, so effort went
 into the Briefcase POC instead, which was the option the research indicated might actually work.
 
 ---
 
 ## 4. Recommendation
 
-1. **Rule out Tauri** for carrying habitable's Python engine to mobile. It would require rewriting
+1. **Do not use the current Tauri community-plugin path** for carrying Habitable's Python engine to
+   mobile. It would require rewriting
    the crypto/evidence/PDF core in Rust (or JS) — a rewrite of the exact trust-critical code this
    project is built to keep simple and auditable — which is a different, much larger project, not a
    packaging choice.
-2. **Briefcase is the right toolchain if/when this is built**, and this spike proved its Android
-   pipeline works mechanically. But it is **not buildable for habitable today**, on either platform,
-   because of one dependency: `cryptography` has no official mobile wheels, and the one
+2. **Briefcase is the leading toolchain to re-evaluate if this is built.** This spike records a
+   successful local Android hello-world build, not a reproducible Habitable build. Habitable has no
+   off-the-shelf build today because `cryptography` has no official mobile wheels, and the one
    community-maintained fallback (Chaquopy, Android-only) is capped at a version (42.0.8) below this
    project's own `cryptography>=44` floor and a Python target (3.13) behind its `requires-python
-   >=3.14`. Downgrading either pin to force a build would mean shipping years-old cryptography code
+   >=3.14`. A project-maintained cross-build is technically possible but would itself need security,
+   reproducibility, and update review. Downgrading either pin to force a build would mean shipping old cryptography code
    in a tool whose entire premise is tamper-evidence against a "landlord who retaliates" — not an
    acceptable trade for a spike.
 3. **Do not schedule native mobile build work now.** The gate isn't which packaging tool to use —
@@ -230,9 +233,9 @@ into the Briefcase POC instead, which was the option the research indicated migh
 
    If either turns green, the Briefcase Android POC in this spike (§3) is the starting point, not a
    from-scratch effort.
-5. **Until then, Add-to-Home-Screen PWA remains the correct, supported mobile path** — no change to
-   `docs/mobile.md`'s existing guidance there, just to its forward-looking paragraph (updated
-   alongside this brief).
+5. **Until then, there is no supported phone installation path.** The installable PWA shell is useful
+   for same-device desktop evaluation, but a phone cannot use it without the Python engine running
+   safely on that phone. This matches the explicit boundary in `docs/mobile.md`.
 
 ---
 

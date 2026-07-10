@@ -96,12 +96,12 @@ describe phone support as **planned**, not shipped, and use synthetic data only.
 **Packaging-toolchain spike (2026-07-09).** A concrete spike — not just design notes — compared
 Briefcase and Tauri against this app's real dependency stack and attempted a proof-of-concept build;
 see [`docs/research/native-mobile-packaging-spike.md`](research/native-mobile-packaging-spike.md).
-Short version: **Tauri is ruled out** — its mobile Python runtime (RustPython) cannot load any of
-`cryptography`, `pillow`, or the rest of this project's compiled dependencies, and the alternative
-(a bundled real-CPython sidecar) is against iOS App Store policy. **Briefcase's Android pipeline was
-proven mechanically** (a real hello-world APK built end-to-end in the spike), but packaging habitable
-itself is currently blocked on both platforms by one dependency: `cryptography` has no official iOS
-or Android wheels, and the only fallback (Chaquopy's Android-only wheel repo) is capped at a version
-and Python target below what this project already requires. The re-check trigger going forward is
-narrow and cheap — whether `cryptography` ships current mobile wheels — not a reason to re-run the
-whole spike.
+Short version: the current Tauri community-plugin path is unsuitable — mobile currently means
+RustPython, which cannot load `cryptography`, `pillow`, or other CPython extensions. A CPython
+backend or sidecar is not a documented, supported Tauri-mobile path and would need separate platform
+and App Review validation. The spike reports a successful Briefcase hello-world Android build, but
+does not commit the APK or a reproducible build recipe. Packaging habitable itself has no
+off-the-shelf path today: `cryptography` has no official iOS or Android wheels, and the Chaquopy
+Android fallback is below this project's version and Python floors. A maintained, reviewed
+cross-build could change that; absent one, the cheap re-check is whether a current mobile wheel
+appears. None of this changes the current boundary: there is no supported phone installation path.

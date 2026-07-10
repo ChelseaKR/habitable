@@ -202,20 +202,23 @@ Packet-integrity claims live here; this work gets the most scrutiny.
 
 ### C. Apps, sync & platform
 
-- *Shipped:* CLI; loopback app server; installable PWA (manifest, maskable/Apple icons,
-  offline service worker); offline-first CRDT sync over a shared directory or the optional
+- *Shipped:* CLI; loopback app server; installable PWA shell assets (manifest,
+  maskable/Apple icons, offline service worker) for same-device desktop evaluation;
+  offline-first CRDT sync over a shared directory or the optional
   ciphertext-only relay; minimal jurisdiction packet templates.
 - **Native mobile packaging.** *Objective:* a home-screen app that carries the engine
   on-device (it's local-first — not a wrapper around a hosted site). *Exit:* a spike with
   BeeWare/Briefcase or Tauri embedding the loopback API the PWA already speaks; then a
   documented build. *Note:* signed App Store / Play Store binaries need platform accounts
-  and keys and may remain out of scope; **Add-to-Home-Screen PWA install works today.**
+  and keys and may remain out of scope. The PWA shell can install in supported desktop
+  browsers, but it is not a supported phone path because the Python engine is not on-device.
   *Spike done (2026-07-09):* see
   [`docs/research/native-mobile-packaging-spike.md`](docs/research/native-mobile-packaging-spike.md) —
-  Tauri ruled out (its mobile Python runtime can't load `cryptography`/`pillow`); Briefcase's
-  Android pipeline proven mechanically (a hello-world APK built end-to-end), but packaging
-  habitable itself is blocked on both platforms until `cryptography` ships current iOS/Android
-  wheels. The build itself remains not-shipped; this closes only the "spike" exit criterion.
+  the current Tauri community-plugin path is unsuitable (its mobile RustPython runtime cannot
+  load `cryptography`/`pillow`); the spike reports an end-to-end Briefcase hello-world Android
+  build, but no APK or reproducible build recipe is committed. Packaging habitable has no
+  off-the-shelf path until current `cryptography` mobile wheels exist or the project takes on a
+  reviewed cross-build. The product build remains not shipped; this closes only the research spike.
 - **Desktop packaging.** *Objective:* a one-click desktop app for organizers. *Exit:* a
   packaged build (e.g. Briefcase/Tauri) that launches the app with no terminal.
 - **Multi-device & key lifecycle UX.** *Objective:* a non-technical organizer can add a
