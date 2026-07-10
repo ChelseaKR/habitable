@@ -70,6 +70,7 @@
 | R-08 | Structured, AT-/script-friendly verifier output | `habitable verify --json` emits a full structured report (overall + per-item verdicts, notes); covered by `tests/test_cli_demo.py`. |
 | R-31 | Assert the TSA trust chain from the CLI | `habitable verify --trusted-cert PEM` (repeatable) anchors each timestamp to a trusted root (the verifier already supported `trusted_certs`; this exposes it); covered by `tests/test_packet_verify.py`. |
 | R-16 | Multiple-TSA redundancy by default | Capture stamps every configured authority (`extra_tsas`); the primary token stays in `timestamp`, independent tokens go in `additional_timestamps`; the verifier accepts an item if ≥1 authority verifies and reports `verified_authorities`. Backward-compatible (additive; old single-authority packets unchanged). Covered by `tests/test_packet_verify.py`. |
+| R-35 | Minimal-disclosure export scoping, defensible against over-broad discovery | Each packet now self-documents its scope: `scope_statement()` in `disclosure.py` (single localized EN/ES source) feeds a `scope.statement` + `scope.exclusions` object in the signed `bundle.json` (schema updated) and the English `disclosures` list, and renders — localized — in `packet.html`/`packet.pdf`. New standalone doc `docs/legal/minimal-disclosure.md` (what a packet contains/omits, why minimal, responding to over-broad discovery), linked from `docs/legal/README.md` and the *Discovery caution* section of `foundation-guidance.md`. Issue-scoped exports already excluded other issues' captures and timeline; now asserted in tests. Covered by `tests/test_packet_verify.py`. |
 | BUG-01 | Verifier-subset cross-Python portability | Named-tuple `except` form + regression guard test (see above). |
 
 ## Done (✅) — in-app status legibility & a11y copy (third pass)
@@ -115,7 +116,6 @@ App/library/UX work, not safe to ship unvalidated here. Grouped by the persona s
 - **Organizer/sync:** R-21, E-11, E-12.
 - **Recipient verification & packet:** R-25→**E-15** (zero-install recipient verifier).
 - **Jurisdiction/recipient rendering:** R-28, E-16, E-17.
-- **Disclosure scoping:** R-35.
 - **Localization/RTL code:** R-48.
 - **Platform/interop/relay code:** E-07, E-08, E-09, E-22, E-23.
 - **Capture-time alt text:** E-03.

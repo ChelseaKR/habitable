@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-__all__ = ["ProofStatement", "proof_statement"]
+__all__ = ["ProofStatement", "ScopeStatement", "proof_statement", "scope_statement"]
 
 _DEFAULT_LANG = "en"
 
@@ -129,3 +129,82 @@ _STATEMENTS: dict[str, ProofStatement] = {
 def proof_statement(lang: str) -> ProofStatement:
     """Return the proof statement for ``lang``, falling back to English."""
     return _STATEMENTS.get(lang, _STATEMENTS[_DEFAULT_LANG])
+
+
+@dataclass(frozen=True, slots=True)
+class ScopeStatement:
+    """The localized 'what this export covers, and what it deliberately omits' text.
+
+    A produced packet is scoped — to one issue or one unit — so it can be handed over
+    without dumping a union's whole vault. This states that scope, and the categories
+    of vault content it excludes, so an over-broad discovery demand meets an on-the-record
+    minimal-disclosure boundary (item R-35). See ``docs/legal/minimal-disclosure.md``.
+    """
+
+    heading: str
+    statement: str
+    exclusions: tuple[str, ...]
+
+    def lines(self) -> tuple[str, ...]:
+        """The scope statement followed by its exclusions, for list rendering."""
+        return (self.statement, *self.exclusions)
+
+
+def scope_statement(
+    lang: str, *, scope_type: str, issue_id: str = "", since: str = ""
+) -> ScopeStatement:
+    """Return the localized scope statement for a packet, falling back to English.
+
+    ``scope_type`` is ``"issue"`` (a single issue, named by ``issue_id``) or ``"unit"``
+    (the whole unit). ``since`` — if set — is the lower bound on capture time; items
+    captured before it are excluded and that exclusion is stated explicitly.
+    """
+    resolved = lang if lang in _SCOPE else _DEFAULT_LANG
+    strings = _SCOPE[resolved]
+    is_issue_scope = scope_type == "issue" and issue_id
+    statement = strings["issue"].format(issue_id=issue_id) if is_issue_scope else strings["unit"]
+    exclusions: list[str] = []
+    if since:
+        exclusions.append(strings["since"].format(since=since))
+    # Only state that vault contents "outside this scope" are withheld when the scope
+    # is actually partial (a single issue, or a since bound). A whole-unit export with
+    # no since filter includes everything, so there is nothing to exclude (R-35 fix).
+    if is_issue_scope or since:
+        exclusions.append(strings["outside"])
+    return ScopeStatement(
+        heading=strings["heading"], statement=statement, exclusions=tuple(exclusions)
+    )
+
+
+_SCOPE: dict[str, dict[str, str]] = {
+    "en": {
+        "heading": "Scope of this export",
+        "issue": (
+            "Scope: issue {issue_id} only — captures, timeline entries, and custody "
+            "records from other issues in this vault are not included."
+        ),
+        "unit": "Scope: the whole unit — every issue recorded in this vault is included.",
+        "since": "Items captured before {since} are not included.",
+        "outside": (
+            "Vault contents outside this scope (other issues, drafts, and sync or custody "
+            "records not pertaining to the included items) are not exported."
+        ),
+    },
+    "es": {
+        "heading": "Alcance de esta exportación",
+        "issue": (
+            "Alcance: solo el problema {issue_id} — las capturas, las entradas de la "
+            "cronología y los registros de custodia de otros problemas de esta bóveda no "
+            "se incluyen."
+        ),
+        "unit": (
+            "Alcance: la unidad completa — se incluye cada problema registrado en esta bóveda."
+        ),
+        "since": "Los elementos capturados antes de {since} no se incluyen.",
+        "outside": (
+            "El contenido de la bóveda fuera de este alcance (otros problemas, borradores y "
+            "registros de sincronización o custodia que no correspondan a los elementos "
+            "incluidos) no se exporta."
+        ),
+    },
+}
