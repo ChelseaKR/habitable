@@ -343,12 +343,18 @@ def test_logs_never_leak_secrets_or_content(
 
 
 def _call(
-    url: str, method: str, path: str, body: dict[str, object] | None = None
+    url: str,
+    method: str,
+    path: str,
+    body: dict[str, object] | None = None,
+    *,
+    token: str = "",
 ) -> tuple[int, dict[str, object]]:
     data = json.dumps(body).encode() if body is not None else None
-    request = urllib.request.Request(
-        f"{url}{path}", data=data, method=method, headers={"Content-Type": "application/json"}
-    )
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["X-Habitable-Token"] = token
+    request = urllib.request.Request(f"{url}{path}", data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=5) as response:
             return response.status, json.loads(response.read())
@@ -383,7 +389,8 @@ def test_appserver_logs_redacted_routes_without_bodies(
     thread.start()
     url = f"http://127.0.0.1:{port}"
     try:
-        _status, issue = _call(url, "POST", "/api/issues", {"category": "mold"})
+        token = server.session_token
+        _status, issue = _call(url, "POST", "/api/issues", {"category": "mold"}, token=token)
         issue_id = str(issue["issue_id"])
         # The issue id is a sentinel: it must never appear in a log line.
         photo = make_jpeg(name="SENTINEL-APP-FILE.jpg")
@@ -393,14 +400,16 @@ def test_appserver_logs_redacted_routes_without_bodies(
             "POST",
             f"/api/issues/{issue_id}/timeline",
             {"kind": "observed", "text": "SENTINEL-APP-TIMELINE"},
+            token=token,
         )
         _call(
             url,
             "POST",
             "/api/capture",
             {"issue_id": issue_id, "filename": "SENTINEL-APP-FILE.jpg", "media_b64": media_b64},
+            token=token,
         )
-        _call(url, "GET", "/api/status")
+        _call(url, "GET", "/api/status", token=token)
         lines = _wait_for_lines(buffer, 4)
     finally:
         server.shutdown()
