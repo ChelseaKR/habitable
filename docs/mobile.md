@@ -92,3 +92,16 @@ BeeWare/Briefcase, Tauri with an embedded runtime, or another on-device package
 may satisfy those requirements. Signed App Store and Play Store distribution
 also requires platform accounts and signing keys. Until a build meets the gates,
 describe phone support as **planned**, not shipped, and use synthetic data only.
+
+**Packaging-toolchain spike (2026-07-09).** A concrete spike — not just design notes — compared
+Briefcase and Tauri against this app's real dependency stack and attempted a proof-of-concept build;
+see [`docs/research/native-mobile-packaging-spike.md`](research/native-mobile-packaging-spike.md).
+Short version: **Tauri is ruled out** — its mobile Python runtime (RustPython) cannot load any of
+`cryptography`, `pillow`, or the rest of this project's compiled dependencies, and the alternative
+(a bundled real-CPython sidecar) is against iOS App Store policy. **Briefcase's Android pipeline was
+proven mechanically** (a real hello-world APK built end-to-end in the spike), but packaging habitable
+itself is currently blocked on both platforms by one dependency: `cryptography` has no official iOS
+or Android wheels, and the only fallback (Chaquopy's Android-only wheel repo) is capped at a version
+and Python target below what this project already requires. The re-check trigger going forward is
+narrow and cheap — whether `cryptography` ships current mobile wheels — not a reason to re-run the
+whole spike.

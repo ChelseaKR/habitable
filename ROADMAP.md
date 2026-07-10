@@ -210,6 +210,12 @@ Packet-integrity claims live here; this work gets the most scrutiny.
   BeeWare/Briefcase or Tauri embedding the loopback API the PWA already speaks; then a
   documented build. *Note:* signed App Store / Play Store binaries need platform accounts
   and keys and may remain out of scope; **Add-to-Home-Screen PWA install works today.**
+  *Spike done (2026-07-09):* see
+  [`docs/research/native-mobile-packaging-spike.md`](docs/research/native-mobile-packaging-spike.md) —
+  Tauri ruled out (its mobile Python runtime can't load `cryptography`/`pillow`); Briefcase's
+  Android pipeline proven mechanically (a hello-world APK built end-to-end), but packaging
+  habitable itself is blocked on both platforms until `cryptography` ships current iOS/Android
+  wheels. The build itself remains not-shipped; this closes only the "spike" exit criterion.
 - **Desktop packaging.** *Objective:* a one-click desktop app for organizers. *Exit:* a
   packaged build (e.g. Briefcase/Tauri) that launches the app with no terminal.
 - **Multi-device & key lifecycle UX.** *Objective:* a non-technical organizer can add a
