@@ -145,8 +145,12 @@ Packet-integrity claims live here; this work gets the most scrutiny.
 - **Signed releases + build provenance (SLSA).** *Objective:* a downloader can verify a
   release was built from this source. *Exit:* tagged releases ship signatures + provenance
   attestations, documented in `docs/`.
-- **Reproducible builds.** *Objective:* the same source yields the same artifacts. *Exit:*
-  a documented, verified reproducible build of the wheel + relay image.
+- *Shipped (partial):* **Reproducible wheel builds.** *Objective:* the same source yields
+  the same artifacts. `make repro` / `scripts/check_reproducible_build.py` builds the wheel
+  and sdist twice from independent clean source copies with a normalized
+  `SOURCE_DATE_EPOCH`/`PYTHONHASHSEED` and fails on any byte difference; the `release`
+  workflow runs it as a release-blocking gate (see `docs/releasing.md`). **Still open:** the
+  relay container image is not yet covered by the same byte-identical check.
 - **Independent security & cryptographic review.** *Objective:* an outside expert audits
   the crypto (vault, sealed-box sync, custody commitments) and the verifier. *Trigger:*
   before v0.5/beta and a precondition of v1.0; findings remediated or formally accepted in
