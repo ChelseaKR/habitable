@@ -72,6 +72,7 @@
 | R-16 | Multiple-TSA redundancy by default | Capture stamps every configured authority (`extra_tsas`); the primary token stays in `timestamp`, independent tokens go in `additional_timestamps`; the verifier accepts an item if ≥1 authority verifies and reports `verified_authorities`. Backward-compatible (additive; old single-authority packets unchanged). Covered by `tests/test_packet_verify.py`. |
 | R-35 | Minimal-disclosure export scoping, defensible against over-broad discovery | Each packet now self-documents its scope: `scope_statement()` in `disclosure.py` (single localized EN/ES source) feeds a `scope.statement` + `scope.exclusions` object in the signed `bundle.json` (schema updated) and the English `disclosures` list, and renders — localized — in `packet.html`/`packet.pdf`. New standalone doc `docs/legal/minimal-disclosure.md` (what a packet contains/omits, why minimal, responding to over-broad discovery), linked from `docs/legal/README.md` and the *Discovery caution* section of `foundation-guidance.md`. Issue-scoped exports already excluded other issues' captures and timeline; now asserted in tests. Covered by `tests/test_packet_verify.py`. |
 | BUG-01 | Verifier-subset cross-Python portability | Named-tuple `except` form + regression guard test (see above). |
+| R-04 / R-41 | Plain-language & cognitive review of the in-app copy + setup guide | Grade-6–8 plain-language pass across `app/i18n/en.json`, `app/i18n/es.json`, and `docs/setup-guide.md`: jargon ("Device fingerprint" → "Device ID", "Chain of custody" → "Evidence trail", "Awaiting timestamp" → "Waiting for timestamp", "Content hash" → "Content fingerprint") replaced or glossed with in-context help wired via `aria-describedby`; the Spanish de-lawyered and its timestamp term (`sello de tiempo`) partially made consistent. Honest-limits strings kept at full strength; EN/ES key + placeholder + plural-category parity held (`tests/test_app_i18n.py`, `scripts/check_i18n_parity.py`). Dated review record: `docs/audits/plain-language-review.md`. **Left:** native-speaker ES review, a stressed-user cognitive walk-through, and finishing the `resolve_*` terminology fix alongside its guard test. |
 
 ## Done (✅) — in-app status legibility & a11y copy (third pass)
 
@@ -99,7 +100,7 @@ The canonical text/contract now exists; wiring it into the app needs further wor
 
 | ID | Item | What exists now / what's left |
 | --- | --- | --- |
-| R-04 | Plain-language Spanish ("not lawyerly") | Human-Spanish quick-start (`quickstart-es.md`) **and** the localized packet disclosure (ES) now shipped; **left:** the in-app `app/i18n/es.json` copy pass. |
+| R-04 | Plain-language Spanish ("not lawyerly") | **Done — moved to the ✅ table above.** Human-Spanish quick-start (`quickstart-es.md`), the localized packet disclosure (ES), and now the in-app `app/i18n/es.json` copy pass have all shipped (see `docs/audits/plain-language-review.md`). |
 | R-23 | Custodial recovery-blob storage without a honeypot | Practices shipped in `key-custody-playbook.md`; **left:** any helper tooling. |
 | R-50 | Partner/reviewer vetting guidance | Addressed in the red-team doc (A11); **left:** a short standalone note if wanted. |
 
@@ -107,8 +108,7 @@ The canonical text/contract now exists; wiring it into the app needs further wor
 
 App/library/UX work, not safe to ship unvalidated here. Grouped by the persona study's themes.
 
-- **Status legibility & a11y copy:** R-01, R-02, R-07, R-10, R-17 **done in-app** (see the ✅
-  section above); **R-41** (full reading-level pass + in-app jargon glossary) still deferred.
+- **Status legibility & a11y copy:** R-01, R-02, R-07, R-10, R-17, and R-41 are now done in-app (see the ✅ sections above).
 - **Tenant capture/recurrence/storage:** R-03, R-05, R-18, R-19, E-01, E-02.
 - **Safety / shared-device / duress:** R-12, R-13, R-14, R-15, R-49, E-06.
 - **Recovery & key lifecycle UX:** R-09, R-11, R-24, E-05, E-13.

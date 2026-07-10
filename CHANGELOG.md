@@ -50,6 +50,23 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   Guard test `test_access_log_never_leaks_room_id_key_or_payload` reinforces the
   no-leak invariant.
 
+### Changed
+
+- **Plain-language & cognitive review of the in-app copy and setup guide (R-41 / R-04).**
+  A reviewed plain-language pass (target ~grade 6–8) over `app/i18n/en.json`,
+  `app/i18n/es.json`, and `docs/setup-guide.md`. Jargon was replaced or glossed:
+  "Device fingerprint" → "Device ID", "Chain of custody" → "Evidence trail",
+  "Awaiting timestamp" → "Waiting for timestamp", "Content hash" → "Content
+  fingerprint". Two in-context help strings were added (a practice/untrusted-timestamp
+  warning and a sealed-originals note), wired via `aria-describedby`. (`resolve_deferred`
+  / `resolve_help` / `msg_resolved` were left as-is on this pass — a concurrently
+  merged change already made them plain, and `capture_awaiting_reassure`'s
+  guard-tested reference to that exact button text stays intact.) The Spanish was
+  de-lawyered; the honest-limits
+  strings (`alpha_*`, `verify_*`, `custody_*`, `capture_timestamped_no`,
+  `footer_note`) were left at full strength, and EN/ES key + placeholder + plural
+  parity is unchanged. Dated review record: `docs/audits/plain-language-review.md`.
+
 ### Fixed
 
 - **Unlocked app server is loopback-only.** `habitable app` now rejects LAN,

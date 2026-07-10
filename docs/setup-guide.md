@@ -1,11 +1,12 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Set up your union in an afternoon
 
-A practical, no-jargon walkthrough for an organizer. By the end you'll have an
-encrypted case on your own device, evidence captured with trusted timestamps, a
-second organizer synced peer-to-peer, and a verified packet you can hand to a
-court or inspector. **Nothing leaves your devices unencrypted, and there is no
-account to create.**
+A practical, no-jargon walkthrough for an organizer. By the end you'll have four
+things: an encrypted case on your own device; photos captured with **trusted
+timestamps** (independent proof of *when* each photo was taken); a second
+organizer synced device to device; and a verified **packet** — the folder of
+evidence you hand to a court or inspector. **Nothing leaves your devices
+unencrypted, and there is no account to create.**
 
 > **Alpha software.** habitable works end to end, but it is not yet proven for
 > real legal matters. Practice with the steps below before relying on it, and
@@ -31,9 +32,9 @@ $ uv run habitable --help
 $ uv run habitable demo
 ```
 
-This fabricates a couple of photos, captures them as evidence, builds a packet
-(with location stripped from the shared copies), and verifies it — all offline,
-with no real data. When you see `packet intact`, the toolchain is healthy.
+This makes up a couple of photos, captures them as evidence, builds a packet
+(with location removed from the shared copies), and checks it — all offline, with
+no real data. When you see `packet intact`, the tool is working.
 
 ## 2. Create a case (10 min)
 
@@ -43,8 +44,13 @@ $ uv run habitable init ./case-4B --case bldg-12 --unit 4B
 $ uv run habitable id --vault ./case-4B               # note your fingerprint + public-id
 ```
 
-Open `./case-4B/config.toml` to set your jurisdiction wording (`[packet_template]`)
-and confirm sharing defaults (location is stripped from shared copies by default).
+Two IDs print here. Your **fingerprint** is a short code for this device — the
+same value the app shows under *Device ID*. Your **public-id** is the address
+another organizer uses to sync with you. Write both down.
+
+Open `./case-4B/config.toml` to set the wording for your area (`[packet_template]`)
+and confirm the sharing defaults (location is removed from shared copies by
+default).
 
 ## 3. Document an issue (30 min)
 
@@ -55,8 +61,9 @@ $ uv run habitable timeline --vault ./case-4B --issue <issue-id> --kind sent_req
 $ uv run habitable status   --vault ./case-4B
 ```
 
-Offline is fine: capture seals and hashes instantly and queues the trusted
-timestamp. When you're back online, run `habitable resolve --vault ./case-4B`.
+Offline is fine. Each capture is sealed and fingerprinted right away, and the
+trusted timestamp is queued for when you have a connection. Once you're back
+online, run `habitable resolve --vault ./case-4B` to add the waiting timestamps.
 
 Prefer a screen? Run the local app (accessible, English/Español) and use a laptop
 or desktop browser on the same machine. The alpha has no supported phone package;
@@ -68,19 +75,21 @@ $ uv run habitable app --vault ./case-4B
 
 ## 4. Sync with another organizer (20 min)
 
-Each organizer runs `habitable id` and shares their **public-id** (and verifies
-the **fingerprint** out loud — by phone, in person). Then either sync over a
-shared folder (USB/cloud-drive) or via a relay.
+Each organizer runs `habitable id` and shares their **public-id**. First, read
+your **fingerprints** to each other another way — by phone or in person — and
+check that they match. Then sync one of two ways: over a shared folder (USB or a
+cloud drive), or through a relay.
 
 ```console
 # Folder transport (no server):
 $ uv run habitable sync --vault ./case-4B --peer <their-public-id> --channel 4B-room --dir /path/to/shared
-# Or run your own ciphertext-only relay (sees nothing but ciphertext + metadata):
+# Or run your own relay. It only ever sees scrambled data — never your photos or text:
 $ uv run habitable relay --host 0.0.0.0 --port 8787
 $ uv run habitable sync --vault ./case-4B --peer <their-public-id> --channel 4B-room --relay http://<host>:8787
 ```
 
-Both sides converge with no lost edits. The relay can read nothing.
+Both sides end up with the same case, and no edits are lost. The relay can read
+nothing.
 
 ## 5. Export and verify a packet (15 min)
 
@@ -97,9 +106,11 @@ sealed originals stay encrypted in your vault.
 
 ## Good habits
 
-- Keep an **encrypted backup** of each vault and a recorded recovery passphrase.
-- Verify peer **fingerprints** out of band before syncing.
-- Re-export and re-verify before any filing; the packet format and verification
-  protocol are versioned so old packets keep verifying.
+- Keep an **encrypted backup** of each vault, and write down the recovery
+  passphrase.
+- Check each other's **fingerprint** another way — by phone or in person — before
+  you sync.
+- Re-export and re-verify before any court filing. The packet format and the way
+  it is checked are versioned, so old packets keep verifying.
 - This produces **documentation, not legal advice.** Work with your tenant
   attorney or legal-aid group on what to file and when.

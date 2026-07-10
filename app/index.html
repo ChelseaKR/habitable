@@ -177,10 +177,15 @@
                      capture="environment" required aria-required="true" />
             </div>
             <div class="field field-check">
-              <input type="checkbox" id="cap-devtsa" name="dev_tsa" />
-              <label for="cap-devtsa" data-i18n="field_dev_tsa">Use offline dev
-                timestamp</label>
+              <input type="checkbox" id="cap-devtsa" name="dev_tsa"
+                     aria-describedby="cap-devtsa-help" />
+              <label for="cap-devtsa" data-i18n="field_dev_tsa">Use a practice
+                timestamp (offline testing)</label>
             </div>
+            <p class="muted field-help" id="cap-devtsa-help"
+               data-i18n="field_dev_tsa_help">For trying out the app without internet.
+              A practice timestamp is not trusted and does not prove the time to a
+              court. Leave it off for real evidence.</p>
           </fieldset>
           <button type="submit" class="btn" data-i18n="capture_submit">Capture
             evidence</button>
@@ -224,10 +229,16 @@
               <select id="ex-issue" name="issue_id"></select>
             </div>
             <div class="field field-check">
-              <input type="checkbox" id="ex-originals" name="include_originals" />
-              <label for="ex-originals" data-i18n="field_include_originals">Include sealed
-                originals</label>
+              <input type="checkbox" id="ex-originals" name="include_originals"
+                     aria-describedby="ex-originals-help" />
+              <label for="ex-originals" data-i18n="field_include_originals">Include the
+                sealed original photos</label>
             </div>
+            <p class="muted field-help" id="ex-originals-help"
+               data-i18n="field_include_originals_help">The originals are your
+              full-quality photos, kept locked in your vault. They can still hold
+              location and other hidden details, so include them only when the
+              recipient needs them.</p>
           </fieldset>
           <button type="submit" class="btn" data-i18n="export_submit">Export packet</button>
         </form>
