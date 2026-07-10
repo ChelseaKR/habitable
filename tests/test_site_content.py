@@ -22,7 +22,7 @@ _PAGE_META = {
         "captures, and selective exports in one offline record.",
     ),
     "documentation-checklist": (
-        "Safe Repair Documentation Checklist | Habitable",
+        "Safe Repair Documentation Checklist | Habitable Evidence",
         "Use this safety-first checklist to organize repair photos, notices, responses, and "
         "recurring conditions without posting private tenant data online.",
     ),
@@ -32,7 +32,7 @@ _PAGE_META = {
         "workflows, privacy boundaries, and adoption gates.",
     ),
     "legal-aid-reviewers": (
-        "Legal Aid Review Guide | Habitable Evidence",
+        "Legal Aid Evidence Packet Review | Habitable Evidence",
         "Review Habitable Evidence packet structure, integrity checks, disclosure, accessibility, "
         "and limits with synthetic data before any real-case use.",
     ),
@@ -42,7 +42,7 @@ _PAGE_META = {
         "and integrity records for inspector or code-enforcement review.",
     ),
     "trust-limitations": (
-        "Trust and Limitations | Habitable Evidence",
+        "Trust, Security & Legal Limits | Habitable Evidence",
         "Understand what Habitable Evidence integrity checks can establish, what remains unproven, "
         "and which security, privacy, and legal gates remain open.",
     ),
@@ -173,7 +173,7 @@ def test_content_page_has_unique_consistent_metadata(slug: str) -> None:
 
     assert parser.html_attrs["lang"] == "en"
     assert title == expected_title
-    assert 30 <= len(title) <= 60
+    assert 50 <= len(title) <= 60
     assert named["description"] == expected_description
     assert 120 <= len(named["description"]) <= 160
     assert named["robots"] == "index, follow, max-image-preview:large"
@@ -210,7 +210,11 @@ def test_content_page_uses_only_truthful_article_and_breadcrumb_schema(slug: str
     assert article["description"] == expected_description
     assert article["mainEntityOfPage"] == canonical
     assert article["inLanguage"] == "en"
-    assert article["author"] == "Chelsea Kelly-Reif"
+    assert article["author"] == {
+        "@type": "Person",
+        "name": "Chelsea Kelly-Reif",
+        "url": "https://chelseakr.github.io/",
+    }
     assert date.fromisoformat(article["datePublished"]) <= date.today()
     assert date.fromisoformat(article["dateModified"]) <= date.today()
     assert "review" not in article
@@ -292,6 +296,13 @@ def test_metadata_is_unique_across_content_guides() -> None:
     descriptions = {description for _, description in _PAGE_META.values()}
     assert len(titles) == len(_PAGE_META)
     assert len(descriptions) == len(_PAGE_META)
+
+
+@pytest.mark.parametrize("slug", _PAGE_META)
+def test_inline_emphasis_does_not_join_visible_words(slug: str) -> None:
+    """Closing inline markup must not collapse adjacent words in rendered copy."""
+    html = (_SITE / slug / "index.html").read_text(encoding="utf-8")
+    assert not re.search(r"</(?:strong|em|a|span)>[A-Za-z]", html)
 
 
 def test_public_issue_links_carry_a_visible_privacy_warning() -> None:

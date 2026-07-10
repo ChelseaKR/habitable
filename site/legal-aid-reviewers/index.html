@@ -5,7 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#16424f" />
-    <title>Legal Aid Review Guide | Habitable Evidence</title>
+    <title>Legal Aid Evidence Packet Review | Habitable Evidence</title>
     <meta name="description" content="Review Habitable Evidence packet structure, integrity checks, disclosure, accessibility, and limits with synthetic data before any real-case use." />
     <meta name="robots" content="index, follow, max-image-preview:large" />
     <link rel="canonical" href="https://chelseakr.github.io/habitable/legal-aid-reviewers/" />
@@ -16,12 +16,12 @@
     <meta property="og:locale" content="en_US" />
     <meta property="og:site_name" content="Habitable Evidence" />
     <meta property="og:url" content="https://chelseakr.github.io/habitable/legal-aid-reviewers/" />
-    <meta property="og:title" content="Legal Aid Review Guide | Habitable Evidence" />
+    <meta property="og:title" content="Legal Aid Evidence Packet Review | Habitable Evidence" />
     <meta property="og:description" content="Review Habitable Evidence packet structure, integrity checks, disclosure, accessibility, and limits with synthetic data before any real-case use." />
     <meta property="og:image" content="https://chelseakr.github.io/habitable/img/packet.png" />
     <meta property="og:image:alt" content="A synthetic Habitable Evidence packet with a timeline and evidence appendix." />
     <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="Legal Aid Review Guide | Habitable Evidence" />
+    <meta name="twitter:title" content="Legal Aid Evidence Packet Review | Habitable Evidence" />
     <meta name="twitter:description" content="Review Habitable Evidence packet structure, integrity checks, disclosure, accessibility, and limits with synthetic data before any real-case use." />
     <meta name="twitter:image" content="https://chelseakr.github.io/habitable/img/packet.png" />
 
@@ -37,7 +37,7 @@
             "datePublished": "2026-07-10",
             "dateModified": "2026-07-10",
             "inLanguage": "en",
-            "author": "Chelsea Kelly-Reif",
+            "author": { "@type": "Person", "name": "Chelsea Kelly-Reif", "url": "https://chelseakr.github.io/" },
             "mainEntityOfPage": "https://chelseakr.github.io/habitable/legal-aid-reviewers/",
             "image": "https://chelseakr.github.io/habitable/img/packet.png"
           },
@@ -93,11 +93,11 @@
               <h2 id="cold-h">Begin with a cold review</h2>
               <p>Open the <a href="../sample-packet/packet.html">synthetic HTML packet</a> before reading the implementation docs. A recipient-facing packet should communicate its scope and limitations without requiring source-code knowledge.</p>
               <ul class="question-list">
-                <li><strong>Can you identify the issue and chronology?</strong>Check whether conditions, notices, responses, repair attempts, and recurrence can be distinguished without guessing.</li>
-                <li><strong>Can you identify the source of each statement?</strong>Tenant descriptions, imported records, media, and system-generated integrity information should not blur together.</li>
-                <li><strong>Can you see what was withheld?</strong>The disclosure statement should make the export scope visible, including whether originals or selected metadata were omitted.</li>
-                <li><strong>Can you find the technical appendix?</strong>Hashes, signatures, timestamps, and custody status should be available without overwhelming the narrative.</li>
-                <li><strong>Can you use it with your access needs?</strong>Review HTML semantics, keyboard order, zoom, print behavior, language, and the PDF’s practical reading order.</li>
+                <li><strong>Can you identify the issue and chronology?</strong> Check whether conditions, notices, responses, repair attempts, and recurrence can be distinguished without guessing.</li>
+                <li><strong>Can you identify the source of each statement?</strong> Tenant descriptions, imported records, media, and system-generated integrity information should not blur together.</li>
+                <li><strong>Can you see what was withheld?</strong> The disclosure statement should make the export scope visible, including whether originals or selected metadata were omitted.</li>
+                <li><strong>Can you find the technical appendix?</strong> Hashes, signatures, timestamps, and custody status should be available without overwhelming the narrative.</li>
+                <li><strong>Can you use it with your access needs?</strong> Review HTML semantics, keyboard order, zoom, print behavior, language, and the PDF’s practical reading order.</li>
               </ul>
             </section>
 
@@ -129,12 +129,12 @@
             <section id="workflow" aria-labelledby="workflow-h">
               <h2 id="workflow-h">Map it to an actual intake and review process</h2>
               <ol class="steps">
-                <li><strong>Define the receiving channel.</strong>Decide whether the organization can safely accept a packet, through which system, under what retention policy, and from whom.</li>
-                <li><strong>Quarantine and scan.</strong>Treat transferred files as untrusted input. Use the organization’s ordinary malware, access-control, and records procedures.</li>
-                <li><strong>Verify a copy.</strong>Preserve the received package and run technical checks on a working copy using a documented environment.</li>
-                <li><strong>Interview for context.</strong>Ask who created each record, how and when it was made, what happened before and after, and which materials are missing.</li>
-                <li><strong>Apply local rules independently.</strong>Use the forum’s current law, procedural rules, standing orders, agency requirements, and professional obligations.</li>
-                <li><strong>Record the review decision.</strong>Document limitations, follow-up needs, conflicts, and whether the tool should remain in synthetic evaluation.</li>
+                <li><strong>Define the receiving channel.</strong> Decide whether the organization can safely accept a packet, through which system, under what retention policy, and from whom.</li>
+                <li><strong>Quarantine and scan.</strong> Treat transferred files as untrusted input. Use the organization’s ordinary malware, access-control, and records procedures.</li>
+                <li><strong>Verify a copy.</strong> Preserve the received package and run technical checks on a working copy using a documented environment.</li>
+                <li><strong>Interview for context.</strong> Ask who created each record, how and when it was made, what happened before and after, and which materials are missing.</li>
+                <li><strong>Apply local rules independently.</strong> Use the forum’s current law, procedural rules, standing orders, agency requirements, and professional obligations.</li>
+                <li><strong>Record the review decision.</strong> Document limitations, follow-up needs, conflicts, and whether the tool should remain in synthetic evaluation.</li>
               </ol>
             </section>
 
