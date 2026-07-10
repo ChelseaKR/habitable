@@ -27,14 +27,22 @@ from .capture import capture, resolve_deferred, retimestamp_all
 from .commons import DEFAULT_K, build_commons, summarize_case
 from .config import TSAConfig
 from .crypto import KDF_PROFILES, PublicIdentity
-from .errors import HabitableError
+from .errors import HabitableError, SyncError
 from .i18n import DEFAULT_LOCALE, cli_text, format_datetime, resolve_locale
 from .letter import LetterOptions, build_letter, render_letter_html
 from .obslog import configure_logging, enabled_from_env, log_event
 from .packet import build_packet
 from .share import decode_share, encode_share, export_share, import_share
 from .strength import assess_issue
-from .sync import LocalDirTransport, RelayClient, Transport, sync
+from .sync import (
+    LocalDirTransport,
+    RelayClient,
+    Transport,
+    export_message,
+    import_messages,
+    suggested_delta_filename,
+    sync,
+)
 from .tsa import DevTSA, Rfc3161HttpTSA, TimestampAuthority
 from .vault import Vault, human_bytes
 from .verify import verify_packet
@@ -295,6 +303,34 @@ def _build_parser() -> argparse.ArgumentParser:
     p_sync.add_argument("--dir", type=Path, help="shared directory transport")
     add_metered(p_sync)
     p_sync.set_defaults(func=_cmd_sync)
+
+    p_sync_export = sub.add_parser(
+        "sync-export",
+        help="write an encrypted sync delta to a file for USB/SD (no relay, no data plan)",
+    )
+    add_vault(p_sync_export)
+    p_sync_export.add_argument(
+        "--peer", required=True, help="recipient public identity (from `habitable id`)"
+    )
+    p_sync_export.add_argument(
+        "--out",
+        type=Path,
+        help="output file (default ./habitable-delta-<peerfp8>.hsync)",
+    )
+    p_sync_export.set_defaults(func=_cmd_sync_export)
+
+    p_sync_import = sub.add_parser(
+        "sync-import",
+        help="merge encrypted sync deltas from a USB/SD folder (no relay, no data plan)",
+    )
+    add_vault(p_sync_import)
+    p_sync_import.add_argument(
+        "files",
+        type=Path,
+        nargs="+",
+        help="one or more .hsync files, e.g. /Volumes/USB/*.hsync",
+    )
+    p_sync_import.set_defaults(func=_cmd_sync_import)
 
     p_relay = sub.add_parser("relay", help="run an optional ciphertext-only sync relay")
     p_relay.add_argument("--host", default="127.0.0.1")
@@ -909,6 +945,44 @@ def _cmd_sync(args: argparse.Namespace) -> int:
         received=human_bytes(result.bytes_received),
     )
     print(f"           {cost}")
+    return 0
+
+
+def _cmd_sync_export(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    peer = PublicIdentity.decode(args.peer)
+    blob = export_message(vault, peer)
+    out: Path = args.out if args.out is not None else Path(suggested_delta_filename(peer))
+    out.write_bytes(blob)
+    print(f"habitable: wrote sync delta to {out} ({len(blob)} bytes)")
+    print(f"           sealed to peer {peer.fingerprint} only — a lost stick leaks nothing.")
+    print("           hand it over by USB/SD; no relay, no data plan needed.")
+    return 0
+
+
+def _cmd_sync_import(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    blobs: list[bytes] = []
+    for path in args.files:
+        try:
+            blobs.append(path.read_bytes())
+        except OSError as exc:
+            raise HabitableError(f"could not read {path}: {exc}") from exc
+    result = import_messages(vault, blobs)
+    if result.messages_merged == 0:
+        # Not a silent no-op: say plainly that nothing here was addressed to us.
+        raise SyncError(
+            "no delta in these files was sealed to this device — nothing imported. "
+            "Confirm the sender exported to THIS device's --peer id (`habitable id`)."
+        )
+    locale = resolve_locale(vault.config.language)
+    done = cli_text(
+        "sync_done",
+        locale,
+        messages=result.messages_merged,
+        captures=result.captures_imported,
+    )
+    print(f"habitable: {done}")
     return 0
 
 

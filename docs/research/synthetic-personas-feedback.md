@@ -255,7 +255,9 @@ Broken furnace.
 **On the future.** "Sneakernet" sync — export an encrypted delta to a file he hands to the
 organizer on a USB stick or SD card when they meet, no relay, no data. (Notes the CRDT
 already syncs "over a shared directory" — wants that surfaced as a first-class, documented
-tenant workflow.) [E-09]
+tenant workflow.) [E-09] ✅ **Shipped:** `habitable sync-export` / `sync-import` write and
+merge a sealed `.hsync` delta by USB/SD; a lost stick leaks nothing and import is not silent
+(it reports merges/captures). See [`docs/sneakernet-sync.md`](../sneakernet-sync.md).
 
 ### Cluster B — Organizers and the union
 
@@ -676,7 +678,7 @@ broadest dividend:
 | E-06 | Stronger panic/duress action (configurable) + "shared device" hardening setup, with documented limits | P-04,P-22 | high | L | C | net-new | shape: never overpromise |
 | E-07 | ✅ **done** — Externally demonstrable "no plaintext to relay": `habitable prove-no-plaintext` (real sync through an in-process relay + verbatim wire capture + marker grep) and a `tcpdump`/`tshark` procedure in [`prove-no-plaintext.md`](../prove-no-plaintext.md) | P-05 | medium | M | A | shipped | clean |
 | E-08 | ✅ **done** — On-device, telemetry-free "data-flow X-ray": `habitable status --xray` prints a per-component account (capture → nothing, TSA → hash, relay → sealed blobs + mailbox id, export → plaintext, user-initiated) from the user's own vault, no network | P-05 | medium | M | A | shipped | clean (local only) |
-| E-09 | First-class **sneakernet sync**: export/import an encrypted delta via USB/SD, no relay, no data plan | P-06 | high | M | C | implied | clean |
+| E-09 | ✅ **done** — First-class **sneakernet sync**: export/import an encrypted delta via USB/SD, no relay, no data plan | P-06 | high | M | C | shipped | clean |
 | E-10 | "Adopt habitable" workshop kit: slides, facilitator script, EN/ES quick-start, train-the-trainer | P-07,P-13 | high | M | D | planned | clean |
 | E-11 | Local multi-case **campaign/organizer view** with per-unit evidence-health badges | P-07 | high | L | C | net-new | clean (on-device) |
 | E-12 | Co-custodian model so a case survives any one tenant losing their device | P-07 | high | L | C | net-new | clean |
