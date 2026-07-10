@@ -294,7 +294,9 @@ class Vault:
         changed = False
         for entry in self.document.timeline():
             commitment = entry.commitment()
-            if self.timeline_binding_stage(entry.entry_id, commitment):
+            binding_stage = self.timeline_binding_stage(entry.entry_id, commitment)
+            valid_stages = {"migration"} if entry.schema_version < 2 else {"recorded", "backfill"}
+            if binding_stage in valid_stages:
                 continue
             stage = "migration" if entry.schema_version < 2 else "backfill"
             self._append_timeline_binding(entry.entry_id, commitment, stage=stage)
@@ -305,12 +307,15 @@ class Vault:
     def timeline_binding_stage(self, entry_id: str, commitment: str) -> str:
         """Return the stage of a matching custody commitment, or ``""``."""
         for custody_entry in reversed(self.custody.entries):
+            stage = custody_entry.details.get("stage", "")
             if (
                 custody_entry.action == CustodyAction.NOTE_ADDED
                 and custody_entry.item_id == entry_id
+                and custody_entry.details.get("timeline_schema") == "2"
                 and custody_entry.details.get("timeline_sha256") == commitment
+                and stage in {"recorded", "backfill", "migration"}
             ):
-                return custody_entry.details.get("stage", "")
+                return stage
         return ""
 
     def _append_timeline_binding(self, entry_id: str, commitment: str, *, stage: str) -> None:

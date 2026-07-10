@@ -327,7 +327,11 @@ def _verify_v3_timeline(bundle: Mapping[str, JSONValue], custody: CustodyLog) ->
     introduced here.
     """
     problems: list[str] = []
-    raw_entries = _list(bundle, "timeline")
+    raw_entries = _v3_array(bundle, "timeline", problems)
+    raw_issues = _v3_array(bundle, "issues", problems)
+    raw_items = _v3_array(bundle, "items", problems)
+    appendix = _v3_object(bundle, "appendix", problems)
+
     entry_ids = [
         _s(raw, "entry_id") for raw in raw_entries if isinstance(raw, dict) and _s(raw, "entry_id")
     ]
@@ -340,15 +344,12 @@ def _verify_v3_timeline(bundle: Mapping[str, JSONValue], custody: CustodyLog) ->
     }
     items_by_id: dict[str, Mapping[str, JSONValue]] = {
         _s(raw, "capture_id"): raw
-        for raw in _list(bundle, "items")
+        for raw in raw_items
         if isinstance(raw, dict) and _s(raw, "capture_id")
     }
     issue_ids = {
-        _s(raw, "issue_id")
-        for raw in _list(bundle, "issues")
-        if isinstance(raw, dict) and _s(raw, "issue_id")
+        _s(raw, "issue_id") for raw in raw_issues if isinstance(raw, dict) and _s(raw, "issue_id")
     }
-    appendix = _map(bundle, "appendix")
     if appendix.get("timeline_count") != len(raw_entries):
         problems.append("appendix.timeline_count does not match timeline length")
     if appendix.get("custody_bound_timeline_count") != len(raw_entries):
@@ -368,6 +369,24 @@ def _verify_v3_timeline(bundle: Mapping[str, JSONValue], custody: CustodyLog) ->
             for message in _verify_v3_links(raw, event_by_id, items_by_id)
         )
     return problems
+
+
+def _v3_array(bundle: Mapping[str, JSONValue], key: str, problems: list[str]) -> list[JSONValue]:
+    value = bundle.get(key)
+    if isinstance(value, list):
+        return value
+    problems.append(f"packet-v3 {key} must be an array")
+    return []
+
+
+def _v3_object(
+    bundle: Mapping[str, JSONValue], key: str, problems: list[str]
+) -> Mapping[str, JSONValue]:
+    value = bundle.get(key)
+    if isinstance(value, dict):
+        return value
+    problems.append(f"packet-v3 {key} must be an object")
+    return {}
 
 
 def _verify_v3_timeline_entry(entry: Mapping[str, JSONValue], custody: CustodyLog) -> list[str]:
@@ -397,6 +416,10 @@ def _v3_required_field_problems(entry: Mapping[str, JSONValue]) -> list[str]:
     for key in required:
         if not isinstance(entry.get(key), str):
             problems.append(f"{key} must be a string")
+    for key in ("entry_id", "issue_id", "order_token"):
+        value = entry.get(key)
+        if isinstance(value, str) and not value.strip():
+            problems.append(f"{key} must not be empty")
     for legacy_key in ("kind", "hlc"):
         if legacy_key in entry:
             problems.append(f"packet v3 must not reuse legacy field {legacy_key!r}")
@@ -412,17 +435,17 @@ def _v3_event_source_problems(entry: Mapping[str, JSONValue]) -> list[str]:
     migration = _map(entry, "migration")
     if event_type not in EVENT_TYPES:
         problems.append(f"unknown event_type {event_type!r}")
-    if event_type == "other" and not other_label:
+    if event_type == "other" and not other_label.strip():
         problems.append("Other event is missing other_label")
-    if event_type != "other" and other_label:
+    if event_type != "other" and other_label.strip():
         problems.append("other_label is only valid for an Other event")
     if source not in SOURCES:
         problems.append(f"unknown source {source!r}")
     if source == "unspecified" and not migration:
         problems.append("source unspecified is only valid on an explicit legacy migration")
-    if source == "other" and not source_detail:
+    if source == "other" and not source_detail.strip():
         problems.append("Other source is missing source_detail")
-    if source != "other" and source_detail:
+    if source != "other" and source_detail.strip():
         problems.append("source_detail is only valid for an Other source")
     return problems
 
@@ -448,9 +471,12 @@ def _v3_time_text_problems(entry: Mapping[str, JSONValue]) -> list[str]:
 
 
 def _v3_migration_problems(entry: Mapping[str, JSONValue]) -> list[str]:
-    migration = _map(entry, "migration")
-    if not migration:
+    if "migration" not in entry:
         return []
+    raw_migration = entry.get("migration")
+    if not isinstance(raw_migration, dict):
+        return ["migration must be an object"]
+    migration = raw_migration
     expected: dict[str, JSONValue] = {
         "from_case_timeline_schema": 1,
         "legacy_kind_preserved_as_other_label": True,
@@ -498,6 +524,8 @@ def _v3_integrity_problems(entry: Mapping[str, JSONValue], custody: CustodyLog) 
         problems.append("timeline binding_stage is invalid")
     if migration and stage != "migration":
         problems.append("legacy migration must carry binding_stage=migration")
+    if not migration and stage == "migration":
+        problems.append("binding_stage=migration requires an explicit legacy migration")
     if not any(
         custody_entry.action == "note_added"
         and custody_entry.item_id == _s(entry, "entry_id")

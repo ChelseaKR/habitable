@@ -215,6 +215,60 @@ def test_legacy_case_entry_migrates_without_inventing_occurrence_or_source(
     assert verify_packet(out).ok
 
 
+def test_export_repairs_incomplete_or_version_inappropriate_timeline_bindings(
+    make_vault: Callable[..., Vault], tmp_path: Path
+) -> None:
+    """A stale note must not poison export by masquerading as a v3 binding."""
+    vault = make_vault()
+    issue_id = vault.document.add_issue(category="mold", issue_id="i1")
+    current_id = vault.document.add_timeline_event(
+        issue_id,
+        event_type="condition_observed",
+        text="A current-schema entry recorded outside the service wrapper.",
+        occurred_at="2026-01-03",
+        source="firsthand",
+    )
+    legacy_id = vault.document.add_timeline_entry(issue_id, "observed", "A legacy note.")
+    entries = {entry.entry_id: entry for entry in vault.document.timeline()}
+    actor = vault.identity.public().fingerprint
+
+    # Missing timeline_schema: it has the right digest and a plausible stage, but
+    # is not a valid packet-v3 declaration.
+    vault.custody.append(
+        "note_added",
+        current_id,
+        actor=actor,
+        hlc=vault.document.clock.now().encode(),
+        details={
+            "timeline_sha256": entries[current_id].commitment(),
+            "stage": "recorded",
+        },
+        identity=vault.identity,
+    )
+    # A legacy entry cannot truthfully claim it was bound when first recorded.
+    vault.custody.append(
+        "note_added",
+        legacy_id,
+        actor=actor,
+        hlc=vault.document.clock.now().encode(),
+        details={
+            "timeline_schema": "2",
+            "timeline_sha256": entries[legacy_id].commitment(),
+            "stage": "recorded",
+        },
+        identity=vault.identity,
+    )
+    vault.save()
+
+    out = tmp_path / "repaired-bindings"
+    build_packet(vault, out, generated_at="2026-01-06T00:00:00Z", make_pdf=False)
+    bundle = json.loads((out / "bundle.json").read_text(encoding="utf-8"))
+    by_id = {entry["entry_id"]: entry for entry in bundle["timeline"]}
+    assert by_id[current_id]["integrity"]["binding_stage"] == "backfill"
+    assert by_id[legacy_id]["integrity"]["binding_stage"] == "migration"
+    assert verify_packet(out).ok
+
+
 def test_resigned_timeline_tamper_fails_v3_commitment_check(
     make_vault: Callable[..., Vault], tmp_path: Path
 ) -> None:
@@ -264,6 +318,8 @@ def test_v3_verifier_fails_closed_on_malformed_semantics_and_links(
 
     event_problem("timeline_schema must be 2", timeline_schema=9)
     event_problem("entry_id must be a string", entry_id=7)
+    event_problem("entry_id must not be empty", entry_id=" ")
+    event_problem("order_token must not be empty", order_token="")
     event_problem("must not reuse legacy field", kind="observed", hlc="opaque")
     event_problem("unknown event_type", event_type="free_text")
     event_problem("Other event is missing", event_type="other", other_label="")
@@ -279,6 +335,7 @@ def test_v3_verifier_fails_closed_on_malformed_semantics_and_links(
     event_problem("recorded_at must be", recorded_at="not-a-dateZ")
     event_problem("text must not be empty", text=" ")
     event_problem("integrity.algorithm", integrity={})
+    event_problem("migration must be an object", migration="legacy")
     event_problem(
         "legacy migration must carry",
         migration={"from_case_timeline_schema": 4},
@@ -325,6 +382,23 @@ def test_v3_verifier_fails_closed_on_malformed_semantics_and_links(
     counts["appendix"]["custody_bound_timeline_count"] = 0
     assert "appendix.timeline_count" in "\n".join(_verify_v3_timeline(counts, custody))
 
+    malformed_top_level: dict[str, tuple[str, object]] = {
+        "timeline": ("packet-v3 timeline must be an array", {}),
+        "issues": ("packet-v3 issues must be an array", {}),
+        "items": ("packet-v3 items must be an array", {}),
+        "appendix": ("packet-v3 appendix must be an object", []),
+    }
+    for key, (expected, bad_value) in malformed_top_level.items():
+        malformed_bundle = copy.deepcopy(base)
+        malformed_bundle[key] = bad_value
+        assert expected in "\n".join(_verify_v3_timeline(malformed_bundle, custody))
+
+    nonlegacy_migration_stage = copy.deepcopy(base)
+    nonlegacy_migration_stage["timeline"][index]["integrity"]["binding_stage"] = "migration"
+    assert "requires an explicit legacy migration" in "\n".join(
+        _verify_v3_timeline(nonlegacy_migration_stage, custody)
+    )
+
     missing_issue = copy.deepcopy(base)
     missing_issue["timeline"][index]["issue_id"] = "not-in-packet"
     issue_problems = "\n".join(_verify_v3_timeline(missing_issue, custody))
@@ -349,6 +423,30 @@ def test_v3_verifier_fails_closed_on_malformed_semantics_and_links(
     notice = next(entry for entry in wrong_type["timeline"] if entry["entry_id"] == notice_id)
     notice["event_type"] = "repair"
     assert "does not point to a notice_sent" in "\n".join(_verify_v3_timeline(wrong_type, custody))
+
+
+def test_renderer_marks_a_linked_capture_omitted_by_packet_scope(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    vault = make_vault()
+    capture_id, (_, _, _, summary_id) = _linked_case(vault, make_jpeg(), local_tsa)
+    out = tmp_path / "source-packet"
+    build_packet(vault, out, generated_at="2026-01-06T00:00:00Z", make_pdf=False)
+    bundle = json.loads((out / "bundle.json").read_text(encoding="utf-8"))
+    assert any(entry["entry_id"] == summary_id for entry in bundle["timeline"])
+
+    bundle["items"] = []
+    bundle["appendix"]["item_count"] = 0
+    bundle["appendix"]["timestamped_count"] = 0
+    from habitable.htmlpacket import render_packet_html
+
+    rendered = tmp_path / "omitted-capture.html"
+    render_packet_html(bundle, out / "media", rendered)
+    html = rendered.read_text(encoding="utf-8")
+    assert f"capture {capture_id} (not included in this packet)" in html
 
 
 def test_spanish_timeline_rendering_uses_same_signed_fields(

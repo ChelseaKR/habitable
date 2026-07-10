@@ -117,6 +117,7 @@ def test_full_api_flow(app: str, make_jpeg: Callable[..., Path]) -> None:
     assert strength["timeline_entries"] == 1
     timeline_entries = cast("list[dict[str, object]]", issues[0]["timeline"])
     assert timeline_entries[0]["event_type"] == "condition_observed"
+    assert timeline_entries[0]["kind"] == "condition_observed"  # pre-v3 API compatibility
     assert timeline_entries[0]["occurred_at"] == "2026-01-03"
 
     status, export = _call(app, "POST", "/api/export", {})

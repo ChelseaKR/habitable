@@ -156,6 +156,9 @@ class AppServer:
             "timeline": [
                 {
                     "entry_id": entry.entry_id,
+                    # Kept for pre-v3 local clients. Packet v3 itself never emits
+                    # or reinterprets the historical ``kind`` field.
+                    "kind": entry.kind,
                     "event_type": entry.event_type,
                     "other_label": entry.other_label,
                     "text": entry.text,

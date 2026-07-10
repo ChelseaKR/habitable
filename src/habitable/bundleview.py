@@ -138,6 +138,11 @@ def chronology(bundle: Mapping[str, JSONValue]) -> tuple[ChronologyEntry, ...]:
     version = _i(bundle, "packet_version") or 1
     language = _s(bundle, "language") or "en"
     spanish = language.lower().startswith("es")
+    included_capture_ids = {
+        _s(item, "capture_id")
+        for item in _list(bundle, "items")
+        if isinstance(item, dict) and _s(item, "capture_id")
+    }
 
     for raw in _list(bundle, "timeline"):
         if not isinstance(raw, dict):
@@ -159,7 +164,7 @@ def chronology(bundle: Mapping[str, JSONValue]) -> tuple[ChronologyEntry, ...]:
                     issue_id=issue_id,
                     issue_title=titles.get(issue_id, issue_id),
                     text=_s(raw, "text"),
-                    detail=_v3_timeline_detail(raw, language),
+                    detail=_v3_timeline_detail(raw, language, included_capture_ids),
                 )
             )
         else:
@@ -208,7 +213,9 @@ def chronology(bundle: Mapping[str, JSONValue]) -> tuple[ChronologyEntry, ...]:
     return tuple(entries)
 
 
-def _v3_timeline_detail(entry: Mapping[str, JSONValue], language: str) -> str:
+def _v3_timeline_detail(
+    entry: Mapping[str, JSONValue], language: str, included_capture_ids: set[str]
+) -> str:
     """Deterministic EN/ES explanation of source, recording time, and links."""
     spanish = language.lower().startswith("es")
     integrity = _map(entry, "integrity")
@@ -241,7 +248,14 @@ def _v3_timeline_detail(entry: Mapping[str, JSONValue], language: str) -> str:
     if isinstance(raw_capture_ids, list):
         for capture_id in raw_capture_ids:
             if isinstance(capture_id, str):
-                parts.append(("captura" if spanish else "capture") + f" {capture_id}")
+                capture_link = ("captura" if spanish else "capture") + f" {capture_id}"
+                if capture_id not in included_capture_ids:
+                    capture_link += (
+                        " (no incluida en este paquete)"
+                        if spanish
+                        else " (not included in this packet)"
+                    )
+                parts.append(capture_link)
     link_labels = {
         "notice_entry_id": "aviso" if spanish else "notice",
         "receipt_entry_id": "entrega" if spanish else "delivery",

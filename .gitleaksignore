@@ -15,4 +15,4 @@ bd2e8596b0c2bfcedefd39a94fd9745e4bd66863:site/sample-packet/bundle.json:generic-
 # synthetic media, a local self-signed RFC 3161 test authority, and a per-case
 # HMAC order token. Both high-entropy test values share this exact one-line
 # finding fingerprint; neither is a credential. Reviewed 2026-07-10.
-1be549905ddffe29bf9e6ba2c3a8cbbdc400fdf9:tests/golden/packet-v3/bundle.json:generic-api-key:1
+cf55f34c7ad4f29b097c90b7187b37f66d56b2f9:tests/golden/packet-v3/bundle.json:generic-api-key:1
