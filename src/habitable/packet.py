@@ -48,6 +48,7 @@ _MEDIA = "media"
 _ORIGINALS = "originals"
 _PDF = "packet.pdf"
 _HTML = "packet.html"
+_INSPECTOR = "inspector.html"
 
 _EXT_BY_TYPE = {
     "image/jpeg": ".jpg",
@@ -79,6 +80,7 @@ class PacketResult:
     bundle_path: Path
     pdf_path: Path | None
     html_path: Path | None
+    inspector_path: Path | None
     item_count: int
     timestamped_count: int
     includes_originals: bool
@@ -93,6 +95,7 @@ def build_packet(
     since: str | None = None,
     include_originals: bool = False,
     make_pdf: bool = True,
+    inspector_view: bool = False,
     generated_at: str | None = None,
     policy: SharingPolicy | None = None,
 ) -> PacketResult:
@@ -202,6 +205,13 @@ def build_packet(
     html_path = out_dir / _HTML
     htmlpacket.render_packet_html(bundle, media_dir, html_path)
 
+    # An optional recipient-oriented (inspector) rollup of the same signed
+    # bundle, organized room → condition → chronological timeline.
+    inspector_path: Path | None = None
+    if inspector_view:
+        inspector_path = out_dir / _INSPECTOR
+        htmlpacket.render_inspector_html(bundle, media_dir, inspector_path)
+
     pdf_path: Path | None = None
     if make_pdf:
         from . import pdf as pdf_module
@@ -214,6 +224,7 @@ def build_packet(
         bundle_path=bundle_path,
         pdf_path=pdf_path,
         html_path=html_path,
+        inspector_path=inspector_path,
         item_count=len(items),
         timestamped_count=timestamped,
         includes_originals=include_originals,
