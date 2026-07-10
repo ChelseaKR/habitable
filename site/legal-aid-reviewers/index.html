@@ -1,0 +1,185 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#16424f" />
+    <title>Legal Aid Review Guide | Habitable Evidence</title>
+    <meta name="description" content="Review Habitable Evidence packet structure, integrity checks, disclosure, accessibility, and limits with synthetic data before any real-case use." />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <link rel="canonical" href="https://chelseakr.github.io/habitable/legal-aid-reviewers/" />
+    <link rel="icon" href="../img/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="../content.css" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:site_name" content="Habitable Evidence" />
+    <meta property="og:url" content="https://chelseakr.github.io/habitable/legal-aid-reviewers/" />
+    <meta property="og:title" content="Legal Aid Review Guide | Habitable Evidence" />
+    <meta property="og:description" content="Review Habitable Evidence packet structure, integrity checks, disclosure, accessibility, and limits with synthetic data before any real-case use." />
+    <meta property="og:image" content="https://chelseakr.github.io/habitable/img/packet.png" />
+    <meta property="og:image:alt" content="A synthetic Habitable Evidence packet with a timeline and evidence appendix." />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Legal Aid Review Guide | Habitable Evidence" />
+    <meta name="twitter:description" content="Review Habitable Evidence packet structure, integrity checks, disclosure, accessibility, and limits with synthetic data before any real-case use." />
+    <meta name="twitter:image" content="https://chelseakr.github.io/habitable/img/packet.png" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Article",
+            "@id": "https://chelseakr.github.io/habitable/legal-aid-reviewers/#article",
+            "headline": "Legal Aid Review Guide",
+            "description": "Review Habitable Evidence packet structure, integrity checks, disclosure, accessibility, and limits with synthetic data before any real-case use.",
+            "datePublished": "2026-07-10",
+            "dateModified": "2026-07-10",
+            "inLanguage": "en",
+            "author": "Chelsea Kelly-Reif",
+            "mainEntityOfPage": "https://chelseakr.github.io/habitable/legal-aid-reviewers/",
+            "image": "https://chelseakr.github.io/habitable/img/packet.png"
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "name": "Habitable Evidence", "item": "https://chelseakr.github.io/habitable/" },
+              { "@type": "ListItem", "position": 2, "name": "Legal aid and reviewers", "item": "https://chelseakr.github.io/habitable/legal-aid-reviewers/" }
+            ]
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="../"><img src="../img/icon.svg" alt="" width="42" height="42" />Habitable Evidence</a>
+      <nav class="primary-nav" aria-label="Primary">
+        <ul>
+          <li><a href="../how-it-works/">How it works</a></li>
+          <li><a href="../documentation-checklist/">Documentation checklist</a></li>
+          <li><a href="../tenant-unions/">For tenant unions</a></li>
+          <li><a href="../trust-limitations/">Trust and limits</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main id="main">
+      <nav class="breadcrumbs" aria-label="Breadcrumb">
+        <ol><li><a href="../">Home</a></li><li aria-current="page">Legal aid and reviewers</li></ol>
+      </nav>
+
+      <article>
+        <header class="article-header">
+          <div class="article-header-copy">
+            <p class="kicker">Recipient review path</p>
+            <h1>Review Habitable Evidence for legal-aid workflows</h1>
+            <p class="lede">This guide helps attorneys, legal-aid staff, clinic teams, and independent reviewers inspect the packet’s organization and technical claims. It does not characterize the packet under any jurisdiction’s evidence rules or recommend it for a client matter.</p>
+          </div>
+          <div class="record-card" role="note" aria-label="Page status">
+            <p class="record-label">Review material</p>
+            <strong>Synthetic packet only</strong>
+            <p>Reviewed 10 July 2026. No client or tenant data is hosted here.</p>
+          </div>
+        </header>
+
+        <div class="layout">
+          <div class="article-body">
+            <p class="boundary"><strong>Legal boundary:</strong> integrity checks do not decide authenticity, authorship, relevance, reliability, hearsay questions, notice compliance, or the weight a decision-maker may give an item. Those questions depend on facts, witnesses, local law, procedure, and professional judgment.</p>
+
+            <section id="cold-review" aria-labelledby="cold-h">
+              <h2 id="cold-h">Begin with a cold review</h2>
+              <p>Open the <a href="../sample-packet/packet.html">synthetic HTML packet</a> before reading the implementation docs. A recipient-facing packet should communicate its scope and limitations without requiring source-code knowledge.</p>
+              <ul class="question-list">
+                <li><strong>Can you identify the issue and chronology?</strong>Check whether conditions, notices, responses, repair attempts, and recurrence can be distinguished without guessing.</li>
+                <li><strong>Can you identify the source of each statement?</strong>Tenant descriptions, imported records, media, and system-generated integrity information should not blur together.</li>
+                <li><strong>Can you see what was withheld?</strong>The disclosure statement should make the export scope visible, including whether originals or selected metadata were omitted.</li>
+                <li><strong>Can you find the technical appendix?</strong>Hashes, signatures, timestamps, and custody status should be available without overwhelming the narrative.</li>
+                <li><strong>Can you use it with your access needs?</strong>Review HTML semantics, keyboard order, zoom, print behavior, language, and the PDF’s practical reading order.</li>
+              </ul>
+            </section>
+
+            <section id="verifier" aria-labelledby="verifier-h">
+              <h2 id="verifier-h">Separate the verifier result from legal conclusions</h2>
+              <div class="comparison">
+                <div>
+                  <h3>A verifier can check</h3>
+                  <ul>
+                    <li>bundle-signature validity against the identity included in the packet;</li>
+                    <li>file hashes and whether packaged bytes have changed;</li>
+                    <li>timestamp-token structure and cryptographic validation when the required trust material is available;</li>
+                    <li>custody-log structure and internal references.</li>
+                  </ul>
+                </div>
+                <div class="limitations">
+                  <h3>A verifier cannot decide</h3>
+                  <ul>
+                    <li>who a signing identity represents or whether that person was authorized;</li>
+                    <li>whether a photograph depicts the claimed place, condition, or date;</li>
+                    <li>whether a statement is accurate, complete, or corroborated;</li>
+                    <li>what a court, agency, arbitrator, or opposing party will accept.</li>
+                  </ul>
+                </div>
+              </div>
+              <p>Read the <a href="../trust-limitations/">trust and limitations record</a> for identity, timestamp, device, transfer, and audit boundaries.</p>
+            </section>
+
+            <section id="workflow" aria-labelledby="workflow-h">
+              <h2 id="workflow-h">Map it to an actual intake and review process</h2>
+              <ol class="steps">
+                <li><strong>Define the receiving channel.</strong>Decide whether the organization can safely accept a packet, through which system, under what retention policy, and from whom.</li>
+                <li><strong>Quarantine and scan.</strong>Treat transferred files as untrusted input. Use the organization’s ordinary malware, access-control, and records procedures.</li>
+                <li><strong>Verify a copy.</strong>Preserve the received package and run technical checks on a working copy using a documented environment.</li>
+                <li><strong>Interview for context.</strong>Ask who created each record, how and when it was made, what happened before and after, and which materials are missing.</li>
+                <li><strong>Apply local rules independently.</strong>Use the forum’s current law, procedural rules, standing orders, agency requirements, and professional obligations.</li>
+                <li><strong>Record the review decision.</strong>Document limitations, follow-up needs, conflicts, and whether the tool should remain in synthetic evaluation.</li>
+              </ol>
+            </section>
+
+            <section id="review-questions" aria-labelledby="questions-h">
+              <h2 id="questions-h">High-value reviewer questions</h2>
+              <ul>
+                <li>Which packet labels sound stronger than the underlying technical fact?</li>
+                <li>Which details are missing for a recipient to assess source and context?</li>
+                <li>Does selective disclosure preserve enough context to avoid a misleading presentation?</li>
+                <li>Can an operator correct a mistaken description without obscuring the history?</li>
+                <li>What must be localized before use in a particular court, agency, clinic, or funding environment?</li>
+                <li>What independent security, accessibility, and legal reviews are prerequisites to any real-data evaluation?</li>
+              </ul>
+              <p class="safety-note"><strong>Public review channel:</strong> the project’s <a href="https://github.com/ChelseaKR/habitable/issues/new?template=reviewer-intake.yml">reviewer intake creates a public GitHub issue</a>. Share only a general review interest. Do not include client names, tenant information, addresses, evidence, strategy, or privileged material.</p>
+            </section>
+
+            <section id="help" aria-labelledby="help-h">
+              <h2 id="help-h">For someone who needs legal help now</h2>
+              <p>Habitable is not a legal-help service. <a href="https://www.usa.gov/tenant-rights">USAGov’s tenant-rights directory</a> points to state agencies and affordable legal-help resources. The <a href="https://www.lsc.gov/">Legal Services Corporation’s national finder</a> helps locate LSC-funded civil legal-aid organizations. Eligibility, services, and deadlines vary.</p>
+            </section>
+          </div>
+
+          <nav class="side-nav" aria-label="On this page">
+            <h2>On this page</h2>
+            <ul>
+              <li><a href="#cold-review">Cold review</a></li>
+              <li><a href="#verifier">Verifier limits</a></li>
+              <li><a href="#workflow">Receiving workflow</a></li>
+              <li><a href="#review-questions">Review questions</a></li>
+              <li><a href="#help">Find legal help</a></li>
+            </ul>
+          </nav>
+        </div>
+
+        <aside class="related" aria-labelledby="related-h">
+          <h2 id="related-h">Review the surrounding workflow</h2>
+          <p>A packet is only one part of documentation, organizing, inspection, and legal-review practice.</p>
+          <ul><li><a href="../how-it-works/">How the evidence method works</a></li><li><a href="../tenant-unions/">Tenant-union evaluation guide</a></li><li><a href="../inspectors-code-enforcement/">Inspector and code-enforcement review guide</a></li></ul>
+        </aside>
+      </article>
+    </main>
+
+    <footer>
+      <ul class="footer-links"><li><a href="../">Home</a></li><li><a href="../documentation-checklist/">Documentation checklist</a></li><li><a href="../tenant-unions/">Tenant unions</a></li><li><a href="../inspectors-code-enforcement/">Inspectors</a></li><li><a href="https://github.com/ChelseaKR/habitable">Source code</a></li></ul>
+      <p>Habitable Evidence is an independent open-source alpha. It is not legal advice, an emergency service, or a place to submit tenant data.</p>
+    </footer>
+  </body>
+</html>

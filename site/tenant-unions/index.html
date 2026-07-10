@@ -1,0 +1,158 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#16424f" />
+    <title>Tenant Union Evaluation Guide | Habitable Evidence</title>
+    <meta name="description" content="A bounded, synthetic-data evaluation plan for tenant unions reviewing Habitable Evidence workflows, privacy boundaries, and adoption gates." />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <link rel="canonical" href="https://chelseakr.github.io/habitable/tenant-unions/" />
+    <link rel="icon" href="../img/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="../content.css" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:site_name" content="Habitable Evidence" />
+    <meta property="og:url" content="https://chelseakr.github.io/habitable/tenant-unions/" />
+    <meta property="og:title" content="Tenant Union Evaluation Guide | Habitable Evidence" />
+    <meta property="og:description" content="A bounded, synthetic-data evaluation plan for tenant unions reviewing Habitable Evidence workflows, privacy boundaries, and adoption gates." />
+    <meta property="og:image" content="https://chelseakr.github.io/habitable/img/app-en.png" />
+    <meta property="og:image:alt" content="The Habitable Evidence app showing a synthetic repair case." />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Tenant Union Evaluation Guide | Habitable Evidence" />
+    <meta name="twitter:description" content="A bounded, synthetic-data evaluation plan for tenant unions reviewing Habitable Evidence workflows, privacy boundaries, and adoption gates." />
+    <meta name="twitter:image" content="https://chelseakr.github.io/habitable/img/app-en.png" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Article",
+            "@id": "https://chelseakr.github.io/habitable/tenant-unions/#article",
+            "headline": "Tenant Union Evaluation Guide",
+            "description": "A bounded, synthetic-data evaluation plan for tenant unions reviewing Habitable Evidence workflows, privacy boundaries, and adoption gates.",
+            "datePublished": "2026-07-10",
+            "dateModified": "2026-07-10",
+            "inLanguage": "en",
+            "author": "Chelsea Kelly-Reif",
+            "mainEntityOfPage": "https://chelseakr.github.io/habitable/tenant-unions/",
+            "image": "https://chelseakr.github.io/habitable/img/app-en.png"
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "name": "Habitable Evidence", "item": "https://chelseakr.github.io/habitable/" },
+              { "@type": "ListItem", "position": 2, "name": "Tenant unions", "item": "https://chelseakr.github.io/habitable/tenant-unions/" }
+            ]
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="../"><img src="../img/icon.svg" alt="" width="42" height="42" />Habitable Evidence</a>
+      <nav class="primary-nav" aria-label="Primary">
+        <ul>
+          <li><a href="../how-it-works/">How it works</a></li>
+          <li><a href="../documentation-checklist/">Documentation checklist</a></li>
+          <li><a aria-current="page" href="./">For tenant unions</a></li>
+          <li><a href="../trust-limitations/">Trust and limits</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main id="main">
+      <nav class="breadcrumbs" aria-label="Breadcrumb">
+        <ol><li><a href="../">Home</a></li><li aria-current="page">Tenant unions</li></ol>
+      </nav>
+
+      <article>
+        <header class="article-header">
+          <div class="article-header-copy">
+            <p class="kicker">Organization evaluation path</p>
+            <h1>Tenant union evaluation guide</h1>
+            <p class="lede">A tenant union can evaluate whether Habitable Evidence matches its documentation practice without involving a real household. This guide keeps the review bounded: a synthetic scenario, named reviewers, explicit stop conditions, and no public case data.</p>
+          </div>
+          <div class="record-card" role="note" aria-label="Page status">
+            <p class="record-label">Evaluation status</p>
+            <strong>No partner outcome claimed</strong>
+            <p>Reviewed 10 July 2026. Start with synthetic records only.</p>
+          </div>
+        </header>
+
+        <div class="layout">
+          <div class="article-body">
+            <p class="boundary"><strong>Not an adoption recommendation:</strong> Habitable is an alpha. Independent security, cryptography, housing-law, and human accessibility review remain open. A union should not put member data into the tool until its own reviewers accept the risks and procedures.</p>
+
+            <section id="team" aria-labelledby="team-h">
+              <h2 id="team-h">Name the review team and its authority</h2>
+              <p>A useful evaluation includes the people who would actually capture, organize, review, transfer, and interpret a record. One person can hold more than one role, but every decision should have an owner.</p>
+              <div class="review-grid">
+                <div class="review-card"><h3>Organizer</h3><p>Tests intake, issue structure, repair chronology, handoff, training burden, and whether the workflow fits union practice.</p></div>
+                <div class="review-card"><h3>Privacy or security reviewer</h3><p>Checks device controls, key recovery, data minimization, export scope, transfer method, incident response, and threat assumptions.</p></div>
+                <div class="review-card"><h3>Legal workflow reviewer</h3><p>Compares the packet and verification language with local practice, without treating software output as a legal conclusion.</p></div>
+                <div class="review-card"><h3>Accessibility reviewer</h3><p>Tests the task flow with the keyboard and assistive technology used by the team, and records barriers rather than inferring human access from automation.</p></div>
+              </div>
+            </section>
+
+            <section id="scenario" aria-labelledby="scenario-h">
+              <h2 id="scenario-h">Run one synthetic scenario end to end</h2>
+              <ol class="steps">
+                <li><strong>Write the scenario.</strong>Use fictional people, addresses, images, messages, and dates. Include at least one repair request, response, attempted repair, and recurrence.</li>
+                <li><strong>Assign two operators.</strong>Have one person capture and another review so handoff and explanation problems become visible.</li>
+                <li><strong>Follow ordinary practice.</strong>Use the union’s real intake categories and review sequence, but never copy a member’s case details into the synthetic record.</li>
+                <li><strong>Export the minimum packet.</strong>Decide what a recipient needs, withhold the rest, and check that the disclosure statement matches the choice.</li>
+                <li><strong>Give it to a cold reviewer.</strong>Ask someone who did not create the record to read the packet and explain what the integrity result does and does not establish.</li>
+                <li><strong>Delete the exercise.</strong>Confirm that the team knows where the local vault, exports, backups, and transferred copies exist.</li>
+              </ol>
+            </section>
+
+            <section id="scorecard" aria-labelledby="scorecard-h">
+              <h2 id="scorecard-h">Use pass, revise, and stop gates</h2>
+              <ul class="question-list">
+                <li><strong>Can a new organizer complete the core tasks?</strong>Measure errors, time, help requests, and uncertainty instead of relying on general impressions.</li>
+                <li><strong>Can the team explain where data lives?</strong>Everyone handling a case should understand the local-only design, backups, keys, transfers, and public-site boundary.</li>
+                <li><strong>Does minimum disclosure work in practice?</strong>The reviewer should be able to identify what was included, what was withheld, and why.</li>
+                <li><strong>Can a recipient interpret the verification result?</strong>If technical integrity is mistaken for truth, authorship, official endorsement, or a legal outcome, stop and revise the workflow.</li>
+                <li><strong>Are accessibility blockers recorded?</strong>Automation can catch some defects; the team still needs human keyboard and assistive-technology testing before reliance.</li>
+                <li><strong>Is there a safe incident path?</strong>Stop if the team cannot respond to a lost device, exposed key, mistaken export, unsafe transfer, or unwanted copy.</li>
+              </ul>
+            </section>
+
+            <section id="contact" aria-labelledby="contact-h">
+              <h2 id="contact-h">Offer feedback without exposing a tenant</h2>
+              <p>Read the <a href="https://github.com/ChelseaKR/habitable/blob/main/docs/recruitment/role-pilot-partner.md">bounded partner brief</a> and the <a href="../trust-limitations/">current trust and limitations record</a> before contacting the project.</p>
+              <p class="safety-note"><strong>Public-form warning:</strong> the <a href="https://github.com/ChelseaKR/habitable/issues/new?template=reviewer-intake.yml">reviewer intake opens a public GitHub issue</a>. Submit only an organization name or role you are authorized to share and a general review interest. Never include tenant names, addresses, photos, evidence, allegations, or case details.</p>
+            </section>
+          </div>
+
+          <nav class="side-nav" aria-label="On this page">
+            <h2>On this page</h2>
+            <ul>
+              <li><a href="#team">Review team</a></li>
+              <li><a href="#scenario">Synthetic scenario</a></li>
+              <li><a href="#scorecard">Decision gates</a></li>
+              <li><a href="#contact">Safe feedback</a></li>
+            </ul>
+          </nav>
+        </div>
+
+        <aside class="related" aria-labelledby="related-h">
+          <h2 id="related-h">Prepare the evaluation</h2>
+          <p>Start with the safe documentation checklist, then give specialist reviewers a role-specific packet review path.</p>
+          <ul><li><a href="../documentation-checklist/">Safe repair documentation checklist</a></li><li><a href="../legal-aid-reviewers/">Legal-aid and independent-review guide</a></li><li><a href="../inspectors-code-enforcement/">Inspector and code-enforcement review guide</a></li></ul>
+        </aside>
+      </article>
+    </main>
+
+    <footer>
+      <ul class="footer-links"><li><a href="../">Home</a></li><li><a href="../how-it-works/">How it works</a></li><li><a href="../legal-aid-reviewers/">Legal aid and reviewers</a></li><li><a href="../inspectors-code-enforcement/">Inspectors</a></li><li><a href="https://github.com/ChelseaKR/habitable">Source code</a></li></ul>
+      <p>Habitable Evidence is an independent open-source alpha. It is not legal advice, an emergency service, or a place to submit tenant data.</p>
+    </footer>
+  </body>
+</html>

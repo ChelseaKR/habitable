@@ -53,6 +53,25 @@ def test_landing_page_passes_axe() -> None:
 
 
 @pytest.mark.a11y
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "how-it-works/index.html",
+        "documentation-checklist/index.html",
+        "tenant-unions/index.html",
+        "legal-aid-reviewers/index.html",
+        "inspectors-code-enforcement/index.html",
+        "trust-limitations/index.html",
+    ],
+)
+def test_public_content_guides_pass_axe(relative_path: str) -> None:
+    html_path = _SITE_ROOT / relative_path
+    assert html_path.is_file(), f"public content guide not found: {relative_path}"
+    blocking = _run_axe(html_path)
+    assert not blocking, [v["id"] for v in blocking]
+
+
+@pytest.mark.a11y
 def test_committed_sample_packet_passes_axe() -> None:
     """The committed static sample under site/sample-packet/ is a separate artifact
     from the freshly-generated packet tests/test_htmlpacket.py checks — it can drift

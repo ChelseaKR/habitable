@@ -113,7 +113,8 @@ def test_primary_actions_route_to_pilot_sample_and_evidence_method() -> None:
     assert by_id["pilot-cta"]["text"] == "Offer a synthetic-data pilot"
 
     assert by_id["sample-cta"]["href"] == "sample-packet/packet.html"
-    assert by_id["method-cta"]["href"].endswith("/docs/evidence-method.md")
+    assert by_id["method-cta"]["href"] == "how-it-works/"
+    assert by_id["method-cta"]["text"] == "Read how the evidence method works"
 
     body = _normalize(parser.visible_parts)
     assert "The pilot link opens a public GitHub form" in body
@@ -137,10 +138,10 @@ def test_each_audience_has_an_explicit_route() -> None:
 
     link_text = {link["text"] for link in parser.links}
     assert link_text >= {
-        "Read the bounded pilot brief",
-        "Inspect the synthetic packet",
-        "Review the legal boundaries",
-        "Offer a focused review",
+        "Plan a bounded union evaluation",
+        "Follow the legal-aid review guide",
+        "Follow the inspector review guide",
+        "Read the open trust gates",
         "Browse the source",
     }
 

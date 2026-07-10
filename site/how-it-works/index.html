@@ -1,0 +1,171 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#16424f" />
+    <title>How Habitable Evidence Works | Offline Repair Records</title>
+    <meta name="description" content="Learn how Habitable Evidence organizes repair conditions, notices, responses, sealed captures, and selective exports in one offline record." />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <link rel="canonical" href="https://chelseakr.github.io/habitable/how-it-works/" />
+    <link rel="icon" href="../img/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="../content.css" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:site_name" content="Habitable Evidence" />
+    <meta property="og:url" content="https://chelseakr.github.io/habitable/how-it-works/" />
+    <meta property="og:title" content="How Habitable Evidence Works | Offline Repair Records" />
+    <meta property="og:description" content="Learn how Habitable Evidence organizes repair conditions, notices, responses, sealed captures, and selective exports in one offline record." />
+    <meta property="og:image" content="https://chelseakr.github.io/habitable/img/app-en.png" />
+    <meta property="og:image:alt" content="The Habitable Evidence app showing a synthetic repair case." />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="How Habitable Evidence Works | Offline Repair Records" />
+    <meta name="twitter:description" content="Learn how Habitable Evidence organizes repair conditions, notices, responses, sealed captures, and selective exports in one offline record." />
+    <meta name="twitter:image" content="https://chelseakr.github.io/habitable/img/app-en.png" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Article",
+            "@id": "https://chelseakr.github.io/habitable/how-it-works/#article",
+            "headline": "How Habitable Evidence Works",
+            "description": "Learn how Habitable Evidence organizes repair conditions, notices, responses, sealed captures, and selective exports in one offline record.",
+            "datePublished": "2026-07-10",
+            "dateModified": "2026-07-10",
+            "inLanguage": "en",
+            "author": "Chelsea Kelly-Reif",
+            "mainEntityOfPage": "https://chelseakr.github.io/habitable/how-it-works/",
+            "image": "https://chelseakr.github.io/habitable/img/app-en.png"
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "name": "Habitable Evidence", "item": "https://chelseakr.github.io/habitable/" },
+              { "@type": "ListItem", "position": 2, "name": "How it works", "item": "https://chelseakr.github.io/habitable/how-it-works/" }
+            ]
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="../"><img src="../img/icon.svg" alt="" width="42" height="42" />Habitable Evidence</a>
+      <nav class="primary-nav" aria-label="Primary">
+        <ul>
+          <li><a aria-current="page" href="./">How it works</a></li>
+          <li><a href="../documentation-checklist/">Documentation checklist</a></li>
+          <li><a href="../tenant-unions/">For tenant unions</a></li>
+          <li><a href="../trust-limitations/">Trust and limits</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main id="main">
+      <nav class="breadcrumbs" aria-label="Breadcrumb">
+        <ol><li><a href="../">Home</a></li><li aria-current="page">How it works</li></ol>
+      </nav>
+
+      <article>
+        <header class="article-header">
+          <div class="article-header-copy">
+            <p class="kicker">Evidence method</p>
+            <h1>How Habitable Evidence works</h1>
+            <p class="lede">Habitable Evidence keeps repair conditions, notices, responses, and recurring problems in one offline tenant-owned record. It can produce a deliberately scoped packet with integrity information, while leaving the human and legal meaning of that material to qualified reviewers.</p>
+          </div>
+          <div class="record-card" role="note" aria-label="Page status">
+            <p class="record-label">Method record</p>
+            <strong>Alpha · synthetic evaluation</strong>
+            <p>Reviewed 10 July 2026. General information, not legal advice.</p>
+          </div>
+        </header>
+
+        <div class="layout">
+          <div class="article-body">
+            <p class="boundary"><strong>Current boundary:</strong> the project has automated tests and a synthetic sample. It has not completed independent security review, housing-law review, or a real-world partner evaluation. Use synthetic data while assessing it.</p>
+
+            <section id="record-lifecycle" aria-labelledby="lifecycle-h">
+              <h2 id="lifecycle-h">The repair-record lifecycle</h2>
+              <ol class="steps">
+                <li><strong>Create a local case.</strong>The case stays on the operator’s device in an encrypted vault. The public website does not receive or store case data.</li>
+                <li><strong>Describe observable conditions.</strong>Record the location, what can be seen or heard, when it occurred, and how it affects use of the space. Keep conclusions separate from observations.</li>
+                <li><strong>Keep the communication trail.</strong>Add repair requests, delivery details, management responses, visits, work performed, and recurrence to the same chronology.</li>
+                <li><strong>Seal captures.</strong>Habitable preserves an original, computes a SHA-256 content hash, and records custody events. Timestamp tokens can be attached when a configured service is available.</li>
+                <li><strong>Choose what to disclose.</strong>The operator reviews the export scope. Originals and selected details can be withheld; the packet records the chosen disclosure policy.</li>
+                <li><strong>Give the recipient a check.</strong>A recipient can inspect the accessible HTML or PDF and run the verifier against the signed bundle. Verification is a technical check, not a legal conclusion.</li>
+              </ol>
+            </section>
+
+            <section id="record-layers" aria-labelledby="layers-h">
+              <h2 id="layers-h">Three layers that should not be collapsed</h2>
+              <div class="comparison">
+                <div>
+                  <h3>Technical integrity</h3>
+                  <ul>
+                    <li>Do recorded hashes still match the packaged files?</li>
+                    <li>Does the bundle signature validate against the included identity?</li>
+                    <li>Is the custody sequence structurally consistent?</li>
+                  </ul>
+                </div>
+                <div class="limitations">
+                  <h3>Human authority and meaning</h3>
+                  <ul>
+                    <li>Who controlled the signing identity?</li>
+                    <li>Does a capture accurately represent the condition?</li>
+                    <li>How should a local agency, advocate, or attorney use it?</li>
+                  </ul>
+                </div>
+              </div>
+              <p>A passing integrity check only answers the first group. The second group needs context, corroboration, trusted identities, and review under the recipient’s own rules.</p>
+            </section>
+
+            <section id="packet" aria-labelledby="packet-h">
+              <h2 id="packet-h">What a packet contains</h2>
+              <p>The synthetic packet is organized for reading rather than as a raw media dump. Depending on export choices, it can include:</p>
+              <ul class="checklist">
+                <li>issue summaries and the locations described by the operator;</li>
+                <li>an ordered history of conditions, repair notices, responses, visits, and recurrence;</li>
+                <li>selected captures with descriptions and capture metadata;</li>
+                <li>an evidence appendix with hashes, timestamp status, and custody checks;</li>
+                <li>a disclosure statement explaining what the export includes or withholds.</li>
+              </ul>
+              <p class="plain-note"><strong>Inspect the artifact:</strong> open the <a href="../sample-packet/packet.html">synthetic sample packet</a> with its <a href="../sample-packet/bundle.json">signed bundle</a>. It is evaluation material, not a record of a real housing matter.</p>
+            </section>
+
+            <section id="next" aria-labelledby="next-h">
+              <h2 id="next-h">Evaluate safely</h2>
+              <p>Start with the <a href="../documentation-checklist/">safe repair documentation checklist</a>, then choose the review path that matches your role: <a href="../tenant-unions/">tenant union</a>, <a href="../legal-aid-reviewers/">legal aid or independent reviewer</a>, or <a href="../inspectors-code-enforcement/">housing inspector or code-enforcement staff</a>.</p>
+              <p>For implementation-level detail, read the project’s <a href="https://github.com/ChelseaKR/habitable/blob/main/docs/evidence-method.md">evidence method</a> and <a href="https://github.com/ChelseaKR/habitable/blob/main/docs/threat-model.md">threat model</a>.</p>
+            </section>
+          </div>
+
+          <nav class="side-nav" aria-label="On this page">
+            <h2>On this page</h2>
+            <ul>
+              <li><a href="#record-lifecycle">Record lifecycle</a></li>
+              <li><a href="#record-layers">Integrity and meaning</a></li>
+              <li><a href="#packet">Packet contents</a></li>
+              <li><a href="#next">Evaluate safely</a></li>
+            </ul>
+          </nav>
+        </div>
+
+        <aside class="related" aria-labelledby="related-h">
+          <h2 id="related-h">Understand the limits before testing</h2>
+          <p>Read the project’s explicit security, privacy, timestamp, identity, and legal boundaries before deciding whether an evaluation is appropriate.</p>
+          <ul><li><a href="../trust-limitations/">Trust, security, and legal limitations</a></li><li><a href="../documentation-checklist/">Safe repair documentation checklist</a></li></ul>
+        </aside>
+      </article>
+    </main>
+
+    <footer>
+      <ul class="footer-links"><li><a href="../">Home</a></li><li><a href="../tenant-unions/">Tenant unions</a></li><li><a href="../legal-aid-reviewers/">Legal aid and reviewers</a></li><li><a href="../inspectors-code-enforcement/">Inspectors</a></li><li><a href="https://github.com/ChelseaKR/habitable">Source code</a></li></ul>
+      <p>Habitable Evidence is an independent open-source alpha. It is not legal advice, an emergency service, or a place to submit tenant data.</p>
+    </footer>
+  </body>
+</html>
