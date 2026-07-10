@@ -7,6 +7,17 @@
 # as the SHA-pinned GitHub Actions in .github/workflows/.
 
 repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: cef0300fd0fc4d2a87a85fa2093c6b283ea36f4b # v5.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ["--maxkb=2048"]
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: c59bba8fb259db0fec2bbb77ad8ba51ea7341b56 # v0.15.20
     hooks:
