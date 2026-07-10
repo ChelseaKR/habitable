@@ -1,26 +1,32 @@
-# habitable — court-ready habitability evidence for tenant unions, offline and encrypted
+# habitable — verifiable habitability documentation for tenant unions, offline and encrypted
 
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ChelseaKR/habitable/badge)](https://scorecard.dev/viewer/?uri=github.com/ChelseaKR/habitable)
 — an honest, itemized supply-chain self-assessment; see the dated report at
 [`docs/audits/scorecard-2026-07.md`](docs/audits/scorecard-2026-07.md) for what the current number means and what moves it.
 
 > A privacy-first, offline-capable tool that lets tenants and their unions document repair and
-> habitability problems as evidence that holds up: dated photos, condition notes, and a timeline,
-> each captured with a trusted timestamp, a content hash, and a chain of custody, then assembled into
-> a packet a tenant can hand to a court or a housing inspector. Everything is local-first and
+> habitability problems with dated media, condition notes, and a timeline. Captured media receives
+> a content hash, an RFC 3161 timestamp token, and chain-of-custody records; timeline entries are
+> narrative records included in the signed packet, not individually hashed or timestamped. The
+> result is a review packet for a tenant, organizer, lawyer, court, or housing inspector—without a
+> promise that any forum will accept it. Everything is local-first and
 > end-to-end encrypted; organizers sync directly between devices without a central server. The threat
 > model assumes a landlord who retaliates, so there is no server-side personal data, no central
 > authority over a union's records, and no third party who can be subpoenaed for what the union holds.
 > The union owns its data.
 
 **Status:** working reference implementation · **alpha** — the evidence core, CLI, peer-to-peer
-sync, standalone verifier, and an accessible bilingual (EN/ES) installable web app are implemented
-and tested on Python 3.14 (`make verify` green; the app is gated by a real `axe-core` scan in both
-languages). A recorded human screen-reader pass and signed native app-store binaries remain, so
+sync, standalone verifier, and bilingual (EN/ES) local web app are implemented and automatically
+tested on Python 3.14 (`make verify` green; the app has `axe-core`, keyboard, and reflow checks).
+No independent security/legal review, real tenant-union pilot, recorded human screen-reader pass,
+or signed native app-store package has been completed, so
 **do not rely on this for real legal matters yet** ·
 independent personal open-source project · AGPL-3.0 ·
 unaffiliated with any employer or client; contains no proprietary or client material; not a
 government system and not built for a government customer.
+
+See the current **[capability and claim ledger](docs/capabilities.md)** for the evidence behind each
+shipped, partial, planned, or externally unvalidated claim.
 
 **Supported versions:** pre-1.0, only the **latest release** is supported (see `SECURITY.md`).
 
@@ -31,7 +37,7 @@ photos, but a bare JPEG with editable EXIF data is weak evidence and a date a la
 contest. Existing apps that promise to fix this usually do it by uploading every tenant's photos and
 home address to a company's cloud, which creates a single honeypot and a single party to be
 pressured, breached, or subpoenaed. habitable inverts that. The evidence lives on the tenant's
-device, encrypted; trusted timestamps and content hashes make tampering detectable; and unions sync
+device, encrypted; content hashes and RFC 3161 tokens make later changes detectable; and unions sync
 peer to peer so no company sits between a tenant and their own records. It is the privacy and
 local-first sibling to the civic-data projects in this portfolio, and it carries their discipline on
 auditability, accessibility, and saying plainly what the tool does not do.
@@ -43,47 +49,44 @@ auditability, accessibility, and saying plainly what the tool does not do.
 - **Captures** a habitability issue as a structured record: photos and short video, a condition note,
   a category (heat, mold, pests, water, electrical, structural), the affected room, and a timeline of
   observations as the problem persists or recurs.
-- **Makes each capture evidence-grade.** At capture the tool computes a content hash (SHA-256) of the
+- **Makes each media capture tamper-evident.** At capture the tool computes a content hash (SHA-256) of the
   original media, seals the original file unmodified, and writes an append-only chain-of-custody
-  entry — all instantly and fully offline. It then obtains a **trusted timestamp** (RFC 3161) over
-  that hash as soon as the device has connectivity, showing the item as *awaiting-timestamp* until the
-  signed token is attached. EXIF is handled explicitly: the original (including its embedded capture
+  entry — all instantly and fully offline. It then obtains an **RFC 3161 timestamp token** over
+  that hash as soon as the device has connectivity, showing the item as *awaiting-timestamp* until
+  the signed token is attached. Authority trust is a separate verification step that requires an
+  accepted certificate anchor. EXIF is handled explicitly: the original (including its embedded capture
   time and any GPS) is retained sealed for evidentiary integrity, while any copy a tenant chooses to
   share can have location stripped.
 - **Logs a timeline** per issue: repair requests sent, landlord responses or silence, inspections,
-  and worsening conditions, each entry timestamped and hashed so the sequence is tamper-evident.
+  and worsening conditions. Entries are append-only CRDT records ordered by a hybrid logical clock
+  and included in the signed packet; they do not receive the media hash/timestamp/custody pipeline.
 - **Syncs peer to peer.** An organizer and the tenants on a case keep records in step over
   end-to-end-encrypted, direct device-to-device sync using a CRDT, so two people editing the same
   case offline merge cleanly when they reconnect. No server holds the plaintext, and no server is
   required at all.
-- **Exports a court-ready bundle.** One command assembles a paginated, court-and-inspector-ready PDF
-  (and an accessible HTML rendering, plus the structured `bundle.json`) for an issue or a whole unit:
-  a **cover sheet** (case, scope, counts, date range), a single **chronological evidence timeline**
-  interleaving notes and photos across issues, the per-issue detail, and a **chain-of-custody /
-  integrity summary** — every item's hash, RFC 3161 timestamp authority, and the append-only custody
-  proof, shown intact without exporting who viewed or copied each item — so the recipient can verify
-  nothing was altered after the fact.
+- **Exports a court/inspector-organized review bundle.** One command assembles a paginated PDF,
+  accessible HTML rendering, and structured `bundle.json` for an issue or a whole unit: a cover
+  sheet, chronological evidence timeline, per-issue detail, and a chain-of-custody/integrity
+  summary. Technical integrity is independently checkable; legal, court, and inspector usefulness
+  remain externally unvalidated.
 - **Shares with an organizer, end to end.** A tenant can hand a case — or a chosen subset of issues,
   optionally with the unit label redacted — to a tenant-union organizer who was not on the case,
   signed and **sealed to the organizer's verified public key**, so any relay or courier sees only
   ciphertext (`habitable share` / `receive`; trust model in `docs/sharing-trust-model.md`).
 - **Drafts the repair request.** From the logged evidence, `habitable letter` generates a dated
   repair-request / notice letter to the landlord (accessible HTML + PDF), with jurisdiction-aware
-  *framing only* and a standing "not legal advice" disclaimer (`docs/letter-generator.md`).
+  *framing only* and a standing "not legal advice" disclaimer (`docs/letter-generator.md`). Its
+  wording and delivery workflow have not been validated by legal counsel or a pilot partner.
 
 ```console
-$ habitable export --unit "4B" --since 2026-01-01 --out 4B-packet.pdf
-habitable: unit 4B — 3 issues, 27 captures, 14 timeline entries
-           all 27 media items: content hash present, RFC 3161 timestamp verified
-           chain of custody: intact (no gaps, no out-of-order entries)
-           evidence appendix: hashes + timestamp tokens + custody proof (chain verified; identities not exported)
-           location data: stripped from shared copies; originals sealed in case vault
-$ habitable verify 4B-packet.pdf
-habitable: 27/27 items verify against their sealed originals and timestamp tokens — packet intact
+$ habitable export --vault ./case-vault --since 2026-01-01 --out ./4B-packet
+$ habitable verify ./4B-packet
+$ habitable verify --trusted-cert ./tsa-root.pem ./4B-packet  # additionally anchor TSA trust
 ```
 
-The verification command is the point: a packet is not "trust me," it is a set of claims a third
-party can independently check against the timestamp authority and the hashes.
+The verification command is the point: a packet is not "trust me." It exposes technical claims a
+third party can re-check. Without `--trusted-cert`, the verifier checks token imprint/signature but
+does not assert that the signing certificate chains to an authority the recipient trusts.
 
 ---
 
@@ -114,8 +117,9 @@ encrypted delta on a USB stick or SD card — see [`docs/sneakernet-sync.md`](do
 | --- | --- |
 | ![The habitable local web app showing case status, issues, and an add-issue form](site/img/app-en.png) | ![An accessible habitability evidence packet with an issue, a captured photo, and an evidence appendix table](site/img/packet.png) |
 
-The app is bilingual (EN/ES), accessible (WCAG 2.2 AA, axe-gated), and runs entirely on your device.
-Every export ships an accessible `packet.html`, a paginated PDF, and a verifiable `bundle.json`.
+The app is bilingual (EN/ES) and has automated axe, keyboard, and reflow coverage; a human
+screen-reader pass remains open. Every export ships an axe-tested `packet.html`, a paginated PDF,
+and a verifiable `bundle.json`.
 
 ---
 
@@ -136,10 +140,11 @@ Every export ships an accessible `packet.html`, a paginated PDF, and a verifiabl
    the project ships no account system, no admin who can read or revoke a union's evidence, and no
    hosted service that owns the records. Forking the code or running the relay yourself changes
    nothing about who can read the data: still no one but the keyholders.
-3. **Tamper-evidence is mandatory, not optional.** Every captured item gets a content hash at capture
-   and a trusted timestamp as soon as the device has connectivity, and every record is in an
-   append-only, hash-linked log. The export refuses to present an item as evidence if its hash,
-   timestamp, or custody chain does not verify; it surfaces the gap instead of hiding it.
+3. **Tamper-evidence is mandatory for captured items, not optional.** Every captured item gets a
+   content hash at capture; supported handling actions enter an append-only, hash-linked custody
+   log; and an RFC 3161 token is requested when connectivity is available. Timeline notes do not
+   receive those per-item proofs. Export and verification surface missing timestamps or integrity
+   failures instead of silently describing them as complete.
 4. **Originals are sealed; sharing is a deliberate, minimizing act.** The original media is preserved
    byte-for-byte for integrity. Any shared or exported copy strips location by default, and the user
    is shown exactly what a packet will disclose before it is produced. The tool never silently
@@ -214,7 +219,7 @@ court or an opposing party can check a packet with a small, auditable tool.
 
 ---
 
-## The evidence engine (the part a courtroom rests on)
+## The evidence engine
 
 A photo is only as good as the answer to "how do we know it wasn't edited, and that it was taken
 when you say?" habitable is built so those answers are independently checkable rather than asserted.
@@ -223,24 +228,26 @@ when you say?" habitable is built so those answers are independently checkable r
   (SHA-256) and written to a sealed case vault that the app treats as immutable. Any later read
   re-checks the hash, so silent corruption or tampering shows up as a failed fixity check, not a
   quietly altered exhibit.
-- **Trusted timestamps.** The hash — never the photo — is sent to an **RFC 3161** timestamp
-  authority, which returns a signed token proving the content existed *no later than* that time: an
-  upper bound on when it was created, so an item cannot have been fabricated or edited after the fact
-  without detection. Capture never blocks on the network: offline, the item is hashed and sealed
+- **RFC 3161 timestamp tokens.** The hash — never the photo — is sent to an **RFC 3161** timestamp
+  authority, which returns a signed token showing the exact content existed *no later than* that
+  time. This is an upper bound on existence, not proof of capture time, authorship, or depiction.
+  Capture never blocks on the network: offline, the item is hashed and sealed
   instantly and the request is queued, the item showing an *awaiting-timestamp* status until
   connectivity lets the token be fetched and attached. Multiple authorities can be configured so the
   proof does not rest on one party, and the tokens travel inside the packet for offline verification.
-- **Chain of custody.** Every action on an item — captured, viewed, copied for sharing, included in a
-  packet — is an entry in an append-only, hash-linked log. A break or reordering in the chain is
+- **Chain of custody.** Supported handling actions on captured items — such as capture, fixity
+  checking, timestamping, copying for sharing, and packet inclusion — enter an append-only,
+  hash-linked log. A break or reordering in the chain is
   detectable, and the export reports it rather than presenting a compromised item as clean.
 - **EXIF handled on purpose.** The sealed original keeps its embedded capture time and any GPS,
   because that metadata is part of the evidentiary record. Shared and exported copies strip location
   by default so producing a packet does not leak where a tenant lives, and the tool shows precisely
   which metadata each output retains or removes.
-- **Independently verifiable.** `habitable verify` re-derives every hash, validates each timestamp
-  token's signature and its full certificate chain back to a trusted RFC 3161 authority, and walks
-  the custody chain — using only the packet and the sealed originals, with no access to the union's
-  other data. Because a TSA's signing certificate eventually expires, long-held packets can be
+- **Independently verifiable.** `habitable verify` re-derives shared-media hashes, validates each
+  timestamp token's imprint/signature, and walks the custody chain using the packet alone. Passing
+  `--trusted-cert` additionally requires the timestamp certificate to chain to a root the recipient
+  selected. Packets that embed originals also permit original-byte fixity checks. Because a TSA's
+  signing certificate eventually expires, long-held packets can be
   re-timestamped (an archive timestamp over the existing token) so old evidence keeps verifying. The
   verification tool is small and auditable on its own, so a skeptic can confirm a packet without
   trusting this project.
@@ -255,18 +262,19 @@ verifiability, so those clusters carry the most weight.
 
 ### Integrity, evidence, and trust in the record
 **Correctness** and **accuracy** — captures preserve original bytes and metadata; the timeline
-records what happened in the order it happened. **Precision** and **fidelity** — originals are sealed
-byte-for-byte with no re-encoding; hashes pin exact content and timestamps pin exact time. **Integrity**
+stores user-authored entries in deterministic CRDT order. **Precision** and **fidelity** — originals
+are sealed byte-for-byte with no re-encoding; hashes pin exact content and timestamp tokens bound
+existence no later than their stated time. **Integrity**
 — content hashing plus append-only, hash-linked custody makes any alteration detectable. **Auditability**
 — every item carries its hash, timestamp token, and a verifiable custody-integrity proof, while the
 full who-did-what trail stays in the union's vault rather than being exported.
-**Provability** — a packet's claims are checkable against an external timestamp authority, not taken on
-faith. **Traceability** — capture → seal → custody entries → packet item is recorded end to end.
+**Provability** — packet integrity claims are mechanically checkable; authority trust requires a
+recipient-selected certificate anchor. **Traceability** — capture → seal → custody entries → packet
+item is recorded end to end.
 **Determinability** and **predictability** — verification of the same packet yields the same verdict on
-any machine. **Repeatability** and **reproducibility** — `habitable verify` reproduces fixity and
-timestamp checks deterministically; packet assembly is deterministic for a given case state.
-**Relevance** and **effectiveness** — the packet contains what a court or inspector actually needs to
-act, measured against documented evidentiary requirements, not padded.
+any machine. **Repeatability** — `habitable verify` reproduces fixity and timestamp checks
+deterministically. **Relevance** and **effectiveness** are unvalidated hypotheses: a real legal
+review and pilot must determine whether the packet contains what a court or inspector needs.
 
 ### Privacy, security, accountability, autonomy
 **Confidentiality** and **securability** — end-to-end encryption at rest and in sync; the relay and the
@@ -283,29 +291,28 @@ limits — what habitable does not do*) and how each guarantee is enforced, rath
 seize them.
 
 ### Usability, learnability, reach
-**Accessibility** — WCAG 2.2 AA enforced as a merge gate; capture, timeline, and review are fully
-keyboard and screen-reader operable, and any visual status has a text equivalent. **Usability** and
-**convenience** — capture an issue in a few taps; export a packet in one command; no account to create
-under stress. **Learnability**, **familiarity**, and **intuitiveness** — a photo-and-note flow people
-already know from a camera roll, with the evidence machinery handled underneath. **Interactivity** and
+**Accessibility** — automated axe, keyboard, and reflow checks are merge gates; no recorded human
+screen-reader pass or full WCAG conformance determination exists. **Usability**, **learnability**,
+and **intuitiveness** remain pilot questions rather than shipped guarantees. There is no central
+account to create. **Interactivity** and
 **responsiveness** — capture and review work instantly on-device with no network wait. **Discoverability**
 — a guided first case and an in-app explanation of what makes a strong record. **Demonstrability** —
 `make demo` walks a sample case from capture to verified packet with no real tenant data.
 **Understandability** — each item shows its evidence status (hashed, timestamped, custody intact) in
 plain words. **Seamlessness** — capture, sync, and export operate on one local document.
-**Localizability** — all strings in per-language bundles; Spanish ships in v1 given the communities
-served. **Mobility** and **ubiquity** are design requirements because documentation happens in the
-apartment, often on the only device a tenant has. The responsive PWA shell exists, but a safe,
-self-contained phone package is still a release blocker.
+**Localizability** — app strings live in per-language bundles with automated EN/ES parity; human
+Spanish language/accessibility review is still open. **Mobility** — the responsive PWA shell exists,
+but there is no reviewed, self-contained phone package and phone setup has not been validated in a
+real pilot.
 
 ### Dependability, resilience, safety
 **Dependability** and **reliability** — the app is fully functional offline; loss of network never
 blocks capturing evidence. **Availability** — there is no central service whose downtime stops a tenant;
 the relay is optional and replaceable. **Fault-tolerance**, **resilience**, **robustness**, and
-**survivability** — CRDT merges tolerate concurrent offline edits; a corrupted item is flagged by fixity
-rather than crashing the case; data survives the loss of any one device through peer sync and
-encrypted backup. **Recoverability** — an encrypted backup plus a recovered key restores a union's full
-case set; a re-synced peer rebuilds local state. **Degradability** and **failure transparency** — a
+**survivability** — CRDT merges tolerate concurrent offline edits; a corrupted item is flagged by
+fixity rather than crashing the case. Data survives device loss only if the user has already made a
+usable backup or synced an authorized peer. **Recoverability** — tested recovery mechanisms exist,
+but their real-world ceremony has not been piloted. **Degradability** and **failure transparency** — a
 missing timestamp token or a broken chain is shown as a degraded evidence status, never silently passed
 as clean. **Redundancy** — multiple sync peers and configurable multiple timestamp authorities remove
 single points of failure. **Stability** and **durability** — sealed originals are immutable; semver on
@@ -347,8 +354,10 @@ sync events, kept local and never exfiltrated; the relay logs only ciphertext-pa
 **Debuggability** — a case can be traced from capture through custody to packet under a debug flag,
 without exposing plaintext off-device. **Serviceability / supportability** and **repairability** — issue
 templates and a "reproduce on sample data" path; most fixes are template or config edits, and the
-verification tool stands alone for support. **Deployability** and **installability** — `pipx install` for
-the CLI, an installable app build, and an optional one-command relay deploy. **Agility** — a CI smoke
+verification tool stands alone for support. **Deployability** and **installability** — the repository
+builds and smoke-tests a wheel/sdist, and its tag workflow is wired for PyPI Trusted Publishing after
+one-time external setup. This does not imply a release has successfully published. No signed native
+package exists; the optional relay has a documented container deployment. **Agility** — a CI smoke
 suite on every PR. **Autonomy**, **self-sustainability**, and **sustainability** — no paid dependency and
 no service to fund, so a union keeps the tool working with no budget and no vendor.
 
@@ -357,20 +366,20 @@ no service to fund, so a union keeps the tool working with no budget and no vend
 verifiable with off-the-shelf tools; packets are PDF plus a structured machine-readable bundle.
 **Interchangeability** — timestamp authorities and sync transports swap without touching callers; a
 packet verifies with the bundled tool or with general-purpose RFC 3161 and hashing utilities.
-**Standards compliance** — RFC 3161 trusted timestamping, WCAG 2.2 AA, semver, conventional commits, SPDX
-headers, and the AGPL-3.0 source obligation. **Inspectability** — hashes, tokens, and custody logs are
+**Standards use and targets** — RFC 3161 and SHA-256 are implemented; WCAG 2.2 AA is a target with
+automated partial coverage, not a current conformance claim. The project also uses semver,
+conventional commits, SPDX headers, and AGPL-3.0. **Inspectability** — hashes, tokens, and custody logs are
 viewable and independently checkable. **Composability** — the structured bundle is plain data a legal-aid
 tool could ingest. **Testability** — fixtures of clean, tampered, and chain-broken cases make the
 evidence and verify paths unit-testable; verification attributes (provability, repeatability,
 reproducibility, traceability, demonstrability) are covered above and exercised by the verify tool itself.
 
 ### Distribution, portability, installation
-**Distributability** — the client ships as an installable app and PyPI package; the relay as a container
-image. **Portability** — the local-first client runs on Android, iOS (PWA), and desktop, and the data is
-portable encrypted files a union can move or back up anywhere. **Installability** — one command for the
-CLI and a documented app install; the relay is optional and self-hostable. **Deployability** — committed
-IaC stands up a relay for a union that wants one, and nothing breaks for unions that run pure peer to
-peer.
+**Distributability** — source distributions, wheels, PWA assets, and a relay container can be built
+from the repository; tagged releases are configured for PyPI Trusted Publishing, subject to the
+documented one-time registry setup. **Portability** — encrypted files are movable and the browser client is designed
+for desktop/mobile browsers, but those paths have not been established by signed native packages or
+a real-device pilot. **Deployability** — the relay is optional and self-hostable.
 
 ---
 
@@ -389,16 +398,16 @@ to also makes the packets and the app usable to the legal-aid workers and inspec
   software (Chapter 5) and support-documentation (Chapter 6) criteria, and the **Functional Performance
   Criteria** (use without vision, with limited vision, without hearing, with limited reach and strength,
   with limited cognition).
-- Every visual evidence-status indicator has a **text equivalent**: an item's hashed, timestamped, and
-  custody-intact state is announced in words, never signaled by color or an icon alone. The case timeline
-  and the review list are operable by keyboard and screen reader, and the exported PDF packet is tagged
-  for accessibility with a text layer so a screen-reader user can read the evidence appendix.
+- Every visual evidence-status indicator has a **text equivalent**. Automated tests cover keyboard
+  navigation and structure, but only a human pass can establish real screen-reader usability. The
+  exported PDF has selectable text, language metadata, and outlines but is **not tagged PDF/UA**;
+  `packet.html` is the designated accessible rendering.
 - The app passes automated checks (axe) and has a **documented manual screen-reader protocol**
   (`docs/accessibility/manual-testing.md`); a *recorded* NVDA/VoiceOver pass is a v1.0 gate item still
   open (see `docs/accessibility/ACR.md`) — capture works without precise pointer control, and time
   limits are avoidable so a tenant documenting under stress is not rushed.
-- Accessibility is a **merge-blocking CI gate**; a regression fails the build. The ACR is regenerated and
-  re-committed on each release, the same audit-as-artifact discipline as the evidence method.
+- Automated accessibility checks are a **merge-blocking CI gate**; a mechanical regression fails the
+  build. Human screen-reader and language review remain separate release gates.
 
 ---
 
@@ -413,13 +422,13 @@ see **[`ROADMAP.md`](ROADMAP.md)**.
   append-only custody log, and explicit EXIF handling. Local encrypted storage. Definition of done: an
   issue can be captured offline and an item's fixity and metadata handling verified locally.
 - **Phase 2 — timestamps, packets, and verification.** ✅ RFC 3161 timestamping over hashes; the
-  court/inspector PDF with an evidence appendix; the standalone `verify` tool. Tamper-detection tests
+  review PDF/HTML with an evidence appendix; the standalone `verify` tool. Tamper-detection tests
   against fixtures of altered and chain-broken items.
 - **Phase 3 — local-first sync.** ✅ The CRDT case model, end-to-end-encrypted peer-to-peer sync, the
   optional ciphertext-only relay, and encrypted backup with key rotation. Concurrent-offline-edit
   convergence tested (property-based).
-- **Phase 4 — accessible app and generalize.** Mostly done: an accessible, bilingual (EN/ES) web app
-  (`habitable app`) gated by a real **axe-core** scan in both languages plus structural + i18n-parity
+- **Phase 4 — app accessibility automation and generalization.** Partially done: a bilingual (EN/ES)
+  web app (`habitable app`) gated by **axe-core** scans plus structural + i18n-parity
   tests (✅); an **installable PWA** with PNG/maskable icons, Apple touch icon, and an offline service
   worker (✅, see `docs/mobile.md`); an **accessible `packet.html`** rendering that passes the same axe
   gate, alongside a PDF that declares its language and carries a navigable outline (✅); configurable
@@ -427,7 +436,8 @@ see **[`ROADMAP.md`](ROADMAP.md)**.
   screen-reader protocol (✅ `docs/accessibility/manual-testing.md`). **Remaining:** a *recorded* human
   NVDA/VoiceOver pass; a fully tagged **PDF/UA** structure tree (not available in reportlab's
   open-source API — the HTML packet is the accessible rendering until then); and signed native
-  app-store binaries or another independently reviewed on-device package.
+  app-store binaries or another independently reviewed on-device package. Automated checks do not
+  by themselves establish WCAG conformance.
 
 ---
 

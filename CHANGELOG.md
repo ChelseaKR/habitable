@@ -9,6 +9,12 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **Capability/claim ledger and documentation truth gate.** `docs/capabilities.md`
+  separates shipped, partial, planned, and externally unvalidated claims and links each
+  row to repository evidence plus its explicit gap. A standard-library Markdown-link
+  checker now runs in `make verify`, fails on missing local targets, and requires every
+  ledger row to retain a live local evidence path.
+
 - **Reusable, local-first evidence kernel (`habitable.kernel`)** — EXP-13. The
   verification-facing spine (canonical serialization + SHA-256, chain-of-custody model +
   verification, RFC 3161 timestamp verification, Ed25519 signature verification, and the
@@ -34,7 +40,8 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   data file is copied into `media/` verbatim (a CSV carries no embedded location metadata
   to strip) and disclosed as such. Framed as corroboration, **not** proof of cause
   (R-26). New `item.sensor` field documented in `docs/bundle-schema.md` and
-  `docs/packet-bundle.schema.json`; see `docs/ideation/03-expansions.md` (EXP-09).
+  `docs/packet-bundle.schema.json`; see the expansion backlog in
+  `docs/research/synthetic-personas-feedback.md` (EXP-09).
 
 - **Relay observability — structured JSON logs + `/livez` / `/readyz`** (per the
   portfolio OBSERVABILITY-STANDARD). The optional sync relay now logs one JSON object
@@ -73,6 +80,12 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   wildcard, tunneled, and public bind targets instead of exposing an unlocked case
   API over plaintext HTTP. Phone and workshop guides no longer recommend the old
   `0.0.0.0` path and state honestly that a reviewed on-device package is not shipped.
+- **Public documentation now matches the implementation and validation state.** Timeline
+  notes are no longer described as individually hashed/timestamped; valid RFC 3161 tokens
+  are distinguished from recipient-anchored authority trust; automated accessibility is
+  distinguished from the still-open human pass; and court readiness, duress mode, pilot
+  completion, PDF/UA, and signed native packaging are no longer implied as shipped.
+
 - **Verifier subset now imports on Python < 3.14 again.** Three multi-type `except`
   clauses in the Apache-2.0 verification subset (`verify.py`, `tsa.py`, `exif.py`)
   used the PEP 758 parenthesis-free form, a `SyntaxError` before Python 3.14 — which

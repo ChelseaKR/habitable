@@ -28,7 +28,7 @@ matches or was not included).
 
 > **Consequence worth noting:** an item that is still **awaiting timestamp** has
 > `timestamp_verified = False`, so the item — and the whole packet — reports **NOT intact**. That is
-> correct *degraded* behavior: an un-timestamped item is not yet court-ready evidence, and the
+> correct *degraded* behavior: an un-timestamped item lacks its timestamp proof, and the
 > verifier says so rather than passing it as clean.
 
 ## 1. Packet-level outcomes

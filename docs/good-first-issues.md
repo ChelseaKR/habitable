@@ -140,8 +140,9 @@ guide:
 
 ### Plain-language and accessibility copy
 
-- 🟢 Rewrite UI status labels in plain, reassuring language — what "awaiting
-  timestamp" means, that the photo is *already safe*, and what to do next. This
+- 🟢 Rewrite UI status labels in plain, accurate language — what "awaiting
+  timestamp" means, that content fixity exists but independent time proof is incomplete,
+  and what to do next. This
   is one of the highest-leverage frictions in the persona research and is mostly
   copy work (in `app/i18n/en.json`, then mirrored in every language). (Backlog
   R-01.)

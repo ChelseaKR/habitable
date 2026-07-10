@@ -113,3 +113,12 @@ missed:
 - Per [`README.md`](../../README.md) audit-as-artifact discipline, the threat model is
   re-reviewed each release that could affect it, and a release that changes it cuts a
   new baseline here.
+
+## Post-freeze erratum — 2026-07-09 (not part of B1)
+
+B1 item 3 and its maintainer re-review incorrectly described a duress-safe state as an
+implemented mitigation. No such code existed at the freeze and none exists now. The frozen
+text remains above as an audit artifact rather than being silently rewritten; reviewers must
+treat that statement as a finding, not a current capability. The corrected current state is
+recorded in the [capability ledger](../capabilities.md), [threat model](../threat-model.md),
+and [ADR 0007](../adr/0007-limits-first-distress-decoy-vault-model.md).

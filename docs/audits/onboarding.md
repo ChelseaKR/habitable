@@ -5,7 +5,7 @@
 > partner can start without a meeting. Everything here runs offline on synthetic data;
 > **no real tenant data is needed, wanted, or ever committed.**
 
-habitable is a court-ready, offline-first, end-to-end-encrypted tool for tenants to
+habitable is an alpha, offline-first, end-to-end-encrypted tool intended to help tenants
 document habitability problems. The design promise is "verify, don't trust" — so this
 onboarding is built to let you check the claims yourself rather than take them on
 faith.
@@ -20,7 +20,7 @@ faith.
 
 What is **explicitly out of scope** for evaluation is stated in the threat model §5
 and reproduced in the baseline: hostile-keyholder local-chain rewrite, relay metadata,
-the limits of the duress state, lost-key data loss, and what a timestamp does and does
+the absence of a duress state, lost-key data loss, and what a timestamp does and does
 not prove. We are not asking you to disprove claims the project never makes — we are
 asking whether the claims it *does* make are honest and met.
 

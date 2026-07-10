@@ -27,7 +27,8 @@ threads in the project converge on this decision:
   real." The sanctioned response is to disclose the limit at point of use ([R-15])
   and harden at-rest defaults ([R-49]) **without** claiming a guarantee.
 
-This is expansion **EXP-15** in `docs/ideation/03-expansions.md`. Its excellence
+This is expansion **EXP-15** in
+[`synthetic-personas-feedback.md`](../research/synthetic-personas-feedback.md). Its excellence
 bar is a clean binary: *if shipped*, the feature ships with a red-team-reviewed,
 point-of-use statement of its exact limits and no guarantee language; *if not
 shipped*, the docs plainly say the capability does not exist. EXP-15 explicitly

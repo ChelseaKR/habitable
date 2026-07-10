@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # habitable — developer entry points. `make verify` reproduces the full CI gate.
 .DEFAULT_GOAL := help
-.PHONY: help bootstrap install fmt lint type test cov i18n markers verify audit a11y integration demo build clean
+.PHONY: help bootstrap install fmt lint type test cov i18n doc-links markers verify audit a11y integration demo build clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -15,12 +15,12 @@ install: ## Create the env and install the project + dev tools (Python 3.14 via 
 	uv run python -c "import sys; print('habitable env on Python', sys.version.split()[0])"
 
 fmt: ## Auto-format and auto-fix
-	uv run ruff format src tests
-	uv run ruff check --fix src tests
+	uv run ruff format src tests scripts/check_doc_links.py
+	uv run ruff check --fix src tests scripts/check_doc_links.py
 
 lint: ## Lint (no changes)
-	uv run ruff format --check src tests
-	uv run ruff check src tests
+	uv run ruff format --check src tests scripts/check_doc_links.py
+	uv run ruff check src tests scripts/check_doc_links.py
 
 type: ## Strict type-check
 	uv run mypy
@@ -43,6 +43,9 @@ i18n: ## Mechanical i18n gates: UTF-8 (G1), BCP 47 validity (G3), EN/ES key-pari
 	uv run python scripts/check_bcp47.py
 	uv run python scripts/check_i18n_parity.py
 
+doc-links: ## Validate local Markdown links and capability-ledger evidence paths
+	uv run python scripts/check_doc_links.py
+
 markers: ## No bare TODO/FIXME/HACK (must reference an issue, e.g. TODO(#142)); no un-issued noqa/type:ignore
 	@bad=$$(grep -rnE '(TODO|FIXME|HACK)' --include='*.py' --include='*.js' src tests app scripts 2>/dev/null \
 		| grep -vE '\(#[0-9]+\)' || true); \
@@ -60,7 +63,7 @@ markers: ## No bare TODO/FIXME/HACK (must reference an issue, e.g. TODO(#142)); 
 	fi
 	@echo "habitable: no bare TODO/FIXME/HACK; no un-issued noqa/type:ignore"
 
-verify: lint type cov i18n markers ## The full merge gate: lint + types + tests with coverage + i18n gates (G1/G3/G6) + marker hygiene
+verify: lint type cov i18n doc-links markers ## The full merge gate: lint + types + tests with coverage + i18n, doc-truth, and marker gates
 	@echo "habitable: full gate green on Python $$(uv run python -c 'import sys;print(sys.version.split()[0])')"
 
 audit: ## Dependency vulnerability audit

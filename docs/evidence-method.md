@@ -108,7 +108,7 @@ nothing about the photo, the home, or the tenant.
 
 ### Semantics: what gen_time means
 
-An RFC 3161 token proves an **upper bound** on existence/creation time: the content
+An RFC 3161 token proves an **upper bound** on existence time: the content
 existed *no later than* `genTime`. Equivalently, the file cannot have been fabricated or
 edited after that moment without breaking the timestamp.
 

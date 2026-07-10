@@ -311,18 +311,16 @@ mode' is theater."
 blob and sealed original is ChaCha20-Poly1305 under a DEK that is wrapped by a scrypt-derived
 KEK from the passphrase, and only `config.toml` (no secrets) and the passphrase-wrapped
 keyfile sit in the clear. An adversary holding a locked device gets the keyfile and
-ciphertext, not the contents. The **duress-safe open state** hides case contents from someone
-glancing at the screen or coercing a quick unlock, and is a deliberate harm-reduction
-feature.
+ciphertext, not the contents. There is **no duress-safe, panic, or decoy state** in the
+current app. A coerced unlock with the real passphrase exposes the real vault.
 
 **(c) Residual risk and honest mitigation — this is where the design is weakest, and it is
 documented as such.** Several gaps are real and conceded:
 
-- **Duress mode is not a guarantee.** It hides contents from a casual or quick-coercion
-  look. It is **not** proof against a **coercing adversary who can compel the real
-  passphrase**, nor against a **forensic adversary** who images storage and analyzes it at
-  rest. It is harm-reduction with documented limits, not a safe. This limit must be surfaced
-  **in plain language at the moment the tenant turns it on** (R-15), not buried in a doc.
+- **Duress mode is planned, not shipped.** It provides no protection today. Any future
+  implementation must first survive human red-team review and surface its limits at the
+  point of use; [ADR 0007](../adr/0007-limits-first-distress-decoy-vault-model.md) records
+  that gate.
 - **An unlocked vault, or a compelled passphrase, exposes everything.** The cryptography
   assumes a trustworthy endpoint; malware, a keylogger, or a screen recorder on an unlocked
   device defeats it entirely.

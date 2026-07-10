@@ -46,16 +46,16 @@ foto no se cambió. Toma fotos cada vez que el problema vuelva; así se arma tu 
 
 ## 3. Qué significan las palabras (en simple)
 
-- **Esperando sello de tiempo** — *Esto es normal, no es un problema.* Tu foto ya está a
-  salvo. Lo único que falta es el sello con la fecha oficial, y eso necesita internet. La
-  próxima vez que tengas wifi o señal, la app lo agrega sola. No pasa nada si estás varios
-  días sin conexión.
-- **Con sello de tiempo** — ya tiene la fecha. Ahora tu foto tiene prueba de *cuándo* existía.
-- **Cadena intacta / verificado** — el registro está bien: nada se cambió después de que
-  tomaste la foto.
-- **Paquete** — el archivo que tú (o tu organizador) le pueden entregar a una corte o a un
-  inspector. Cualquiera puede comprobarlo por su cuenta; no tienen que creerte nomás porque sí.
-  Lo que compartes sale **sin la ubicación de tu casa**.
+- **Esperando sello de tiempo** — tu foto está sellada y tiene una huella digital, pero la
+  prueba independiente de tiempo está incompleta. Cuando tengas wifi o señal, resuelve el
+  sello pendiente.
+- **Con sello de tiempo** — el sello demuestra que el contenido exacto ya existía a más
+  tardar a esa hora; no demuestra la hora exacta de captura.
+- **Cadena intacta / verificado** — los datos registrados del elemento y de su custodia
+  pasan las comprobaciones técnicas. Esto no demuestra quién lo capturó ni qué muestra.
+- **Paquete** — un archivo para revisar con tu organizador, abogado, corte o inspector. Se
+  puede comprobar su integridad técnica, pero ningún foro garantiza que lo aceptará. Por
+  defecto, las copias compartidas salen **sin la ubicación de tu casa**.
 
 ## 4. Cuida tu evidencia
 

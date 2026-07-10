@@ -54,8 +54,9 @@ Run at least one Windows and one Apple/Linux reader:
 
 ## Exported packet
 
-The conformant accessible rendering is **`packet.html`** (ADR 0004); the PDF is a
-print convenience and the `bundle.json` is the canonical machine-verifiable record.
+The designated accessibility rendering is **`packet.html`** (ADR 0004); this protocol
+tests whether that target works in practice. The PDF is a print convenience and the
+`bundle.json` is the canonical machine-verifiable record.
 
 - **`packet.html` — the screen-reader pass.** Open it in a browser with NVDA (Windows)
   and VoiceOver (macOS/iOS). Confirm: a single `h1`; landmarks/headings let you jump

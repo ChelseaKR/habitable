@@ -52,7 +52,7 @@ This is the first entry, and it is deliberately modest.
   an independent attestation.
 - **Known limitations** are tracked honestly in the threat model at
   [`../threat-model.md`](../threat-model.md) — including relay metadata exposure,
-  the limits of the duress-safe state against a coercing or forensic adversary, and
+  the absence of any duress-safe state, coercion/forensic exposure, and
   what a timestamp does and does not prove.
 - **Quality gates.** `make verify` runs the full gate: `ruff`, `mypy --strict`, and
   `pytest` with property-based convergence tests and tamper-detection tests against

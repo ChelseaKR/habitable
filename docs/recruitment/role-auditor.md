@@ -11,7 +11,7 @@
 > would pay for, or get donated, the work. We would rather say that plainly than pretend
 > otherwise.
 
-habitable is a court-ready, offline-first, end-to-end-encrypted tool that lets tenants
+habitable is an alpha, offline-first, end-to-end-encrypted tool intended to help tenants
 document habitability problems as tamper-evident evidence. Its security *is* the product:
 the design promise is "verify, don't trust." We are asking an external reviewer to check
 whether the code keeps the promises the threat model makes — and to tell us, in public,
@@ -58,7 +58,7 @@ The audit target, in priority order:
 
 2. **The residual risks in baseline B1.** B1 lists seven residual risks the project
    *states it does not protect against* (hostile keyholder rewriting the local custody
-   chain before an external anchor exists; relay connection metadata; the limits of the
+   chain before an external anchor exists; relay connection metadata; the absence of a
    duress-safe state; lost-key data loss; what a timestamp does and does not prove;
    endpoint compromise; no admissibility guarantee). We ask the reviewer to **confirm each
    is stated honestly and completely, and to surface any we missed.** A residual risk we

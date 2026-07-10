@@ -193,17 +193,17 @@ evidence at capture, making his packet accessible to the *next* AT user downstre
 **Profile.** Shares a phone with two roommates. A landlord who has threatened to "call
 someone" if tenants complain. For him, discovery isn't embarrassment — it's existential.
 
-- ✅ **Current.** The whole premise — no server, nothing to subpoena, duress-safe open
-  state, location stripped from shared copies — is *why* he'd consider it at all.
-- ⚠️ "Duress mode hides the cases. But the *app icon is right there* on a shared phone.
+- ⚠️ **Current gap.** There is no server holding case contents and shared copies strip
+  location, but there is **no duress-safe open state**; coercing the real passphrase exposes
+  the vault.
+- ⚠️ "If a future duress mode hides the cases, the *app icon is still right there* on a shared phone.
   Someone sees 'habitable,' asks what it is, and now I'm explaining." → app
   disguise / discreet presence, and honest documentation of its limits. [R-12, E-06]
 - ⚠️ "If a roommate opens the app, do they see my stuff? We share the phone but not the
   case." → per-case / per-user separation on a shared device. [R-13]
 - ⚠️ Worried about the *notification* and *recent-apps* surface leaking a case name. [R-14]
-- ❌ Most afraid of the gap the docs admit: duress mode is "not a guarantee against a
-  coercing or forensic adversary." He needs that limit in *plain language at the moment he
-  turns it on*, not only in the threat-model doc. [R-15]
+- ❌ Most afraid of the current absence of coercion protection. Any future mode needs its
+  limits in plain language at the moment it is enabled, not only in the threat-model doc. [R-15]
 
 **On the future.** A panic action that does more than hide (configurable, with documented
 limits); a "this device is shared" setup path that hardens defaults; a clear, scary-honest
@@ -538,12 +538,13 @@ playbook exists). [E-25]
 Not interviewed sympathetically — modeled to surface remediations. Where would a resourced,
 motivated adversary push?
 
-- **Device seizure / forensics.** Duress mode hides contents but isn't forensic-proof
-  (documented). Attack: image the phone, find the vault, find the app's traces. → surface
-  the limit at the moment of use (R-15); harden at-rest defaults; document residual risk.
+- **Device seizure / forensics.** No duress mode exists. Attack: image the phone, find the
+  vault, find the app's traces. → state the current absence plainly; harden at-rest
+  defaults; require review before any future mitigation is shipped.
   [R-15, R-49]
-- **Coercion.** Force the tenant to open the app. → duress state's honest limits; consider a
-  decoy/duress-data design *only if* it can be done without overpromising. [E-06, caution]
+- **Coercion.** Force the tenant to open the app. → the real passphrase exposes the vault;
+  consider a decoy/duress-data design *only if* it survives review without overpromising.
+  [E-06, caution]
 - **Metadata at the relay.** Subpoena the relay operator. → pure-P2P needs no relay;
   metadata-resistance workstream; no-log + self-hostable. [R-46, planned]
 - **Discrediting in court.** (Covered by P-11.) Attack the semantics and the chain. → honest
@@ -612,7 +613,7 @@ broadest dividend:
 
 | ID | Remediation | Sources | Sev | Effort | WS | Roadmap | Invariant check |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| R-01 | Rewrite evidence-status labels in plain, reassuring language (EN+ES): what "awaiting timestamp" means, that the photo is *already safe*, what to do next — **✅ shipped in-app** | P-01,P-06,P-16 | critical | S | B | implied | clean |
+| R-01 | Rewrite evidence-status labels in plain, accurate language (EN+ES): "awaiting timestamp" means content fixity exists but independent time proof is incomplete, plus what to do next — **⚠️ wording still needs correction in-app** | P-01,P-06,P-16 | critical | S | B | implied | clean |
 | R-02 | Eliminate dead-end screens: every state shows a clear next action; no screen leaves a stressed user stuck — **✅ shipped in-app** | P-01,P-16 | high | S | B | implied | clean |
 | R-03 | ✅ **Done.** Storage-footprint UX on low-end devices: show case size; document sealed-original + shared-copy doubling; safe offload path (`Vault.storage_footprint`, `status` storage line, app + docs) | P-01 | high | M | C | done | clean |
 | R-04 | Plain-language Spanish pass — correct but human, not "lawyerly"; reading-level target | P-01,P-16 | high | M | B | planned | clean |

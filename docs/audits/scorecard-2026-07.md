@@ -27,7 +27,7 @@ there is a real baseline instead of a guessed one.
 | Fuzzing | 0/10 | the in-repo Hypothesis property/fuzz tests (`test_verify_fuzz.py`) aren't OSS-Fuzz-integrated, which is what this check looks for — not attempted this pass |
 | License | 10/10 | license file detected |
 | Maintained | 0/10 | repo created within the last 90 days — an artifact of project age, not activity |
-| Packaging | ? | no published-package workflow detected (PyPI Trusted Publishing is a declared future step, REL-17) |
+| Packaging | ? | At the 2026-07-05 run, no published-package workflow was detected. Post-run update (2026-07-09): the tag workflow is now wired for PyPI Trusted Publishing; one-time registry setup and evidence of a successful publish remain open. |
 | Pinned-Dependencies | 10/10 | all GitHub Actions + deps pinned by SHA/lock |
 | SAST | 10/10 | CodeQL runs on all commits |
 | Security-Policy | 10/10 | `SECURITY.md` detected |

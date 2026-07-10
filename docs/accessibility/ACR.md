@@ -2,11 +2,11 @@
 
 Based on the **Voluntary Product Accessibility Template (VPAT) version 2.5 (Rev 508)**.
 
-> **Update (2026-06-17): the local web app is built and gated for accessibility.**
+> **Update (2026-07-09): the local web app is built and has automated accessibility gates.**
 > `habitable app` ships with semantic landmarks, a skip link, a single `h1`,
 > programmatically labelled controls (the resolve action uses `aria-describedby`),
 > `lang`/`title`/viewport, an `aria-live` status region, visible focus, no positive
-> `tabindex`, and full English/Spanish parity. These are enforced two ways in CI:
+> `tabindex`, and mechanical English/Spanish catalog parity. These are enforced in CI with:
 > structural tests (`tests/test_app_accessibility.py`, `tests/test_app_i18n.py`), **a
 > real `axe-core` scan** of the running app in **both languages** (blocking on any
 > moderate/serious/critical violation, `tests/test_app_axe.py`), and **keyboard +
@@ -14,22 +14,25 @@ Based on the **Voluntary Product Accessibility Template (VPAT) version 2.5 (Rev 
 > is reachable without a trap, and the layout reflows at 320px with no horizontal
 > scrolling (`tests/test_app_keyboard.py`; WCAG 2.1.1, 2.4.3, 1.4.10). All run in the
 > `a11y` workflow and the app currently reports **zero** axe violations. The remaining
-> step for a full conformance *claim* is the one part automation cannot do — a
-> **recorded human screen-reader (NVDA/VoiceOver) announcement pass**, per
-> [`manual-testing.md`](manual-testing.md); none has been recorded yet.
+> evidence required before any conformance *claim* includes the documented human
+> keyboard, zoom/reflow, language, and **screen-reader (NVDA/VoiceOver) pass**, per
+> [`manual-testing.md`](manual-testing.md); none has been recorded yet. Automated
+> results are not a WCAG conformance determination.
 >
 > **Packet accessibility.** ReportLab's open-source API has no marked-content, so a
 > fully tagged **PDF/UA structure tree is not produced**. Instead: (a) the PDF declares
 > its **language** (`/Lang`, matching the configured locale), sets **DisplayDocTitle**,
 > and carries a navigable **outline/bookmarks** with selectable text; and (b) every
-> packet also ships **`packet.html`** — a self-contained WCAG 2.2 AA rendering
+> packet also ships **`packet.html`** — a self-contained HTML rendering built toward
+> WCAG 2.2 AA
 > (landmarks, one `h1`, a captioned appendix table with header scopes, meaningful image
 > `alt`, the document language) that **passes the same axe-core gate**
 > (`tests/test_htmlpacket.py`). The machine-verifiable `bundle.json` remains the
 > canonical record.
 >
-> **`packet.html` is the conformant accessible rendering** of a packet, and the PDF is a
-> best-effort print/presentation convenience that makes **no PDF/UA conformance claim**
+> **`packet.html` is the designated accessible rendering** of a packet, and the PDF is a
+> best-effort print/presentation convenience that makes **no PDF/UA conformance claim**.
+> The HTML's automated axe result is evidence, not a complete WCAG conformance claim
 > (decided in [ADR 0004](../adr/0004-accessible-html-packet-as-conformant-rendering.md)).
 > A fully tagged PDF/UA file is revisited only if a suitable open-source tagging
 > toolchain becomes available; the PDF rows below describe its current best-effort
@@ -37,20 +40,19 @@ Based on the **Voluntary Product Accessibility Template (VPAT) version 2.5 (Rev 
 
 ## Name of Product / Version
 
-**habitable** — version **0.2.0** (alpha / concept stage).
+**habitable** — version **0.2.0** (alpha / working reference implementation).
 
 ## Report Date
 
-2026-06-17
+2026-07-09
 
 ## Product Description
 
-habitable is a court-ready, offline-first, end-to-end-encrypted habitability-evidence tool for tenant
-unions. Tenants and organizers document repair and habitability problems — dated photos, condition
-notes, and a timeline — each captured with a trusted timestamp (RFC 3161), a content hash (SHA-256),
-and an append-only chain of custody, then assembled into a paginated, court-and-inspector-ready
-**packet PDF** with an evidence appendix. Everything is local-first and end-to-end encrypted; there
-is no central server holding personal data.
+habitable is an alpha, offline-first, end-to-end-encrypted habitability-documentation tool for
+tenant unions. Captured media receives a content hash, RFC 3161 token, and custody records; timeline
+notes are narrative CRDT records included in the signed bundle, not individually hashed or
+timestamped. Exports include an HTML rendering, a best-effort PDF, and a verifiable bundle. No legal,
+court, inspector, or accessibility fitness claim has been externally validated.
 
 ## Contact Information
 
@@ -60,13 +62,12 @@ is no central server holding personal data.
 
 ## Notes
 
-This is a **concept-stage** project. The design is documented but the installable application has
-**not been built yet**. To avoid overclaiming:
+This is an implemented but **alpha and externally unvalidated** project. The local web app exists;
+there is no signed native app-store package. To avoid overclaiming:
 
 - Criteria that depend on the application (the capture flow, timeline, review list, sync UI, settings,
-  and the desktop/PWA client) are marked **"Not Evaluated — planned target: WCAG 2.2 AA."** These are
-  honest forward-looking targets, not statements of current conformance. Nothing in the app has been
-  built or tested against these criteria.
+  and the desktop/PWA client) remain **"Not Evaluated"** where a human AT or usability judgment is
+  required. Automated checks are cited as evidence but are not statements of full conformance.
 - Criteria that the **packet PDF renderer** touches *are* assessed against current behavior, because
   that component exists (`src/habitable/pdf.py`). Those rows describe what the code does today,
   including its known gaps.
@@ -79,9 +80,9 @@ This is a **concept-stage** project. The design is documented but the installabl
   **real, selectable/searchable text** (not rasterized text); and renders the evidence appendix as a
   text table. It does **not** yet emit a fully tagged **PDF/UA** structure tree (headings, table
   header associations, reading order, figure alternate text); that work is tracked.
-- **No application testing was performed**, because no application exists yet. No automated scanner
-  (axe), no manual screen-reader pass (NVDA, VoiceOver), and no keyboard-only walkthrough has been run
-  against an installable build. Those evaluations are part of the planned release gate (see *Roadmap*).
+- **Automated app testing** includes axe in EN/ES plus keyboard-order and 320 px reflow checks. No
+  recorded human NVDA/VoiceOver pass, human Spanish review, or complete manual WCAG walkthrough has
+  been performed. Those evaluations remain release gates (see *Roadmap*).
 
 ---
 
@@ -116,12 +117,12 @@ The terms used to describe each criterion's conformance level are:
 | **Partially Supports** | Some functionality of the product does not meet the criterion. |
 | **Does Not Support** | The majority of product functionality does not meet the criterion. |
 | **Not Applicable** | The criterion is not relevant to the product. |
-| **Not Evaluated** | The product has not been evaluated against the criterion. Used here for app functionality that is not yet built; the planned target is WCAG 2.2 AA. |
+| **Not Evaluated** | Available automated evidence is insufficient for a conformance finding, or the criterion still requires human evaluation. The target is WCAG 2.2 AA. |
 
 Throughout the tables below, two scopes are distinguished:
 
-- **App (planned target):** the not-yet-built installable client. Conformance level is **Not
-  Evaluated**; the design target is WCAG 2.2 AA.
+- **App (implemented; human evaluation open):** the local web client has automated axe, keyboard,
+  reflow, and catalog-parity evidence. Rows remain **Not Evaluated** where no human result exists.
 - **Packet PDF (current):** the existing renderer in `src/habitable/pdf.py`, assessed against current
   behavior.
 
@@ -129,27 +130,28 @@ Throughout the tables below, two scopes are distinguished:
 
 ## Chapter 3: Functional Performance Criteria (FPC)
 
-Notes describe the planned target for the application and the packet PDF's current behavior where the
-PDF is the relevant artifact.
+Notes distinguish automated app evidence from human evaluation still required, and describe the
+packet PDF's current behavior where the PDF is relevant.
 
 | Criteria | Conformance Level | Remarks and Explanations |
 | --- | --- | --- |
-| **302.1 Without Vision** | Not Evaluated (app); Partially Supports (PDF) | App planned target: full screen-reader operation (NVDA, VoiceOver) of capture, timeline, and review; every evidence-status indicator has a text equivalent. **PDF current:** text is real and selectable so a screen reader can read it, and the document language is set; however the PDF is **not yet PDF/UA-tagged**, so reading order, heading structure, and the appendix table's header associations are not yet programmatically conveyed. Tracked work. |
-| **302.2 With Limited Vision** | Not Evaluated (app); Partially Supports (PDF) | App planned target: reflow, resize to 200% without loss of content, and AA contrast. **PDF current:** real text reflows/zooms in a conforming reader; the appendix header cell uses white-on-dark (`#222222`) which meets contrast, but a fixed page layout limits reflow and tagging is incomplete. |
-| **302.3 Without Perception of Color** | Not Evaluated (app); Supports (PDF) | App planned target: no status conveyed by color alone — hashed, timestamped, and custody-intact states are stated in words. **PDF current:** evidence status is rendered as **words** ("timestamped" / "awaiting timestamp", "verified" / "awaiting") in captions and the appendix table, not by color. Supports. |
-| **302.4 Without Hearing** | Not Applicable (PDF); Not Evaluated (app) | The packet PDF has no audio. App planned target: any captured video evidence presented in-app will offer captions/transcript affordances; no audio is required to operate the product. |
+| **302.1 Without Vision** | Not Evaluated (app); Partially Supports (PDF) | **App:** semantic/axe automation exists; real NVDA/VoiceOver completion is untested. **PDF current:** text is selectable and the document language is set, but the PDF is **not PDF/UA-tagged**, so reading order, heading structure, and table associations are not programmatically guaranteed. |
+| **302.2 With Limited Vision** | Not Evaluated (app); Partially Supports (PDF) | **App:** 320 px reflow is automated; human zoom/magnification review remains open. **PDF current:** text zooms without rasterization, but the fixed page layout does not reflow and tagging is incomplete. |
+| **302.3 Without Perception of Color** | Not Evaluated (app); Supports (PDF) | **App:** text equivalents are structurally tested; human review remains open. **PDF current:** evidence status is rendered as words in captions and the appendix table, not by color alone. |
+| **302.4 Without Hearing** | Not Applicable (PDF); Not Evaluated (app) | The packet PDF has no audio. The app supports text transcripts for captured audio/video, but a human evaluation has not been completed. |
 | **302.5 With Limited Hearing** | Not Applicable (PDF); Not Evaluated (app) | Same as 302.4 — no audio is required to operate the product or read a packet. |
 | **302.6 Without Speech** | Not Applicable | The product requires no speech input. |
-| **302.7 With Limited Manipulation / Strength / Reach** | Not Evaluated (app) | App planned target: full keyboard operability and capture without precise pointer control, so a tenant documenting one-handed or with limited dexterity can operate the tool. Not yet built. The packet PDF requires no manipulation to read. |
-| **302.8 With Limited Reach and Strength** | Not Evaluated (app) | Covered by the keyboard-operable, no-precise-pointer target above; not yet built. |
-| **302.9 With Limited Cognition, Language, or Learning** | Not Evaluated (app); Partially Supports (PDF) | App planned target: a familiar photo-and-note flow, plain-language evidence status, no account to create under stress, avoidable time limits, and Spanish parity in v1. **PDF current:** the packet uses plain-language status words and a stated, non-legal-advice disclaimer; full plain-language review of the app is pending a build. |
+| **302.7 With Limited Manipulation / Strength / Reach** | Not Evaluated (app) | Keyboard navigation has automated coverage; a human limited-dexterity/pointer evaluation has not been completed. The packet PDF requires no manipulation to read. |
+| **302.8 With Limited Reach and Strength** | Not Evaluated (app) | Covered by the keyboard and pointer-use evaluation above; human evaluation remains open. |
+| **302.9 With Limited Cognition, Language, or Learning** | Not Evaluated (app); Partially Supports (PDF) | The app uses text status and has automated EN/ES catalog parity, but plain-language and cognitive-usability review are open. **PDF current:** the packet uses status words and a non-legal-advice disclaimer; human review remains open. |
 
 ---
 
 ## WCAG 2.x Report — Level A and AA
 
-For each success criterion, the table gives the **planned target for the app** and the **current
-status for the packet PDF**. Where a criterion does not apply to a non-interactive PDF, that is noted.
+For each success criterion, the table gives the app's **current automated evidence or remaining
+human-evaluation target** and the **current status for the packet PDF**. Where a criterion does not
+apply to a non-interactive PDF, that is noted.
 
 The packet PDF's central honest caveat: it emits **real selectable text** with document language and
 title/author/subject metadata, but it is **not yet a tagged PDF/UA document** — headings, table header
@@ -229,17 +231,17 @@ emitted. That gap is tracked work and affects several rows below.
 
 | Criteria | Conformance Level | Remarks and Explanations |
 | --- | --- | --- |
-| **501.1 Scope — Incorporation of WCAG 2.0 AA** | See WCAG tables | The application targets WCAG 2.2 AA (a superset of the 2.0 AA that 508 incorporates). App rows are **Not Evaluated** pending a build; the packet PDF rows are assessed above. |
-| **502 Interoperability with Assistive Technology** | Not Evaluated (app) | App target: expose platform accessibility APIs so AT can operate capture/timeline/review. Not yet built. |
-| **503 Applications** | Not Evaluated (app) | App target: user-controllable preferences, no override of platform accessibility settings, accessible alternative-content affordances. Not yet built. |
+| **501.1 Scope — Incorporation of WCAG 2.0 AA** | See WCAG tables | The application targets WCAG 2.2 AA. App rows remain **Not Evaluated** where automated evidence is insufficient without a human pass; PDF rows are assessed above. |
+| **502 Interoperability with Assistive Technology** | Not Evaluated (app) | Semantic HTML and axe evidence exist, but interoperability has not been evaluated with real NVDA/VoiceOver pairings. |
+| **503 Applications** | Not Evaluated (app) | The local web app exists; human review of preferences, platform settings, and alternative-content affordances remains open. |
 | **504 Authoring Tool** | Not Applicable | habitable is not an authoring tool for third-party content in the 504 sense; it documents the user's own evidence. (The packet PDF it produces is the relevant content output and is assessed in the WCAG tables.) |
 
 ### Chapter 6: Support Documentation and Services
 
 | Criteria | Conformance Level | Remarks and Explanations |
 | --- | --- | --- |
-| **602.2 Accessibility and Compatibility Features** | Supports (planned/current docs) | Project documentation (README, threat model, this ACR) is authored in **accessible Markdown** and rendered as accessible HTML on the repository host, with semantic headings, real text, and no information conveyed by color alone. Accessibility features will be documented as the app is built. |
-| **602.3 Electronic Support Documentation** | Partially Supports | Current documentation conforms to WCAG-equivalent practices as Markdown/HTML (real text, heading structure, link text). The not-yet-written end-user docs for the app are a planned target at WCAG 2.2 AA. |
+| **602.2 Accessibility and Compatibility Features** | Partially Supports | Project documentation uses structured Markdown and describes current accessibility features and gaps. No human conformance review of the documentation has been completed. |
+| **602.3 Electronic Support Documentation** | Partially Supports | Setup, mobile, and reviewer documentation exists as real-text Markdown/HTML. End-user comprehension and AT usability remain unvalidated. |
 | **603.2 Information on Accessibility Features** | Supports | Accessibility commitments and status are documented openly (README "Accessibility and Section 508 conformance" and this committed ACR). |
 | **603.3 Accommodation of Communication Needs** | Supports | Support is via the GitHub repository (issues, written channels) with an **alternate contact** in `SECURITY`/`CONTRIBUTING`; written, asynchronous channels accommodate a range of communication needs. |
 
@@ -247,18 +249,16 @@ emitted. That gap is tracked work and affects several rows below.
 
 ## Legal Disclaimer (habitable)
 
-This ACR is published in good faith to document accessibility status honestly. habitable is a
-concept-stage, independent open-source project: the installable application is **not yet built**, and
-the rows marked "Not Evaluated" are forward-looking targets, not claims of current conformance. The
-packet-PDF rows describe the current behavior of `src/habitable/pdf.py`, including its known gaps
-(notably that the PDF is not yet PDF/UA-tagged). This document is not legal advice and not a warranty.
+This ACR is a project self-assessment, not an independent certification. The local web application
+exists and has the automated evidence named above; rows marked "Not Evaluated" identify missing
+human evidence, not missing code. The packet-PDF rows describe current behavior and its known gaps,
+especially the absence of PDF/UA tagging. This document is not legal advice or a warranty.
 
 ---
 
 ## Roadmap
 
-WCAG 2.2 AA is a **merge-blocking CI gate** once the app exists; releases run **axe** automated checks
-plus **manual NVDA and VoiceOver** review and keyboard-only walkthroughs; the packet PDF gains full
-**tagged PDF/UA** output (heading structure, table header associations, figure alternate text, explicit
-reading order); and this **ACR is regenerated and re-committed on each release** — the same
-audit-as-artifact discipline the project applies to its evidence method.
+Automated axe, keyboard, and reflow checks are merge-blocking today. A recorded **manual NVDA and
+VoiceOver** review remains a release gate. `packet.html` remains the designated accessible rendering;
+tagged PDF/UA is planned only if a viable open-source path exists. This ACR is refreshed when evidence
+changes.

@@ -7,8 +7,8 @@
 > put at risk to evaluate an alpha tool.** This is a request to test and report, not a
 > service procurement, and there is no funding ask.
 
-habitable is a court-ready, offline-first, end-to-end-encrypted tool for tenants to document
-habitability problems as tamper-evident evidence: photos with RFC 3161 trusted timestamps,
+habitable is an alpha, offline-first, end-to-end-encrypted tool intended to help tenants document
+habitability problems with tamper-evident media: photos with RFC 3161 timestamp tokens,
 SHA-256 fixity, a hash-linked chain of custody, a standalone verifier, and location-stripped
 shareable packets. It is a free and open-source ([AGPL-3.0](../../LICENSE); the verifier is
 also Apache-2.0), independent personal project by Chelsea Kelly-Reif, with **no funding**.
