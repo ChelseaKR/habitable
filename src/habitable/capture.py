@@ -3,7 +3,7 @@
 """The capture pipeline: media in, evidence-grade record out.
 
 Capture never blocks on the network. At capture the bytes are hashed, sealed
-immutably, and a custody entry is appended — all offline. A trusted timestamp is
+immutably, and a custody entry is appended — all offline. A timestamp token is
 then obtained if an authority is reachable; otherwise the item is queued and
 shown as *awaiting-timestamp* until connectivity lets the token be fetched with
 :func:`resolve_deferred`.
@@ -173,7 +173,7 @@ def resolve_deferred(
     tsa: TimestampAuthority,
     extra_tsas: Sequence[TimestampAuthority] = (),
 ) -> list[CaptureResult]:
-    """Fetch trusted timestamps for every capture queued while offline.
+    """Fetch timestamp tokens for every capture queued while offline.
 
     Once the primary token is fetched, each item is *also* stamped against every
     configured redundant authority (``extra_tsas``), so a capture made in a dead

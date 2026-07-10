@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright 2026 Chelsea Kelly-Reif
-"""Derive the court-ready *views* of a packet bundle, shared by every renderer.
+"""Derive recipient-facing views of a packet bundle, shared by every renderer.
 
-A court-ready evidence bundle presents the same machine-verifiable ``bundle.json``
+An evidence bundle presents the same machine-verifiable ``bundle.json``
 three ways — a **cover sheet** (what this is, who produced it, what it covers), a
 single **chronological timeline** that interleaves logged notes with captured
 photos across every issue, and a **chain-of-custody / integrity summary** (content
 hashes, RFC 3161 attestations, and the append-only custody proof). Putting the
 derivation here — as pure functions over the bundle mapping, with no reportlab or
 HTML — keeps the PDF and the accessible HTML rendering from drifting apart and
-makes the court-ready logic testable on its own.
+makes the presentation logic testable on its own.
 
 Nothing here reads a file or mutates state; it only reshapes data already present
 in (and signed as part of) the bundle, so the views are as reproducible as the
@@ -75,7 +75,7 @@ class IntegrityRow:
 
     capture_id: str
     content_hash: str
-    timestamp_status: str  # "verified" | "awaiting"
+    timestamp_status: str  # "attached-unassessed" | "awaiting"
     authorities: tuple[str, ...]
     archive_count: int
     custody_entries: int
@@ -189,7 +189,11 @@ def chronology(bundle: Mapping[str, JSONValue]) -> tuple[ChronologyEntry, ...]:
             continue
         issue_id = _s(raw, "issue_id")
         token = raw.get("timestamp")
-        stamp = "trusted-timestamped" if isinstance(token, dict) else "awaiting timestamp"
+        stamp = (
+            "timestamp token attached; authority trust not assessed"
+            if isinstance(token, dict)
+            else "awaiting timestamp token"
+        )
         content_hash = _s(raw, "content_hash")
         detail = f"hash {content_hash[:16]}… · {stamp}"
         entries.append(
@@ -283,7 +287,7 @@ def integrity_summary(bundle: Mapping[str, JSONValue]) -> IntegritySummary:
         authorities: list[str] = []
         status = "awaiting"
         if isinstance(token, dict):
-            status = "verified"
+            status = "attached-unassessed"
             authorities.append(_s(token, "tsa_name"))
         for extra in _list(raw, "additional_timestamps"):
             if isinstance(extra, dict):
@@ -335,8 +339,9 @@ def _hlc_to_iso(hlc: str) -> str:
     """Render the wall-clock part of a hybrid-logical-clock stamp as ISO 8601 UTC.
 
     A stamp encodes ``<wall_ms>.<counter>.<node_id>``; the leading field is Unix
-    milliseconds. We surface only the wall time for human reading — the proof of
-    *order* is the append-only custody chain, not this rendered timestamp.
+    milliseconds. We surface only the wall time for human reading. The signed
+    ``bundle.json`` commits to the rendered sequence; timeline notes are not
+    individually timestamped or custody-logged.
     """
     head = hlc.split(".", 1)[0]
     if not head.isdigit():

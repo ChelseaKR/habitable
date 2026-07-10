@@ -25,7 +25,12 @@ from .bundleview import (
     integrity_summary,
 )
 from .canonical import JSONValue
-from .disclosure import proof_statement, scope_statement
+from .disclosure import (
+    PacketTrustText,
+    packet_trust_text,
+    proof_statement,
+    scope_statement,
+)
 
 __all__ = ["render_inspector_html", "render_packet_html"]
 
@@ -72,6 +77,10 @@ def render_packet_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_pat
     appendix = _map(bundle, "appendix")
     template = _map(bundle, "template")
     items_by_issue = _items_by_issue(bundle)
+    trust = packet_trust_text(lang)
+    timestamp_summary = trust.timestamp_summary.format(
+        attached=_i(appendix, "timestamped_count"), total=_i(appendix, "item_count")
+    )
 
     parts: list[str] = [
         "<!doctype html>",
@@ -86,16 +95,12 @@ def render_packet_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_pat
         '<a class="skip" href="#main">Skip to content</a>',
         "<header><h1>" + escape(title) + "</h1>",
         f'<p class="meta">Generated {escape(_s(bundle, "generated_at"))} · '
-        f"{_i(appendix, 'item_count')} item(s), {_i(appendix, 'timestamped_count')} "
-        f"trusted-timestamped · producer {escape(_s(bundle, 'producer_fingerprint'))}</p>",
+        f"{escape(timestamp_summary)} "
+        f"· producer {escape(_s(bundle, 'producer_fingerprint'))}</p>",
     ]
     if _s(template, "header"):
         parts.append(f'<p class="meta">{escape(_s(template, "header"))}</p>')
-    parts.append(
-        '<p class="warning">This packet is evidence, not legal advice, and does not '
-        "guarantee admissibility. Verify integrity with <code>habitable verify</code> "
-        "against the accompanying bundle.json.</p>"
-    )
+    parts.append(f'<p class="warning">{escape(trust.view_notice)}</p>')
     parts.append("</header>")
     parts.append('<main id="main">')
     item_count = _i(appendix, "item_count")
@@ -115,12 +120,13 @@ def render_packet_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_pat
 
     for issue in _list(bundle, "issues"):
         if isinstance(issue, dict):
-            parts.extend(_issue_section(issue, bundle, items_by_issue))
+            parts.extend(_issue_section(issue, bundle, items_by_issue, trust))
 
     parts.extend(_integrity_section(integrity_summary(bundle)))
 
     parts.append("<h2>Evidence appendix</h2>")
-    parts.append(_appendix_table(bundle))
+    parts.append(f"<p>{escape(trust.appendix_intro)}</p>")
+    parts.append(_appendix_table(bundle, trust))
     parts.append("</main>")
 
     footer = "habitable — local-first, end-to-end-encrypted habitability evidence."
@@ -146,7 +152,11 @@ def _cover_section(cover: CoverSheet) -> list[str]:
         ("Generated", cover.generated_at or "—"),
         ("Producer device", cover.producer_fingerprint or "—"),
         ("Issues", str(cover.issue_count)),
-        ("Media items", f"{cover.item_count} ({cover.timestamped_count} trusted-timestamped)"),
+        (
+            "Media items",
+            f"{cover.item_count} ({cover.timestamped_count} timestamp tokens attached; "
+            "authority trust not assessed here)",
+        ),
         ("Chain-of-custody entries", str(cover.custody_length)),
         ("Date range of evidence", span),
         ("Sealed originals embedded", "yes" if cover.includes_originals else "no"),
@@ -217,9 +227,11 @@ def _integrity_section(summary: IntegritySummary) -> list[str]:
         '<h2 id="integrity-heading">Chain of custody &amp; integrity</h2>',
         f"<p>Hash algorithm {escape(summary.algorithm)} · {summary.custody_length} custody "
         f"entr{'y' if summary.custody_length == 1 else 'ies'} (append-only, hash-linked) · "
-        f"{summary.timestamped_count}/{summary.item_count} items trusted-timestamped. The chain "
+        f"{summary.timestamped_count}/{summary.item_count} items have timestamp tokens attached. "
+        "This view does not validate token signatures or authority trust; use habitable verify "
+        "with recipient-selected roots. The chain "
         "head below commits to the entire history; any insertion, deletion, or reordering changes "
-        "it. All of this verifies independently against bundle.json.</p>",
+        "it.</p>",
     ]
     if summary.custody_head:
         out.append(
@@ -227,8 +239,8 @@ def _integrity_section(summary: IntegritySummary) -> list[str]:
         )
     out.append("<table>")
     out.append(
-        "<caption>Per-item content hash, trusted-timestamp authorities, "
-        "and custody depth.</caption>"
+        "<caption>Per-item content hash, timestamp-token presence, named authority, "
+        "and custody depth. Authority trust is not assessed here.</caption>"
     )
     out.append(
         "<thead><tr>"
@@ -272,6 +284,10 @@ def render_inspector_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_
         title = f"{title} — unit {unit}"
     appendix = _map(bundle, "appendix")
     template = _map(bundle, "template")
+    trust = packet_trust_text(lang)
+    timestamp_summary = trust.timestamp_summary.format(
+        attached=_i(appendix, "timestamped_count"), total=_i(appendix, "item_count")
+    )
 
     parts: list[str] = [
         "<!doctype html>",
@@ -286,18 +302,14 @@ def render_inspector_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_
         '<a class="skip" href="#main">Skip to content</a>',
         "<header><h1>" + escape(title) + "</h1>",
         f'<p class="meta">Generated {escape(_s(bundle, "generated_at"))} · '
-        f"{_i(appendix, 'item_count')} item(s), {_i(appendix, 'timestamped_count')} "
-        f"trusted-timestamped · producer {escape(_s(bundle, 'producer_fingerprint'))}</p>",
+        f"{escape(timestamp_summary)} · producer "
+        f"{escape(_s(bundle, 'producer_fingerprint'))}</p>",
         '<p class="meta">Organized by room, then condition, then a chronological '
         "timeline. This is a derived view of the signed bundle.json.</p>",
     ]
     if _s(template, "header"):
         parts.append(f'<p class="meta">{escape(_s(template, "header"))}</p>')
-    parts.append(
-        '<p class="warning">This packet is evidence, not legal advice, and does not '
-        "guarantee admissibility. Verify integrity with <code>habitable verify</code> "
-        "against the accompanying bundle.json.</p>"
-    )
+    parts.append(f'<p class="warning">{escape(trust.view_notice)}</p>')
     parts.append("</header>")
     parts.append('<main id="main">')
     parts.extend(_proof_section(lang))
@@ -305,7 +317,8 @@ def render_inspector_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_
     parts.extend(_inspector_rollup(bundle))
 
     parts.append("<h2>Evidence appendix</h2>")
-    parts.append(_appendix_table(bundle))
+    parts.append(f"<p>{escape(trust.appendix_intro)}</p>")
+    parts.append(_appendix_table(bundle, trust))
     parts.append("</main>")
 
     footer = "habitable — local-first, end-to-end-encrypted habitability evidence."
@@ -440,6 +453,7 @@ def _issue_section(
     issue: Mapping[str, JSONValue],
     bundle: Mapping[str, JSONValue],
     items_by_issue: dict[str, list[Mapping[str, JSONValue]]],
+    trust: PacketTrustText,
 ) -> list[str]:
     issue_id = _s(issue, "issue_id")
     heading = _s(issue, "title") or _s(issue, "category") or issue_id
@@ -476,14 +490,14 @@ def _issue_section(
         out.append("<h3>Captured evidence</h3>")
         for item in items:
             if item.get("sensor") is not None:
-                out.append(_sensor_figure(item))
+                out.append(_sensor_figure(item, trust))
             else:
-                out.extend(_evidence_figure(item))
+                out.extend(_evidence_figure(item, trust))
     out.append("</section>")
     return out
 
 
-def _evidence_figure(item: Mapping[str, JSONValue]) -> list[str]:
+def _evidence_figure(item: Mapping[str, JSONValue], trust: PacketTrustText) -> list[str]:
     """Render one evidence item: a photo inline, or -- for video/audio (EXP-07) --
     a poster frame and/or transcript plus a link to the shared media file. Video
     and audio are never embedded as playable <video>/<audio> elements here: doing
@@ -494,7 +508,7 @@ def _evidence_figure(item: Mapping[str, JSONValue]) -> list[str]:
     shared = _s(item, "shared_name")
     poster = _s(item, "poster_name")
     transcript = _s(item, "transcript")
-    stamp = "trusted-timestamped" if item.get("timestamp") else "awaiting timestamp"
+    stamp = _timestamp_status(item.get("timestamp"), trust)
     content_hash = _s(item, "content_hash")
     captured_at = _s(item, "captured_at")
     is_video = media_type.startswith("video/")
@@ -537,9 +551,11 @@ def _evidence_figure(item: Mapping[str, JSONValue]) -> list[str]:
     return out
 
 
-def _photo_figure(item: Mapping[str, JSONValue]) -> str:
+def _photo_figure(item: Mapping[str, JSONValue], trust: PacketTrustText | None = None) -> str:
+    """Legacy photo-only renderer retained for embedders; token trust is never assumed."""
+    trust = trust or packet_trust_text("en")
     shared = _s(item, "shared_name")
-    stamp = "trusted-timestamped" if item.get("timestamp") else "awaiting timestamp"
+    stamp = _timestamp_status(item.get("timestamp"), trust)
     content_hash = _s(item, "content_hash")
     alt = (
         f"Evidence photo for this issue, captured {_s(item, 'captured_at')}, "
@@ -556,7 +572,7 @@ def _photo_figure(item: Mapping[str, JSONValue]) -> str:
     return "".join(out)
 
 
-def _sensor_figure(item: Mapping[str, JSONValue]) -> str:
+def _sensor_figure(item: Mapping[str, JSONValue], trust: PacketTrustText | None = None) -> str:
     """Render an instrument CSV capture (EXP-09): a small line chart plus its
     accessible text equivalent — a summary sentence and the full readings table.
 
@@ -564,8 +580,9 @@ def _sensor_figure(item: Mapping[str, JSONValue]) -> str:
     is already fully present, in reading order, as text and a table right below
     it — so a screen-reader user loses nothing by skipping the SVG.
     """
+    trust = trust or packet_trust_text("en")
     sensor = _map(item, "sensor")
-    stamp = "trusted-timestamped" if item.get("timestamp") else "awaiting timestamp"
+    stamp = _timestamp_status(item.get("timestamp"), trust)
     content_hash = _s(item, "content_hash")
     label_header = _s(sensor, "label_header") or "Reading"
     value_header = _s(sensor, "value_header") or "Value"
@@ -646,16 +663,15 @@ def _sensor_chart_svg(
     )
 
 
-def _appendix_table(bundle: Mapping[str, JSONValue]) -> str:
+def _appendix_table(bundle: Mapping[str, JSONValue], trust: PacketTrustText) -> str:
     rows = [
         "<table>",
-        "<caption>Per-item content hash, trusted-timestamp status, and authority "
-        "(verify independently against bundle.json).</caption>",
+        f"<caption>{escape(trust.appendix_caption)}</caption>",
         "<thead><tr>"
         '<th scope="col">Capture</th>'
         '<th scope="col">Content hash (SHA-256)</th>'
-        '<th scope="col">Timestamp</th>'
-        '<th scope="col">Authority</th>'
+        f'<th scope="col">{escape(trust.timestamp_heading)}</th>'
+        f'<th scope="col">{escape(trust.authority_heading)}</th>'
         "</tr></thead>",
         "<tbody>",
     ]
@@ -663,7 +679,7 @@ def _appendix_table(bundle: Mapping[str, JSONValue]) -> str:
         if not isinstance(item, dict):
             continue
         token = item.get("timestamp")
-        status = "verified" if isinstance(token, dict) else "awaiting"
+        status = _timestamp_status(token, trust)
         authority = _s(token, "tsa_name") if isinstance(token, dict) else "—"
         rows.append(
             "<tr>"
@@ -675,6 +691,13 @@ def _appendix_table(bundle: Mapping[str, JSONValue]) -> str:
         )
     rows.append("</tbody></table>")
     return "".join(rows)
+
+
+def _timestamp_status(token: JSONValue | None, trust: PacketTrustText) -> str:
+    """Describe token presence honestly; rendering does not perform verification."""
+    if not isinstance(token, dict):
+        return trust.awaiting
+    return trust.dev_untrusted if _s(token, "kind") == "dev" else trust.attached_unassessed
 
 
 def _items_by_issue(bundle: Mapping[str, JSONValue]) -> dict[str, list[Mapping[str, JSONValue]]]:

@@ -23,9 +23,12 @@ def test_every_golden_packet_verifies() -> None:
     assert corpus, "no golden packets committed"
     for packet in corpus:
         report = verify_packet(packet)
-        assert report.ok, f"{packet.name}: {report.summary()} {report.problems}"
+        # Golden packets prove format compatibility and mechanical verification.
+        # They intentionally do not bundle an external trust policy/root.
+        assert report.structurally_intact, f"{packet.name}: {report.summary()} {report.problems}"
         assert report.signature_ok and report.custody_ok
-        assert report.verified_items >= 1
+        assert report.cryptographically_verified_items >= 1
+        assert not report.evidence_ready and not report.ok
 
 
 def test_unknown_newer_version_is_rejected_not_crashed(tmp_path: Path) -> None:

@@ -75,11 +75,11 @@
             <dd id="st-captures">—</dd>
           </div>
           <div class="status-item">
-            <dt data-i18n="status_timestamped">Timestamped</dt>
+            <dt data-i18n="status_timestamped">Timestamp token attached</dt>
             <dd id="st-timestamped">—</dd>
           </div>
           <div class="status-item">
-            <dt data-i18n="status_awaiting">Waiting for a trusted timestamp</dt>
+            <dt data-i18n="status_awaiting">Waiting for a timestamp token</dt>
             <dd id="st-awaiting" aria-describedby="st-awaiting-help">—</dd>
           </div>
           <div class="status-item status-item-wide">
@@ -97,9 +97,8 @@
         </dl>
         <p class="status-help" id="st-awaiting-help"
            data-i18n="status_awaiting_help">Your photo is already sealed and safe on
-          this device. The timestamp just proves when — it will attach automatically
-          next time you're online. A wait, even a long one, does not weaken the
-          evidence.</p>
+          this device. A timestamp token can attach next time you're online; its
+          validity and authority trust are separate checks.</p>
         <p class="muted" id="storage-note" data-i18n="storage_doubling_note">Sealed originals
           are kept twice by design: the encrypted original, plus a shareable copy when you
           export.</p>
@@ -107,8 +106,8 @@
           <button type="button" id="resolve-btn" class="btn btn-quiet"
                   aria-describedby="resolve-help"
                   data-i18n="resolve_deferred">Resolve awaiting timestamps</button>
-          <p class="muted" id="resolve-help" data-i18n="resolve_help">Fetch trusted timestamps
-            for items captured offline (needs a connection).</p>
+          <p class="muted" id="resolve-help" data-i18n="resolve_help">Fetch timestamp tokens
+            for items captured offline (needs a connection; authority trust is checked separately).</p>
         </div>
       </section>
 

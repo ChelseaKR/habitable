@@ -377,11 +377,13 @@ For the packet as a whole (`verify_packet` / `_verify_signature` / `_verify_cust
    per-entry hash recomputation), and confirm the proof's declared `head_hash` matches
    the walk's result.
 
-An item's verdict (`ItemVerdict.ok`) requires the timestamp verified, the shared media
-ok, the custody binding ok, and embedded-original fixity not false. The overall verdict
-(`VerificationReport.ok`) requires the signature ok, custody ok, no structural problems,
-and every item ok. The human-readable summary is, e.g., "27/27 items verify against their
-sealed originals and timestamp tokens — packet intact."
+The verifier reports three claims separately. `structurally_intact` covers the signed
+bundle, custody chain, shared-media hashes and bindings, and optional-original fixity.
+`timestamp_authority_trusted` requires a valid token for every item that chains to a
+certificate the recipient supplied. `evidence_ready` requires both, plus at least one
+item; legacy `ok` is a fail-closed alias for that technical readiness state. A typical
+summary is "integrity: intact; timestamp authority: trusted (27/27 items); evidence
+readiness: READY." This does not decide admissibility or any legal outcome.
 
 Because verification depends only on the packet plus standard primitives (SHA-256,
 RFC 3161, Ed25519), a packet can also be spot-checked with general-purpose tools rather
@@ -414,19 +416,21 @@ packets produced today keep verifying years later, after the code has moved on.
 Being precise about the boundaries is part of being credible; a tool that overpromises in
 a courtroom fails the people relying on it.
 
-**What the method establishes:**
+**What successful verification establishes:**
 
-- The media's bytes have not changed since capture (fixity).
-- The exact content existed no later than the token's `genTime` (a trusted-timestamp
-  upper bound).
-- The custody record is internally intact — no insertion, deletion, reordering, or entry
-  alteration — and was produced by the holder of the producer key (signature).
-- A stripped shared copy is provably the sanitized form of the timestamped original
-  (the custody binding), without disclosing the original's location.
+- When structural integrity passes, included files match their recorded hashes and the
+  signed custody record has not changed since the producer signed the bundle.
+- When timestamp-authority trust also passes, the exact hashed content existed no later
+  than the verified token's `genTime` (an upper bound).
+- A stripped shared copy's hash is bound to the original content hash by the intact
+  custody record, without disclosing the original's location.
 
 **What it does not establish:**
 
 - **Not authorship.** A timestamp bounds *when* content existed, not *who* made it.
+- **Not trust from token presence.** An attached token does not establish authority
+  trust. The recipient must verify it against a certificate they independently trust;
+  development timestamps never satisfy this check.
 - **Not depiction or truth of the underlying condition.** Tamper-evidence shows an item
   was not altered after capture; it does not prove a described condition was as a tenant
   states. The tool strengthens true records; it does not create them.

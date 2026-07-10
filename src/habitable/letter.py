@@ -187,7 +187,8 @@ def build_letter(
     total_items = sum(i.evidence_count for i in issues)
     total_stamped = sum(i.timestamped_count for i in issues)
     stamped_clause = (
-        f", {total_stamped} of them carrying an independent trusted timestamp"
+        f", {total_stamped} of them carrying timestamp tokens whose validity and "
+        "authority trust must be checked independently"
         if total_stamped
         else ""
     )
@@ -328,7 +329,11 @@ def _issue_html(issue: LetterIssue) -> str:
     if issue.description:
         out.append(f"<br>{escape(issue.description)}")
     if issue.evidence_count:
-        stamped = f", {issue.timestamped_count} timestamped" if issue.timestamped_count else ""
+        stamped = (
+            f", {issue.timestamped_count} timestamp token(s) attached"
+            if issue.timestamped_count
+            else ""
+        )
         out.append(
             f'<br><span class="meta">Documented by {issue.evidence_count} photo(s){stamped}.</span>'
         )
@@ -395,7 +400,11 @@ def _issue_text(issue: LetterIssue) -> str:
     if issue.description:
         text = f"{text}. {issue.description}"
     if issue.evidence_count:
-        stamped = f", {issue.timestamped_count} timestamped" if issue.timestamped_count else ""
+        stamped = (
+            f", {issue.timestamped_count} timestamp token(s) attached"
+            if issue.timestamped_count
+            else ""
+        )
         text = f"{text} [documented by {issue.evidence_count} photo(s){stamped}]"
     return text
 

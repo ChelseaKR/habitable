@@ -128,7 +128,7 @@ def test_inspector_view_groups_and_orders_timeline(
     assert note_pos < capture_pos
     # Both a timeline note and a capture event appear in the merged timeline.
     assert "observed:" in html
-    assert "trusted-timestamped" in html
+    assert "timestamp token attached; authority trust not assessed" in html
 
 
 def test_inspector_view_escapes_user_content(

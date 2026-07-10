@@ -17,7 +17,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-__all__ = ["ProofStatement", "ScopeStatement", "proof_statement", "scope_statement"]
+__all__ = [
+    "PacketTrustText",
+    "ProofStatement",
+    "ScopeStatement",
+    "packet_trust_text",
+    "proof_statement",
+    "scope_statement",
+]
 
 _DEFAULT_LANG = "en"
 
@@ -38,17 +45,33 @@ class ProofStatement:
     awaiting_timestamp_note: str
 
 
+@dataclass(frozen=True, slots=True)
+class PacketTrustText:
+    """Localized trust-status copy shared by the HTML and PDF renderers."""
+
+    timestamp_summary: str
+    view_notice: str
+    attached_unassessed: str
+    dev_untrusted: str
+    awaiting: str
+    appendix_intro: str
+    appendix_caption: str
+    timestamp_heading: str
+    authority_heading: str
+    accessible_note: str
+
+
 _STATEMENTS: dict[str, ProofStatement] = {
     "en": ProofStatement(
         heading="What this packet proves — and what it does not",
-        proves_heading="What this packet proves",
+        proves_heading="What successful verification can establish",
         proves=(
-            "Each photo's content has not been altered since it was captured "
-            "(a SHA-256 content hash that can be re-checked against the file).",
-            "Each item existed no later than the date on its trusted timestamp "
-            "(an RFC 3161 token over the hash) — an upper bound on when it was created.",
-            "The record of events was not reordered or edited after the fact "
-            "(an append-only, hash-linked chain of custody).",
+            "If integrity reports intact, the shared files match their recorded SHA-256 "
+            "hashes and the signed, hash-linked custody record has not changed.",
+            "If the timestamp authority reports trusted, the item existed no later than "
+            "the verified RFC 3161 time — an upper bound on when it was created.",
+            "Integrity and timestamp-authority trust are separate checks; both must pass "
+            "before Habitable reports the item technically evidence-ready.",
         ),
         not_heading="What this packet does not prove",
         not_proves=(
@@ -57,12 +80,15 @@ _STATEMENTS: dict[str, ProofStatement] = {
             "tenant's own account, not on the cryptography.",
             "That a timestamp is the exact moment of capture — it is only an upper "
             "bound (the content existed by then).",
+            "That an attached timestamp token comes from a trusted authority. That requires "
+            "verification against a certificate you independently trust; development "
+            "timestamps are never evidence-ready.",
             "Admissibility or any legal outcome. This is documentation, not legal advice.",
         ),
         verify_line=(
-            "How to verify: run `habitable verify` against the accompanying bundle.json, "
-            "or cross-check the hashes and RFC 3161 tokens with standard tools. The "
-            "accessible reading of this packet is packet.html."
+            "How to verify: run `habitable verify PACKET --trusted-cert AUTHORITY.pem`, "
+            "using a certificate you independently trust, or cross-check the hashes and "
+            "RFC 3161 tokens with standard tools. The accessible reading is packet.html."
         ),
         privacy_heading="What this packet discloses",
         privacy_stripped=(
@@ -74,22 +100,21 @@ _STATEMENTS: dict[str, ProofStatement] = {
             "metadata (including any location). Handle and file accordingly."
         ),
         awaiting_timestamp_note=(
-            "{awaiting} of {total} media item(s) are awaiting a trusted timestamp. Their "
-            "content hashes still anchor them at capture (the record has not been altered), "
-            "but no independent authority has yet fixed an upper-bound date. Re-export after "
-            "syncing to attach the timestamps."
+            "{awaiting} of {total} media item(s) are awaiting a timestamp token. The items "
+            "are sealed and hashed locally, but no independent time bound is attached yet. "
+            "Re-export after syncing to attach the timestamps."
         ),
     ),
     "es": ProofStatement(
         heading="Lo que este expediente demuestra y lo que no",
-        proves_heading="Lo que este expediente demuestra",
+        proves_heading="Lo que puede establecer una verificación satisfactoria",
         proves=(
-            "Que el contenido de cada foto no se ha modificado desde que se capturó "
-            "(un hash SHA-256 que se puede volver a comprobar contra el archivo).",
-            "Que cada elemento existía a más tardar en la fecha de su sello de tiempo "
-            "confiable (un token RFC 3161 sobre el hash): un límite máximo de cuándo se creó.",
-            "Que el registro de los hechos no se reordenó ni se editó después "
-            "(una cadena de custodia enlazada por hash y de solo anexar).",
+            "Si la integridad figura como intacta, los archivos compartidos coinciden con "
+            "sus hashes SHA-256 y el registro de custodia firmado y enlazado no cambió.",
+            "Si la autoridad del sello figura como confiable, el elemento existía a más "
+            "tardar en la hora RFC 3161 verificada: un límite máximo de cuándo se creó.",
+            "La integridad y la confianza en la autoridad son comprobaciones separadas; "
+            "ambas deben pasar para que Habitable indique que el elemento está listo.",
         ),
         not_heading="Lo que este expediente no demuestra",
         not_proves=(
@@ -98,12 +123,15 @@ _STATEMENTS: dict[str, ProofStatement] = {
             "de la persona inquilina, no de la criptografía.",
             "Que el sello de tiempo sea el momento exacto de la captura: es solo un "
             "límite máximo (el contenido ya existía para entonces).",
+            "Que un token adjunto provenga de una autoridad confiable. Eso requiere "
+            "verificarlo con un certificado de confianza independiente; los sellos de "
+            "desarrollo nunca están listos como prueba.",
             "Admisibilidad ni ningún resultado legal. Esto es documentación, no asesoría legal.",
         ),
         verify_line=(
-            "Cómo verificar: ejecute `habitable verify` con el archivo bundle.json, o "
-            "compruebe los hashes y los tokens RFC 3161 con herramientas estándar. La "
-            "versión accesible de este expediente es packet.html."
+            "Cómo verificar: ejecute `habitable verify PAQUETE --trusted-cert AUTORIDAD.pem` "
+            "con un certificado de confianza independiente, o compruebe los hashes y tokens "
+            "RFC 3161 con herramientas estándar. La versión accesible es packet.html."
         ),
         privacy_heading="Lo que este expediente revela",
         privacy_stripped=(
@@ -116,19 +144,68 @@ _STATEMENTS: dict[str, ProofStatement] = {
             "preséntelo en consecuencia."
         ),
         awaiting_timestamp_note=(
-            "{awaiting} de {total} elemento(s) multimedia están a la espera de un sello de "
-            "tiempo confiable. Sus hashes de contenido aún los anclan en el momento de la "
-            "captura (el registro no se ha modificado), pero ninguna autoridad independiente "
-            "ha fijado todavía una fecha como límite máximo. Vuelva a exportar tras "
-            "sincronizar para adjuntar los sellos de tiempo."
+            "{awaiting} de {total} elemento(s) multimedia están a la espera de un token de "
+            "sello de tiempo. Los elementos están sellados y tienen hash local, pero todavía "
+            "no llevan un límite de tiempo independiente. Vuelva a exportar tras sincronizar "
+            "para adjuntar los sellos de tiempo."
         ),
+    ),
+}
+
+
+_TRUST_TEXT: dict[str, PacketTrustText] = {
+    "en": PacketTrustText(
+        timestamp_summary=(
+            "Timestamp tokens attached: {attached}/{total}. Authority trust is not assessed "
+            "by this human-readable view."
+        ),
+        view_notice=(
+            "This human-readable view is not a verification result and is not legal advice. "
+            "Use `habitable verify` with an independently trusted authority certificate. "
+            "Only the verifier can report integrity, timestamp-authority trust, and technical "
+            "evidence readiness; none guarantees admissibility."
+        ),
+        attached_unassessed="timestamp attached; authority trust not assessed",
+        dev_untrusted="development timestamp; untrusted and not evidence-ready",
+        awaiting="awaiting timestamp; not evidence-ready",
+        appendix_intro=(
+            "Each row reports token presence only. It does not claim the token is valid or its "
+            "authority trusted; verify independently against bundle.json."
+        ),
+        appendix_caption="Per-item timestamp-token presence and named authority.",
+        timestamp_heading="Timestamp status",
+        authority_heading="Named authority",
+        accessible_note="See packet.html for an accessible version.",
+    ),
+    "es": PacketTrustText(
+        timestamp_summary=(
+            "Tokens de sello de tiempo adjuntos: {attached}/{total}. Esta vista legible no "
+            "evalúa la confianza en la autoridad."
+        ),
+        view_notice=(
+            "Esta vista legible no es un resultado de verificación ni asesoría legal. Use "
+            "`habitable verify` con un certificado de autoridad de confianza independiente. "
+            "Solo el verificador informa la integridad, la confianza en la autoridad y la "
+            "preparación técnica; ninguna garantiza la admisibilidad."
+        ),
+        attached_unassessed="sello adjunto; confianza en la autoridad no evaluada",
+        dev_untrusted="sello de desarrollo; no confiable ni listo como prueba",
+        awaiting="sello de tiempo pendiente; no listo como prueba",
+        appendix_intro=(
+            "Cada fila indica solo la presencia del token. No afirma que sea válido ni que la "
+            "autoridad sea confiable; verifique por separado contra bundle.json."
+        ),
+        appendix_caption="Presencia del token y autoridad indicada por elemento.",
+        timestamp_heading="Estado del sello",
+        authority_heading="Autoridad indicada",
+        accessible_note="Consulte packet.html para una versión accesible.",
     ),
 }
 
 
 def proof_statement(lang: str) -> ProofStatement:
     """Return the proof statement for ``lang``, falling back to English."""
-    return _STATEMENTS.get(lang, _STATEMENTS[_DEFAULT_LANG])
+    return _STATEMENTS.get(lang.lower().split("-", 1)[0], _STATEMENTS[_DEFAULT_LANG])
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,3 +285,8 @@ _SCOPE: dict[str, dict[str, str]] = {
         ),
     },
 }
+
+
+def packet_trust_text(lang: str) -> PacketTrustText:
+    """Return localized human-view trust text, falling back to English."""
+    return _TRUST_TEXT.get(lang.lower().split("-", 1)[0], _TRUST_TEXT[_DEFAULT_LANG])

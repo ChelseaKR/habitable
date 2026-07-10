@@ -18,7 +18,7 @@ from habitable.exif import read_metadata
 from habitable.packet import build_packet
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
-from habitable.verify import _verify_item, verify_packet
+from habitable.verify import VerificationReport, _verify_item, verify_packet
 
 
 def _case_with_two_captures(
@@ -46,10 +46,13 @@ def test_export_and_verify_intact(
     assert result.item_count == 2 and result.timestamped_count == 2
     assert result.pdf_path is not None and result.pdf_path.stat().st_size > 1000
 
-    report = verify_packet(out)
+    report = verify_packet(out, trusted_certs=[local_tsa.certificate])
     assert report.ok and report.signature_ok and report.custody_ok
+    assert report.structurally_intact
+    assert report.timestamp_authority_trusted
+    assert report.evidence_ready
     assert report.verified_items == 2
-    assert "packet intact" in report.summary()
+    assert "evidence readiness: READY" in report.summary()
 
     # Shared copies must not leak location.
     for media in (out / "media").glob("*.jpg"):
@@ -75,7 +78,7 @@ def test_packet_html_has_proof_and_disclosure(
     local_tsa: LocalRfc3161TSA,
     tmp_path: Path,
 ) -> None:
-    from habitable.disclosure import proof_statement, scope_statement
+    from habitable.disclosure import packet_trust_text, proof_statement, scope_statement
 
     for lang, include_originals in (("en", False), ("es", True)):
         vault = Vault.create(
@@ -89,8 +92,12 @@ def test_packet_html_has_proof_and_disclosure(
         )
         html = (out / "packet.html").read_text(encoding="utf-8")
         stmt = proof_statement(lang)
+        trust = packet_trust_text(lang)
         assert stmt.heading in html  # "what this proves — and does not"
         assert stmt.privacy_heading in html  # "what this discloses"
+        assert trust.view_notice in html
+        assert trust.attached_unassessed in html
+        assert "trusted-timestamped" not in html
         # The embedded-originals residual-PII warning appears only when originals ship.
         assert (stmt.privacy_originals_warning in html) is include_originals
         # The minimal-disclosure scope statement renders, localized (R-35).
@@ -117,7 +124,7 @@ def test_awaiting_timestamp_disclosed_at_export(
     vault = make_vault()
     issue = vault.document.add_issue(category="mold", title="Mold", issue_id="i1")
     capture(vault, make_jpeg("a.jpg", with_location=True), issue_id=issue, tsa=local_tsa)
-    # No TSA -> the item is queued (deferred) and ships awaiting a trusted timestamp.
+    # No TSA -> the item is queued (deferred) and ships awaiting a timestamp token.
     capture(vault, make_jpeg("b.jpg", with_location=True), issue_id=issue, tsa=None)
 
     out = tmp_path / "packet"
@@ -136,7 +143,7 @@ def test_awaiting_timestamp_disclosed_at_export(
     # (c) The packet's own (localized) HTML disclosure section states it.
     html = (out / "packet.html").read_text(encoding="utf-8")
     assert expected in html
-    assert "awaiting a trusted timestamp" in html
+    assert "awaiting a timestamp token" in html
 
 
 def test_no_awaiting_note_when_all_timestamped(
@@ -145,17 +152,42 @@ def test_no_awaiting_note_when_all_timestamped(
     local_tsa: LocalRfc3161TSA,
     tmp_path: Path,
 ) -> None:
-    """When every item is trusted-timestamped, no awaiting disclosure is emitted."""
+    """When every item has a token attached, no awaiting disclosure is emitted."""
     vault = _case_with_two_captures(make_vault, make_jpeg, local_tsa)
     out = tmp_path / "packet"
     result = build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
     assert result.timestamped_count == result.item_count == 2
 
-    assert not any("awaiting a trusted timestamp" in note for note in result.disclosures)
+    assert not any("awaiting a timestamp token" in note for note in result.disclosures)
     bundle = json.loads((out / "bundle.json").read_text())
-    assert not any("awaiting a trusted timestamp" in note for note in bundle["disclosures"])
+    assert not any("awaiting a timestamp token" in note for note in bundle["disclosures"])
     html = (out / "packet.html").read_text(encoding="utf-8")
-    assert "awaiting a trusted timestamp" not in html
+    assert "awaiting a timestamp token" not in html
+
+
+def test_packet_html_marks_dev_timestamp_untrusted(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    from habitable.disclosure import packet_trust_text
+    from habitable.tsa import DevTSA
+
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", issue_id="i1")
+    capture(vault, make_jpeg(), issue_id=issue, tsa=DevTSA())
+    out = tmp_path / "dev-packet"
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
+    html = (out / "packet.html").read_text(encoding="utf-8")
+    trust = packet_trust_text("en")
+    assert trust.dev_untrusted in html
+    assert "evidence readiness: READY" not in html
+
+    # Even supplying an unrelated trusted certificate cannot upgrade DevTSA.
+    report = verify_packet(out, trusted_certs=[local_tsa.certificate])
+    assert report.structurally_intact and report.items[0].timestamp_verified
+    assert not report.timestamp_authority_trusted and not report.evidence_ready
 
 
 def test_cli_verify_trusted_cert_anchors_chain(
@@ -171,19 +203,38 @@ def test_cli_verify_trusted_cert_anchors_chain(
     out = tmp_path / "packet"
     build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
 
-    def all_notes(argv: list[str]) -> str:
-        assert main(argv) == 0
+    def result(argv: list[str], expected_exit: int) -> dict[str, object]:
+        assert main(argv) == expected_exit
         report = json.loads(capsys.readouterr().out)
-        return " ".join(note for item in report["items"] for note in item["notes"])
+        return cast("dict[str, object]", report)
 
-    # Without a trusted root, a valid token is flagged as not chained to one.
-    assert "not chained to a trusted root" in all_notes(["verify", str(out), "--json"])
+    # Without a trusted root, signatures verify and integrity is intact, but the
+    # fail-closed readiness verdict and process exit remain false/non-zero.
+    untrusted = result(["verify", str(out), "--json"], 1)
+    assert untrusted["structurally_intact"] is True
+    assert untrusted["cryptographically_verified_items"] == 2
+    assert untrusted["timestamp_authority_trusted"] is False
+    assert untrusted["evidence_ready"] is False and untrusted["ok"] is False
+    notes = " ".join(
+        note
+        for item in cast("list[dict[str, object]]", untrusted["items"])
+        for note in cast("list[str]", item["notes"])
+    )
+    assert "not chained to a trusted root" in notes
 
     # With the issuer's own cert as a trusted root, that note is gone.
     pem = tmp_path / "root.pem"
     pem.write_bytes(local_tsa.certificate.public_bytes(Encoding.PEM))
-    anchored = all_notes(["verify", str(out), "--json", "--trusted-cert", str(pem)])
-    assert "not chained to a trusted root" not in anchored
+    anchored = result(["verify", str(out), "--json", "--trusted-cert", str(pem)], 0)
+    assert anchored["structurally_intact"] is True
+    assert anchored["timestamp_authority_trusted"] is True
+    assert anchored["evidence_ready"] is True and anchored["ok"] is True
+    anchored_notes = " ".join(
+        note
+        for item in cast("list[dict[str, object]]", anchored["items"])
+        for note in cast("list[str]", item["notes"])
+    )
+    assert "not chained to a trusted root" not in anchored_notes
 
     # A bad cert path is a clean error, never a crash.
     assert main(["verify", str(out), "--trusted-cert", str(tmp_path / "nope.pem")]) == 1
@@ -212,7 +263,7 @@ def test_multi_authority_capture_and_verify(
     item = json.loads((out / "bundle.json").read_text())["items"][0]
     assert len(item["additional_timestamps"]) == 1
 
-    report = verify_packet(out)
+    report = verify_packet(out, trusted_certs=[local_tsa.certificate, second.certificate])
     assert report.ok
     authorities = set(report.items[0].verified_authorities)
     assert {"test-rfc3161", "second-tsa"} <= authorities  # both authorities verified
@@ -236,7 +287,7 @@ def test_deferred_then_resolved_reports_both_authorities(
 
     out = tmp_path / "packet"
     build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
-    report = verify_packet(out)
+    report = verify_packet(out, trusted_certs=[local_tsa.certificate, second.certificate])
     assert report.ok
     authorities = set(report.items[0].verified_authorities)
     assert {"test-rfc3161", "second-tsa"} <= authorities  # both authorities verified
@@ -260,14 +311,54 @@ def test_redundant_authority_satisfies_when_primary_absent(
             },
         )
 
-    # No primary token, but a valid independent authority over the same hash → verified.
+    # No primary token, but a valid independent authority over the same hash: the
+    # token verifies mechanically, while readiness still requires a trusted root.
     verdict = _verify_item(item_for(sha256_bytes(b"some sealed bytes")), tmp_path, {}, {}, None)
-    assert verdict.timestamp_verified and verdict.ok
+    assert verdict.timestamp_verified and verdict.cryptographically_verified
+    assert not verdict.timestamp_authority_trusted and not verdict.ok
     assert verdict.verified_authorities == ("test-rfc3161",)
+
+    trusted = _verify_item(
+        item_for(sha256_bytes(b"some sealed bytes")),
+        tmp_path,
+        {},
+        {},
+        [local_tsa.certificate],
+    )
+    assert trusted.timestamp_authority_trusted and trusted.evidence_ready and trusted.ok
 
     # An additional token over a *different* hash does not satisfy the item.
     other = _verify_item(item_for(sha256_bytes(b"other")), tmp_path, {}, {}, None)
     assert not other.timestamp_verified and not other.ok
+
+
+def test_invalid_attached_timestamp_is_not_mislabeled_awaiting(
+    local_tsa: LocalRfc3161TSA, tmp_path: Path
+) -> None:
+    token = local_tsa.stamp(sha256_bytes(b"different content"))
+    item: dict[str, JSONValue] = {
+        "capture_id": "cap-invalid",
+        "content_hash": sha256_bytes(b"expected content"),
+        "shared_name": "",
+        "shared_hash": "",
+        "timestamp": cast("JSONValue", token.to_dict()),
+    }
+    verdict = _verify_item(item, tmp_path, {}, {}, [local_tsa.certificate])
+    assert verdict.timestamp_present
+    assert not verdict.timestamp_verified
+    assert verdict.structurally_intact  # the packet bytes can still be intact as produced
+
+    report = VerificationReport(
+        packet_dir=tmp_path,
+        signature_ok=True,
+        custody_ok=True,
+        custody_length=1,
+        items=(verdict,),
+        problems=(),
+    )
+    assert report.structurally_intact
+    assert report.status == "timestamp_invalid"
+    assert not report.timestamp_authority_trusted and not report.evidence_ready
 
 
 def test_media_tamper_detected(
@@ -283,7 +374,7 @@ def test_media_tamper_detected(
     data = bytearray(media.read_bytes())
     data[len(data) // 2] ^= 0xFF
     media.write_bytes(bytes(data))
-    report = verify_packet(out)
+    report = verify_packet(out, trusted_certs=[local_tsa.certificate])
     assert not report.ok and report.verified_items < 2
 
 
@@ -299,7 +390,7 @@ def test_bundle_tamper_breaks_signature(
     bundle = json.loads((out / "bundle.json").read_text())
     bundle["unit"] = "999-FAKE"
     (out / "bundle.json").write_text(json.dumps(bundle))
-    report = verify_packet(out)
+    report = verify_packet(out, trusted_certs=[local_tsa.certificate])
     assert not report.signature_ok and not report.ok
 
 
@@ -312,14 +403,15 @@ def test_include_originals_enables_fixity(
     vault = _case_with_two_captures(make_vault, make_jpeg, local_tsa)
     out = tmp_path / "packet"
     build_packet(vault, out, include_originals=True, generated_at="2026-01-02T00:10:00Z")
-    report = verify_packet(out)
+    report = verify_packet(out, trusted_certs=[local_tsa.certificate])
     assert report.ok
     assert all(item.original_fixity_ok is True for item in report.items)
 
     # Corrupting an embedded original is caught by fixity.
     original = next((out / "originals").iterdir())
     original.write_bytes(b"not the original bytes")
-    assert not verify_packet(out).ok
+    broken = verify_packet(out, trusted_certs=[local_tsa.certificate])
+    assert not broken.structurally_intact and not broken.ok
 
 
 def test_since_filter_and_issue_scope(
@@ -334,7 +426,10 @@ def test_since_filter_and_issue_scope(
     out = tmp_path / "packet"
     result = build_packet(vault, out, issue_id=other, generated_at="2026-01-02T00:10:00Z")
     assert result.item_count == 0
-    assert verify_packet(out).ok  # an empty-but-signed packet is still intact
+    report = verify_packet(out)
+    assert report.structurally_intact  # signed empty packet has intact structure
+    assert not report.evidence_ready and not report.ok  # but contains no evidence to ready
+    assert report.status == "no_items"
 
 
 def test_issue_scope_excludes_other_issues_and_states_scope(
@@ -373,7 +468,7 @@ def test_issue_scope_excludes_other_issues_and_states_scope(
     assert "issue i1 only" in html
     assert "Scope of this export" in html
 
-    assert verify_packet(out).ok  # a freshly scoped packet still verifies end-to-end
+    assert verify_packet(out, trusted_certs=[local_tsa.certificate]).evidence_ready
 
 
 def test_since_excludes_earlier_items_and_states_exclusion(
@@ -406,4 +501,4 @@ def test_since_excludes_earlier_items_and_states_exclusion(
     assert all(item["captured_at"] >= since for item in bundle["items"])
     assert any(since in x for x in bundle["scope"]["exclusions"])
     assert any(since in note for note in bundle["disclosures"])
-    assert verify_packet(out).ok
+    assert verify_packet(out, trusted_certs=[local_tsa.certificate]).evidence_ready

@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright 2026 Chelsea Kelly-Reif
-"""habitable — court-ready habitability evidence for tenant unions.
+"""habitable — verifiable habitability documentation for tenant unions.
 
 Offline-first, end-to-end-encrypted documentation of repair and habitability
-problems as evidence that holds up: content-hashed and trusted-timestamped media,
+problems as evidence that can be independently checked: content-hashed media with
+timestamp tokens whose authority trust is assessed separately,
 an append-only chain of custody, peer-to-peer sync, and packets that a recipient
 can independently verify.
 

@@ -34,31 +34,30 @@ source, keep multi-type `except (A, B):` parenthesized so it parses on older int
 
 ```python
 from pathlib import Path
+from cryptography import x509
 from habitable.verify import verify_packet
 
-report = verify_packet(Path("4B-packet"))          # a packet directory (has bundle.json)
+roots = [x509.load_pem_x509_certificate(Path("tsa-root.pem").read_bytes())]
+report = verify_packet(Path("4B-packet"), trusted_certs=roots)
 
 print(report.summary())                            # one-line human verdict
-if report.ok:
-    print("packet intact")
+if report.evidence_ready:
+    print("integrity intact; timestamp authority trusted; technically evidence-ready")
 else:
-    if not report.signature_ok:
-        print("- bundle signature did not verify")
-    if not report.custody_ok:
-        print("- chain of custody is broken")
-    for problem in report.problems:
-        print(f"- {problem}")
+    print(f"- structurally_intact={report.structurally_intact}")
+    print(f"- timestamp_authority_trusted={report.timestamp_authority_trusted}")
     for item in report.items:
-        if not item.ok:
+        if not item.evidence_ready:
             print(f"- item {item.capture_id}: {', '.join(item.notes)}")
 
-raise SystemExit(0 if report.ok else 1)
+raise SystemExit(0 if report.evidence_ready else 1)
 ```
 
 `verify_packet(packet_dir, *, trusted_certs=None)` returns a `VerificationReport`. It **fails
-closed**: a malformed or newer-than-supported packet yields `report.ok == False` (not a wrong
-"intact"). Two pre-structural conditions — a missing `bundle.json` or bytes that aren't valid JSON —
-raise `VerificationError`; wrap the call if you treat those as "could not verify":
+closed**: `report.ok` is retained but now aliases `report.evidence_ready`. A valid timestamp token
+without a caller-supplied trusted root therefore yields `False`, even when packet structure is
+intact. Missing/unreadable/non-object `bundle.json` inputs raise `VerificationError`; wrap the call
+if you treat those as "could not verify":
 
 ```python
 from habitable.errors import VerificationError
@@ -76,26 +75,38 @@ except VerificationError as exc:
 
 | Field / property | Meaning |
 | --- | --- |
-| `ok` | overall verdict (see [decision table §0](verifier-decision-table.md#0-what-intact-means)) |
+| `structurally_intact` | signature, custody, format, media, bindings, and optional-original fixity pass |
+| `timestamp_authority_trusted` | every item has a valid timestamp anchored to a supplied trusted certificate |
+| `evidence_ready` | non-empty packet passes both claims above; technical state, not admissibility |
+| `ok` | retained fail-closed alias for `evidence_ready` |
+| `status` | stable reason: `evidence_ready`, `integrity_failed`, `no_items`, `timestamp_missing`, `timestamp_invalid`, or `timestamp_authority_untrusted` |
 | `signature_ok` | producer signature over the bundle bytes verified |
 | `custody_ok` | chain walks cleanly and the declared head matches |
 | `custody_length` | number of custody entries |
 | `items` | tuple of `ItemVerdict` |
 | `problems` | tuple of structural/version problems (empty when clean) |
-| `verified_items` | count of items with `ok == True` |
-| `summary()` | a single human-readable line |
+| `verified_items` | count of evidence-ready items (historical field name retained) |
+| `cryptographically_verified_items` | count passing integrity + token signature/imprint, regardless of root trust |
+| `trusted_timestamp_items` | count with at least one authority-trusted token |
+| `summary(language=None)` | localized (`en`/`es`) claim-separated human line |
+| `guidance(language=None)` | localized next step/caveat for `status` |
 
-`ItemVerdict` (per media item): `capture_id`, `content_hash`, `timestamp_verified`, `gen_time`,
-`tsa_name`, `shared_media_ok`, `custody_binding_ok`, `original_fixity_ok` (`True`/`False`/`None`),
-`verified_authorities` (tuple of every TSA whose token verified — one per authority when redundant
-timestamps are used), `notes` (tuple of strings), and `ok`. The `notes` carry the human reasons (e.g. `awaiting
-timestamp`, `shared media does not match its recorded hash`).
+`ItemVerdict` (per media item) preserves the fields above and adds `timestamp_present`,
+`timestamp_kind`,
+`timestamp_authority_trusted`, `trusted_authorities`, `structurally_intact`,
+`cryptographically_verified`, and `evidence_ready`. `verified_authorities` lists every TSA whose
+token signature/imprint verified; `trusted_authorities` is the narrower subset anchored to a root
+the caller supplied. Item `ok` is the fail-closed alias for `evidence_ready`. The diagnostic
+`notes` remain English machine/log details (for example `awaiting timestamp` or `shared media does
+not match its recorded hash`); `summary()`, `guidance()`, and per-item `human_detail()` are the
+localized human surfaces.
 
 ## Asserting trusted timestamp roots
 
-Without `trusted_certs`, a structurally valid RFC 3161 token still verifies but is flagged "authority
-not chained to a trusted root." To require the token chain to a TSA root *you* trust, pass loaded
-certificates:
+Without `trusted_certs`, a structurally valid RFC 3161 token may still have
+`timestamp_verified = True`, but authority trust, evidence readiness, `ok`, and the CLI exit code
+all fail closed. To require the token chain to a TSA root *you* trust, pass certificates obtained
+and assessed independently:
 
 ```python
 from cryptography import x509
@@ -104,15 +115,17 @@ roots = [x509.load_pem_x509_certificate(Path(p).read_bytes())
 report = verify_packet(packet_dir, trusted_certs=roots)
 ```
 
-Then a token whose authority does not chain to one of `roots` will carry the not-chained note (the
-item can still be `ok` on the other checks; decide your own policy on whether to require a trusted
-chain).
+Then a token whose authority chains to one of `roots` can set
+`timestamp_authority_trusted = True`. A non-chaining token can still be inspected through
+`cryptographically_verified`, but can never set `ok` or `evidence_ready`. A `DevTSA` token remains
+untrusted even if unrelated certificates are supplied.
 
 From the command line, the same anchoring is available without writing code:
 
 ```console
 $ habitable verify 4B-packet --trusted-cert freetsa-root.pem --trusted-cert digicert-root.pem
-$ habitable verify 4B-packet --json          # structured report (per-item verdicts + notes)
+$ habitable verify 4B-packet --json          # no roots: explicit untrusted/not-ready report, exit 1
+$ habitable verify 4B-packet --lang es       # localized human output (also auto-detects packet lang)
 ```
 
 ## Verifying the bundle against the published schema (optional)

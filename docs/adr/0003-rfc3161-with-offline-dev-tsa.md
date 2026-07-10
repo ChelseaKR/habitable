@@ -52,11 +52,17 @@ separate, deferred step:
   timestamp," surfaced plainly rather than hidden.
 - The dev TSA must **never** be mistaken for production. We mitigate by making its
   tokens self-identifying, forcing `trusted_chain = False`, and attaching an explicit
-  non-production note; reviewers and verification output should treat a dev token as
-  unverified-for-evidence. This is a standing risk to watch as the project matures.
+  non-production note. Per [ADR 0008](0008-separate-integrity-timestamp-trust-and-readiness.md),
+  a dev token may pass its mechanical signature/imprint check but always has
+  `timestamp_authority_trusted = False` and `evidence_ready = False`; the CLI exits
+  non-zero and generated HTML/PDF views label it untrusted.
 - Verification (`src/habitable/verify.py`, `verify_token`) validates the full chain
   of an RFC 3161 token: the CMS signature over the signed attributes, the signing
   certificate (chained to a trusted root when trusted certs are supplied, otherwise
   reported as untrusted), the message-imprint binding to the content digest, and the
   `genTime`. The verifier is part of the Apache-2.0 verification subset so a third
   party can embed it.
+- Token validity and authority trust are different claims. A token can verify against
+  its embedded signing certificate without that certificate chaining to a root the
+  recipient trusts. Callers must pass trusted roots explicitly; omission fails closed
+  for evidence readiness while preserving the mechanical verification result.

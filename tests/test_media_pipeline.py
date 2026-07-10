@@ -100,7 +100,7 @@ def test_video_captures_packetizes_and_verifies(
 
     from habitable.verify import verify_packet
 
-    report = verify_packet(out)
+    report = verify_packet(out, trusted_certs=[local_tsa.certificate])
     assert report.ok and report.signature_ok and report.custody_ok
     assert report.verified_items == 1
 
@@ -134,7 +134,7 @@ def test_audio_captures_and_verifies_with_transcript(
 
     from habitable.verify import verify_packet
 
-    report = verify_packet(out)
+    report = verify_packet(out, trusted_certs=[local_tsa.certificate])
     assert report.ok and report.verified_items == 1
 
 

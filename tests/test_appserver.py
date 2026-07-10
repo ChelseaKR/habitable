@@ -121,8 +121,13 @@ def test_full_api_flow(app: str, make_jpeg: Callable[..., Path]) -> None:
     assert timeline_entries[0]["occurred_at"] == "2026-01-03"
 
     status, export = _call(app, "POST", "/api/export", {})
-    assert status == 200 and export["verified"] is True and export["item_count"] == 1
-    # A fully-timestamped packet is not in the degraded awaiting state.
+    assert status == 200 and export["item_count"] == 1
+    assert export["verified"] is False and export["evidence_ready"] is False
+    assert export["structurally_intact"] is True
+    assert export["timestamp_authority_trusted"] is False
+    assert export["verification_status"] == "timestamp_authority_untrusted"
+    # A token is attached, but the local app has no recipient trust store and must
+    # not present it as evidence-ready. It is not in the awaiting state either.
     assert export["awaiting"] == 0 and export["awaiting_only"] is False
 
 
@@ -134,8 +139,8 @@ def test_export_reports_awaiting_state_honestly(
 ) -> None:
     """An export whose only defect is awaiting timestamps says so, distinctly.
 
-    FIX-09 / R-01 / R-17: the packet correctly verifies NOT intact while items
-    await a trusted timestamp, but the API must let the UI tell that state apart
+    FIX-09 / R-01 / R-17: the packet can remain structurally intact while items
+    await a timestamp, but the API must let the UI tell that state apart
     from a broken chain or a failed hash — the tenant needs a next step, not an
     integrity alarm.
     """
@@ -156,7 +161,10 @@ def test_export_reports_awaiting_state_honestly(
         thread.join(timeout=5)
 
     assert status == 200
-    assert export["verified"] is False  # degraded is still honestly NOT intact
+    assert export["verified"] is False
+    assert export["structurally_intact"] is True
+    assert export["evidence_ready"] is False
+    assert export["verification_status"] == "timestamp_missing"
     assert export["item_count"] == 2 and export["timestamped_count"] == 1
     assert export["awaiting"] == 1
     assert export["awaiting_only"] is True
@@ -167,6 +175,9 @@ def _verdict(**overrides: object) -> ItemVerdict:
         "capture_id": "cap-1",
         "content_hash": "0" * 64,
         "timestamp_verified": True,
+        "timestamp_present": True,
+        "timestamp_authority_trusted": True,
+        "trusted_authorities": ("test",),
         "gen_time": "2026-01-02T00:00:00Z",
         "tsa_name": "test",
         "shared_media_ok": True,
@@ -192,19 +203,47 @@ def _report(items: tuple[ItemVerdict, ...], **overrides: object) -> Verification
 
 def test_awaiting_only_is_false_for_real_failures() -> None:
     """Only a pure awaiting-timestamp degradation earns the calm state."""
-    awaiting = _verdict(timestamp_verified=False, gen_time="", tsa_name="")
+    awaiting = _verdict(
+        timestamp_verified=False,
+        timestamp_present=False,
+        timestamp_authority_trusted=False,
+        trusted_authorities=(),
+        gen_time="",
+        tsa_name="",
+    )
     # Purely awaiting -> True.
     assert _awaiting_only(_report((awaiting,))) is True
     # A fully-verified packet is not "awaiting only".
     assert _awaiting_only(_report((_verdict(),))) is False
+    # A valid but untrusted token and an attached-but-invalid token are distinct
+    # states; neither receives the calm awaiting label.
+    untrusted = _verdict(timestamp_authority_trusted=False, trusted_authorities=())
+    assert _awaiting_only(_report((untrusted,))) is False
+    invalid = _verdict(
+        timestamp_verified=False,
+        timestamp_present=True,
+        timestamp_authority_trusted=False,
+        trusted_authorities=(),
+    )
+    assert _awaiting_only(_report((invalid,))) is False
     # A broken signature, custody chain, or structural problem is an alarm.
     assert _awaiting_only(_report((awaiting,), signature_ok=False)) is False
     assert _awaiting_only(_report((awaiting,), custody_ok=False)) is False
     assert _awaiting_only(_report((awaiting,), problems=("malformed item in bundle",))) is False
     # An item that also fails a hash or binding check is an alarm, not a wait.
-    tampered = _verdict(timestamp_verified=False, shared_media_ok=False)
+    tampered = _verdict(
+        timestamp_verified=False,
+        timestamp_present=False,
+        timestamp_authority_trusted=False,
+        shared_media_ok=False,
+    )
     assert _awaiting_only(_report((awaiting, tampered))) is False
-    bad_original = _verdict(timestamp_verified=False, original_fixity_ok=False)
+    bad_original = _verdict(
+        timestamp_verified=False,
+        timestamp_present=False,
+        timestamp_authority_trusted=False,
+        original_fixity_ok=False,
+    )
     assert _awaiting_only(_report((bad_original,))) is False
 
 

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright 2026 Chelsea Kelly-Reif
-"""The court-ready bundle views: cover sheet, chronology, integrity summary."""
+"""Recipient-facing bundle views: cover sheet, chronology, integrity summary."""
 
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ def test_chronology_interleaves_notes_and_photos_in_time_order() -> None:
     assert note.label == "observed"
     assert note.text == "spreading"
     assert photo.when == "2026-01-02T03:04:05Z"
-    assert "trusted-timestamped" in photo.detail
+    assert "timestamp token attached; authority trust not assessed" in photo.detail
 
 
 def test_chronology_scope_subset_for_issue() -> None:
@@ -86,7 +86,7 @@ def test_integrity_summary_collects_attestations_and_custody() -> None:
     assert len(summary.rows) == 1
     row = summary.rows[0]
     assert row.capture_id == "cap-x"
-    assert row.timestamp_status == "verified"
+    assert row.timestamp_status == "attached-unassessed"
     assert row.authorities == ("test-tsa", "second-tsa")
     assert row.archive_count == 1
     assert row.custody_entries == 3

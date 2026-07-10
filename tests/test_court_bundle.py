@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright 2026 Chelsea Kelly-Reif
-"""The court-ready packet: cover sheet, chronology, and an integrity summary.
+"""The recipient packet: cover sheet, chronology, and an integrity summary.
 
-Asserts both renderings carry the three court-ready sections and that the
+Asserts both renderings carry the three recipient-facing sections and that the
 accessible HTML stays structurally sound (one h1, landmarks, captioned tables).
 The data layer is exercised in ``test_bundleview.py``; this is the wiring.
 """
@@ -33,7 +33,7 @@ def _packet(
     return out
 
 
-def test_html_packet_has_court_ready_sections(
+def test_html_packet_has_recipient_facing_sections(
     make_vault: Callable[..., Vault],
     make_jpeg: Callable[..., Path],
     local_tsa: LocalRfc3161TSA,
@@ -52,7 +52,7 @@ def test_html_packet_has_court_ready_sections(
     assert "Custody chain head:" in html
 
 
-def test_pdf_packet_builds_with_court_ready_sections(
+def test_pdf_packet_builds_with_recipient_facing_sections(
     make_vault: Callable[..., Vault],
     make_jpeg: Callable[..., Path],
     local_tsa: LocalRfc3161TSA,
@@ -77,5 +77,5 @@ def test_court_sections_do_not_break_verification(
     from habitable.verify import verify_packet
 
     out = _packet(make_vault, make_jpeg, local_tsa, tmp_path / "pkt")
-    report = verify_packet(out)
+    report = verify_packet(out, trusted_certs=[local_tsa.certificate])
     assert report.ok, report.summary()

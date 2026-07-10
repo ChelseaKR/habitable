@@ -34,7 +34,7 @@ def test_archive_chain_verifies_in_a_packet(
 
     out = tmp_path / "packet"
     build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
-    report = verify_packet(out)
+    report = verify_packet(out, trusted_certs=[primary_tsa.certificate, later_tsa.certificate])
     assert report.ok
     notes = [n for item in report.items for n in item.notes]
     assert any("archive-timestamped (2 link(s))" in n for n in notes)
@@ -99,7 +99,15 @@ def test_retimestamp_threads_redundant_authorities(
     # The threaded chain still verifies cleanly in an exported packet.
     out = tmp_path / "packet"
     build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
-    report = verify_packet(out)
+    report = verify_packet(
+        out,
+        trusted_certs=[
+            primary.certificate,
+            extra.certificate,
+            later.certificate,
+            later_extra.certificate,
+        ],
+    )
     assert report.ok
     item = report.items[0]
     assert {"p", "second"} <= set(item.verified_authorities)
@@ -124,4 +132,9 @@ def test_retimestamp_cli_flow(
     assert main(["retimestamp", "--vault", str(vault), "--dev-tsa"]) == 0
     packet = tmp_path / "packet"
     assert main(["export", "--vault", str(vault), "--out", str(packet)]) == 0
-    assert main(["verify", str(packet)]) == 0
+    # Dev timestamps remain mechanically valid but never authority-trusted or ready.
+    assert main(["verify", str(packet)]) == 1
+    output = capsys.readouterr()
+    assert "integrity: intact" in output.out
+    assert "evidence readiness: NOT READY" in output.out
+    assert "Development timestamps can never become trusted" in output.err

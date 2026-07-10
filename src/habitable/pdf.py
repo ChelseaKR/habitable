@@ -41,7 +41,12 @@ from .bundleview import (
     integrity_summary,
 )
 from .canonical import JSONValue
-from .disclosure import proof_statement, scope_statement
+from .disclosure import (
+    PacketTrustText,
+    packet_trust_text,
+    proof_statement,
+    scope_statement,
+)
 from .letter import RepairLetter, letter_lines
 
 __all__ = ["render_letter_pdf", "render_packet_pdf"]
@@ -105,12 +110,10 @@ def _para(text: str, style: Any) -> Any:
 # The PDF is a print/presentation convenience. Per docs/adr/0004, the *conformant*
 # accessible rendering of a packet is packet.html, which ships alongside every export;
 # the disclaimer points a reader who needs an accessible record to it.
-_PACKET_DISCLAIMER = (
-    "This packet documents habitability conditions. It is evidence, not legal advice, "
-    "and it does not guarantee admissibility. Integrity is independently checkable against "
-    "the accompanying <b>bundle.json</b> with the <b>habitable verify</b> tool. "
-    "An accessible version of this packet is provided as <b>packet.html</b>, alongside this PDF."
-)
+# Kept as a public module constant for embedders/tests that imported the old English
+# disclaimer. Rendering itself uses the localized shared source below.
+_EN_TRUST = packet_trust_text("en")
+_PACKET_DISCLAIMER = _EN_TRUST.view_notice + " " + _EN_TRUST.accessible_note
 
 
 def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path: Path) -> None:
@@ -123,13 +126,18 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
         title = f"{title} — unit {unit}"
     # Declare the configured language so assistive tech reads the packet correctly.
     lang = _s(bundle, "language") or "en"
+    trust = packet_trust_text(lang)
+    appendix = _map(bundle, "appendix")
+    timestamp_summary = trust.timestamp_summary.format(
+        attached=_i(appendix, "timestamped_count"), total=_i(appendix, "item_count")
+    )
 
     doc = _PacketDoc(
         str(out_path),
         pagesize=letter,
         title=title,
         author="habitable",
-        subject="Tenant habitability evidence with trusted timestamps and chain of custody",
+        subject="Tenant habitability evidence with timestamp tokens and chain of custody",
         lang=lang,
         leftMargin=0.9 * inch,
         rightMargin=0.9 * inch,
@@ -145,8 +153,9 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
     appendix = _map(bundle, "appendix")
     # Cover sheet: the front-matter facts a court/inspector reads first.
     _render_cover_sheet(story, cover_sheet(bundle), styles)
+    story.append(_para(timestamp_summary, styles["Small"]))
     story.append(Spacer(1, 0.2 * inch))
-    story.append(Paragraph(_PACKET_DISCLAIMER, styles["Small"]))
+    story.append(_para(trust.view_notice + " " + trust.accessible_note, styles["Small"]))
     story.append(Spacer(1, 0.2 * inch))
     _render_proof_statement(story, lang, styles)
     story.append(Spacer(1, 0.15 * inch))
@@ -170,7 +179,7 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
     items_by_issue = _items_by_issue(bundle)
     for issue in _list(bundle, "issues"):
         if isinstance(issue, dict):
-            _render_issue(story, issue, bundle, items_by_issue, media_dir, styles)
+            _render_issue(story, issue, bundle, items_by_issue, media_dir, styles, trust)
 
     # Chain-of-custody / integrity summary: hashes, attestations, custody proof.
     _render_integrity(story, integrity_summary(bundle), styles)
@@ -179,13 +188,12 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
     story.append(Paragraph("Evidence appendix", styles["Heading1"]))
     story.append(
         Paragraph(
-            "Each item lists its content hash, trusted-timestamp status, and custody status. "
-            "These verify independently against bundle.json.",
+            escape(trust.appendix_intro),
             styles["Small"],
         )
     )
     story.append(Spacer(1, 0.15 * inch))
-    story.append(_appendix_table(bundle, styles))
+    story.append(_appendix_table(bundle, styles, trust))
 
     if _s(template, "footer"):
         story.append(Spacer(1, 0.2 * inch))
@@ -258,7 +266,8 @@ def _render_cover_sheet(story: list[Any], cover: CoverSheet, styles: Any) -> Non
         ("Issues", str(cover.issue_count)),
         (
             "Media items",
-            f"{cover.item_count} ({cover.timestamped_count} trusted-timestamped)",
+            f"{cover.item_count} ({cover.timestamped_count} timestamp tokens attached; "
+            "authority trust not assessed here)",
         ),
         ("Chain-of-custody entries", str(cover.custody_length)),
         ("Date range of evidence", span),
@@ -339,9 +348,11 @@ def _render_integrity(story: list[Any], summary: IntegritySummary, styles: Any) 
             f"Hash algorithm {escape(summary.algorithm)} · "
             f"{summary.custody_length} custody entr"
             f"{'y' if summary.custody_length == 1 else 'ies'} (append-only, hash-linked) · "
-            f"{summary.timestamped_count}/{summary.item_count} items trusted-timestamped. "
+            f"{summary.timestamped_count}/{summary.item_count} items have timestamp tokens "
+            "attached. This view does not validate token signatures or authority trust; use "
+            "habitable verify with recipient-selected roots. "
             "The chain head below commits to the entire history; any insertion, deletion, "
-            "or reordering changes it. All of this verifies independently against bundle.json.",
+            "or reordering changes it.",
             styles["Small"],
         )
     )
@@ -387,6 +398,7 @@ def _render_issue(
     items_by_issue: dict[str, list[Mapping[str, JSONValue]]],
     media_dir: Path,
     styles: Any,
+    trust: PacketTrustText,
 ) -> None:
     issue_id = _s(issue, "issue_id")
     heading = _s(issue, "title") or _s(issue, "category") or issue_id
@@ -425,13 +437,17 @@ def _render_issue(
 
     for item in items_by_issue.get(issue_id, []):
         if item.get("sensor") is not None:
-            _render_sensor_item(story, item, styles)
+            _render_sensor_item(story, item, styles, trust)
         else:
-            _render_evidence_item(story, item, media_dir, styles)
+            _render_evidence_item(story, item, media_dir, styles, trust)
 
 
 def _render_evidence_item(
-    story: list[Any], item: Mapping[str, JSONValue], media_dir: Path, styles: Any
+    story: list[Any],
+    item: Mapping[str, JSONValue],
+    media_dir: Path,
+    styles: Any,
+    trust: PacketTrustText,
 ) -> None:
     media_type = _s(item, "media_type")
     shared_name = _s(item, "shared_name")
@@ -439,8 +455,10 @@ def _render_evidence_item(
     transcript = _s(item, "transcript")
     is_video = media_type.startswith("video/")
     is_audio = media_type.startswith("audio/")
-    caption = f"Captured {_s(item, 'captured_at')} · hash {_s(item, 'content_hash')[:16]}… · " + (
-        "timestamped" if item.get("timestamp") else "awaiting timestamp"
+    timestamp_status = _timestamp_status(item.get("timestamp"), trust)
+    caption = (
+        f"Captured {_s(item, 'captured_at')} · hash {_s(item, 'content_hash')[:16]}… · "
+        f"{timestamp_status}"
     )
 
     # Video/audio (EXP-07): never embedded as playable media in a static PDF --
@@ -494,10 +512,16 @@ def _render_evidence_item(
 _MAX_PDF_SENSOR_ROWS = 40
 
 
-def _render_sensor_item(story: list[Any], item: Mapping[str, JSONValue], styles: Any) -> None:
+def _render_sensor_item(
+    story: list[Any],
+    item: Mapping[str, JSONValue],
+    styles: Any,
+    trust: PacketTrustText | None = None,
+) -> None:
     """Render an instrument CSV capture (EXP-09): a small chart, a summary
     sentence, and the readings table — independent corroboration of a
     condition, not just the tenant's own photo."""
+    trust = trust or packet_trust_text("en")
     sensor = _map(item, "sensor")
     readings: list[Mapping[str, JSONValue]] = [
         r for r in _list(sensor, "readings") if isinstance(r, dict)
@@ -508,7 +532,7 @@ def _render_sensor_item(story: list[Any], item: Mapping[str, JSONValue], styles:
     unit_suffix = f" {unit}" if unit else ""
     minimum, maximum, mean = _f(sensor, "minimum"), _f(sensor, "maximum"), _f(sensor, "mean")
     total_rows = _i(sensor, "total_rows")
-    stamp = "timestamped" if item.get("timestamp") else "awaiting timestamp"
+    stamp = _timestamp_status(item.get("timestamp"), trust)
 
     summary = (
         f"Instrument data ({value_header}): {total_rows} reading(s), ranging "
@@ -585,13 +609,15 @@ def _sensor_chart_drawing(
     return drawing
 
 
-def _appendix_table(bundle: Mapping[str, JSONValue], styles: Any) -> Any:
-    rows: list[list[Any]] = [["Capture", "Content hash (SHA-256)", "Timestamp", "Authority"]]
+def _appendix_table(bundle: Mapping[str, JSONValue], styles: Any, trust: PacketTrustText) -> Any:
+    rows: list[list[Any]] = [
+        ["Capture", "Content hash (SHA-256)", trust.timestamp_heading, trust.authority_heading]
+    ]
     for item in _list(bundle, "items"):
         if not isinstance(item, dict):
             continue
         token = item.get("timestamp")
-        timestamp_status = "verified" if isinstance(token, dict) else "awaiting"
+        timestamp_status = _timestamp_status(token, trust)
         authority = _s(token, "tsa_name") if isinstance(token, dict) else "—"
         rows.append(
             [
@@ -614,6 +640,13 @@ def _appendix_table(bundle: Mapping[str, JSONValue], styles: Any) -> Any:
         )
     )
     return table
+
+
+def _timestamp_status(token: JSONValue | None, trust: PacketTrustText) -> str:
+    """Describe token presence honestly; PDF rendering does not verify trust."""
+    if not isinstance(token, dict):
+        return trust.awaiting
+    return trust.dev_untrusted if _s(token, "kind") == "dev" else trust.attached_unassessed
 
 
 def _items_by_issue(bundle: Mapping[str, JSONValue]) -> dict[str, list[Mapping[str, JSONValue]]]:

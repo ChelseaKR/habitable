@@ -321,7 +321,7 @@ def _render_index_html(
         "<table>\n<caption>Per-unit evidence health</caption>\n"
         "<thead><tr>"
         '<th scope="col">Unit</th><th scope="col">Issues</th>'
-        '<th scope="col">Timestamped</th><th scope="col">Custody</th>'
+        '<th scope="col">Timestamp tokens attached</th><th scope="col">Custody</th>'
         '<th scope="col">Status</th><th scope="col">Packet</th>'
         "</tr></thead>\n<tbody>\n" + "\n".join(rows) + "\n</tbody>\n</table>\n"
         "</body>\n</html>\n"

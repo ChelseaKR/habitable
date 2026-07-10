@@ -88,8 +88,10 @@ $ habitable verify --trusted-cert ./tsa-root.pem ./4B-packet  # additionally anc
 ```
 
 The verification command is the point: a packet is not "trust me." It exposes technical claims a
-third party can re-check. Without `--trusted-cert`, the verifier checks token imprint/signature but
-does not assert that the signing certificate chains to an authority the recipient trusts.
+third party can re-check. Without `--trusted-cert`, token imprint/signature and structural integrity
+are reported separately, but the command exits non-zero and does not call the packet evidence-ready.
+Development timestamps are never evidence-ready. Technical readiness does not decide admissibility
+or any legal outcome.
 
 ---
 
