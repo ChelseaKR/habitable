@@ -124,6 +124,7 @@ def build_packet(
             since=since,
             include_originals=include_originals,
             make_pdf=make_pdf,
+            inspector_view=inspector_view,
             generated_at=generated_at,
             policy=policy,
         )
@@ -145,6 +146,7 @@ def build_packet(
         bundle_path=out_dir / _BUNDLE,
         pdf_path=(out_dir / _PDF) if staged.pdf_path is not None else None,
         html_path=(out_dir / _HTML) if staged.html_path is not None else None,
+        inspector_path=(out_dir / _INSPECTOR) if staged.inspector_path is not None else None,
         item_count=staged.item_count,
         timestamped_count=staged.timestamped_count,
         includes_originals=staged.includes_originals,
@@ -161,6 +163,7 @@ def _build_packet_in_dir(
     since: str | None,
     include_originals: bool,
     make_pdf: bool,
+    inspector_view: bool,
     generated_at: str | None,
     policy: SharingPolicy | None,
 ) -> PacketResult:

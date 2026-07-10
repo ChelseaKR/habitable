@@ -55,9 +55,12 @@ def test_narrower_reexport_replaces_entire_directory(
         vault,
         out,
         include_originals=True,
+        inspector_view=True,
         generated_at="2026-01-02T00:10:00Z",
     )
     assert first.includes_originals and (out / "originals").is_dir()
+    assert first.inspector_path == out / "inspector.html"
+    assert first.inspector_path.is_file()
     (out / "stale-private-file.txt").write_text("must not survive", encoding="utf-8")
 
     second = build_packet(
@@ -71,7 +74,9 @@ def test_narrower_reexport_replaces_entire_directory(
     assert second.bundle_path == out / "bundle.json"
     assert second.pdf_path == out / "packet.pdf"
     assert second.html_path == out / "packet.html"
+    assert second.inspector_path is None
     assert not (out / "originals").exists()
+    assert not (out / "inspector.html").exists()
     assert not (out / "stale-private-file.txt").exists()
     assert verify_packet(out).ok
     assert _transaction_debris(tmp_path, out.name) == []
