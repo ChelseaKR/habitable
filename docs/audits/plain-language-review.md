@@ -53,9 +53,6 @@ pass applies it to the in-app strings and the setup guide.
 | `status_fingerprint` | "Device fingerprint" | "Device ID" | "fingerprint" is a term of art; "Device ID" is plainer. The setup guide now glosses the CLI's "fingerprint" as the same value. |
 | `status_awaiting` | "Awaiting timestamp" | "Waiting for timestamp" | "Awaiting" is formal; "waiting for" is everyday English. Directly targets the "afraid to close the screen" failure mode. |
 | `status_custody` | "Chain of custody" | "Evidence trail" | Legal term of art. "Evidence trail" keeps the "unbroken recorded sequence" meaning in plain words. The verdicts (`custody_intact`/`custody_broken`) are unchanged. |
-| `resolve_deferred` | "Resolve awaiting timestamps" | "Get missing timestamps" | Shorter, action-first, no "resolve"/"awaiting" jargon. |
-| `resolve_help` | "Fetch trusted timestamps for items captured offline (needs a connection)." | Rewritten to say what to do **and** to reassure: "You can safely leave this screen and come back." | Answers the persona who was afraid to leave the screen. |
-| `msg_resolved` | "# awaiting timestamp(s) resolved." | "Added a trusted timestamp to # item." | Plain result language instead of "resolved awaiting." |
 | `capture_hash_label` | "Content hash" | "Content fingerprint" | "hash" is a term of art; "fingerprint" is the standard plain metaphor for a content digest. |
 | `field_dev_tsa` (+ new `field_dev_tsa_help`) | "Use offline dev timestamp" | "Use a practice timestamp (offline testing)" + in-context help | "dev timestamp" is developer jargon. The new help line is **honesty-critical**: it says the practice timestamp is not trusted and does not prove the time to a court. |
 | `field_include_originals` (+ new `field_include_originals_help`) | "Include sealed originals" | "Include the sealed original photos" + in-context help | "sealed originals" is opaque. Help explains they are full-quality photos that can still carry location/hidden data (mirrors the packet's residual-metadata disclosure, R-27). |
@@ -70,10 +67,16 @@ pass applies it to the in-app strings and the setup guide.
 - **De-lawyered** the tagline/description: `habitabilidad` → `vivienda`; dropped the
   stiff `evidencia de habitabilidad` calque; added the warm "en tu propio
   dispositivo."
-- **Terminology consistency fix:** the bundle mixed *sello de tiempo* and *marca de
-  tiempo* for "timestamp." Standardized on **`sello de tiempo`** (matches the status
-  grid and the packet). Now consistent across `status_*`, `resolve_*`, `msg_resolved`,
-  `field_dev_tsa*`, `capture_*`, and `export_timestamped`.
+- **Partial terminology consistency fix:** the bundle mixes *sello de tiempo* and
+  *marca de tiempo* for "timestamp." Standardized on **`sello de tiempo`** (matches
+  the status grid and the packet) across `status_*`, `field_dev_tsa*`, `capture_*`,
+  and `export_timestamped`. `resolve_deferred` / `resolve_help` / `msg_resolved`
+  still say *marca de tiempo* — left alone on this pass because a concurrently
+  merged change already touched their English wording, and
+  `capture_awaiting_reassure` (guard-tested by
+  `test_awaiting_timestamp_copy_is_reassuring`) quotes `resolve_deferred`'s exact
+  text, EN and ES. Finishing the `resolve_*` terminology fix is tracked under *What
+  remains*.
 - `status_fingerprint`: `Huella del dispositivo` → **`ID del dispositivo`**;
   `capture_hash_label`: `Hash del contenido` → **`Huella del contenido`** (frees
   "huella" for the content digest, its natural plain metaphor).
@@ -113,5 +116,11 @@ This is a maintainer pass. It does **not** substitute for:
 5. **Text-expansion check at 320px** for the two new, longer help strings in both
    locales (the layout is tested to a 320px reflow; eyeball the Spanish, which runs
    longer).
+6. **Finishing the `resolve_*` terminology fix.** `resolve_deferred`, `resolve_help`,
+   and `msg_resolved` still say *marca de tiempo* / "resolve/awaiting" rather than
+   *sello de tiempo* / plain action-first wording. Changing them also requires
+   updating `capture_awaiting_reassure`'s quoted reference in both locales and the
+   guard test `test_awaiting_timestamp_copy_is_reassuring` (`tests/test_app_i18n.py`)
+   in the same change.
 
 Re-run this review whenever UI strings change; the string list above can grow.

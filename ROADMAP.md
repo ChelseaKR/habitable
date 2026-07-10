@@ -180,12 +180,13 @@ The courtroom rests on this; it gets the most scrutiny.
   pass (target ~grade 6–8) over the in-app EN/ES copy (`app/i18n/`) and the setup guide:
   jargon such as "Device fingerprint," "Chain of custody," "Awaiting timestamp," and
   "Content hash" replaced or glossed with in-context help; the Spanish de-lawyered and its
-  timestamp term (`sello de tiempo`) made consistent. Honest-limits strings were kept at full
-  strength and key parity held (`tests/test_app_i18n.py`, `scripts/check_i18n_parity.py`). The
-  dated review record — target, method, every term changed, and what remains for a
-  native-speaker / stressed-user pass — is at `docs/audits/plain-language-review.md`.
-  *Remaining (documented there):* a native-speaker ES review, a measured readability score,
-  and a cognitive walk-through.
+  timestamp term (`sello de tiempo`) partially made consistent. Honest-limits strings were
+  kept at full strength and key parity held (`tests/test_app_i18n.py`,
+  `scripts/check_i18n_parity.py`). The dated review record — target, method, every term
+  changed, and what remains for a native-speaker / stressed-user pass — is at
+  `docs/audits/plain-language-review.md`. *Remaining (documented there):* a native-speaker ES
+  review, a measured readability score, a cognitive walk-through, and finishing the
+  `resolve_*` terminology fix alongside its guard test.
 - *Shipped:* **Low-end-device performance budget.** A documented latency budget for the
   local path — per-operation targets for content hashing, seal/store, custody append,
   CRDT merge, and packet assembly — tied to a reference low-end device modeled as ~10×

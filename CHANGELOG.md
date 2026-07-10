@@ -57,10 +57,12 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   `app/i18n/es.json`, and `docs/setup-guide.md`. Jargon was replaced or glossed:
   "Device fingerprint" → "Device ID", "Chain of custody" → "Evidence trail",
   "Awaiting timestamp" → "Waiting for timestamp", "Content hash" → "Content
-  fingerprint", "Resolve awaiting timestamps" → "Get missing timestamps". Two
-  in-context help strings were added (a practice/untrusted-timestamp warning and a
-  sealed-originals note), wired via `aria-describedby`. The Spanish was de-lawyered
-  and its timestamp term (`sello de tiempo`) made consistent. The honest-limits
+  fingerprint". Two in-context help strings were added (a practice/untrusted-timestamp
+  warning and a sealed-originals note), wired via `aria-describedby`. (`resolve_deferred`
+  / `resolve_help` / `msg_resolved` were left as-is on this pass — a concurrently
+  merged change already made them plain, and `capture_awaiting_reassure`'s
+  guard-tested reference to that exact button text stays intact.) The Spanish was
+  de-lawyered; the honest-limits
   strings (`alpha_*`, `verify_*`, `custody_*`, `capture_timestamped_no`,
   `footer_note`) were left at full strength, and EN/ES key + placeholder + plural
   parity is unchanged. Dated review record: `docs/audits/plain-language-review.md`.
