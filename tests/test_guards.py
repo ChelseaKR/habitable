@@ -26,6 +26,39 @@ _GENERATED_AT = "2026-01-02T00:10:00Z"
 _TENANT_FILENAME = "TENANT-PRIVATE-FILENAME-9e21.jpg"
 
 
+def test_packet_ids_do_not_encode_passphrase_derived_material(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """FIX-01 regression: pre-fix, node_id = sha256(case_id+passphrase)[:16] was written
+    to plaintext config.toml AND embedded in every exported id, letting an adversary with
+    a seized device or a court packet brute-force the passphrase and bypass scrypt. Assert
+    that value appears nowhere derivable — fail the build if the leak ever recurs."""
+    case_id = "case-fix01"
+    passphrase = "correct horse battery staple"
+    leaked = "2f13b8afac7a8422"  # pre-FIX-01 sha256(case_id + passphrase)[:16]
+
+    vault = make_vault(case_id=case_id, passphrase=passphrase)
+    issue = vault.document.add_issue(category="mold", issue_id="i1")
+    capture(vault, make_jpeg(), issue_id=issue, tsa=local_tsa)
+
+    # The device id itself is random, not the passphrase-derived value.
+    assert vault.document.clock.node_id != leaked
+
+    # No passphrase-derived material in the only two plaintext files ...
+    config_text = (vault.path / "config.toml").read_text(encoding="utf-8")
+    assert leaked not in config_text
+    assert "node_id" not in config_text
+    assert leaked not in (vault.path / "keyfile.json").read_text(encoding="utf-8")
+
+    # ... nor in the exported packet the modelled adversary (opposing counsel) receives.
+    out = tmp_path / "packet"
+    build_packet(vault, out, generated_at=_GENERATED_AT)
+    assert leaked not in (out / "bundle.json").read_text(encoding="utf-8")
+
+
 def test_export_drops_source_filename_and_importing_peer_identity(
     make_vault: Callable[..., Vault],
     make_jpeg: Callable[..., Path],
@@ -75,7 +108,7 @@ def test_packet_ids_do_not_encode_wall_clock_or_node_id(
     vault = Vault.create(
         tmp_path / "vault", "pw", case_id="guard-4B", unit="4B", time_source=lambda: known_ms
     )
-    node_id = vault.config.node_id
+    node_id = vault.document.clock.node_id
     issue = vault.document.add_issue(category="mold", room="bathroom", title="mold")
     vault.document.add_timeline_entry(issue, "observed", "mold spreading after roof leak")
     vault.save()

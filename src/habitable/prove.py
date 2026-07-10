@@ -6,7 +6,7 @@ Two things live here, both fully local and network-free beyond a loopback relay:
 
 - :func:`prove_no_plaintext` (E-07) fabricates a synthetic case seeded with
   distinctive plaintext *markers* — note text, an issue title, a source filename,
-  the vault passphrase, the passphrase-derived ``node_id``, and the raw image
+  the vault passphrase, the encrypted clock ``node_id``, and the raw image
   bytes — then runs a *real* sync round-trip through an in-process relay while a
   wire-tap records every byte that crosses the transport, verbatim, to a capture
   file. It then greps the captured bytes (raw, base64-encoded, and base64-decoded)
@@ -123,7 +123,7 @@ def _markers(vault: Vault, image_bytes: bytes) -> dict[str, bytes]:
         "source-filename": _MARKER_FILENAME.encode(),
         "vault-passphrase": _MARKER_PASSPHRASE.encode(),
         "case-id": _CASE_ID.encode(),
-        "node-id (passphrase-derived)": vault.config.node_id.encode(),
+        "node-id": vault.document.clock.node_id.encode(),
         "device-fingerprint": vault.identity.public().fingerprint.encode(),
         "raw-image-bytes": image_bytes[:64],
         "base64-image-bytes": base64.b64encode(image_bytes)[:64],

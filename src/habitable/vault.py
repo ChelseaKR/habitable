@@ -15,6 +15,9 @@ surfaces as an error rather than a quietly altered exhibit.
 from __future__ import annotations
 
 import json
+import re
+import secrets
+import tomllib
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,9 +47,15 @@ _KEYFILE = "keyfile.json"
 _CASE = "case.enc"
 _CUSTODY = "custody.enc"
 _IDENTITY = "identity.enc"
+_NODE = "node.enc"
 _DEFERRED = "deferred.enc"
 _ORIGINALS = "originals"
 _TOKENS = "tokens"
+
+# Pre-FIX-01 vaults wrote the device node_id into plaintext config.toml; this
+# matches that line so a legacy vault can be migrated (the value moves into the
+# encrypted vault and the plaintext line is stripped) on first open.
+_LEGACY_NODE_ID_LINE = re.compile(r"^\s*node_id\s*=")
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,11 +146,14 @@ class Vault:
         (path / _ORIGINALS).mkdir(exist_ok=True)
         (path / _TOKENS).mkdir(exist_ok=True)
 
-        node_id = sha256_bytes(case_id.encode() + passphrase.encode())[:16]
-        config = Config.default(node_id, language=language)
-        (path / _CONFIG).write_text(
-            default_config_toml(node_id, language=language), encoding="utf-8"
-        )
+        # A random, passphrase-independent device id. Deriving it from the
+        # passphrase (as pre-FIX-01 did) made the passphrase offline-brute-forceable
+        # from plaintext config.toml and from every exported packet id; a random id
+        # severs that link. It is stored *inside* the encrypted vault, never in
+        # plaintext, and is stable for the life of the vault (it tiebreaks the clock).
+        node_id = secrets.token_hex(8)
+        config = Config.default(language=language)
+        (path / _CONFIG).write_text(default_config_toml(language=language), encoding="utf-8")
 
         keyfile, dek = create_keyfile(passphrase)
         (path / _KEYFILE).write_text(keyfile, encoding="utf-8")
@@ -156,6 +168,7 @@ class Vault:
             document.set_meta("building", building)
         vault = cls(path, config, dek, identity, document, CustodyLog(), [])
         vault._write_blob(_IDENTITY, identity.serialize())
+        vault._write_blob(_NODE, canonical_json({"node_id": node_id}))
         vault.save()
         return vault
 
@@ -175,7 +188,8 @@ class Vault:
         dek = open_keyfile(keyfile_path.read_text(encoding="utf-8"), passphrase)
 
         identity = Identity.deserialize(_read_blob(path, dek, _IDENTITY))
-        clock = HybridLogicalClock(config.node_id, time_source=time_source)
+        node_id = _load_node_id(path, dek)
+        clock = HybridLogicalClock(node_id, time_source=time_source)
         case_state = _decode_json(_read_blob(path, dek, _CASE))
         if not isinstance(case_state, dict):
             raise VaultError("corrupt case state")
@@ -282,6 +296,7 @@ class Vault:
             (_CUSTODY, canonical_json(_records_to_json(self.custody.to_vault_records()))),
             (_DEFERRED, canonical_json(deferred_json)),
             (_IDENTITY, self.identity.serialize()),
+            (_NODE, canonical_json({"node_id": self.document.clock.node_id})),
         ]
 
     def export_recovery(self, recovery_passphrase: str) -> str:
@@ -481,6 +496,58 @@ def _read_blob(path: Path, dek: SymmetricKey, name: str) -> bytes:
     if not blob_path.exists():
         raise VaultError(f"vault file missing: {name}")
     return dek.decrypt(blob_path.read_bytes(), aad=name.encode())
+
+
+def _load_node_id(path: Path, dek: SymmetricKey) -> str:
+    """Return the vault's device node_id, migrating a pre-FIX-01 vault if needed.
+
+    Current vaults store the node_id in an encrypted blob. A pre-FIX-01 vault kept
+    it in plaintext ``config.toml`` (derived from the passphrase); on first open we
+    move that value — unchanged, so existing packet ids stay stable and the
+    append-only custody chain is untouched — into the encrypted store and strip it
+    from the plaintext file. The value itself is legacy and cannot be un-leaked from
+    ids already exported; new vaults never had the leak.
+    """
+    if (path / _NODE).exists():
+        record = _decode_json(_read_blob(path, dek, _NODE))
+        node_id = record.get("node_id") if isinstance(record, dict) else None
+        if isinstance(node_id, str) and node_id:
+            # A migration interrupted between writing the encrypted blob and
+            # stripping the plaintext line would otherwise leave the leaked,
+            # passphrase-derived value in config.toml forever (this branch
+            # returns early on every later open). Re-strip: a no-op on healthy
+            # vaults, the missing half of the migration on interrupted ones.
+            _strip_plaintext_node_id(path / _CONFIG)
+            return node_id
+        raise VaultError("corrupt node identity record")
+
+    legacy = _legacy_node_id(path / _CONFIG)
+    if legacy is None:
+        raise VaultError("vault has no device node identity and no legacy value to migrate")
+    (path / _NODE).write_bytes(dek.encrypt(canonical_json({"node_id": legacy}), aad=_NODE.encode()))
+    _strip_plaintext_node_id(path / _CONFIG)
+    return legacy
+
+
+def _legacy_node_id(config_path: Path) -> str | None:
+    """Read a pre-FIX-01 plaintext ``node_id`` from ``config.toml``, if present."""
+    try:
+        raw = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except OSError, tomllib.TOMLDecodeError:
+        return None
+    value = raw.get("node_id")
+    return value if isinstance(value, str) and value else None
+
+
+def _strip_plaintext_node_id(config_path: Path) -> None:
+    """Surgically remove the plaintext ``node_id`` line, preserving all other config."""
+    try:
+        text = config_path.read_text(encoding="utf-8")
+    except OSError:
+        return
+    kept = [line for line in text.splitlines(keepends=True) if not _LEGACY_NODE_ID_LINE.match(line)]
+    if len(kept) != len(text.splitlines(keepends=True)):
+        config_path.write_text("".join(kept), encoding="utf-8")
 
 
 def _decode_json(data: bytes) -> JSONValue:
