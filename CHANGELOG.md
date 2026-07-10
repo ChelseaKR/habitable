@@ -76,6 +76,12 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **Packet publication is transactional and re-export is clean.** Exports are
+  rendered in a fresh sibling directory and published only after every artifact
+  succeeds. Reusing an output path replaces the whole directory, so originals,
+  media, or other files from a broader prior export cannot survive a narrower
+  one. Ordinary render/publish failures restore the previous packet and roll back
+  the uncommitted custody entries.
 - **Unlocked app server is loopback-only.** `habitable app` now rejects LAN,
   wildcard, tunneled, and public bind targets instead of exposing an unlocked case
   API over plaintext HTTP. Phone and workshop guides no longer recommend the old
