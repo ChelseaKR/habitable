@@ -51,7 +51,16 @@ def test_pairing_material_is_sealed_signed_case_bound_and_persistent(tmp_path: P
     with pytest.raises(SyncError, match="for case"):
         accept_pairing_material(wrong_case, wrong_material)
 
-    tampered = material[:-1] + ("A" if material[-1] != "A" else "B")
+    encoded = material.removeprefix(PAIRING_PREFIX)
+    sealed = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+    aliases = [
+        encoded[:-1] + char
+        for char in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+        if char != encoded[-1]
+        and base64.urlsafe_b64decode(encoded[:-1] + char + "=" * (-len(encoded) % 4)) == sealed
+    ]
+    assert aliases, "fixture must exercise a non-canonical base64url alias"
+    tampered = PAIRING_PREFIX + aliases[0]
     with pytest.raises(SyncError, match="malformed, tampered, or not for this device"):
         accept_pairing_material(b, tampered)
 

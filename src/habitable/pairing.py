@@ -74,6 +74,12 @@ def _open_pairing_material(
     encoded = material.removeprefix(PAIRING_PREFIX).strip()
     try:
         sealed = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+        # Unpadded base64url can have non-canonical aliases whose unused final
+        # pad bits differ while decoding to exactly the same bytes. Reject those
+        # alternate spellings so a character-level change is always detected.
+        canonical = base64.urlsafe_b64encode(sealed).decode("ascii").rstrip("=")
+        if encoded != canonical:
+            raise ValueError("non-canonical base64url pairing material")
         envelope = _mapping(_loads(open_sealed(vault.identity, sealed)), "pairing envelope")
         issuer = PublicIdentity.decode(_string(envelope, "issuer"))
         payload_bytes = base64.b64decode(_string(envelope, "payload_b64"), validate=True)
