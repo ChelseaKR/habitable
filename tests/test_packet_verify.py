@@ -95,6 +95,65 @@ def test_packet_html_has_proof_and_disclosure(
         assert (stmt.privacy_originals_warning in html) is include_originals
 
 
+def test_awaiting_timestamp_disclosed_at_export(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """A packet with an un-timestamped item discloses that honestly — never silently.
+
+    FIX-09: one capture is stamped, one is queued offline (``tsa=None``), so the
+    export is 1-of-2 awaiting. The awaiting state must surface in the ExportResult,
+    in bundle.json, and in the packet's own EN disclosure section — without failing
+    the export or implying the awaiting item is worthless.
+    """
+    from habitable.disclosure import proof_statement
+
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", title="Mold", issue_id="i1")
+    capture(vault, make_jpeg("a.jpg", with_location=True), issue_id=issue, tsa=local_tsa)
+    # No TSA -> the item is queued (deferred) and ships awaiting a trusted timestamp.
+    capture(vault, make_jpeg("b.jpg", with_location=True), issue_id=issue, tsa=None)
+
+    out = tmp_path / "packet"
+    result = build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
+    assert result.item_count == 2 and result.timestamped_count == 1
+
+    expected = proof_statement("en").awaiting_timestamp_note.format(awaiting=1, total=2)
+
+    # (a) The in-process ExportResult carries the honest disclosure.
+    assert expected in result.disclosures
+
+    # (b) bundle.json records the same disclosure (drives CLI, app, and recipients).
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert expected in bundle["disclosures"]
+
+    # (c) The packet's own (localized) HTML disclosure section states it.
+    html = (out / "packet.html").read_text(encoding="utf-8")
+    assert expected in html
+    assert "awaiting a trusted timestamp" in html
+
+
+def test_no_awaiting_note_when_all_timestamped(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """When every item is trusted-timestamped, no awaiting disclosure is emitted."""
+    vault = _case_with_two_captures(make_vault, make_jpeg, local_tsa)
+    out = tmp_path / "packet"
+    result = build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
+    assert result.timestamped_count == result.item_count == 2
+
+    assert not any("awaiting a trusted timestamp" in note for note in result.disclosures)
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert not any("awaiting a trusted timestamp" in note for note in bundle["disclosures"])
+    html = (out / "packet.html").read_text(encoding="utf-8")
+    assert "awaiting a trusted timestamp" not in html
+
+
 def test_cli_verify_trusted_cert_anchors_chain(
     make_vault: Callable[..., Vault],
     make_jpeg: Callable[..., Path],

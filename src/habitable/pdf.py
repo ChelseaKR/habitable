@@ -150,7 +150,16 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
     story.append(Spacer(1, 0.2 * inch))
     _render_proof_statement(story, lang, styles)
     story.append(Spacer(1, 0.15 * inch))
-    _render_disclosures(story, lang, _bool(appendix, "includes_originals"), styles)
+    item_count = _i(appendix, "item_count")
+    awaiting = item_count - _i(appendix, "timestamped_count")
+    _render_disclosures(
+        story,
+        lang,
+        _bool(appendix, "includes_originals"),
+        styles,
+        awaiting=awaiting,
+        total=item_count,
+    )
     story.append(Spacer(1, 0.3 * inch))
 
     # Chronological evidence timeline: notes and photos interleaved across issues.
@@ -196,13 +205,24 @@ def _render_proof_statement(story: list[Any], lang: str, styles: Any) -> None:
     story.append(_para(stmt.verify_line, styles["Small"]))
 
 
-def _render_disclosures(story: list[Any], lang: str, includes_originals: bool, styles: Any) -> None:
+def _render_disclosures(
+    story: list[Any],
+    lang: str,
+    includes_originals: bool,
+    styles: Any,
+    *,
+    awaiting: int = 0,
+    total: int = 0,
+) -> None:
     """Append the localized 'what this packet discloses' (location handling) block."""
     stmt = proof_statement(lang)
     story.append(_para(stmt.privacy_heading, styles["Heading3"]))
     story.append(_para(f"- {stmt.privacy_stripped}", styles["Small"]))
     if includes_originals:
         story.append(_para(f"- {stmt.privacy_originals_warning}", styles["Small"]))
+    if awaiting > 0:
+        note = stmt.awaiting_timestamp_note.format(awaiting=awaiting, total=total)
+        story.append(_para(f"- {note}", styles["Small"]))
 
 
 def _render_cover_sheet(story: list[Any], cover: CoverSheet, styles: Any) -> None:

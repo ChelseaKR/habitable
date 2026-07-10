@@ -30,6 +30,7 @@ from typing import cast
 
 from .canonical import JSONValue, canonical_json, sha256_bytes, sha256_file
 from .config import SharingPolicy
+from .disclosure import proof_statement
 from .errors import PacketError
 from .evidence import CustodyAction
 from .exif import make_shared_copy
@@ -151,7 +152,13 @@ def build_packet(
     def opaque_hlc(raw: str) -> str:
         return doc.opaque_id("hlc", raw)
 
-    disclosures = _disclosures(items, sharing, include_originals=include_originals)
+    disclosures = _disclosures(
+        items,
+        sharing,
+        include_originals=include_originals,
+        awaiting=len(items) - timestamped,
+        total=len(items),
+    )
     bundle: dict[str, JSONValue] = {
         "packet_version": PACKET_VERSION,
         "case_id": vault.document.case_id,
@@ -377,7 +384,12 @@ def _write_signature(vault: Vault, out_dir: Path, bundle_bytes: bytes) -> None:
 
 
 def _disclosures(
-    items: list[dict[str, JSONValue]], sharing: SharingPolicy, *, include_originals: bool
+    items: list[dict[str, JSONValue]],
+    sharing: SharingPolicy,
+    *,
+    include_originals: bool,
+    awaiting: int,
+    total: int,
 ) -> tuple[str, ...]:
     location = "stripped from shared copies" if sharing.strip_location else "RETAINED"
     identities = "not exported" if not sharing.export_custody_identities else "EXPORTED"
@@ -394,6 +406,12 @@ def _disclosures(
         )
     if include_originals:
         notes.append("sealed ORIGINALS embedded (full metadata, including any location)")
+    if awaiting > 0:
+        # An honest, non-fatal disclosure: awaiting items are not worthless — their
+        # content hash still anchors them at capture; only the upper-bound date is missing.
+        notes.append(
+            proof_statement("en").awaiting_timestamp_note.format(awaiting=awaiting, total=total)
+        )
     return tuple(notes)
 
 

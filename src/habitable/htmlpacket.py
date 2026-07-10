@@ -98,9 +98,18 @@ def render_packet_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_pat
     )
     parts.append("</header>")
     parts.append('<main id="main">')
+    item_count = _i(appendix, "item_count")
+    awaiting = item_count - _i(appendix, "timestamped_count")
     parts.extend(_cover_section(cover_sheet(bundle)))
     parts.extend(_proof_section(lang))
-    parts.extend(_disclosure_section(lang, _bool(appendix, "includes_originals")))
+    parts.extend(
+        _disclosure_section(
+            lang,
+            _bool(appendix, "includes_originals"),
+            awaiting=awaiting,
+            total=item_count,
+        )
+    )
     parts.extend(_chronology_section(chronology(bundle)))
 
     for issue in _list(bundle, "issues"):
@@ -249,12 +258,16 @@ def _proof_section(lang: str) -> list[str]:
     return out
 
 
-def _disclosure_section(lang: str, includes_originals: bool) -> list[str]:
+def _disclosure_section(
+    lang: str, includes_originals: bool, *, awaiting: int = 0, total: int = 0
+) -> list[str]:
     """A short, localized note of what the packet reveals (location handling)."""
     stmt = proof_statement(lang)
     notes = [stmt.privacy_stripped]
     if includes_originals:
         notes.append(stmt.privacy_originals_warning)
+    if awaiting > 0:
+        notes.append(stmt.awaiting_timestamp_note.format(awaiting=awaiting, total=total))
     return [
         '<section aria-labelledby="discloses-heading">',
         f'<h2 id="discloses-heading">{escape(stmt.privacy_heading)}</h2>',

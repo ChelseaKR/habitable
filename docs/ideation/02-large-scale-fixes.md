@@ -293,6 +293,19 @@ verifies.
 
 ## FIX-09 — Make awaiting-timestamp packets an explicit, honest state at export
 
+**Status: Done (2026-07-02).** Implemented on branch
+`roadmap/fix-09-honest-awaiting-timestamp-state-a` — option (b), an honest, non-fatal
+disclosure (no hard `--allow-incomplete` gate; the export never fails). `build_packet`
+counts awaiting items (`item_count − timestamped_count`) and, when any remain, appends a
+plain-language note to the export disclosures, so it propagates automatically to
+`bundle.json`, `ExportResult.disclosures`, the CLI print loop, and the app export result.
+`disclosure.py` carries a new localized `awaiting_timestamp_note` (EN/ES) that
+`htmlpacket.py` and `pdf.py` render in the packet's own disclosure section. The copy is
+careful not to imply an awaiting item is worthless: the content hash still anchors it at
+capture; only the upper-bound date is missing. Tests in `tests/test_packet_verify.py`
+assert the note fires (ExportResult, `bundle.json`, HTML) with a mixed vault and is absent
+when every item is timestamped.
+
 **Pitch.** A packet containing un-timestamped items verifies as "NOT intact" — surface
 and explain that at export instead of shipping a silently-degraded packet.
 
