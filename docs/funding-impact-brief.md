@@ -6,8 +6,8 @@
 > thesis, how we demonstrate impact **without surveilling the people we
 > protect**, who keeps the project alive, and a concrete funding ask.
 >
-> **Read this first: it is alpha.** habitable is at **v0.1.0, alpha**. The
-> evidence core, encryption, offline-first sync, the bilingual accessible app,
+> **Read this first: it is alpha.** habitable is at **v0.2.0, alpha**. The
+> evidence core, encryption, offline-first sync, the bilingual app with automated accessibility checks,
 > the export packets, and the optional relay all work and are tested
 > ([`../ROADMAP.md`](../ROADMAP.md)) — but until the
 > [v1.0 gate](../ROADMAP.md#the-v10-gate-when-alpha-comes-off) is met (an

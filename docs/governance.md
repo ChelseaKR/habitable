@@ -52,8 +52,9 @@ Releases are tagged, built, SBOM'd, and **provenance-attested and signed** by th
 - **GitHub Actions pinned to commit SHAs** (not floating tags).
 - **Signed build-provenance attestations** (Sigstore) + a **CycloneDX SBOM**
   published with the artifacts; verify with `gh attestation verify`.
-- Byte-for-byte **reproducible builds** and **PyPI Trusted Publishing** are the
-  remaining release-hardening items, tracked for v1.0.
+- **PyPI Trusted Publishing** is wired into the tag workflow; one-time PyPI/GitHub
+  environment setup is still required before the first publish. Byte-for-byte
+  **reproducible-build verification** remains a release-hardening item.
 - **`make verify` is the merge gate** and the release gate — ruff format + check, `mypy --strict`,
   and the full test suite (including tamper-detection and CRDT-convergence tests) must be green.
   Nothing merges or releases red.
@@ -66,11 +67,11 @@ track the code rather than a marketing moment:
 - **Security and accessibility reviews** live under [`docs/audits/`](audits/).
 - The **Accessibility Conformance Report (ACR)** — VPAT 2.5 (Rev 508), covering WCAG 2.x A/AA and
   the Section 508 functional performance criteria — lives at
-  [`docs/accessibility/ACR.md`](accessibility/ACR.md). The **conformant accessible rendering of an
-  evidence packet is `packet.html`** (axe-gated); the PDF is a print convenience and makes no
+  [`docs/accessibility/ACR.md`](accessibility/ACR.md). The **designated accessibility rendering of an
+  evidence packet is `packet.html`** (axe-gated, human pass still open); the PDF is a print convenience and makes no
   PDF/UA claim — see [ADR 0004](adr/0004-accessible-html-packet-as-conformant-rendering.md).
-- The threat model lives at [`docs/threat-model.md`](threat-model.md). Accessibility is a
-  merge-blocking CI gate; a regression fails the build.
+- The threat model lives at [`docs/threat-model.md`](threat-model.md). Automated accessibility
+  checks are merge-blocking; human AT review remains a separate release gate.
 
 ## Licensing & contributions
 

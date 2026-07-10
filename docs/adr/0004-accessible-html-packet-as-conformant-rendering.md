@@ -1,4 +1,4 @@
-# 4. The accessible HTML packet is the conformant rendering; the PDF is a print convenience
+# 4. The HTML packet is the designated accessibility rendering; the PDF is a print convenience
 
 - Status: Accepted
 - Date: 2026-06-17
@@ -24,31 +24,31 @@ would fail.
 Meanwhile `htmlpacket.py` already produces `packet.html`: semantic landmarks, a
 single `h1`, a captioned appendix table with header scopes, meaningful image
 `alt`, the document language, and high-contrast text. It **passes the same
-axe-core gate** as the app (`tests/test_htmlpacket.py`) with zero violations and
-is fully operable by assistive technology.
+axe-core gate** as the app (`tests/test_htmlpacket.py`) with zero violations. Real
+assistive-technology operation remains unvalidated until the recorded human pass.
 
 The options were: (a) adopt a different, tagging-capable PDF toolchain to chase
-PDF/UA; or (b) treat the HTML packet as the conformant accessible rendering and
+PDF/UA; or (b) treat the HTML packet as the designated accessibility rendering and
 keep the PDF as a print/presentation convenience.
 
 ## Decision
 
-Adopt **`packet.html` as the conformant, accessible human-readable rendering** of
-an evidence packet. The PDF remains a print/presentation convenience with its
+Adopt **`packet.html` as the designated human-readable accessibility rendering** of
+an evidence packet. This is an output-format decision, not a current WCAG conformance
+claim; the human screen-reader/manual gate remains open. The PDF remains a print/presentation convenience with its
 existing accessibility hygiene (language, title display, outline, selectable
 text), and we make **no PDF/UA conformance claim** for it. The machine-verifiable
 `bundle.json` remains the canonical record either way.
 
-This satisfies the accessible-packet intent of the v1.0 gate via equivalent
-facilitation. We will revisit producing a fully tagged PDF/UA file only if a
+This selects the artifact on which the accessible-packet v1.0 gate will be evaluated;
+it does not satisfy the still-open human gate by itself. We will revisit producing a fully tagged PDF/UA file only if a
 suitable open-source tagging toolchain becomes available; until then, chasing it
 in reportlab is not a good use of effort.
 
 ## Consequences
 
-- The ACR documents the HTML packet as the conformant rendering and the PDF as a
-  best-effort convenience; the "tracked future work" PDF row resolves to this
-  decision rather than staying open indefinitely.
+- The ACR documents the HTML packet as the designated accessibility rendering and the
+  PDF as a best-effort convenience; neither gets a conformance claim from this ADR.
 - Wherever the packet is offered, the HTML rendering is presented as the
   accessible option; recipients who need an accessible record use `packet.html`.
 - The recorded human screen-reader pass (a separate gate item) covers the app and
@@ -59,9 +59,8 @@ in reportlab is not a good use of effort.
 ## Gate mapping
 
 This ADR **is** the recorded answer to the productionization plan's Phase-1 task 1.3
-("record the PDF/UA decision as an ADR") and to the v1.0 checklist's "tagged (PDF/UA)
-packet" line: the accessible-packet requirement is met by `packet.html` as equivalent
-facilitation, not by a tagged PDF. The implementing change (task 1.4) wires this in —
+("record the PDF/UA decision as an ADR"). It changes the v1.0 checklist's output target
+from tagged PDF to human validation of `packet.html`; it does not close that gate. The implementing change (task 1.4) wires this in —
 the PDF disclaimer points to `packet.html` (`src/habitable/pdf.py`), the axe gate
-treats `packet.html` as the conformant artifact (`.github/workflows/a11y.yml`,
+treats `packet.html` as the designated artifact (`.github/workflows/a11y.yml`,
 `tests/test_htmlpacket.py`), and the ACR and manual-testing protocol target it.

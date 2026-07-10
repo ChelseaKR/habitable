@@ -1,12 +1,12 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Set up your union in an afternoon
 
-A practical, no-jargon walkthrough for an organizer. By the end you'll have four
-things: an encrypted case on your own device; photos captured with **trusted
-timestamps** (independent proof of *when* each photo was taken); a second
-organizer synced device to device; and a verified **packet** — the folder of
-evidence you hand to a court or inspector. **Nothing leaves your devices
-unencrypted, and there is no account to create.**
+A practical, no-jargon walkthrough for an organizer. By the end you'll have an
+encrypted case on your own device, captured media with RFC 3161 tokens, a second
+organizer synced peer-to-peer, and a technically verified review packet. Authority
+trust requires an accepted certificate anchor, and no court/inspector usefulness has
+been validated. **Nothing leaves your devices as plaintext, and there is no account
+to create.**
 
 > **Alpha software.** habitable works end to end, but it is not yet proven for
 > real legal matters. Practice with the steps below before relying on it, and

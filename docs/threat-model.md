@@ -1,8 +1,8 @@
 # habitable — threat model
 
-> **Status: alpha / concept stage. Do not rely on this for a real legal matter yet.**
-> habitable is a reference-implementation spec at concept stage. The design below describes
-> what the tool is built to do, but it has not been audited, hardened, or proven in court. The
+> **Status: implemented alpha; externally unvalidated. Do not rely on this for a real legal matter yet.**
+> habitable is a working reference implementation with automated tests. It has not received an
+> independent security/legal review, real pilot, or court validation. The
 > default development timestamp authority is explicitly non-production. Until a release says
 > otherwise, treat habitable as a prototype for evaluation, not as a tool to protect a tenant who
 > is actually in a fight with a landlord. This document is part of how we earn the right to drop

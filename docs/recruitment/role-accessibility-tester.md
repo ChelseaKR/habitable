@@ -38,7 +38,7 @@ in [`docs/accessibility/ACR.md`](../accessibility/ACR.md). The scope below mirro
 
 **Two artifacts:**
 
-1. **`packet.html`** — the conformant accessible evidence rendering ([ADR 0004](../adr/0004-accessible-html-packet-as-conformant-rendering.md)).
+1. **`packet.html`** — the designated evidence rendering whose real AT usability this pass must validate ([ADR 0004](../adr/0004-accessible-html-packet-as-conformant-rendering.md)).
    Confirm: a single `h1`; landmarks/headings let you jump between issues and the evidence
    appendix; the appendix table announces its column headers with each cell; every evidence
    image has a meaningful text alternative or an adjacent real-text caption; evidence status

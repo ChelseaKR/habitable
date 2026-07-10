@@ -7,7 +7,7 @@
 > this file is legal advice. The California habitability background in §6 is drawn from
 > secondary sources and is included **to be validated by the reviewer**, not relied upon.
 
-habitable is a court-ready, offline-first, end-to-end-encrypted tool that helps tenants
+habitable is an alpha, offline-first, end-to-end-encrypted tool intended to help tenants
 document habitability problems as tamper-evident evidence (photos with RFC 3161 timestamps,
 SHA-256 fixity, a hash-linked chain of custody, a standalone verifier, location-stripped
 shareable packets). It is an independent personal project, no funding, AGPL-3.0 (the

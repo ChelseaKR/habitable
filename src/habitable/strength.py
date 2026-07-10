@@ -24,9 +24,10 @@ Framing is load-bearing: this is *record strength*, not a legal or
 admissibility judgment. Callers (the CLI, the app server) are expected to
 pair this with the plain-language caveat text in their own i18n catalog
 (``status_strength_caveat`` in :mod:`habitable.i18n`, the matching key in
-``app/i18n/*.json``) — never render a level without it nearby. See
-docs/ideation/03-expansions.md EXP-03 and the "Requests we should decline"
-table: no admissibility promises, ever.
+``app/i18n/*.json``) — never render a level without it nearby. See EXP-03 and
+the "Requests we should decline" table in
+``docs/research/synthetic-personas-feedback.md``: no admissibility promises,
+ever.
 """
 
 from __future__ import annotations

@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # habitable — roadmap
 
-**v0.1.0 (alpha) is shipped and public.** The evidence spine, encryption, offline-first
-sync, the accessible bilingual app, the export packets, and the optional relay all work
-and are tested (see `CHANGELOG.md`). This document is the path from a working
+**v0.2.0 (alpha) is shipped and public.** The evidence spine, encryption, offline-first
+sync, bilingual app with automated accessibility coverage, export packets, and optional
+relay are implemented and tested (see `CHANGELOG.md`). This document is the path from a working
 reference implementation to something a tenant union can *rely on* — and an honest
 account of what is deliberately left undone.
 
@@ -99,12 +99,12 @@ Until every box is checked, the project stays pre-1.0 and the caveat stays.
 
 ## Release horizons
 
-Targets for a small volunteer/solo effort, anchored at **mid-2026 = v0.1.0**. Expect slip.
+Targets for a small volunteer/solo effort, updated after **v0.2.0 (June 2026)**. Expect slip.
 
 | Release | Horizon | Theme | Headline goals |
 | --- | --- | --- | --- |
-| **v0.1.x** | H2 2026 | Alpha hardening | Real public-TSA integration tests; fix anything pilots-prep surfaces; first recorded keyboard/AT spot-checks |
-| **v0.2** | late 2026 | Assurance groundwork | Verifier fuzzing; archive/re-timestamping; signed releases + provenance; SECURITY disclosure maturity |
+| **v0.1.x** | shipped | Initial alpha | Evidence core, local vault, verifier, sync, and app baseline |
+| **v0.2** | shipped June 2026 | Assurance groundwork | Verifier fuzzing; archive/re-timestamping; provenance; security/reviewer handoff materials |
 | **v0.3** | early 2027 | Accessible packet + platform spike | PDF/UA path decided & started; native-packaging spike (engine-on-device); jurisdiction template library |
 | **v0.5 (beta)** | mid 2027 | Pilot-ready | Security/crypto audit underway; recorded AT pass; 1–2 union/legal-aid pilots running; multi-device + recovery UX |
 | **v1.0** | ~2028 | Trustworthy | The [v1.0 gate](#the-v10-gate-when-alpha-comes-off) met; "alpha" caveat removed |
@@ -113,11 +113,11 @@ Targets for a small volunteer/solo effort, anchored at **mid-2026 = v0.1.0**. Ex
 ## Workstreams
 
 Each item lists an **objective** and, where useful, an **exit criterion / trigger**. Items
-marked *shipped* are in v0.1.0 and listed only for context.
+marked *shipped* are on current `main` and listed only for context.
 
 ### A. Evidence & cryptographic assurance
 
-The courtroom rests on this; it gets the most scrutiny.
+Packet-integrity claims live here; this work gets the most scrutiny.
 
 - *Shipped:* SHA-256 fixity, RFC 3161 timestamps (local issuer + HTTP client + offline dev
   TSA), hash-linked custody with salted actor commitments, the standalone verifier,
@@ -156,8 +156,9 @@ The courtroom rests on this; it gets the most scrutiny.
 
 - *Shipped:* WCAG-targeted bilingual (EN/ES) app gated by **axe-core** (EN+ES, zero
   violations) plus structural, **keyboard-navigation**, and **320px-reflow** tests; an
-  accessible `packet.html`; a PDF with language + DisplayDocTitle + outline; a documented
-  manual-testing protocol.
+  axe-tested `packet.html`; a PDF with language + DisplayDocTitle + outline; and a
+  documented manual-testing protocol. These are automated/mechanical results, not a
+  human conformance finding.
 - *Shipped (FIX-12):* **Real pluralization and locale formatting.** CLDR cardinal plural
   rules for EN/ES in both CLI and web app; ICU-MessageFormat subset (`{name}` placeholders
   and `{name, plural, ...}`) for plural-aware strings; locale-aware number/date/datetime
@@ -168,11 +169,10 @@ The courtroom rests on this; it gets the most scrutiny.
   which automation can't certify. *Exit:* a dated NVDA + VoiceOver pass per
   `docs/accessibility/manual-testing.md` recorded in `docs/audits/`, no open moderate+
   finding; repeated each release (gate item for v1.0).
-- **Fully tagged PDF/UA packet.** *Objective:* a structure-tagged, screen-reader-navigable
-  PDF. *Constraint:* reportlab's open-source API has no marked-content, so decide between a
-  tagging-capable toolchain and treating the accessible `packet.html` as the conformant
-  rendering. *Exit:* either a veraPDF-clean PDF/UA file, or a documented ADR adopting the
-  HTML packet as the accessible artifact with the PDF as a print convenience.
+- **Fully tagged PDF/UA packet remains unshipped.** ADR 0004 designates `packet.html` as
+  the accessible rendering and the current PDF as a print convenience because reportlab's
+  open-source API has no marked-content. Revisit PDF/UA only if a viable open-source tagging
+  path appears; do not claim the current PDF is tagged.
 - **Languages beyond EN/ES.** *Objective:* serve more communities. *Exit:* a documented
   localization-contributor process and ≥1 added language with string parity enforced (the
   i18n parity test already guards this).

@@ -38,9 +38,8 @@ the people relying on it.
 - **It cannot prove *who* took a photo or *what* it depicts.** A date-stamp proves content
   existed *by* a certain time; it does not prove authorship or that the image shows this unit
   on that day. It strengthens true records; it does not manufacture a case.
-- **It is not a guaranteed safe against a determined adversary.** Duress mode hides contents
-  from a glance or a quick coercion, but **not** from someone who can force the real
-  passphrase from a member, or a forensic lab that images the phone.
+- **It has no duress/decoy mode.** A coerced real passphrase or an unlocked device exposes
+  the vault. A future harm-reduction design exists only as an ADR and provides no protection today.
 - **It cannot recover lost data.** No operator, no account recovery. The flip side of "no one
   can be subpoenaed for it" is "no one can get it back for you."
 
@@ -52,8 +51,8 @@ After every safeguard, real risk remains. Decide with these in front of you:
   to which case room, when, and roughly how much data moves* — never the contents, but the
   metadata is real. Avoid it entirely with pure device-to-device sync (a shared folder, USB,
   or in-person transfer).
-- **Duress mode is harm-reduction, not a guarantee.** Documented limits against coercion and
-  forensics. Members must hear this *before* they rely on it.
+- **No duress mode exists.** Members must hear this before deciding whether the tool fits
+  their risk; vault encryption is the only current at-rest protection.
 - **A hostile keyholder can rewrite their own local record.** The tamper-evidence detects
   *outside* alteration; it cannot stop the device owner from discarding and rewriting their
   own chain before anyone else has seen it. Detection depends on an external anchor (a synced

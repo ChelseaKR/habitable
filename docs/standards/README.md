@@ -27,10 +27,12 @@ Every control in every standard is exactly one of two kinds. There is no third "
 | [`DOCUMENTATION-STANDARD.md`](./DOCUMENTATION-STANDARD.md) | What every repo documents, the per-document responsibility split, authoring rules, currency stamps, status, and the definition of production-ready. | All repos |
 | [`RESPONSIBLE-TECH-FRAMEWORK.md`](./RESPONSIBLE-TECH-FRAMEWORK.md) | The audit *methodology* (Ethics, Bias, Privacy/DPIA, Transparency, Accessibility, Security) each repo instantiates as committed findings. | All repos |
 
-## Living deliverables
+## Living deliverables in this repository
 
-- [`AUDIT-2026-06-21.md`](./AUDIT-2026-06-21.md) — the current conformance snapshot of all 18 repos against these standards: portfolio-wide gaps, cross-repo inconsistencies, and per-repo findings.
-- [`IMPROVEMENTS-BACKLOG.md`](./IMPROVEMENTS-BACKLOG.md) — the prioritized "what to fix next," with quick wins called out. Re-run the audit and refresh both after each uplift PR.
+- [`../audits/scorecard-2026-07.md`](../audits/scorecard-2026-07.md) — habitable's
+  current supply-chain conformance snapshot and project-specific findings.
+- [`../ideation/02-large-scale-fixes.md`](../ideation/02-large-scale-fixes.md) — the
+  project remediation backlog. Portfolio-wide audit/backlog files are not vendored here.
 
 ## How a repo declares conformance
 

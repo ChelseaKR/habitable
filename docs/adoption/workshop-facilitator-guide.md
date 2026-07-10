@@ -104,9 +104,9 @@ Cover, in plain language:
   name in the app-switcher, or notifications. Name this honestly: the tool reduces risk, it
   does not erase it. (This is a known gap; see [threat model §5](../threat-model.md#5-what-is-not-protected--explicit-limits).)
 - **Duress mode is not implemented.** Do not tell participants that the app can hide a real
-  vault behind a decoy state. Today the icon, local files, and an unlocked session can reveal
-  use of the tool. A future design is documented with strict limits, but it is not protection
-  anyone can rely on now.
+  vault behind a decoy state. Today the icon, local files, an unlocked session, or a coerced
+  real passphrase can reveal the vault. A future limits-first design is gated on human red-team
+  review; it provides no protection anyone can rely on now.
 - **What leaves the device, ever.** Only two optional things, and only if used: an encrypted
   sync relay (sees scrambled data plus *who-connected-when* metadata, never contents) and a
   timestamp authority (sees a one-way fingerprint of a file, never the file). Photos of
@@ -170,18 +170,19 @@ This is the single most common point of confusion (a real, repeated finding), so
 
 Explain it as a calm, plain story:
 
-- When you capture a photo, it is **already safe**: sealed and fingerprinted on your phone
-  the instant you take it, with no internet needed.
-- A **trusted timestamp** is a separate, extra step: the app sends only the *fingerprint*
+- When you capture a photo, it is **sealed and fingerprinted** on the device with no
+  internet needed. That protects content fixity; it does not yet provide an independent time.
+- An **RFC 3161 timestamp token** is a separate step: the app sends only the *fingerprint*
   (never the photo) to an outside time service that signs "this exact content existed by
-  this date." That needs a connection, so until it happens the item shows
+  this date." A verifier must separately decide whether it trusts that service's certificate.
+  The request needs a connection, so until it happens the item shows
   **awaiting timestamp**.
-- **"Awaiting timestamp" is not an error and not a warning.** Your evidence is not lost or
-  weaker for sitting in that state. It just means the date-stamp step is still queued.
+- **"Awaiting timestamp" means an integrity proof is incomplete.** The file is not lost,
+  but it has no independent upper-bound time proof yet. The UI must not present it as complete.
 - **What to do:** when you next have Wi-Fi or signal, the app fetches the timestamp (the
   *Resolve awaiting timestamps* action). You can keep using the app, or close it, in the
-  meantime. Being offline for days or weeks is fine — the fingerprint already anchors the
-  content to capture time.
+  meantime. The content hash fixes the bytes captured; only the later token anchors an
+  independently attested upper-bound time.
 
 If you have a connection in the room, have people resolve their practice items and watch the
 status change. If not, just show it on your laptop. The point is to retire the fear: *it
@@ -253,10 +254,10 @@ of adoption, and it is fully preventable here.
   scrambled data without your passphrase. If you've synced to another device or made a
   recovery backup, the *case* survives the lost phone. If not, it may be gone (see key
   backup).
-- **"Is 'awaiting timestamp' bad?"** No. Your photo is already sealed and safe. The
-  date-stamp is an extra step that catches up when you're online.
-- **"Will this win my case / is it admissible?"** It can't promise that. It produces strong
-  *documentation*; whether a court accepts it is a legal question for your attorney. And
+- **"Is 'awaiting timestamp' bad?"** It means the photo is sealed and hashed but does not
+  yet have its RFC 3161 token. The token step catches up when you're online.
+- **"Will this win my case / is it admissible?"** It can't promise that. It produces
+  structured *documentation*; whether a court accepts it is a legal question for your attorney. And
   remember — it's **alpha**, so today it's for practice.
 - **"Does it cost anything / use my data plan?"** The tool is free and uses free public
   time-services. Capturing is offline. Syncing or fetching timestamps over cellular uses a

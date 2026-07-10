@@ -44,14 +44,15 @@ each time the problem comes back; it builds your timeline.
 
 ## 3. What the words mean (plain version)
 
-- **Awaiting timestamp** — *This is normal, not a problem.* Your photo is already safe. The
-  app just hasn't added the official date-stamp yet, because that needs internet. Next time
-  you have Wi-Fi or signal, it adds it on its own. Being offline for days is fine.
-- **Timestamped** — the date-stamp is on. Your photo now has proof of *when* it existed.
-- **Chain intact / verified** — the record checks out: nothing was altered after you took it.
-- **Packet** — the file you (or your organizer) can hand to a court or inspector. Anyone can
-  check it themselves; they don't have to take your word for it. Anything you share has your
-  **location removed**.
+- **Awaiting timestamp** — your photo is sealed and fingerprinted, but its independent time
+  proof is incomplete. When you next have Wi-Fi or signal, resolve the queued timestamp.
+- **Timestamped** — a token shows the exact content existed no later than the token's time;
+  it does not prove the exact capture time.
+- **Chain intact / verified** — the recorded item/custody data passes its technical checks.
+  This does not prove who captured it or what it depicts.
+- **Packet** — a review file for you and your organizer, lawyer, court, or inspector. Its
+  technical integrity is checkable, but no forum is guaranteed to accept it. Shared copies
+  have **location removed by default**.
 
 ## 4. Keep your evidence safe
 
