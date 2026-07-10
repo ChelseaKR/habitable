@@ -2,11 +2,23 @@
 # Copyright 2026 Chelsea Kelly-Reif
 """End-to-end-encrypted, peer-to-peer case sync.
 
-Two devices on a case keep in step by exchanging their CRDT state plus the sealed
-originals and timestamp tokens, each message *sealed* to the recipient's public
-key and *signed* by the sender. A relay, if used, only ever moves ciphertext and
-sees room metadata — never contents. Because the case model is a CRDT and import
-re-checks fixity, sync is idempotent: re-delivering a message changes nothing.
+Two devices on a case keep in step by exchanging their CRDT state — small, and
+always sent in full — plus only the sealed originals and timestamp tokens the
+recipient does not already have. Each message is *sealed* to the recipient's
+public key and *signed* by the sender. A relay, if used, only ever moves
+ciphertext and sees room metadata — never contents, and never which captures a
+peer holds (the "have" manifest below travels inside the sealed envelope).
+Because the case model is a CRDT and import re-checks fixity, sync is
+idempotent: re-delivering a message changes nothing.
+
+Every message also carries a compact "have" manifest — the sender's own
+``capture_id -> content_hash`` inventory, no bytes attached — so that the next
+time the recipient exports *back* to this sender, it can skip re-embedding any
+original the sender already confirmed holding (FIX-02: incremental sync
+deltas, see docs/ideation/02-large-scale-fixes.md). The first exchange between
+two peers still carries every original, since neither has yet declared an
+inventory to the other; steady-state re-syncs and small deltas thereafter cost
+close to nothing beyond the CRDT state.
 
 Transports decide how the sealed bytes travel — a shared directory
 (:class:`LocalDirTransport`, also good for USB/AirDrop-style transfer) or a relay
@@ -90,15 +102,31 @@ def export_message(
 
     By default the whole case is sent. ``state`` overrides the CRDT state (e.g. a
     redacted subset from :meth:`CaseDocument.subset_state` for a scoped share), and
-    ``capture_ids`` restricts which sealed originals travel — anything outside the
-    set is omitted, so a subset share never ships evidence for issues it excludes.
-    The message is signed by the sender and sealed to ``recipient`` (an ECIES sealed
-    box), so a relay or any third party only ever sees ciphertext.
+    ``capture_ids`` restricts which captures this message concerns at all — anything
+    outside the set is omitted from both the sealed originals *and* the "have"
+    manifest below, so a subset share never ships, or even reveals the existence of,
+    evidence for issues it excludes. The message is signed by the sender and sealed
+    to ``recipient`` (an ECIES sealed box), so a relay or any third party only ever
+    sees ciphertext.
+
+    Within whatever scope ``capture_ids`` allows, a sealed original + timestamp
+    token is further omitted for any capture ``recipient`` has already told us
+    (via a "have" manifest on a message it sent us) it already holds (FIX-02):
+    see ``vault.known_peer_captures``. The first message to a new peer still
+    carries every original in scope, since it has not yet declared an inventory.
+    Every message also carries the sender's own in-scope inventory as a "have"
+    manifest (``capture_id`` + ``content_hash``, no bytes) so that the recipient
+    can prune originals when it later exports back to us.
     """
+    known = vault.known_peer_captures(recipient.fingerprint)
+    have: list[JSONValue] = []
     captures: list[JSONValue] = []
     for capture in vault.document.captures():
         if capture_ids is not None and capture.capture_id not in capture_ids:
             continue
+        have.append({"capture_id": capture.capture_id, "content_hash": capture.content_hash})
+        if capture.capture_id in known:
+            continue  # recipient already confirmed holding this original; skip the bytes
         raw = vault.read_original(capture.capture_id, capture.content_hash)
         token = vault.get_token(capture.capture_id)
         captures.append(
@@ -113,6 +141,10 @@ def export_message(
     inner: dict[str, JSONValue] = {
         "case_id": vault.document.case_id,
         "state": dict(state) if state is not None else vault.document.to_state(),
+        # Our own in-scope inventory, so the recipient can prune originals when it
+        # later exports back to us. Names/hashes only, no bytes; sealed like
+        # everything else here, so a relay never learns what either peer holds.
+        "have": have,
         "captures": captures,
     }
     inner_bytes = canonical_json(inner)
@@ -160,6 +192,7 @@ def import_messages(
                 f"message is for case {inner.get('case_id')!r}, not {require_case_id!r}"
             )
         vault.document.merge(_as_map(inner.get("state")))
+        vault.record_peer_captures(sender.fingerprint, _have_capture_ids(inner))
         imported += _import_captures(vault, inner, sender)
         merged += 1
     if merged:
@@ -505,3 +538,17 @@ def _as_map(value: JSONValue) -> Mapping[str, JSONValue]:
 def _s(mapping: Mapping[str, JSONValue], key: str) -> str:
     value = mapping.get(key)
     return value if isinstance(value, str) else ""
+
+
+def _have_capture_ids(inner: Mapping[str, JSONValue]) -> list[str]:
+    """Capture ids from a message's "have" manifest (the sender's own inventory)."""
+    raw = inner.get("have")
+    if not isinstance(raw, list):
+        return []
+    ids: list[str] = []
+    for item in raw:
+        if isinstance(item, dict):
+            capture_id = item.get("capture_id")
+            if isinstance(capture_id, str) and capture_id:
+                ids.append(capture_id)
+    return ids
