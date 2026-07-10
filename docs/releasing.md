@@ -81,13 +81,14 @@ The SBOM (`sbom.cdx.json`) lists the runtime dependency set for that release.
 ## Verifying reproducibility yourself
 
 Beyond the provenance attestation (which proves *this repo's CI* built the
-artifact), anyone can independently rebuild a tagged release from source and
-confirm the artifact matches — proving the *source*, not just the builder,
-determines the bytes:
+artifact), anyone can independently rebuild a tagged release from source,
+verify that two clean rebuilds are byte-identical, and then compare those hashes
+with the published artifacts:
 
 ```console
 $ git checkout vX.Y.Z
 $ make repro
+$ shasum -a 256 dist/*
 ```
 
 This builds the wheel and sdist twice, from two independent clean copies of
