@@ -5,7 +5,9 @@
 from __future__ import annotations
 
 import base64
+import http.client
 import json
+import re
 import threading
 import urllib.error
 import urllib.request
@@ -15,7 +17,7 @@ from typing import NamedTuple, cast
 
 import pytest
 
-from habitable.appserver import _STATIC_ROOT, _awaiting_only, make_app_server
+from habitable.appserver import _STATIC_ROOT, AppServer, _awaiting_only, make_app_server
 from habitable.capture import capture
 from habitable.errors import HabitableError
 from habitable.tsa import LocalRfc3161TSA
@@ -29,11 +31,9 @@ class App(NamedTuple):
 
 
 @pytest.fixture
-def app(
-    make_vault: Callable[..., Vault], local_tsa: LocalRfc3161TSA, tmp_path: Path
-) -> Iterator[App]:
+def app(make_vault: Callable[..., Vault], local_tsa: LocalRfc3161TSA) -> Iterator[App]:
     vault = make_vault()
-    server = make_app_server("127.0.0.1", 0, vault, tsa=local_tsa, static_root=tmp_path / "noapp")
+    server = make_app_server("127.0.0.1", 0, vault, tsa=local_tsa)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -72,6 +72,33 @@ def _status_code(url: str, headers: dict[str, str]) -> int:
     except urllib.error.HTTPError as exc:
         exc.close()
         return int(exc.code)
+
+
+def _raw_request(
+    app: App,
+    method: str,
+    path: str,
+    headers: list[tuple[str, str]],
+    body: bytes | None = None,
+) -> tuple[int, dict[str, str], dict[str, object]]:
+    """Send exact headers, including duplicates that urllib normalizes away."""
+    host, port_text = app.url.removeprefix("http://").split(":", 1)
+    connection = http.client.HTTPConnection(host, int(port_text), timeout=5)
+    try:
+        connection.putrequest(method, path, skip_host=True)
+        for name, value in headers:
+            connection.putheader(name, value)
+        connection.endheaders(body)
+        response = connection.getresponse()
+        raw = response.read()
+        payload = (
+            json.loads(raw)
+            if response.headers.get_content_type() == "application/json"
+            else {"body": raw.decode("utf-8")}
+        )
+        return int(response.status), dict(response.headers.items()), payload
+    finally:
+        connection.close()
 
 
 def test_default_static_root_contains_complete_app() -> None:
@@ -346,6 +373,7 @@ def test_api_requires_session_token(app: App) -> None:
 def test_authorization_bearer_header_is_accepted(app: App) -> None:
     """The standard Authorization: Bearer form works too, for non-browser clients."""
     assert _status_code(app.url, {"Authorization": f"Bearer {app.token}"}) == 200
+    assert _status_code(app.url, {"Authorization": f"bearer {app.token}"}) == 200
 
 
 def test_non_ascii_token_is_rejected_not_crashed(app: App) -> None:
@@ -354,6 +382,162 @@ def test_non_ascii_token_is_rejected_not_crashed(app: App) -> None:
     request into an unhandled exception in the handler thread; it must be a 401."""
     assert _status_code(app.url, {"X-Habitable-Token": "café-über-token"}) == 401
     assert _status_code(app.url, {"Authorization": "Bearer café"}) == 401
+
+
+def test_ambiguous_or_duplicate_credentials_are_rejected(app: App) -> None:
+    """Duplicate auth fields must not be interpreted differently by intermediaries."""
+    authority = app.url.removeprefix("http://")
+    base = [("Host", authority)]
+    status, _, _ = _raw_request(
+        app,
+        "GET",
+        "/api/status",
+        [*base, ("X-Habitable-Token", app.token), ("X-Habitable-Token", app.token)],
+    )
+    assert status == 401
+    status, _, _ = _raw_request(
+        app,
+        "GET",
+        "/api/status",
+        [
+            *base,
+            ("X-Habitable-Token", app.token),
+            ("Authorization", f"Bearer {app.token}"),
+        ],
+    )
+    assert status == 401
+
+
+@pytest.mark.parametrize(
+    "host,origin",
+    [
+        ("evil.example:{port}", ""),
+        ("127.0.0.1:1", ""),
+        ("127.0.0.1:{port}", "http://evil.example"),
+        ("127.0.0.1:{port}", "null"),
+        ("127.0.0.1:{port}", "http://localhost:{port}"),
+    ],
+)
+def test_dns_rebinding_and_cross_origin_requests_are_rejected(
+    app: App, host: str, origin: str
+) -> None:
+    """A valid bearer token is not enough when the browser authority is wrong."""
+    port = app.url.rsplit(":", 1)[1]
+    headers = [
+        ("Host", host.format(port=port)),
+        ("X-Habitable-Token", app.token),
+    ]
+    if origin:
+        headers.append(("Origin", origin.format(port=port)))
+    status, response_headers, _ = _raw_request(app, "GET", "/api/status", headers)
+    assert status == 403
+    assert "Access-Control-Allow-Origin" not in response_headers
+
+
+def test_same_origin_browser_request_is_accepted(app: App) -> None:
+    authority = app.url.removeprefix("http://")
+    status, headers, _ = _raw_request(
+        app,
+        "GET",
+        "/api/status",
+        [
+            ("Host", authority),
+            ("Origin", app.url),
+            ("X-Habitable-Token", app.token),
+        ],
+    )
+    assert status == 200
+    assert "Access-Control-Allow-Origin" not in headers
+
+
+def test_cross_origin_preflight_is_explicitly_refused(app: App) -> None:
+    authority = app.url.removeprefix("http://")
+    status, headers, _ = _raw_request(
+        app,
+        "OPTIONS",
+        "/api/status",
+        [
+            ("Host", authority),
+            ("Origin", "https://attacker.example"),
+            ("Access-Control-Request-Method", "GET"),
+            ("Access-Control-Request-Headers", "X-Habitable-Token"),
+        ],
+    )
+    assert status == 403
+    assert "Access-Control-Allow-Origin" not in headers
+
+
+def test_api_and_shell_send_defensive_browser_headers(app: App) -> None:
+    authority = app.url.removeprefix("http://")
+    api_status, api_headers, _ = _raw_request(
+        app,
+        "GET",
+        "/api/status",
+        [("Host", authority), ("X-Habitable-Token", app.token)],
+    )
+    shell_status, shell_headers, _ = _raw_request(app, "GET", "/index.html", [("Host", authority)])
+    assert api_status == 200 and shell_status == 200
+    assert api_headers["Cache-Control"] == "no-store"
+    for headers in (api_headers, shell_headers):
+        assert "default-src 'self'" in headers["Content-Security-Policy"]
+        assert headers["Cross-Origin-Resource-Policy"] == "same-origin"
+        assert headers["Referrer-Policy"] == "no-referrer"
+        assert headers["X-Content-Type-Options"] == "nosniff"
+        assert headers["X-Frame-Options"] == "DENY"
+
+
+@pytest.mark.parametrize(
+    "framing_headers",
+    [
+        [("Content-Length", "not-a-number")],
+        [("Content-Length", "2"), ("Content-Length", "2")],
+        [("Content-Length", "2"), ("Transfer-Encoding", "chunked")],
+    ],
+)
+def test_malformed_or_ambiguous_request_framing_is_rejected(
+    app: App, framing_headers: list[tuple[str, str]]
+) -> None:
+    authority = app.url.removeprefix("http://")
+    status, _, payload = _raw_request(
+        app,
+        "POST",
+        "/api/issues",
+        [
+            ("Host", authority),
+            ("X-Habitable-Token", app.token),
+            ("Content-Type", "application/json"),
+            *framing_headers,
+        ],
+        b"{}",
+    )
+    assert status == 400
+    assert payload == {"error": "invalid request framing"}
+
+
+def test_internal_error_response_does_not_leak_exception_details(
+    app: App, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail_status(_app: AppServer) -> dict[str, object]:
+        raise RuntimeError("SENTINEL-SENSITIVE-INTERNAL-DETAIL")
+
+    monkeypatch.setattr(AppServer, "status", fail_status)
+    status, payload = _call(app, "GET", "/api/status")
+    assert status == 500
+    assert payload == {"error": "internal error"}
+    assert "SENTINEL" not in json.dumps(payload)
+
+
+def test_each_server_gets_a_fresh_strong_token(make_vault: Callable[..., Vault]) -> None:
+    first = make_app_server("127.0.0.1", 0, make_vault("first"))
+    second = make_app_server("127.0.0.1", 0, make_vault("second"))
+    try:
+        assert first.session_token != second.session_token
+        assert len(first.session_token) == len(second.session_token) == 43
+        assert re.fullmatch(r"[A-Za-z0-9_-]+", first.session_token)
+        assert re.fullmatch(r"[A-Za-z0-9_-]+", second.session_token)
+    finally:
+        first.server_close()
+        second.server_close()
 
 
 def test_static_shell_is_served_without_a_token(app: App) -> None:

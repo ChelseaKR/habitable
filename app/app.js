@@ -295,22 +295,36 @@
 
   // ---- API -----------------------------------------------------------------
 
-  // The server prints an opaque URL whose fragment carries a one-time session token
+  // The server prints an opaque URL whose fragment carries a per-process session token
   // (e.g. .../#token=abc). Move it into memory + sessionStorage and scrub it from the
   // address bar, so it is never sent to the server as a query or leaked via Referer.
-  // Every /api/* call then presents it as a header; without it the server returns 401.
+  // sessionStorage keeps reloads in this tab working without turning the credential
+  // into a persistent cross-session secret. Every /api/* call presents it as a header.
   function captureToken() {
     var hash = window.location.hash || "";
     var match = /(?:^#|&)token=([^&]+)/.exec(hash);
     if (match) {
-      sessionToken = decodeURIComponent(match[1]);
       try {
-        window.sessionStorage.setItem(TOKEN_KEY, sessionToken);
+        sessionToken = decodeURIComponent(match[1]);
+      } catch (e) {
+        // A malformed percent escape must not abort boot or preserve an older token.
+        sessionToken = "";
+      }
+      try {
+        if (sessionToken) {
+          window.sessionStorage.setItem(TOKEN_KEY, sessionToken);
+        } else {
+          window.sessionStorage.removeItem(TOKEN_KEY);
+        }
       } catch (e) {
         /* sessionStorage may be unavailable; the in-memory token still works */
       }
       if (window.history && window.history.replaceState) {
-        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        try {
+          window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        } catch (e) {
+          /* best-effort scrub; URL fragments are not sent in HTTP or Referer */
+        }
       }
     } else {
       try {

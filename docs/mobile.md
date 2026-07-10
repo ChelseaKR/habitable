@@ -10,11 +10,16 @@ desktop or laptop only:
 $ uv run habitable app --vault ./case-4B
 ```
 
-The command prints a URL whose fragment carries a **one-time session token**, e.g.
+The command prints a URL whose fragment carries a **per-process session token**, e.g.
 `http://127.0.0.1:8765/#token=…`. **Open that exact URL** — the app moves the token
 into a request header and scrubs it from the address bar; every `/api/*` call must
 present it, so anything else on the machine that can reach the port but lacks the
 URL gets a `401`. Stopping the server (`Ctrl-C`) invalidates that session's token.
+Treat the launch URL and the terminal line that prints it like a password while the
+server is running. A reload in the same browser tab works because the token is kept
+in that tab's `sessionStorage`; a fresh tab, installed-app launch, or browser restart
+must be opened from the newly printed URL. The token is never written to request or
+structured application logs.
 
 The server rejects non-loopback binds. Do not expose it with
 `--host 0.0.0.0`, a LAN address, a tunnel, port forwarding, or a public reverse

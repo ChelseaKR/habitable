@@ -111,3 +111,44 @@ def test_reflows_at_320px_without_horizontal_scroll(served_app: str) -> None:
         finally:
             browser.close()
     assert overflow <= 2, f"horizontal overflow at 320px width: {overflow}px (WCAG 1.4.10 reflow)"
+
+
+@pytest.mark.a11y
+def test_token_fragment_is_scrubbed_and_same_tab_reload_stays_authenticated(
+    served_app: str,
+) -> None:
+    """The bootstrap secret leaves the address bar without breaking a normal reload."""
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except PlaywrightError as exc:
+            pytest.skip(f"Chromium not available: {exc}")
+        try:
+            page = browser.new_page()
+            page.goto(served_app, wait_until="networkidle")
+            page.wait_for_function("document.getElementById('st-unit').textContent === '4B'")
+            assert "token=" not in page.url
+
+            page.reload(wait_until="networkidle")
+            page.wait_for_function("document.getElementById('st-unit').textContent === '4B'")
+            assert "token=" not in page.url
+        finally:
+            browser.close()
+
+
+@pytest.mark.a11y
+def test_malformed_token_fragment_does_not_abort_shell_boot(served_app: str) -> None:
+    """Hostile percent escapes are discarded and scrubbed instead of crashing JS."""
+    malformed_url = served_app.split("#", 1)[0] + "#token=%"
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except PlaywrightError as exc:
+            pytest.skip(f"Chromium not available: {exc}")
+        try:
+            page = browser.new_page()
+            page.goto(malformed_url, wait_until="networkidle")
+            page.wait_for_function("window.location.hash === ''")
+            assert page.locator("#refresh-btn").is_visible()
+        finally:
+            browser.close()

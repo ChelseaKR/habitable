@@ -432,6 +432,7 @@ def test_appserver_logs_redacted_routes_without_bodies(
     # The capture pipeline's own metadata event rode the same enabled logger.
     assert any(r["msg"] == "capture" for r in records)
     text = "\n".join(lines)
+    assert token not in text  # the API bearer credential is never logged
     assert issue_id not in text  # no issue id
     assert "SENTINEL-APP-TIMELINE" not in text  # no request body
     assert "SENTINEL-APP-FILE" not in text  # no filename

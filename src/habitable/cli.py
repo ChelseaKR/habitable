@@ -1157,24 +1157,16 @@ def _cmd_app(args: argparse.Namespace) -> int:
     tsa = None if args.no_timestamp else _tsa_for(vault, dev=args.dev_tsa)
     extra_tsas = [] if args.no_timestamp else _extra_tsas_for(vault, dev=args.dev_tsa)
     server = make_app_server(args.host, args.port, vault, tsa=tsa, extra_tsas=extra_tsas)
-    base = f"http://{args.host}:{args.port}"
+    bound_port = int(server.server_address[1])
+    base = f"http://{args.host}:{bound_port}"
     # The token rides in the URL fragment (never sent to the server or logged) and the
     # app moves it into a request header, so the whole /api surface needs it. Anyone who
     # reaches the host but lacks this URL cannot read or write the case.
     url = f"{base}/#token={server.session_token}"
-    is_loopback = args.host in {"127.0.0.1", "::1", "localhost"}
     print(f"habitable: local app running at {base}  (Ctrl-C to stop)")
-    print("           open this exact URL (it carries a one-time session token):")
+    print("           open this exact URL (it carries a per-process session token):")
     print(f"           {url}")
-    if is_loopback:
-        print("           loopback only — your case stays on this device.")
-    else:
-        print(
-            f"           WARNING: bound to {args.host}, not loopback — the app is reachable "
-            "over the network.\n"
-            "           Only share the tokened URL above with a device you trust; without "
-            "the token, requests are refused."
-        )
+    print("           loopback only — your case stays on this device.")
     if not args.no_browser:
         webbrowser.open(url)
     try:
