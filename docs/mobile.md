@@ -92,3 +92,16 @@ BeeWare/Briefcase, Tauri with an embedded runtime, or another on-device package
 may satisfy those requirements. Signed App Store and Play Store distribution
 also requires platform accounts and signing keys. Until a build meets the gates,
 describe phone support as **planned**, not shipped, and use synthetic data only.
+
+**Packaging-toolchain spike (2026-07-09).** A concrete spike — not just design notes — compared
+Briefcase and Tauri against this app's real dependency stack and attempted a proof-of-concept build;
+see [`docs/research/native-mobile-packaging-spike.md`](research/native-mobile-packaging-spike.md).
+Short version: the current Tauri community-plugin path is unsuitable — mobile currently means
+RustPython, which cannot load `cryptography`, `pillow`, or other CPython extensions. A CPython
+backend or sidecar is not a documented, supported Tauri-mobile path and would need separate platform
+and App Review validation. The spike reports a successful Briefcase hello-world Android build, but
+does not commit the APK or a reproducible build recipe. Packaging habitable itself has no
+off-the-shelf path today: `cryptography` has no official iOS or Android wheels, and the Chaquopy
+Android fallback is below this project's version and Python floors. A maintained, reviewed
+cross-build could change that; absent one, the cheap re-check is whether a current mobile wheel
+appears. None of this changes the current boundary: there is no supported phone installation path.
