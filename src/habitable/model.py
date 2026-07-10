@@ -435,6 +435,52 @@ class CaseDocument:
             "captures": self._captures.to_json(),
         }
 
+    def subset_state(
+        self, issue_ids: set[str] | None, *, redact_meta: bool = False
+    ) -> dict[str, JSONValue]:
+        """A :meth:`to_state`-shaped CRDT state filtered to ``issue_ids`` (a redactable share).
+
+        ``issue_ids`` of ``None`` selects every issue (the whole case). The result is a
+        well-formed state — a *subset* of the same grow-only / observed-remove / LWW
+        state — so merging it on a recipient's device is still a valid, commutative,
+        idempotent CRDT join. With ``redact_meta`` the case-level metadata (e.g. the
+        unit label) is dropped, so a shared subset need not disclose which unit it
+        concerns. Captures and timeline entries are filtered to the selected issues,
+        and only their issue-field registers travel.
+        """
+        if issue_ids is None and not redact_meta:
+            return self.to_state()
+        selected = self._issues.elements() if issue_ids is None else set(issue_ids)
+
+        issues = ORSet(
+            adds={i: tags for i, tags in self._issues.adds.items() if i in selected},
+            removes=self._issues.removes,
+        )
+        issue_fields = {
+            issue_id: {name: register.to_json() for name, register in registers.items()}
+            for issue_id, registers in self._issue_fields.items()
+            if issue_id in selected
+        }
+        timeline = {
+            entry_id: payload
+            for entry_id, payload in self._timeline.entries.items()
+            if isinstance(payload, dict) and str(payload.get("issue_id", "")) in selected
+        }
+        captures = {
+            capture_id: payload
+            for capture_id, payload in self._captures.entries.items()
+            if isinstance(payload, dict) and str(payload.get("issue_id", "")) in selected
+        }
+        return {
+            "schema_version": CASE_SCHEMA_VERSION,
+            "case_id": self._case_id,
+            "meta": ({} if redact_meta else {k: r.to_json() for k, r in self._meta.items()}),
+            "issues": issues.to_json(),
+            "issue_fields": cast(JSONValue, issue_fields),
+            "timeline": dict(timeline),
+            "captures": dict(captures),
+        }
+
     @classmethod
     def from_state(cls, state: Mapping[str, JSONValue], clock: HybridLogicalClock) -> CaseDocument:
         case_id = state.get("case_id")

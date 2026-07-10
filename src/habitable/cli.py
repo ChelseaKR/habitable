@@ -28,7 +28,9 @@ from .config import TSAConfig
 from .crypto import KDF_PROFILES, PublicIdentity
 from .errors import HabitableError
 from .i18n import DEFAULT_LOCALE, cli_text, format_datetime, resolve_locale
+from .letter import LetterOptions, build_letter, render_letter_html
 from .packet import build_packet
+from .share import decode_share, encode_share, export_share, import_share
 from .strength import assess_issue
 from .sync import LocalDirTransport, RelayClient, Transport, sync
 from .tsa import DevTSA, Rfc3161HttpTSA, TimestampAuthority
@@ -178,6 +180,45 @@ def _build_parser() -> argparse.ArgumentParser:
     p_campaign_export.add_argument("--include-originals", action="store_true")
     p_campaign_export.add_argument("--no-pdf", action="store_true")
     p_campaign_export.set_defaults(func=_cmd_campaign_export)
+
+    p_letter = sub.add_parser(
+        "letter", help="generate a repair-request letter from the logged evidence"
+    )
+    add_vault(p_letter)
+    p_letter.add_argument("--out", required=True, type=Path, help="output directory")
+    p_letter.add_argument(
+        "--issue", action="append", help="limit to this issue (repeatable; default: all)"
+    )
+    p_letter.add_argument("--to", default="", help="recipient (landlord/manager) name")
+    p_letter.add_argument("--to-address", default="", help="recipient mailing address")
+    p_letter.add_argument("--from-name", default="", help="sender name")
+    p_letter.add_argument("--from-contact", default="", help="sender phone/email")
+    p_letter.add_argument(
+        "--jurisdiction", default="", help="framing profile: generic | us_habitability"
+    )
+    p_letter.add_argument("--cure-days", type=int, help="repair deadline in days")
+    p_letter.add_argument("--date", default="", help="letter date (ISO; default today)")
+    p_letter.add_argument("--no-pdf", action="store_true")
+    p_letter.set_defaults(func=_cmd_letter)
+
+    p_share = sub.add_parser(
+        "share", help="seal a case (or a redactable subset) to an organizer's key"
+    )
+    add_vault(p_share)
+    p_share.add_argument("--peer", required=True, help="organizer public identity (`habitable id`)")
+    p_share.add_argument("--out", required=True, type=Path, help="output .share file to write")
+    p_share.add_argument(
+        "--issue", action="append", help="share only this issue (repeatable; default: whole case)"
+    )
+    p_share.add_argument(
+        "--redact-unit", action="store_true", help="drop the unit label from the shared subset"
+    )
+    p_share.set_defaults(func=_cmd_share)
+
+    p_receive = sub.add_parser("receive", help="open a shared case into this vault")
+    add_vault(p_receive)
+    p_receive.add_argument("--in", dest="in_file", required=True, type=Path, help=".share file")
+    p_receive.set_defaults(func=_cmd_receive)
 
     p_verify = sub.add_parser("verify", help="independently verify a packet")
     p_verify.add_argument("packet", type=Path)
@@ -571,6 +612,14 @@ def _cmd_export(args: argparse.Namespace) -> int:
         print(f"           {hint}")
     for note in result.disclosures:
         print(f"           {note}")
+    # Keep the honest framing unmissable: a timestamp is an upper bound, not proof of
+    # authorship/depiction, and this is documentation, not legal advice. The full
+    # "what this proves / does not" statement travels in packet.html and bundle.json.
+    print(
+        "           what this proves / does not: a trusted timestamp is an upper bound "
+        "(content existed no later than that time), not proof of who took a photo or what "
+        "it depicts; this is documentation, not legal advice and no guarantee of admissibility"
+    )
     print(f"           packet written to {result.out_dir}")
     return 0
 
@@ -654,6 +703,61 @@ def _cmd_campaign_export(args: argparse.Namespace) -> int:
         )
     print(f"           manifest: {result.manifest_path}")
     print(f"           index: {result.index_path}")
+    return 0
+
+
+def _cmd_letter(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    options = LetterOptions(
+        recipient_name=args.to,
+        recipient_address=args.to_address,
+        sender_name=args.from_name,
+        sender_contact=args.from_contact,
+        jurisdiction=args.jurisdiction,
+        cure_period_days=args.cure_days,
+        date=args.date,
+        issue_ids=tuple(args.issue) if args.issue else (),
+    )
+    letter = build_letter(vault, options)
+    args.out.mkdir(parents=True, exist_ok=True)
+    html_path = args.out / "letter.html"
+    html_path.write_text(render_letter_html(letter), encoding="utf-8")
+    print(f"habitable: repair-request letter for {letter.property_address}")
+    print(f"           {len(letter.issues)} issue(s) · framing: {letter.profile_label}")
+    print(f"           accessible letter written to {html_path}")
+    if not args.no_pdf:
+        from .pdf import render_letter_pdf
+
+        pdf_path = args.out / "letter.pdf"
+        render_letter_pdf(letter, pdf_path)
+        print(f"           PDF written to {pdf_path}")
+    print("           Review before sending — this is documentation, not legal advice.")
+    return 0
+
+
+def _cmd_share(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    peer = PublicIdentity.decode(args.peer)
+    issue_ids = set(args.issue) if args.issue else None
+    blob = export_share(vault, peer, issue_ids=issue_ids, redact_unit=args.redact_unit)
+    args.out.write_text(encode_share(blob), encoding="ascii")
+    scope = f"{len(issue_ids)} issue(s)" if issue_ids else "the whole case"
+    print(f"habitable: sealed {scope} to {peer.fingerprint}")
+    if args.redact_unit:
+        print("           unit label redacted from the shared subset")
+    print(f"           encrypted share written to {args.out}")
+    print("           confirm the recipient fingerprint out of band before sending.")
+    return 0
+
+
+def _cmd_receive(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    blob = decode_share(args.in_file.read_text(encoding="ascii"))
+    result = import_share(vault, blob)
+    print(
+        f"habitable: received share for case {result.case_id} — "
+        f"imported {result.captures_imported} capture(s)"
+    )
     return 0
 
 

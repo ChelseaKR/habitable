@@ -16,6 +16,14 @@ from collections.abc import Mapping, Sequence
 from html import escape
 from pathlib import Path
 
+from .bundleview import (
+    ChronologyEntry,
+    CoverSheet,
+    IntegritySummary,
+    chronology,
+    cover_sheet,
+    integrity_summary,
+)
 from .canonical import JSONValue
 from .disclosure import proof_statement
 
@@ -33,6 +41,9 @@ h1, h2, h3 { line-height: 1.25; }
 .warning { border: 2px solid #7a1f1f; background: #fdecec; color: #5a1414;
   padding: .6rem .8rem; border-radius: 6px; font-weight: 600; }
 .meta { color: #333; }
+dl.cover { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .8rem; }
+dl.cover dt { font-weight: 600; }
+dl.cover dd { margin: 0; }
 figure { margin: 0 0 1rem; border: 1px solid #ccc; border-radius: 6px; padding: .6rem; }
 img { max-width: 100%; height: auto; }
 figcaption { font-size: .9rem; color: #222; }
@@ -87,12 +98,16 @@ def render_packet_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_pat
     )
     parts.append("</header>")
     parts.append('<main id="main">')
+    parts.extend(_cover_section(cover_sheet(bundle)))
     parts.extend(_proof_section(lang))
     parts.extend(_disclosure_section(lang, _bool(appendix, "includes_originals")))
+    parts.extend(_chronology_section(chronology(bundle)))
 
     for issue in _list(bundle, "issues"):
         if isinstance(issue, dict):
             parts.extend(_issue_section(issue, bundle, items_by_issue))
+
+    parts.extend(_integrity_section(integrity_summary(bundle)))
 
     parts.append("<h2>Evidence appendix</h2>")
     parts.append(_appendix_table(bundle))
@@ -105,6 +120,113 @@ def render_packet_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_pat
     parts.append("</body></html>")
 
     out_path.write_text("\n".join(parts), encoding="utf-8")
+
+
+def _cover_section(cover: CoverSheet) -> list[str]:
+    """The cover-sheet facts as an accessible description list."""
+    span = (
+        f"{cover.earliest} to {cover.latest}"
+        if cover.earliest and cover.latest
+        else (cover.earliest or cover.latest or "—")
+    )
+    facts = [
+        ("Case", cover.case_id or "—"),
+        ("Unit", cover.unit or "—"),
+        ("Covers", cover.scope),
+        ("Generated", cover.generated_at or "—"),
+        ("Producer device", cover.producer_fingerprint or "—"),
+        ("Issues", str(cover.issue_count)),
+        ("Media items", f"{cover.item_count} ({cover.timestamped_count} trusted-timestamped)"),
+        ("Chain-of-custody entries", str(cover.custody_length)),
+        ("Date range of evidence", span),
+        ("Sealed originals embedded", "yes" if cover.includes_originals else "no"),
+    ]
+    out = [
+        '<section aria-labelledby="cover-heading">',
+        '<h2 id="cover-heading">Cover sheet</h2>',
+        '<dl class="cover">',
+    ]
+    for label, value in facts:
+        out.append(f"<dt>{escape(label)}</dt><dd>{escape(value)}</dd>")
+    out.append("</dl>")
+    out.append("</section>")
+    return out
+
+
+def _chronology_section(entries: tuple[ChronologyEntry, ...]) -> list[str]:
+    """The unified, chronological evidence timeline (notes + photos)."""
+    out = [
+        '<section aria-labelledby="chronology-heading">',
+        '<h2 id="chronology-heading">Chronological evidence timeline</h2>',
+    ]
+    if not entries:
+        out.append("<p>No timeline entries or captures recorded.</p>")
+        out.append("</section>")
+        return out
+    out.append(
+        "<p>Notes are placed when they were logged; photos when they were captured. "
+        "The order of record is fixed by the append-only chain of custody.</p>"
+    )
+    out.append("<ol>")
+    for entry in entries:
+        when = escape(entry.when or "undated")
+        label = escape(entry.label)
+        issue = escape(entry.issue_title)
+        text = escape(entry.text)
+        detail = f' <span class="meta">({escape(entry.detail)})</span>' if entry.detail else ""
+        out.append(
+            f"<li><strong>{when}</strong> — "
+            f'<span class="meta">[{label}] {issue}:</span> {text}{detail}</li>'
+        )
+    out.append("</ol>")
+    out.append("</section>")
+    return out
+
+
+def _integrity_section(summary: IntegritySummary) -> list[str]:
+    """The chain-of-custody / integrity summary: custody proof + per-item attestations."""
+    out = [
+        '<section aria-labelledby="integrity-heading">',
+        '<h2 id="integrity-heading">Chain of custody &amp; integrity</h2>',
+        f"<p>Hash algorithm {escape(summary.algorithm)} · {summary.custody_length} custody "
+        f"entr{'y' if summary.custody_length == 1 else 'ies'} (append-only, hash-linked) · "
+        f"{summary.timestamped_count}/{summary.item_count} items trusted-timestamped. The chain "
+        "head below commits to the entire history; any insertion, deletion, or reordering changes "
+        "it. All of this verifies independently against bundle.json.</p>",
+    ]
+    if summary.custody_head:
+        out.append(
+            f'<p class="meta">Custody chain head: <code>{escape(summary.custody_head)}</code></p>'
+        )
+    out.append("<table>")
+    out.append(
+        "<caption>Per-item content hash, trusted-timestamp authorities, "
+        "and custody depth.</caption>"
+    )
+    out.append(
+        "<thead><tr>"
+        '<th scope="col">Capture</th>'
+        '<th scope="col">Content hash (SHA-256)</th>'
+        '<th scope="col">Timestamp authorities</th>'
+        '<th scope="col">Custody</th>'
+        "</tr></thead><tbody>"
+    )
+    for row in summary.rows:
+        authorities = ", ".join(row.authorities) if row.authorities else "—"
+        if row.archive_count:
+            authorities = f"{authorities} · +{row.archive_count} archive"
+        custody = f"{row.custody_entries} entr{'y' if row.custody_entries == 1 else 'ies'}"
+        out.append(
+            "<tr>"
+            f"<td>{escape(row.capture_id)}</td>"
+            f"<td>{escape(row.content_hash)}</td>"
+            f"<td>{escape(row.timestamp_status)}: {escape(authorities)}</td>"
+            f"<td>{escape(custody)}</td>"
+            "</tr>"
+        )
+    out.append("</tbody></table>")
+    out.append("</section>")
+    return out
 
 
 def _proof_section(lang: str) -> list[str]:

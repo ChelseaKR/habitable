@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import cast
 
 from .capture import capture, resolve_deferred
+from .disclosure import proof_statement
 from .errors import HabitableError
 from .packet import build_packet
 from .strength import assess_issue
@@ -178,6 +179,10 @@ class AppServer:
             self.vault, out, issue_id=issue_id, include_originals=include_originals
         )
         report = verify_packet(out)
+        # The same honest "what this proves / does not" statement the packet carries,
+        # surfaced in-app at the moment of export so the upper-bound timestamp semantics
+        # and the "not legal advice / no admissibility guarantee" limits are unmissable.
+        stmt = proof_statement(self.vault.config.language)
         return {
             "out_dir": str(out),
             "item_count": result.item_count,
@@ -185,6 +190,14 @@ class AppServer:
             "awaiting": result.item_count - result.timestamped_count,
             "awaiting_only": _awaiting_only(report),
             "disclosures": list(result.disclosures),
+            "proof": {
+                "heading": stmt.heading,
+                "proves_heading": stmt.proves_heading,
+                "proves": list(stmt.proves),
+                "not_heading": stmt.not_heading,
+                "not_proves": list(stmt.not_proves),
+                "verify_line": stmt.verify_line,
+            },
             "verified": report.ok,
             "summary": report.summary(),
         }

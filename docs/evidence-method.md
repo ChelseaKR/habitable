@@ -130,6 +130,42 @@ serializes `"timestamp": null`, and the verifier records the note `awaiting time
 for it (see `_verify_item` in [`verify.py`](../src/habitable/verify.py)) rather than
 treating the absence as a pass.
 
+### What a long awaiting-timestamp gap means for integrity
+
+Fixity and the timestamp are **separate steps**, so a long delay before a token attaches
+does not weaken the part that runs at capture. At capture — fully offline and instantly —
+the original bytes are hashed (SHA-256) and sealed and a custody entry is appended, so the
+exact content is **anchored the moment it is captured**, no matter when the device next
+reaches a TSA. The hash pins those bytes; any later alteration still fails fixity, and the
+re-check on every read does not depend on a token. What the gap defers is only the
+**external time anchor** — the part the trusted timestamp, not the device, provides.
+
+For a tenant on metered or intermittent data this is the point: documenting now is safe;
+the timestamp catches up later. Read the gap honestly:
+
+- **The hash anchors content, not time.** During the gap the content is fixed (tamper-
+  evident against later alteration), but its *existence time* is not yet attested by an
+  independent party.
+- **A later token is an upper bound fixed when it attaches, not retroactively.** A token
+  fetched after a gap proves the content existed no later than the token's `genTime` — the
+  moment it was actually stamped — not the earlier capture time. A long gap therefore
+  yields a *looser* upper bound, never a false one; the proof stays honest about when
+  independent attestation began.
+- **It never silently passes.** An item exported during the gap serializes
+  `"timestamp": null` and the verifier reports `awaiting timestamp`, so a recipient is
+  never misled into reading an un-anchored item as timestamped.
+- **Honest limit (the keyholder window).** A gap with *no external anchor at all* is the
+  window the [threat model](./threat-model.md) flags: the local custody chain is
+  tamper-*evident* to anyone who later verifies it, but it cannot bind a hostile
+  *keyholder* who rewrites the whole local record before any counterpart or timestamp has
+  seen the chain head. An external anchor — a synced peer already holding the head, or the
+  trusted timestamp itself — is what closes that window.
+- **Close the gap to keep the bound tight.** Fetching the token as soon as the device is
+  online — and stamping against several authorities (see
+  [Multiple authorities](#multiple-authorities)) — keeps the upper bound close to capture
+  and keeps the proof from resting on one party. The custody log's *order* is anchored
+  locally throughout; only the external *time* anchor waits on connectivity.
+
 ### Multiple authorities
 
 More than one TSA can be configured, so the proof does not rest on a single party.

@@ -72,7 +72,8 @@
   "capture_hash_label": "Content hash",
   "capture_timestamp_label": "Timestamp",
   "capture_timestamped_yes": "timestamped",
-  "capture_timestamped_no": "not timestamped",
+  "capture_timestamped_no": "awaiting a trusted timestamp",
+  "capture_awaiting_reassure": "Your photo is already saved and protected by its content hash. It will receive a trusted timestamp the next time you are online — choose “Resolve awaiting timestamps” above. Nothing is lost in the meantime.",
 
   "timeline_heading": "Add a timeline entry",
   "timeline_legend": "Timeline entry",

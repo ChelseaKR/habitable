@@ -21,6 +21,7 @@ from .errors import ConfigError
 __all__ = [
     "CONFIG_SCHEMA_VERSION",
     "Config",
+    "LetterTemplate",
     "PacketTemplate",
     "PeerConfig",
     "SharingPolicy",
@@ -92,6 +93,28 @@ class PacketTemplate:
 
 
 @dataclass(frozen=True, slots=True)
+class LetterTemplate:
+    """Defaults and locally-verified wording for generated repair-request letters.
+
+    Like :class:`PacketTemplate`, this is presentation/policy a union edits for
+    itself: who the letter is from, who it goes to, and which jurisdiction *framing*
+    to use. ``jurisdiction`` selects a built-in :class:`~habitable.letter.LetterProfile`
+    by key (e.g. ``"generic"``, ``"us_habitability"``); the built-ins make no
+    statute-specific claim. A union that has confirmed its local law can override the
+    header/footer text here. None of this changes how the underlying evidence verifies.
+    """
+
+    sender_name: str = ""
+    sender_contact: str = ""
+    recipient_name: str = ""
+    recipient_address: str = ""
+    jurisdiction: str = "generic"
+    cure_period_days: int = 0  # 0 = fall back to the profile's default
+    header: str = ""
+    footer: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class Config:
     """Resolved habitable configuration for one device."""
 
@@ -102,6 +125,7 @@ class Config:
     sync_peers: Sequence[PeerConfig] = field(default_factory=tuple)
     sharing: SharingPolicy = field(default_factory=SharingPolicy)
     packet_template: PacketTemplate = field(default_factory=PacketTemplate)
+    letter: LetterTemplate = field(default_factory=LetterTemplate)
 
     @classmethod
     def default(cls, node_id: str, *, language: str = "en") -> Config:
@@ -174,6 +198,21 @@ class Config:
                 header=_opt_str(template_raw, "header", ""),
                 footer=_opt_str(template_raw, "footer", ""),
             )
+        letter_raw = raw.get("letter")
+        letter = LetterTemplate()
+        if letter_raw is not None:
+            if not isinstance(letter_raw, Mapping):
+                raise ConfigError("[letter] must be a table")
+            letter = LetterTemplate(
+                sender_name=_opt_str(letter_raw, "sender_name", ""),
+                sender_contact=_opt_str(letter_raw, "sender_contact", ""),
+                recipient_name=_opt_str(letter_raw, "recipient_name", ""),
+                recipient_address=_opt_str(letter_raw, "recipient_address", ""),
+                jurisdiction=_opt_str(letter_raw, "jurisdiction", "generic"),
+                cure_period_days=_opt_int(letter_raw, "cure_period_days", 0),
+                header=_opt_str(letter_raw, "header", ""),
+                footer=_opt_str(letter_raw, "footer", ""),
+            )
         return cls(
             node_id=node_id,
             schema_version=version,
@@ -182,6 +221,7 @@ class Config:
             sync_peers=peers,
             sharing=sharing,
             packet_template=template,
+            letter=letter,
         )
 
 
@@ -223,6 +263,18 @@ def default_config_toml(node_id: str, *, language: str = "en") -> str:
         "# [packet_template]",
         '# header = "Submitted under <your state> habitability law"',
         '# footer = "Prepared by <your tenant union>. Not legal advice."',
+        "",
+        "# Optional defaults for generated repair-request letters (presentation only).",
+        "# jurisdiction selects a built-in framing profile (generic | us_habitability);",
+        "# the built-ins make no statute-specific claim. Override wording you have",
+        "# locally confirmed via header/footer. Not legal advice. Example:",
+        "# [letter]",
+        '# sender_name = "<your name>"',
+        '# sender_contact = "<phone or email>"',
+        '# recipient_name = "<landlord or property manager>"',
+        '# recipient_address = "<mailing address>"',
+        '# jurisdiction = "generic"',
+        "# cure_period_days = 14",
         "",
     ]
     return "\n".join(lines)

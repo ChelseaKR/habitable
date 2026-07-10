@@ -56,11 +56,20 @@ auditability, accessibility, and saying plainly what the tool does not do.
   end-to-end-encrypted, direct device-to-device sync using a CRDT, so two people editing the same
   case offline merge cleanly when they reconnect. No server holds the plaintext, and no server is
   required at all.
-- **Exports a packet.** One command assembles a paginated, court-and-inspector-ready PDF (or a
-  structured bundle) for an issue or a whole unit: the photos, the timeline, and an **evidence
-  appendix** listing every item's hash, timestamp token, and a custody-integrity proof — the chain is
-  shown to be intact without exporting who viewed or copied each item — so the recipient can verify
+- **Exports a court-ready bundle.** One command assembles a paginated, court-and-inspector-ready PDF
+  (and an accessible HTML rendering, plus the structured `bundle.json`) for an issue or a whole unit:
+  a **cover sheet** (case, scope, counts, date range), a single **chronological evidence timeline**
+  interleaving notes and photos across issues, the per-issue detail, and a **chain-of-custody /
+  integrity summary** — every item's hash, RFC 3161 timestamp authority, and the append-only custody
+  proof, shown intact without exporting who viewed or copied each item — so the recipient can verify
   nothing was altered after the fact.
+- **Shares with an organizer, end to end.** A tenant can hand a case — or a chosen subset of issues,
+  optionally with the unit label redacted — to a tenant-union organizer who was not on the case,
+  signed and **sealed to the organizer's verified public key**, so any relay or courier sees only
+  ciphertext (`habitable share` / `receive`; trust model in `docs/sharing-trust-model.md`).
+- **Drafts the repair request.** From the logged evidence, `habitable letter` generates a dated
+  repair-request / notice letter to the landlord (accessible HTML + PDF), with jurisdiction-aware
+  *framing only* and a standing "not legal advice" disclaimer (`docs/letter-generator.md`).
 
 ```console
 $ habitable export --unit "4B" --since 2026-01-01 --out 4B-packet.pdf
