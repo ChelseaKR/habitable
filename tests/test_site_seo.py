@@ -172,15 +172,25 @@ def test_structured_data_matches_visible_project_claims() -> None:
     assert "AGPL-3.0" in visible_text
 
 
-def test_sitemap_lists_only_the_canonical_indexable_page() -> None:
+def test_sitemap_lists_the_canonical_indexable_pages() -> None:
     sitemap = ElementTree.parse(_SITE / "sitemap.xml")
     namespace = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
     urls = sitemap.findall("sm:url", namespace)
-    assert [url.findtext("sm:loc", namespaces=namespace) for url in urls] == [_CANONICAL]
+    expected = [
+        _CANONICAL,
+        f"{_CANONICAL}how-it-works/",
+        f"{_CANONICAL}documentation-checklist/",
+        f"{_CANONICAL}tenant-unions/",
+        f"{_CANONICAL}legal-aid-reviewers/",
+        f"{_CANONICAL}inspectors-code-enforcement/",
+        f"{_CANONICAL}trust-limitations/",
+    ]
+    assert [url.findtext("sm:loc", namespaces=namespace) for url in urls] == expected
 
-    last_modified = urls[0].findtext("sm:lastmod", namespaces=namespace)
-    assert last_modified is not None
-    assert date.fromisoformat(last_modified) <= date.today()
+    for url in urls:
+        last_modified = url.findtext("sm:lastmod", namespaces=namespace)
+        assert last_modified is not None
+        assert date.fromisoformat(last_modified) <= date.today()
     assert sitemap.findall(".//sm:priority", namespace) == []
     assert sitemap.findall(".//sm:changefreq", namespace) == []
 

@@ -1,0 +1,198 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#16424f" />
+    <title>Trust, Security &amp; Legal Limits | Habitable Evidence</title>
+    <meta name="description" content="Understand what Habitable Evidence integrity checks can establish, what remains unproven, and which security, privacy, and legal gates remain open." />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <link rel="canonical" href="https://chelseakr.github.io/habitable/trust-limitations/" />
+    <link rel="icon" href="../img/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="../content.css" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:site_name" content="Habitable Evidence" />
+    <meta property="og:url" content="https://chelseakr.github.io/habitable/trust-limitations/" />
+    <meta property="og:title" content="Trust, Security &amp; Legal Limits | Habitable Evidence" />
+    <meta property="og:description" content="Understand what Habitable Evidence integrity checks can establish, what remains unproven, and which security, privacy, and legal gates remain open." />
+    <meta property="og:image" content="https://chelseakr.github.io/habitable/img/packet.png" />
+    <meta property="og:image:alt" content="A synthetic Habitable Evidence packet with a timeline and evidence appendix." />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Trust, Security &amp; Legal Limits | Habitable Evidence" />
+    <meta name="twitter:description" content="Understand what Habitable Evidence integrity checks can establish, what remains unproven, and which security, privacy, and legal gates remain open." />
+    <meta name="twitter:image" content="https://chelseakr.github.io/habitable/img/packet.png" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Article",
+            "@id": "https://chelseakr.github.io/habitable/trust-limitations/#article",
+            "headline": "Trust and Limitations",
+            "description": "Understand what Habitable Evidence integrity checks can establish, what remains unproven, and which security, privacy, and legal gates remain open.",
+            "datePublished": "2026-07-10",
+            "dateModified": "2026-07-10",
+            "inLanguage": "en",
+            "author": { "@type": "Person", "name": "Chelsea Kelly-Reif", "url": "https://chelseakr.github.io/" },
+            "mainEntityOfPage": "https://chelseakr.github.io/habitable/trust-limitations/",
+            "image": "https://chelseakr.github.io/habitable/img/packet.png"
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "name": "Habitable Evidence", "item": "https://chelseakr.github.io/habitable/" },
+              { "@type": "ListItem", "position": 2, "name": "Trust and limitations", "item": "https://chelseakr.github.io/habitable/trust-limitations/" }
+            ]
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="../"><img src="../img/icon.svg" alt="" width="42" height="42" />Habitable Evidence</a>
+      <nav class="primary-nav" aria-label="Primary">
+        <ul>
+          <li><a href="../how-it-works/">How it works</a></li>
+          <li><a href="../documentation-checklist/">Documentation checklist</a></li>
+          <li><a href="../tenant-unions/">For tenant unions</a></li>
+          <li><a aria-current="page" href="./">Trust and limits</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main id="main">
+      <nav class="breadcrumbs" aria-label="Breadcrumb">
+        <ol><li><a href="../">Home</a></li><li aria-current="page">Trust and limitations</li></ol>
+      </nav>
+
+      <article>
+        <header class="article-header">
+          <div class="article-header-copy">
+            <p class="kicker">Trust record</p>
+            <h1>Trust, security, and legal limitations</h1>
+            <p class="lede">Habitable Evidence is designed to make technical claims inspectable and its open risks visible. This page separates what the software checks from what still depends on people, trusted authorities, operational practice, independent review, and local law.</p>
+          </div>
+          <div class="record-card" role="note" aria-label="Page status">
+            <p class="record-label">Release posture</p>
+            <strong>Open-source alpha</strong>
+            <p>Reviewed 10 July 2026. Synthetic evaluation only.</p>
+          </div>
+        </header>
+
+        <div class="layout">
+          <div class="article-body">
+            <p class="boundary"><strong>Do not rely on Habitable for a real legal matter yet.</strong> Independent security and cryptography review, housing-law review, a real partner evaluation, recorded human screen-reader testing, and signed native distribution remain open.</p>
+
+            <section id="integrity" aria-labelledby="integrity-h">
+              <h2 id="integrity-h">Integrity is narrower than truth</h2>
+              <div class="comparison">
+                <div>
+                  <h3>Technical checks can support</h3>
+                  <ul>
+                    <li>whether packaged files match their recorded SHA-256 hashes;</li>
+                    <li>whether the bundle signature validates against the included public identity;</li>
+                    <li>whether supported timestamp-token signatures and message imprints validate;</li>
+                    <li>whether the custody log is internally consistent and references known records.</li>
+                  </ul>
+                </div>
+                <div class="limitations">
+                  <h3>They do not establish</h3>
+                  <ul>
+                    <li>what a capture depicts, where it was made, or whether it is complete;</li>
+                    <li>who controlled a signing key or whether that person had authority;</li>
+                    <li>that a timestamp authority is trusted by a particular recipient;</li>
+                    <li>the accuracy, legal significance, or outcome of any housing claim.</li>
+                  </ul>
+                </div>
+              </div>
+            </section>
+
+            <section id="implemented" aria-labelledby="implemented-h">
+              <h2 id="implemented-h">Implemented and test-gated in the repository</h2>
+              <ul class="checklist">
+                <li>Local encrypted vault storage; the static public site does not host case data.</li>
+                <li>Original capture preservation, content hashing, custody events, and signed bundles.</li>
+                <li>RFC 3161 timestamp support, including an explicit awaiting-timestamp state.</li>
+                <li>Selective export controls and a packet disclosure statement.</li>
+                <li>HTML designed for accessibility and covered by automated browser checks, a print-oriented PDF, a machine-readable bundle, and a separate verifier.</li>
+                <li>English and Spanish app interfaces with automated structural and browser accessibility checks.</li>
+              </ul>
+              <p>These are implementation statements, not assurances about a particular device, operator, transfer, authority, recipient, or legal forum. Review the <a href="https://github.com/ChelseaKR/habitable/actions">current automated test runs</a> and source rather than relying on this summary alone.</p>
+            </section>
+
+            <section id="open-gates" aria-labelledby="gates-h">
+              <h2 id="gates-h">Open gates before real-data use</h2>
+              <ul class="question-list">
+                <li><strong>Independent security and cryptography review.</strong> The project publishes a threat model and tests, but no independent assessment has been completed.</li>
+                <li><strong>Housing-law and recipient-workflow review.</strong> No project statement determines how a court, agency, legal-aid program, union, or inspector should treat a packet.</li>
+                <li><strong>Real partner evaluation.</strong> No tenant union, legal-aid organization, or government agency outcome is claimed. The current sample and tests use synthetic data.</li>
+                <li><strong>Human accessibility validation.</strong> Automated axe, keyboard, structure, and localization checks exist; recorded human NVDA, VoiceOver, cognitive, and field-use results remain open.</li>
+                <li><strong>Signed distribution and update operations.</strong> The Python workflow is intended for technical evaluation. Consumer-grade signed native packages and a supported update channel are not available.</li>
+              </ul>
+            </section>
+
+            <section id="threats" aria-labelledby="threats-h">
+              <h2 id="threats-h">Threats the tool cannot remove</h2>
+              <ul>
+                <li>A compromised or unlocked device can expose data before or after encryption.</li>
+                <li>A weak, reused, shared, lost, or coerced passphrase can defeat the intended access boundary.</li>
+                <li>Operators can enter inaccurate descriptions, omit events, misidentify sources, or capture misleading context.</li>
+                <li>Recipients can copy, redistribute, screenshot, or retain an export beyond the sender’s control.</li>
+                <li>File names, transfer timing, backups, printer queues, and external tools can reveal metadata outside the vault.</li>
+                <li>Local-only software does not eliminate retaliation, surveillance, coercion, subpoena, discovery, or physical-safety risks.</li>
+              </ul>
+              <p>Read the detailed <a href="https://github.com/ChelseaKR/habitable/blob/main/docs/threat-model.md">threat model</a>, <a href="https://github.com/ChelseaKR/habitable/blob/main/SECURITY.md">security policy</a>, and <a href="https://github.com/ChelseaKR/habitable/blob/main/docs/legal/README.md">legal boundaries</a>.</p>
+            </section>
+
+            <section id="privacy" aria-labelledby="privacy-h">
+              <h2 id="privacy-h">Public-site and disclosure boundaries</h2>
+              <p>The GitHub Pages site is static. It provides documentation and synthetic artifacts; it has no form for collecting evidence. GitHub itself records ordinary request data under its own policies when someone visits the site or repository.</p>
+              <p class="safety-note"><strong>Never publish a case to get support.</strong> GitHub issues, discussions, pull requests, and repository files are public. Do not submit tenant names, addresses, photos, messages, allegations, keys, evidence, packet files, or case details.</p>
+              <p>Within the app, a deliberate export can still disclose sensitive material. Review the packet and its disclosure statement, use the minimum scope, choose a safe transfer channel, and assume every recipient can make additional copies.</p>
+            </section>
+
+            <section id="evaluate" aria-labelledby="evaluate-h">
+              <h2 id="evaluate-h">A responsible evaluation sequence</h2>
+              <ol class="steps">
+                <li><strong>Read the method and threat model.</strong> Confirm that the claimed protections address the risks you actually face.</li>
+                <li><strong>Use a fictional scenario.</strong> Do not import or adapt a real tenant’s details, even if names are changed.</li>
+                <li><strong>Test disclosure and transfer.</strong> Look for unintended copies, metadata, confusing status language, and recipient misunderstanding.</li>
+                <li><strong>Bring independent reviewers.</strong> Security, cryptography, accessibility, organizing, inspection, and legal expertise answer different questions.</li>
+                <li><strong>Record a stop decision.</strong> If a gate is not met, remain on synthetic data. A feature demonstration is not evidence that the operational system is safe.</li>
+              </ol>
+            </section>
+          </div>
+
+          <nav class="side-nav" aria-label="On this page">
+            <h2>On this page</h2>
+            <ul>
+              <li><a href="#integrity">Integrity boundary</a></li>
+              <li><a href="#implemented">Implemented controls</a></li>
+              <li><a href="#open-gates">Open gates</a></li>
+              <li><a href="#threats">Remaining threats</a></li>
+              <li><a href="#privacy">Privacy</a></li>
+              <li><a href="#evaluate">Evaluate responsibly</a></li>
+            </ul>
+          </nav>
+        </div>
+
+        <aside class="related" aria-labelledby="related-h">
+          <h2 id="related-h">Choose a role-specific review path</h2>
+          <p>Different reviewers should challenge different assumptions; no single technical result can stand in for all of them.</p>
+          <ul><li><a href="../tenant-unions/">Tenant-union evaluation guide</a></li><li><a href="../legal-aid-reviewers/">Legal-aid and independent-review guide</a></li><li><a href="../inspectors-code-enforcement/">Inspector and code-enforcement review guide</a></li></ul>
+        </aside>
+      </article>
+    </main>
+
+    <footer>
+      <ul class="footer-links"><li><a href="../">Home</a></li><li><a href="../how-it-works/">How it works</a></li><li><a href="../documentation-checklist/">Documentation checklist</a></li><li><a href="https://github.com/ChelseaKR/habitable/blob/main/docs/evidence-method.md">Evidence method</a></li><li><a href="https://github.com/ChelseaKR/habitable">Source code</a></li></ul>
+      <p>Habitable Evidence is an independent open-source alpha. It is not legal advice, an emergency service, or a place to submit tenant data.</p>
+    </footer>
+  </body>
+</html>
