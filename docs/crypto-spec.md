@@ -112,12 +112,108 @@ instead of loading an unbounded artifact into memory. The vault format is unchan
 created before this protocol still open and keep the same blob names.
 
 This is a transaction for **normal mutable-state saves**, not a claim that every filesystem write in
-the project is transactional. Keyfile changes, timestamp sidecars, sealed-original creation, legacy
-migrations, and DEK rotation retain their separately documented write/recovery boundaries. The
+the project is transactional. Keyfile changes, sealed-original creation, and DEK rotation retain
+their separately documented write/recovery boundaries. Encrypted timestamp sidecars and their
+legacy migration use the narrower protocol below; they do not join the five-blob transaction. The
 strongest crash guarantee assumes a local filesystem that honors same-directory atomic replacement
 and file/directory `fsync`. Directory syncing is best-effort on platforms that do not expose it;
 network/exotic filesystems, lying storage hardware, media failure, and concurrent processes writing
 the same vault can still violate durability or isolation.
+
+### Encrypted timestamp-token sidecars and legacy migration
+
+The public `TimestampToken` and packet formats do not change. Inside an unlocked vault, however,
+the primary, additional-authority, and archive tokens for one capture are one canonical JSON value:
+
+```json
+{
+  "version": 1,
+  "capture_id": "<plaintext only inside the AEAD envelope>",
+  "primary": { "kind": "rfc3161", "tsa_name": "…", "token_b64": "…" },
+  "additional": [],
+  "archive": []
+}
+```
+
+That value is encrypted with the vault DEK and stored as
+`tokens/<sha256(UTF-8 capture_id)>.tokens.enc`. Associated data is the domain-separated value
+`b"habitable:timestamp-token-sidecar:v1:" || ASCII(filename digest)`. On read, the capture id
+inside the authenticated plaintext must hash back to the filename. This prevents raw capture ids
+(including separators and `..`) from becoming paths, binds ciphertext to its intended name, and
+keeps token data, TSA name, and embedded `genTime` confidential while the vault is locked.
+
+The hashed filename is deterministic. It therefore leaks equality/linkability for the same capture
+id across observations or copied vault trees, and a party that can guess an id can test the guess.
+Ciphertext length approximates per-capture token volume, while filesystem `mtime`/`ctime` expose
+update timing to a storage observer; there is no padding or filesystem-metadata hiding. It is not
+an anonymity mechanism. The encrypted sidecar supplies local confidentiality and
+integrity only. It does **not** authenticate the timestamp authority, prove the token's imprint, or
+make a token secret once exported: sync and packet formats intentionally carry the unchanged public
+token structure, and recipients must still verify the token and its authority chain.
+
+Writes use a flushed same-directory temporary ciphertext, owner-only `0600` mode on POSIX,
+atomic replacement, and a directory `fsync` where supported. Reads require a regular file, use
+no-follow/nonblocking opens, and reject tamper, symlinks, FIFOs, file replacement races, and
+oversize records. Enumeration, read, temporary creation, rename, and unlink are all relative to one
+no-follow directory descriptor whose device/inode is checked against the vault path on entry and
+again before success. A concurrent directory swap therefore fails without following the replacement
+symlink or reporting a detached write as successful. Platforms lacking descriptor-relative mkdir,
+open, no-follow stat, scan, unlink, and rename support are unsupported for the **whole vault**:
+creation preflights and refuses before making a vault, and open fails closed; there is no unsafe
+path-based fallback. Creation accepts only an absent or real empty destination, creates
+`originals/` and `tokens/` exclusively through a held no-follow root descriptor, and proves the new
+token directory can be securely reopened before writing config, key, or case state.
+Resource ceilings are 4,096 ordinary live/direct entries in `tokens/` (prospective creation of the
+4,097th sidecar is rejected, while an existing sidecar may be updated), plus at most 64
+strictly named `.token-atomic-<32 lowercase hex>.tmp` crash remnants so cleanup cannot itself be
+stranded at the live-entry limit; 32 MiB ciphertext; 24 MiB decrypted sidecar JSON; 16 MiB per
+legacy JSON file; 8 MiB per token; 4,096 valid-UTF-8 characters per capture id/name field; and 256
+tokens in each additional/archive list. Both encrypted and legacy JSON must decode as strict UTF-8;
+a string/escape-aware text preflight rejects nesting deeper than 64, more than 8,192 outside-string
+structural punctuation tokens, and number tokens longer than 128 characters. Integer parsing uses
+the same explicit 128-character ceiling rather than Python's mutable process-global digit limit.
+Exceeding a ceiling fails closed rather than making unlock or packet assembly unbounded. DEK
+rotation is the explicit
+exception to the ordinary live-entry count: while staging it may add exactly one encrypted
+`<sidecar>.new` per existing sidecar, so token
+directory entries can transiently double but remain bounded. `SIGKILL` can leave those stages;
+retry/open may then require manual recovery under the documented nontransactional rotation boundary.
+
+After a successful unlock, pre-sidecar vaults migrate deterministically before the vault is
+returned:
+
+1. Enumerate direct legacy `*.json` entries under the real (not symlinked) `tokens/` directory;
+   securely read and strictly validate every component and preserve list order. Top-level shape
+   disambiguates suffix-bearing capture ids: an object in `tenant.additional.json` is the primary
+   token for capture `tenant.additional`, while a list is the additional-token component for
+   capture `tenant` (and likewise for `.archive.json`). Other ambiguous shapes fail closed. The old
+   format reused that one filename for both logical records, so it could never retain both at once:
+   migration preserves the surviving object or list but cannot reconstruct a record an earlier
+   legacy write already overwrote. Orphan token capture ids remain supported, so case-document
+   membership cannot safely override the surviving shape.
+2. Atomically write, sync, reread, decrypt, and compare the consolidated encrypted sidecar.
+3. Re-check that every remaining plaintext entry is the exact regular inode that was read, unlink
+   it, then sync `tokens/`.
+
+No legacy plaintext is deleted after a validation, encryption, publish, or durability failure. A
+crash after encrypted publication can leave both generations; restart compares every legacy
+component that still remains against the corresponding authenticated component and resumes
+cleanup. Missing legacy components are treated as already removed, so interruption halfway through
+the three-file cleanup is repeatable. Disagreement fails closed and preserves the plaintext for
+manual recovery. At the 4,096-entry ceiling, migration alone may create one temporary 4,097th live
+entry; restart accepts that overlap only when exactly one encrypted sidecar maps to a present legacy
+group, both strictly decode, their remaining components match in order, and legacy cleanup returns
+the directory to the ceiling. Any unrelated over-cap state fails closed. Orphan atomic-write
+ciphertext temporaries are removed on the next migration.
+Unlinking is cleanup, **not secure erasure**: old blocks, journaled filesystems, snapshots, backups,
+swap, and storage forensics may retain pre-migration plaintext. The guarantees also assume no
+concurrent writer and a local filesystem that truthfully implements regular-file checks, atomic
+same-directory replacement, and flushes; directory `fsync` is unavailable on some platforms.
+
+`config.toml` remains plaintext by design so policy is reviewable, including timestamp-authority
+names/URLs and any user-edited peer, sharing, packet, or letter settings. The wrapped keyfile is
+also visible. Do not put secrets in configuration. An unlocked process, malware, a compelled
+passphrase, or memory inspection can read decrypted sidecars just as it can other vault contents.
 
 ### 3.1 Key lifecycle (R-38, FIX-08)
 
@@ -143,18 +239,38 @@ the same vault can still violate durability or isolation.
   (or adding a profile) does not by itself change any existing keyfile; only re-running `key harden`
   does.
 - **DEK rotation** (`habitable key rotate-dek`, `Vault.rotate_dek`): generates a **fresh** DEK and
-  re-encrypts *every* vault blob (`case.enc`, `custody.enc`, `deferred.enc`, `identity.enc`) and
-  *every* sealed original under it, then re-wraps the new DEK under the **same** passphrase. This is
+  re-encrypts every vault blob, every encrypted timestamp-token sidecar, and every sealed original
+  under it, then re-wraps the new DEK under the **same** passphrase. Sidecars are strictly decoded
+  and re-encrypted with their filename-bound AAD; any legacy JSON migration finishes first. This is
   the actual remedy for a suspected DEK compromise that rotation alone cannot provide. Unlike
   rotation/hardening it is O(vault size), not O(1) — expensive but bounded, and meant to be rare.
   Each sealed original is decrypted and its fixity **re-checked** against the content hash already
   recorded in the case document before being re-sealed (a corrupt original is caught before, not
   after, it is carried into the new encryption). All re-encryption happens to staged `*.new`
-  siblings before any file is modified in place; a final pass swaps each one in with a same-filesystem
-  rename. A crash during the (slow) staging phase leaves the vault untouched; a crash during the
-  (fast, metadata-only) swap phase could leave a partially migrated vault recoverable by hand from
-  the leftover `*.new`/`*.enc` files — an accepted tradeoff at this effort tier, not a full
-  transactional guarantee (see [tradeoffs](#7-review-focus--known-tradeoffs)).
+  siblings before any file is modified in place. Each intended stage is registered before
+  creation, then exclusively created no-follow with owner-only `0600` mode, fully written, and
+  file-synced. Its device/inode/size/mtime/ctime generation is recorded; ordinary failures remove
+  only that exact generation, and every stage is checked before publication and immediately before
+  its rename. Before publication, every unique path-stage parent and `tokens/` is directory-synced.
+  The wrapped-key stage's recorded generation is then re-verified and pinned through an open
+  no-follow descriptor before the first publish rename. A final pass renames data, original, and
+  token stages first and syncs their directories; the pinned wrapped keyfile is renamed last as the
+  generation commit and followed by another vault-root sync. If post-commit exact-byte verification
+  detects a keyfile race, rotation performs a
+  controlled atomic forward repair from the already-fsynced expected bytes before reraising the
+  triggering error. During partial publication, if the fixed keyfile stage was detached or replaced,
+  Habitable preserves a random `keyfile.json.recovery-<32hex>.new` and adds its path to the exception
+  for manual recovery without overwriting the alien entry. A retry fails closed while any known
+  root/original/keyfile stage, token-sidecar stage, exact
+  `.keyfile-forward-repair-<32hex>.tmp`, or exact `keyfile.json.recovery-<32hex>.new` remains. Known
+  paths are checked directly, token enumeration is bounded, and the root recovery-artifact scan
+  fails closed after 256 entries; exact-name symlinks and FIFOs block without being followed or
+  removed. Directory sync remains best-effort where the host reports it unsupported. A process
+  death can leave encrypted `*.new` debris. A crash during the (slow) staging phase leaves live
+  files untouched; a crash during the (fast, metadata-only) swap phase could leave a partially
+  migrated vault recoverable by hand from the leftover `*.new`/`*.enc` files — an accepted tradeoff
+  at this effort tier, not a full transactional guarantee (see
+  [tradeoffs](#7-review-focus--known-tradeoffs)).
 - **Recovery blob** (`habitable key backup` / `restore`): the same DEK wrapped under an
   **independent** recovery passphrase, producing a standalone keyfile-format blob. Possession of
   the blob **and** the recovery passphrase reconstructs the DEK. This is the *only* way to recover
@@ -341,13 +457,37 @@ Stated plainly so a reviewer can target effort (and so the project isn't accused
   surfacing the full hash for high-assurance comparison.
 - **Memory zeroization** of key bytes is not guaranteed under CPython.
 - **DEK rotation's multi-file swap is not fully transactional.** `Vault.rotate_dek` (§3.1) stages
-  every re-encrypted file before touching anything in place, so the expensive, failure-prone work
-  (decrypt, re-verify fixity, re-encrypt) can't corrupt the live vault. The final swap is a tight
-  loop of same-filesystem renames (each individually atomic), but a crash *inside* that loop —
-  not during staging — can still leave a vault whose keyfile and blobs disagree about which DEK is
-  current, recoverable by hand from the `*.new`/`*.enc` files left behind. A reviewer should weigh
-  whether that residual window is acceptable for the threat model or needs a real journal/commit
-  marker.
+  every re-encrypted file—including token sidecars—before touching anything in place, so the
+  expensive, failure-prone work (decrypt, validate tokens, re-verify fixity, re-encrypt) can't
+  corrupt the live vault. Stages use exclusive no-follow owner-only creation, full writes, file
+  flushes, and recorded filesystem generations. Ordinary staging failures clean only the exact
+  app-created generation and sync the affected directories; a raced-in or replaced entry fails
+  closed and is preserved. All stage directories are synced and the wrapped-key stage is pinned
+  after generation/ownership verification before publication. Data, original, and token stages are
+  then renamed and their directories synced before the pinned wrapped keyfile is renamed last and
+  the vault root is synced.
+  Process death may leave encrypted `*.new` debris. Immediately before the first publish rename is
+  attempted, cleanup becomes conservative: any exception may have arrived after the kernel committed
+  a rename, so every remaining `*.new` stage and `keyfile.json.new` is preserved. Deleting the wrapped
+  new key at that point could make already-published data unrecoverable. If the final keyfile commit
+  was attempted, all data already uses the new DEK; the in-memory vault adopts it, verifies the
+  still-open staged inode against the live keyfile, and, if that proof fails, attempts a controlled
+  atomic forward repair before reraising the original error. If forward repair itself fails, its
+  artifact is retained and reported, and a separately named recovery artifact is attempted too.
+  During partial publication, a detached or replaced fixed keyfile stage is never overwritten or
+  deleted: a random `keyfile.json.recovery-<32hex>.new` is durably written and its path is attached to
+  the exception for manual recovery. Failures after creating either recovery artifact retain and
+  report it only when its bytes are positively verified against the expected wrapped key; otherwise
+  the error explicitly says that no verified artifact was retained. The final swap is a tight loop
+  of same-filesystem renames (each individually atomic), but a crash *inside* that loop — not during
+  staging — can still leave a vault whose keyfile and blobs disagree about which DEK is current,
+  recoverable by hand from the `*.new`/`*.enc` files left behind. These recovery measures do not
+  isolate concurrent writers; a reviewer should weigh whether that residual window is acceptable
+  for the threat model or needs a real journal/commit marker. A retry treats known root/original/
+  keyfile stages, token-sidecar `<name>.new`, exact `.keyfile-forward-repair-<32hex>.tmp`, and exact
+  `keyfile.json.recovery-<32hex>.new` as ambiguous manual-recovery state. It fails closed without
+  following, overwriting, or auto-deleting regular files, symlinks, or FIFOs at those names; the root
+  scan is capped at 256 entries and near-miss names are not classified as recovery artifacts.
 
 ## 8. Cross-references
 

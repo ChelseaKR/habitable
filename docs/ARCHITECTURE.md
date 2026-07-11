@@ -112,9 +112,19 @@ Storage and capture:
 
 - **`vault.py`** — the encrypted case vault: one directory per case. Sealed originals, the
   CRDT document, the custody log, the device identity, and the deferred-timestamp queue
-  are all encrypted at rest under the DEK. Non-secret configuration, the wrapped keyfile,
-  and timestamp-token sidecars are plaintext. Sealed originals are bound to their content
-  hash via AEAD associated data, and every read re-checks fixity.
+  are all encrypted at rest under the DEK. Primary, additional, and archive timestamp tokens
+  are consolidated per capture in AEAD-encrypted, filename-bound sidecars; a post-unlock,
+  write-encrypted-first migration removes validated legacy JSON repeatably. Every child operation
+  is relative to one no-follow directory descriptor checked for continued attachment, so swapping
+  `tokens/` for a symlink fails closed. A platform without the required descriptor-relative
+  primitives is unsupported for the whole vault: creation refuses before writing and open fails
+  closed, rather than producing an unreopenable vault or using an unsafe fallback. The stable hashed
+  filename still leaks capture-id equality/linkability. `config.toml` (including configured TSA
+  names/URLs and other user-edited policy/template fields) and the wrapped keyfile remain
+  plaintext. Sealed originals are bound to their content hash via AEAD associated data, and every
+  read re-checks fixity. Sidecar encryption protects locked-vault confidentiality/integrity, not
+  public-token authenticity: packet recipients still verify the unchanged token format and TSA
+  chain.
 - **`capture.py`** — the capture pipeline. Hashes the media, seals the original, appends
   custody entries, and obtains a timestamp now-or-deferred (details below). Never blocks
   on the network.

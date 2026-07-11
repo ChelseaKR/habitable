@@ -69,8 +69,23 @@ The device is the trusted base. It is the only place that ever holds plaintext o
   integrity). It is itself wrapped under a key-encryption key (KEK) derived from the user's
   passphrase with **scrypt** (`crypto.py`).
 - Inside the vault tree, persistent case contents — `case.enc`, `custody.enc`, `identity.enc`,
-  `deferred.enc`, and sealed `originals/` — are ciphertext. `config.toml`, the
-  passphrase-wrapped `keyfile.json`, and timestamp-token sidecars are non-secret plaintext.
+  `deferred.enc`, sealed `originals/`, and consolidated timestamp-token sidecars — are
+  ciphertext. A sidecar's deterministic `sha256(capture_id)` filename leaks equality/linkability;
+  its ciphertext length approximates token volume, and filesystem `mtime`/`ctime` expose update
+  timing. There is no padding or filesystem-metadata hiding. Tokens become public by design in
+  sync/packet formats; at-rest AEAD is confidentiality and integrity, not proof that a TSA or token
+  is authentic. `config.toml` remains plaintext, including
+  timestamp-authority names/URLs and other user-edited policy/template values; the
+  passphrase-wrapped `keyfile.json` is also visible.
+- On first successful unlock, legacy primary/additional/archive token JSON is strictly validated,
+  encrypted, flushed, atomically published, and reread before the exact plaintext inodes are
+  unlinked. Partial cleanup resumes after a crash and disagreement fails closed. Unlinking is not
+  secure erasure, directory flushes are unavailable on some filesystems, and concurrent writers or
+  hostile/lying storage remain outside the guarantee.
+- Token child operations are descriptor-relative beneath one no-follow `tokens/` handle whose
+  attachment is rechecked before success. A directory-swap attack fails rather than following a
+  replacement symlink. Platforms without the required descriptor-relative primitives are
+  unsupported for the whole vault; create/open fail closed.
 - Browser upload and packet-sanitization tools sometimes require a filesystem path. Their
   plaintext working copy is a random file in a short-lived OS temporary directory **outside the
   vault**, never the old vault `_incoming` path. On POSIX the directory/file are explicitly

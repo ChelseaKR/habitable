@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+import habitable.vault as vault_module
 from habitable.capture import capture, resolve_deferred
 from habitable.errors import HabitableError, TimestampError, VaultError
 from habitable.tsa import DevTSA, LocalRfc3161TSA, TimestampToken
@@ -221,6 +222,7 @@ def test_rotate_dek_reencrypts_blobs_and_originals(
     make_jpeg: Callable[..., Path],
     local_tsa: LocalRfc3161TSA,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """FIX-08: `rotate_dek` replaces the data key and re-encrypts everything under it,
     without disturbing the data itself or its fixity."""
@@ -235,6 +237,27 @@ def test_rotate_dek_reencrypts_blobs_and_originals(
     case_path = vault.path / "case.enc"
     before_sealed = sealed_path.read_bytes()
     before_case = case_path.read_bytes()
+    originals_dir = vault.path / "originals"
+    original_published = False
+    post_publish_original_fsyncs = 0
+    real_replace = Path.replace
+    real_fsync_directory = vault_module._fsync_directory
+
+    def track_replace(source: Path, destination: Path) -> Path:
+        nonlocal original_published
+        published = real_replace(source, destination)
+        if source.parent == originals_dir and source.name.endswith(".new"):
+            original_published = True
+        return published
+
+    def track_directory_fsync(path: Path) -> bool:
+        nonlocal post_publish_original_fsyncs
+        if path == originals_dir and original_published:
+            post_publish_original_fsyncs += 1
+        return real_fsync_directory(path)
+
+    monkeypatch.setattr(Path, "replace", track_replace)
+    monkeypatch.setattr(vault_module, "_fsync_directory", track_directory_fsync)
 
     vault.rotate_dek("test-passphrase")
 
@@ -244,6 +267,7 @@ def test_rotate_dek_reencrypts_blobs_and_originals(
     # ... but every *.new staging file was cleaned up (swapped into place).
     assert not list(vault.path.glob("*.new"))
     assert not list((vault.path / "originals").glob("*.new"))
+    assert post_publish_original_fsyncs >= 1
 
     # The in-memory vault keeps working immediately after rotation.
     assert vault.read_original(result.capture_id, result.content_hash) == original_bytes
