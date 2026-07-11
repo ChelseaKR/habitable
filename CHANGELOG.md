@@ -105,6 +105,11 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **JPEG shared copies now remove every embedded metadata carrier under the default
+  strip-all policy.** Export decodes and applies EXIF orientation, rebuilds pixels,
+  removes APP0–APP15 and comment segments plus trailing data, verifies a metadata-free
+  output, and publishes atomically. This closes the XMP/IPTC/ICC/comment leak left by
+  EXIF-only removal; sealed originals remain byte-for-byte unchanged.
 - **Packet publication is transactional and re-export is clean.** Exports are
   rendered in a fresh sibling directory and published only after every artifact
   succeeds. Reusing an output path replaces the whole directory, so originals,

@@ -8,13 +8,27 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 
+import piexif
 import pytest
+from PIL import Image, ImageOps
 
 from habitable.config import SharingPolicy
 from habitable.crypto import Identity
-from habitable.errors import CustodyError, FixityError
+from habitable.errors import CaptureError, CustodyError, FixityError
 from habitable.evidence import CustodyAction, CustodyLog, content_hash, fixity_ok, verify_fixity
 from habitable.exif import make_shared_copy, read_metadata
+
+
+def _jpeg_segment(marker: int, payload: bytes) -> bytes:
+    """Build one length-prefixed JPEG metadata segment for adversarial fixtures."""
+    length = len(payload) + 2
+    return b"\xff" + bytes((marker,)) + length.to_bytes(2, "big") + payload
+
+
+def _inject_after_soi(path: Path, *segments: bytes) -> None:
+    encoded = path.read_bytes()
+    assert encoded.startswith(b"\xff\xd8")
+    path.write_bytes(encoded[:2] + b"".join(segments) + encoded[2:])
 
 
 class TestFixity:
@@ -95,8 +109,99 @@ class TestExif:
         report = make_shared_copy(photo, out, SharingPolicy())
         shared = read_metadata(out)
         assert not shared.has_location and shared.capture_time is None
-        assert "all-exif" in report.removed
+        assert report.removed == ("all-embedded-metadata",)
+        assert report.retained == ("pixels-only",)
         # original untouched
+        assert read_metadata(photo).has_location
+
+    def test_strip_all_removes_xmp_iptc_comments_and_contact_strings(
+        self, make_jpeg: Callable[..., Path], tmp_path: Path
+    ) -> None:
+        photo = make_jpeg(with_location=True)
+        xmp_secret = b"GPSLatitude=38.5816 contact=tenant@example.test"
+        icc_secret = b"ICC_PROFILE\x00tenant-name=Synthetic Tenant"
+        iptc_secret = b"Photoshop 3.0\x00IPTC phone=+1-555-0100"
+        comment_secret = b"home-address=123-Synthetic-Street"
+        trailing_secret = b"trailing-contact=tenant@example.test"
+        _inject_after_soi(
+            photo,
+            _jpeg_segment(0xE1, b"http://ns.adobe.com/xap/1.0/\x00" + xmp_secret),
+            _jpeg_segment(0xE2, icc_secret),
+            _jpeg_segment(0xED, iptc_secret),
+            _jpeg_segment(0xFE, comment_secret),
+        )
+        photo.write_bytes(photo.read_bytes() + trailing_secret)
+
+        out = tmp_path / "shared.jpg"
+        report = make_shared_copy(photo, out, SharingPolicy())
+
+        exported = out.read_bytes()
+        assert xmp_secret not in exported
+        assert icc_secret not in exported
+        assert iptc_secret not in exported
+        assert comment_secret not in exported
+        assert trailing_secret not in exported
+        assert b"Exif\x00\x00" not in exported
+        assert "all-embedded-metadata" in report.removed
+        assert report.retained == ("pixels-only",)
+        with Image.open(out) as clean:
+            assert clean.info == {}
+
+    def test_strip_all_applies_exif_orientation_before_removing_it(self, tmp_path: Path) -> None:
+        photo = tmp_path / "rotated.jpg"
+        image = Image.new("RGB", (8, 4))
+        image.paste((240, 20, 20), (0, 0, 4, 4))
+        image.paste((20, 20, 240), (4, 0, 8, 4))
+        exif = {piexif.ImageIFD.Orientation: 6}
+        image.save(photo, "JPEG", quality=95, exif=piexif.dump({"0th": exif}))
+        with Image.open(photo) as source:
+            expected_size = ImageOps.exif_transpose(source).size
+
+        out = tmp_path / "shared.jpg"
+        make_shared_copy(photo, out, SharingPolicy())
+
+        with Image.open(out) as exported:
+            assert exported.size == expected_size == (4, 8)
+            assert exported.getexif().get(piexif.ImageIFD.Orientation) is None
+            top = exported.getpixel((2, 1))
+            bottom = exported.getpixel((2, 6))
+            assert isinstance(top, tuple)
+            assert isinstance(bottom, tuple)
+            assert top[0] > top[2]
+            assert bottom[2] > bottom[0]
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            b"not-a-jpeg",
+            b"\xff\xd8\xff\xe1",
+            b"\xff\xd8\xff\xe1\x00\x10truncated-private-data",
+            b"\xff\xd8\xff\xd9",
+        ],
+        ids=["wrong-header", "truncated-length", "truncated-segment", "no-image-data"],
+    )
+    def test_strip_all_rejects_malformed_jpeg_without_leaving_output(
+        self, tmp_path: Path, payload: bytes
+    ) -> None:
+        photo = tmp_path / "malformed.jpg"
+        photo.write_bytes(payload)
+        out = tmp_path / "shared.jpg"
+
+        with pytest.raises(CaptureError, match="cannot safely strip metadata"):
+            make_shared_copy(photo, out, SharingPolicy())
+
+        assert not out.exists()
+
+    def test_strip_all_never_replaces_the_sealed_original(
+        self, make_jpeg: Callable[..., Path]
+    ) -> None:
+        photo = make_jpeg(with_location=True)
+        original = photo.read_bytes()
+
+        with pytest.raises(CaptureError, match="must be different files"):
+            make_shared_copy(photo, photo, SharingPolicy())
+
+        assert photo.read_bytes() == original
         assert read_metadata(photo).has_location
 
     def test_strip_location_only(self, make_jpeg: Callable[..., Path], tmp_path: Path) -> None:

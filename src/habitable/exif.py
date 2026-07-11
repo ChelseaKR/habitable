@@ -9,20 +9,26 @@ exported copy* strips location (and, by default, all metadata). This module make
 both behaviours explicit and reports exactly what each output retains or removes —
 no silent disclosure, no silent loss.
 
-Scope: still images (JPEG/TIFF via piexif; other raster formats via Pillow).
-Video/audio metadata stripping lives in :mod:`habitable.media` instead (a
-different toolchain -- ffmpeg -- and a different optional-dependency story, see
-EXP-07); :func:`make_shared_copy` refuses files it cannot safely sanitize.
+Scope: still images. Full JPEG sanitization rebuilds decoded, correctly oriented
+pixels through Pillow and removes every APP/COM segment; location-only JPEG and
+TIFF EXIF editing uses piexif; other raster formats use Pillow. Video/audio
+metadata stripping lives in :mod:`habitable.media` instead (a different
+toolchain -- ffmpeg -- and a different optional-dependency story, see EXP-07);
+:func:`make_shared_copy` refuses files it cannot safely sanitize.
 """
 
 from __future__ import annotations
 
+import io
+import os
 import shutil
+import tempfile
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import piexif
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from .config import SharingPolicy
 from .errors import CaptureError
@@ -35,13 +41,24 @@ __all__ = [
 ]
 
 _JPEG_SUFFIXES = {".jpg", ".jpeg"}
+_JPEG_METADATA_MARKERS = frozenset({*range(0xE0, 0xF0), 0xFE})
+_JPEG_STANDALONE_MARKERS = frozenset({0x01, *range(0xD0, 0xD8)})
 
 # A named tuple of the errors a corrupt/unreadable image raises. Referenced by name
 # (not an inline `except (...)`) so the formatter cannot rewrite it to the
 # parenthesis-free PEP 758 form, which is a SyntaxError on Python < 3.14 — this file
 # is part of the Apache-2.0 verifier subset, kept portable for embedders. See
 # docs/embedding-the-verifier.md.
-_IMAGE_READ_ERRORS = (UnidentifiedImageError, OSError, ValueError)
+_IMAGE_READ_ERRORS = (
+    UnidentifiedImageError,
+    OSError,
+    ValueError,
+    TypeError,
+    EOFError,
+    SyntaxError,
+    Image.DecompressionBombError,
+    Image.DecompressionBombWarning,
+)
 _TIFF_SUFFIXES = {".tif", ".tiff"}
 
 
@@ -96,19 +113,20 @@ def make_shared_copy(source: Path, destination: Path, policy: SharingPolicy) -> 
     return _strip_with_pillow(source, destination, policy, meta)
 
 
-# --- JPEG (piexif keeps the image bytes intact, only edits the metadata) -------
+# --- JPEG ---------------------------------------------------------------------
 
 
 def _strip_jpeg(
     source: Path, destination: Path, policy: SharingPolicy, meta: MediaMetadata
 ) -> StripReport:
-    shutil.copy2(source, destination)
     removed: list[str] = []
     retained: list[str] = []
     if policy.strip_all_metadata:
-        piexif.remove(str(destination))
-        removed.append("all-exif")
+        _strip_all_jpeg_metadata(source, destination)
+        removed.append("all-embedded-metadata")
+        retained.append("pixels-only")
     else:
+        shutil.copy2(source, destination)
         try:
             exif_dict = piexif.load(str(destination))
         except Exception as exc:  # piexif raises bare exceptions on odd inputs
@@ -126,6 +144,162 @@ def _strip_jpeg(
         removed=tuple(removed),
         retained=tuple(retained),
     )
+
+
+def _strip_all_jpeg_metadata(source: Path, destination: Path) -> None:
+    """Decode, orient, and re-encode a JPEG without carrying source metadata.
+
+    Removing only the EXIF APP1 segment is not sufficient: JPEGs can also carry
+    XMP, IPTC/Photoshop, ICC, comments, thumbnails, and vendor-specific payloads
+    in other APP/COM segments.  Rebuilding an image from decoded pixels prevents
+    Pillow from copying any of those source fields.  The second pass removes the
+    encoder's own application segments too, so the postcondition is a JPEG made
+    only of image-coding segments and scan data.
+
+    EXIF orientation is applied to the pixels before it is discarded.  The write
+    is staged and atomically published only after the sanitized bytes decode, so
+    malformed inputs cannot leave an unsanitized or partial new destination.
+    """
+    if source.resolve() == destination.resolve() or (
+        destination.exists() and source.samefile(destination)
+    ):
+        raise CaptureError("source and shared-copy destination must be different files")
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(source) as image:
+                if image.format != "JPEG":
+                    raise ValueError("file extension says JPEG but decoded format is not JPEG")
+                image.load()
+                ImageOps.exif_transpose(image, in_place=True)
+                oriented: Image.Image = image
+                if oriented.mode not in {"L", "RGB"}:
+                    oriented = oriented.convert("RGB")
+                clean = Image.new(oriented.mode, oriented.size)
+                clean.paste(oriented)
+                expected_size = clean.size
+                encoded = io.BytesIO()
+                clean.save(encoded, format="JPEG", quality=95, subsampling=0)
+
+        sanitized = _remove_jpeg_application_segments(encoded.getvalue())
+        with Image.open(io.BytesIO(sanitized)) as check:
+            if check.format != "JPEG" or check.size != expected_size or check.info:
+                raise ValueError("sanitized JPEG failed its metadata-free postcondition")
+            check.load()
+    except _IMAGE_READ_ERRORS as exc:
+        raise CaptureError(
+            f"refusing to share {source.name}: cannot safely strip metadata from JPEG ({exc})"
+        ) from exc
+
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=destination.parent,
+            prefix=f".{destination.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            handle.write(sanitized)
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.replace(destination)
+        temporary = None
+    except OSError as exc:
+        raise CaptureError(f"could not write sanitized copy of {source.name}: {exc}") from exc
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _remove_jpeg_application_segments(encoded: bytes) -> bytes:
+    """Return a JPEG without APP0..APP15 or COM segments, or reject it.
+
+    The parser understands multiple scans, byte-stuffed entropy data, restart
+    markers, and metadata between progressive scans.  It is intentionally strict:
+    malformed lengths, missing EOI, or trailing bytes fail instead of producing a
+    file whose privacy properties are uncertain.
+    """
+    if not encoded.startswith(b"\xff\xd8"):
+        raise ValueError("missing JPEG start-of-image marker")
+
+    output = bytearray(encoded[:2])
+    position = 2
+    in_scan = False
+    while position < len(encoded):
+        if in_scan:
+            position = _copy_jpeg_scan_data(encoded, position, output)
+            in_scan = False
+
+        marker, marker_bytes, position = _read_jpeg_marker(encoded, position)
+
+        if marker == 0xD9:  # EOI
+            output.extend(marker_bytes)
+            if position != len(encoded):
+                raise ValueError("JPEG has trailing data after end-of-image")
+            return bytes(output)
+        if marker in _JPEG_STANDALONE_MARKERS:
+            output.extend(marker_bytes)
+            continue
+        if marker in {0x00, 0xD8}:
+            raise ValueError("invalid standalone JPEG marker")
+        segment_end = _jpeg_segment_end(encoded, position)
+
+        if marker not in _JPEG_METADATA_MARKERS:
+            output.extend(marker_bytes)
+            output.extend(encoded[position:segment_end])
+        position = segment_end
+        if marker == 0xDA:  # SOS
+            in_scan = True
+
+    raise ValueError("JPEG has no end-of-image marker")
+
+
+def _copy_jpeg_scan_data(encoded: bytes, position: int, output: bytearray) -> int:
+    """Copy entropy bytes through stuffing/restarts; return at the next real marker."""
+    while True:
+        marker_start = encoded.find(b"\xff", position)
+        if marker_start < 0:
+            raise ValueError("JPEG scan has no end marker")
+        output.extend(encoded[position:marker_start])
+        marker_code_at = marker_start + 1
+        while marker_code_at < len(encoded) and encoded[marker_code_at] == 0xFF:
+            marker_code_at += 1
+        if marker_code_at >= len(encoded):
+            raise ValueError("truncated JPEG marker in scan data")
+        marker = encoded[marker_code_at]
+        if marker != 0x00 and not 0xD0 <= marker <= 0xD7:
+            return marker_start
+        output.extend(encoded[marker_start : marker_code_at + 1])
+        position = marker_code_at + 1
+
+
+def _read_jpeg_marker(encoded: bytes, position: int) -> tuple[int, bytes, int]:
+    """Read one marker and return its code, original marker bytes, and next offset."""
+    if encoded[position] != 0xFF:
+        raise ValueError("expected JPEG marker")
+    marker_start = position
+    marker_code_at = marker_start + 1
+    while marker_code_at < len(encoded) and encoded[marker_code_at] == 0xFF:
+        marker_code_at += 1
+    if marker_code_at >= len(encoded):
+        raise ValueError("truncated JPEG marker")
+    marker = encoded[marker_code_at]
+    return marker, encoded[marker_start : marker_code_at + 1], marker_code_at + 1
+
+
+def _jpeg_segment_end(encoded: bytes, position: int) -> int:
+    """Validate one length-prefixed JPEG segment and return its exclusive end."""
+    if position + 2 > len(encoded):
+        raise ValueError("truncated JPEG segment length")
+    segment_length = int.from_bytes(encoded[position : position + 2], "big")
+    if segment_length < 2:
+        raise ValueError("invalid JPEG segment length")
+    segment_end = position + segment_length
+    if segment_end > len(encoded):
+        raise ValueError("truncated JPEG segment")
+    return segment_end
 
 
 # --- other raster formats (re-encode through Pillow drops embedded metadata) ---
