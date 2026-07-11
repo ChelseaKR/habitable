@@ -10,6 +10,12 @@ These are two different signatures: one over the build (always present since
 v0.2.0), one over the tag identity (new; existing v0.1.0/v0.2.0 tags predate it
 and are not signed).
 
+Repository ruleset `18815834` protects `v*` tags from update or deletion and
+requires signed tags. The reviewable export is
+`.github/rulesets/release-tags.json`. This protects tag identity, but it does not
+replace the workflow's independent signature, version, ancestry, and exact-commit
+checks.
+
 ## Cutting a release
 
 1. Ensure `main` is green: `make verify`, the `a11y` gate, and CodeQL all pass.
