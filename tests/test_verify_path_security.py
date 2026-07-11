@@ -14,7 +14,7 @@ from typing import cast
 import pytest
 
 import habitable.verify as verifier
-from habitable.canonical import JSONValue, canonical_json
+from habitable.canonical import JSONValue, canonical_json, sha256_bytes
 from habitable.capture import capture
 from habitable.errors import VerificationError
 from habitable.packet import _write_signature, build_packet
@@ -113,6 +113,52 @@ def test_signed_packet_rejects_absolute_poster_reference(
     assert any("poster frame reference must be one basename" in note for note in item.notes)
 
 
+@pytest.mark.parametrize(
+    ("poster_hash_from_media", "expected_note"),
+    [
+        (False, "poster frame does not match its recorded hash"),
+        (True, "no signed custody entry binds the poster frame to the original"),
+    ],
+)
+def test_signed_packet_checks_poster_hash_and_custody_binding(
+    poster_hash_from_media: bool,
+    expected_note: str,
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    vault, packet = _make_packet(make_vault, make_jpeg, local_tsa, tmp_path)
+    media = next((packet / "media").iterdir())
+    media_hash = sha256_bytes(media.read_bytes())
+    _rewrite_item(
+        vault,
+        packet,
+        {
+            "poster_name": media.name,
+            "poster_hash": media_hash if poster_hash_from_media else "0" * 64,
+        },
+        resign=True,
+    )
+
+    item = _only_item(packet, local_tsa)
+    assert not item.structurally_intact
+    assert expected_note in item.notes
+
+
+def test_signed_audio_without_transcript_or_poster_reports_accessibility_gap(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    vault, packet = _make_packet(make_vault, make_jpeg, local_tsa, tmp_path)
+    _rewrite_item(vault, packet, {"media_type": "audio/mpeg"}, resign=True)
+
+    item = _only_item(packet, local_tsa)
+    assert "no transcript or poster frame recorded for this item (accessibility gap)" in item.notes
+
+
 @pytest.mark.parametrize("capture_id", ["/etc/hosts", "../outside", r"nested\outside"])
 def test_signed_packet_rejects_unsafe_original_reference(
     capture_id: str,
@@ -163,6 +209,28 @@ def test_rejects_symlinked_designated_directory(
     assert any("directory must not be a symlink" in note for note in item.notes)
 
 
+@pytest.mark.parametrize("replacement", ["missing", "regular-file"])
+def test_rejects_missing_or_non_directory_media_directory(
+    replacement: str,
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    _, packet = _make_packet(make_vault, make_jpeg, local_tsa, tmp_path)
+    media_dir = packet / "media"
+    shutil.rmtree(media_dir)
+    if replacement == "regular-file":
+        media_dir.write_bytes(b"not a directory")
+
+    item = _only_item(packet, local_tsa)
+    assert not item.shared_media_ok
+    expected = "shared media directory missing"
+    if replacement == "regular-file":
+        expected = "shared media directory is not a regular directory"
+    assert expected in item.notes
+
+
 def test_rejects_packet_directory_symlink(
     make_vault: Callable[..., Vault],
     make_jpeg: Callable[..., Path],
@@ -175,6 +243,42 @@ def test_rejects_packet_directory_symlink(
 
     with pytest.raises(VerificationError, match="packet directory must not be a symlink"):
         verifier.verify_packet(alias, trusted_certs=[local_tsa.certificate])
+
+
+def test_control_file_reader_rejects_missing_and_non_directory_packet_roots(
+    tmp_path: Path,
+) -> None:
+    missing = tmp_path / "missing-packet"
+    with pytest.raises(VerificationError, match="packet directory could not be safely inspected"):
+        verifier.verify_packet(missing)
+
+    regular_file = tmp_path / "not-a-packet"
+    regular_file.write_bytes(b"not a directory")
+    with pytest.raises(VerificationError, match="packet path is not a directory"):
+        verifier.verify_packet(regular_file)
+
+
+def test_reference_hasher_rejects_unsafe_packet_roots(tmp_path: Path) -> None:
+    missing = tmp_path / "missing"
+    assert verifier._hash_packet_reference(missing, "media", "item.jpg", label="shared media") == (
+        None,
+        "packet directory could not be safely inspected",
+    )
+
+    regular_file = tmp_path / "regular-file"
+    regular_file.write_bytes(b"not a packet")
+    assert verifier._hash_packet_reference(
+        regular_file, "media", "item.jpg", label="shared media"
+    ) == (None, "packet path is not a directory")
+
+    packet = tmp_path / "packet"
+    packet.mkdir()
+    alias = tmp_path / "packet-alias"
+    alias.symlink_to(packet, target_is_directory=True)
+    assert verifier._hash_packet_reference(alias, "media", "item.jpg", label="shared media") == (
+        None,
+        "packet directory must not be a symlink",
+    )
 
 
 def test_rejects_symlinked_bundle_before_parsing(
