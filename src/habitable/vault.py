@@ -16,9 +16,12 @@ surfaces as an error rather than a quietly altered exhibit.
 
 from __future__ import annotations
 
+import errno
 import json
+import os
 import re
 import secrets
+import stat
 import tomllib
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -64,6 +67,15 @@ _PEER_HAVE = "peer_have.enc"
 # Pairing keys, exact allowlisted identities, replay ids, receipts, and imported
 # source-custody proofs. This is encrypted local policy state, never CRDT-merged.
 _SYNC_SECURITY = "sync_security.enc"
+_SAVE_BLOBS = (_CASE, _CUSTODY, _DEFERRED, _PEER_HAVE, _SYNC_SECURITY)
+_SAVE_JOURNAL = ".save-transaction.json"
+_MAX_SAVE_JOURNAL_BYTES = 4096
+_SAVE_TRANSACTION_ID = re.compile(r"^[0-9a-f]{32}$")
+_SAVE_ARTIFACT = re.compile(
+    rf"^\.save-[0-9a-f]{{32}}-(?:{'|'.join(re.escape(name) for name in _SAVE_BLOBS)})"
+    r"\.(?:new|old)$"
+)
+_ATOMIC_TEMP = re.compile(r"^\.save-atomic-[0-9a-f]{32}\.tmp$")
 
 # Pre-FIX-01 vaults wrote the device node_id into plaintext config.toml; this
 # matches that line so a legacy vault can be migrated (the value moves into the
@@ -103,6 +115,15 @@ class StorageFootprint:
     metadata_bytes: int
     total_bytes: int
     per_capture: tuple[CaptureSize, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _SaveTransaction:
+    """Non-secret recovery metadata for one multi-blob vault save."""
+
+    transaction_id: str
+    phase: str
+    existing: frozenset[str]
 
 
 def human_bytes(count: int) -> str:
@@ -203,6 +224,7 @@ class Vault:
         keyfile_path = path / _KEYFILE
         if not keyfile_path.exists():
             raise VaultError(f"no vault at {path}")
+        _recover_interrupted_save(path)
         config = Config.from_toml(path / _CONFIG)
         dek = open_keyfile(keyfile_path.read_text(encoding="utf-8"), passphrase)
 
@@ -475,25 +497,35 @@ class Vault:
         (path / _KEYFILE).write_text(export_recovery_blob(dek, new_passphrase), encoding="utf-8")
 
     def save(self) -> None:
-        """Persist document, custody, deferred work, inventory, and sync trust state."""
-        self._write_blob(_CASE, canonical_json(self.document.to_state()))
-        self._write_blob(
-            _CUSTODY, canonical_json(_records_to_json(self.custody.to_vault_records()))
-        )
+        """Persist all mutable state as one recoverable multi-file transaction.
+
+        The encrypted file format and names stay unchanged. New ciphertext and encrypted
+        backups are flushed in this directory before a non-secret prepared journal is
+        published. An interrupted prepared transaction rolls back on the next save/open;
+        a committed transaction only needs its temporary artifacts removed.
+        """
         deferred_json: JSONValue = [
             {"capture_id": item.capture_id, "digest": item.digest} for item in self._deferred
         ]
-        self._write_blob(_DEFERRED, canonical_json(deferred_json))
         peer_have_json: JSONValue = {
             fingerprint: cast(JSONValue, sorted(capture_ids))
             for fingerprint, capture_ids in self._peer_have.items()
         }
-        self._write_blob(_PEER_HAVE, canonical_json(peer_have_json))
-
         sync_security_json: JSONValue = {
             fingerprint: peer.to_json() for fingerprint, peer in sorted(self._sync_peers.items())
         }
-        self._write_blob(_SYNC_SECURITY, canonical_json(sync_security_json))
+        plaintexts = (
+            (_CASE, canonical_json(self.document.to_state())),
+            (_CUSTODY, canonical_json(_records_to_json(self.custody.to_vault_records()))),
+            (_DEFERRED, canonical_json(deferred_json)),
+            (_PEER_HAVE, canonical_json(peer_have_json)),
+            (_SYNC_SECURITY, canonical_json(sync_security_json)),
+        )
+        encrypted = tuple(
+            (name, self._dek.encrypt(plaintext, aad=name.encode()))
+            for name, plaintext in plaintexts
+        )
+        _transactionally_replace_save_blobs(self.path, encrypted)
 
     # --- authenticated sync peers --------------------------------------------
 
@@ -769,7 +801,322 @@ class Vault:
     # --- internals ------------------------------------------------------------
 
     def _write_blob(self, name: str, plaintext: bytes) -> None:
-        (self.path / name).write_bytes(self._dek.encrypt(plaintext, aad=name.encode()))
+        _atomic_replace_file(
+            self.path / name,
+            self._dek.encrypt(plaintext, aad=name.encode()),
+        )
+
+
+def _transactionally_replace_save_blobs(path: Path, encrypted: Sequence[tuple[str, bytes]]) -> None:
+    """Publish one coherent generation of normal mutable vault state."""
+    if tuple(name for name, _ciphertext in encrypted) != _SAVE_BLOBS:
+        raise VaultError("internal error: incomplete vault save transaction")
+    _recover_interrupted_save(path)
+    transaction = _stage_save_transaction(path, encrypted)
+    try:
+        for name in _SAVE_BLOBS:
+            staged = _save_artifact(path, transaction.transaction_id, name, "new")
+            if not _is_regular_entry(staged):
+                raise VaultError(f"staged vault file missing: {name}")
+            _replace_path(staged, path / name)
+        _fsync_directory(path)
+        committed = _SaveTransaction(
+            transaction.transaction_id,
+            "committed",
+            transaction.existing,
+        )
+        _write_save_journal(path, committed)
+        _cleanup_save_transaction(path, committed)
+    except BaseException:
+        try:
+            _recover_interrupted_save(path)
+        except BaseException as recovery_error:
+            raise VaultError(
+                "vault save failed and automatic recovery could not complete"
+            ) from recovery_error
+        raise
+
+
+def _stage_save_transaction(path: Path, encrypted: Sequence[tuple[str, bytes]]) -> _SaveTransaction:
+    transaction_id = secrets.token_hex(16)
+    existing = frozenset(name for name in _SAVE_BLOBS if _path_entry_exists(path / name))
+    transaction = _SaveTransaction(transaction_id, "prepared", existing)
+    try:
+        for name, ciphertext in encrypted:
+            staged = _save_artifact(path, transaction_id, name, "new")
+            _write_new_file_and_fsync(staged, ciphertext)
+            if name in existing:
+                backup = _save_artifact(path, transaction_id, name, "old")
+                _copy_regular_file_and_fsync(path / name, backup)
+        _fsync_directory(path)
+        _write_save_journal(path, transaction)
+    except BaseException:
+        try:
+            if _path_entry_exists(path / _SAVE_JOURNAL):
+                _recover_interrupted_save(path)
+            else:
+                _discard_save_artifacts(path, transaction)
+        except BaseException as cleanup_error:
+            raise VaultError("could not clean up an unprepared vault save") from cleanup_error
+        raise
+    return transaction
+
+
+def _recover_interrupted_save(path: Path) -> None:
+    """Roll back a prepared save or finish cleanup for a committed save."""
+    journal = path / _SAVE_JOURNAL
+    if not _path_entry_exists(journal):
+        _remove_orphan_save_artifacts(path)
+        return
+    transaction = _read_save_journal(journal)
+    try:
+        if transaction.phase == "prepared":
+            for name in _SAVE_BLOBS:
+                live = path / name
+                if name in transaction.existing:
+                    backup = _save_artifact(path, transaction.transaction_id, name, "old")
+                    if not _path_entry_exists(backup):
+                        raise VaultError(f"vault save backup missing: {name}")
+                    _atomic_restore_regular_file(live, backup)
+                else:
+                    live.unlink(missing_ok=True)
+            _fsync_directory(path)
+            _finalize_prepared_rollback(path, transaction)
+        else:
+            missing = [name for name in _SAVE_BLOBS if not _is_regular_entry(path / name)]
+            if missing:
+                raise VaultError(
+                    "committed vault save is missing state file(s): " + ", ".join(missing)
+                )
+            _cleanup_save_transaction(path, transaction)
+    except VaultError:
+        raise
+    except OSError as exc:
+        raise VaultError(f"could not recover interrupted vault save: {exc}") from exc
+
+
+def _write_save_journal(path: Path, transaction: _SaveTransaction) -> None:
+    payload: JSONValue = {
+        "version": 1,
+        "transaction_id": transaction.transaction_id,
+        "phase": transaction.phase,
+        "existing": cast(JSONValue, sorted(transaction.existing)),
+    }
+    _atomic_replace_file(path / _SAVE_JOURNAL, canonical_json(payload))
+
+
+def _read_save_journal(path: Path) -> _SaveTransaction:
+    try:
+        record = json.loads(_read_bounded_regular_file(path, _MAX_SAVE_JOURNAL_BYTES))
+    except VaultError:
+        raise
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise VaultError("interrupted vault save journal is unreadable") from exc
+    if not isinstance(record, dict) or record.get("version") != 1:
+        raise VaultError("interrupted vault save journal has an unsupported format")
+    transaction_id = record.get("transaction_id")
+    phase = record.get("phase")
+    existing_raw = record.get("existing")
+    if not isinstance(transaction_id, str) or not _SAVE_TRANSACTION_ID.fullmatch(transaction_id):
+        raise VaultError("interrupted vault save journal has an invalid transaction id")
+    if phase not in {"prepared", "committed"}:
+        raise VaultError("interrupted vault save journal has an invalid phase")
+    if not isinstance(existing_raw, list) or not all(
+        isinstance(name, str) for name in existing_raw
+    ):
+        raise VaultError("interrupted vault save journal has an invalid file inventory")
+    existing = frozenset(existing_raw)
+    if len(existing) != len(existing_raw) or not existing.issubset(_SAVE_BLOBS):
+        raise VaultError("interrupted vault save journal has an invalid file inventory")
+    return _SaveTransaction(transaction_id, phase, existing)
+
+
+def _cleanup_save_transaction(path: Path, transaction: _SaveTransaction) -> None:
+    """Finish committed cleanup, with the committed journal removed last."""
+    _discard_save_artifacts(path, transaction)
+    (path / _SAVE_JOURNAL).unlink(missing_ok=True)
+    _fsync_directory(path)
+
+
+def _finalize_prepared_rollback(path: Path, transaction: _SaveTransaction) -> None:
+    """Commit the restored old generation before its backup copies are removed.
+
+    If cleanup is interrupted after the prepared marker is durably absent, the next
+    open sees only harmless orphan copies and can remove them without another rollback.
+    """
+    (path / _SAVE_JOURNAL).unlink()
+    _fsync_directory(path)
+    _discard_save_artifacts(path, transaction)
+
+
+def _discard_save_artifacts(path: Path, transaction: _SaveTransaction) -> None:
+    for name in _SAVE_BLOBS:
+        _save_artifact(path, transaction.transaction_id, name, "new").unlink(missing_ok=True)
+        _save_artifact(path, transaction.transaction_id, name, "old").unlink(missing_ok=True)
+    for entry in path.iterdir():
+        if _ATOMIC_TEMP.fullmatch(entry.name):
+            entry.unlink(missing_ok=True)
+    _fsync_directory(path)
+
+
+def _remove_orphan_save_artifacts(path: Path) -> None:
+    if not path.is_dir():
+        return
+    removed = False
+    for entry in path.iterdir():
+        if _SAVE_ARTIFACT.fullmatch(entry.name) or _ATOMIC_TEMP.fullmatch(entry.name):
+            entry.unlink(missing_ok=True)
+            removed = True
+    if removed:
+        _fsync_directory(path)
+
+
+def _save_artifact(path: Path, transaction_id: str, name: str, suffix: str) -> Path:
+    return path / f".save-{transaction_id}-{name}.{suffix}"
+
+
+def _path_entry_exists(path: Path) -> bool:
+    """Return true for any directory entry, including a broken symlink or FIFO."""
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def _is_regular_entry(path: Path) -> bool:
+    try:
+        return stat.S_ISREG(path.lstat().st_mode)
+    except OSError:
+        return False
+
+
+def _open_regular_readonly(path: Path) -> tuple[int, int]:
+    """Open a recovery input without following links or blocking on a FIFO."""
+    try:
+        before = path.lstat()
+    except OSError as exc:
+        raise VaultError(f"vault save recovery file is unavailable: {path.name}") from exc
+    if not stat.S_ISREG(before.st_mode):
+        raise VaultError(f"vault save recovery file must be regular: {path.name}")
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise VaultError(f"vault save recovery file cannot be opened: {path.name}") from exc
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode) or (
+            before.st_dev != opened.st_dev
+            or (before.st_ino and opened.st_ino and before.st_ino != opened.st_ino)
+        ):
+            raise VaultError(f"vault save recovery file changed while opening: {path.name}")
+    except BaseException:
+        os.close(descriptor)
+        raise
+    return descriptor, opened.st_size
+
+
+def _copy_regular_file_and_fsync(source: Path, destination: Path) -> None:
+    descriptor, expected_size = _open_regular_readonly(source)
+    try:
+        with os.fdopen(descriptor, "rb") as input_file:
+            descriptor = -1
+            with destination.open("xb") as output_file:
+                copied = 0
+                while chunk := input_file.read(1024 * 1024):
+                    written = output_file.write(chunk)
+                    if written != len(chunk):
+                        raise OSError(f"short write for {destination.name}")
+                    copied += written
+                if copied != expected_size:
+                    raise VaultError(f"vault save recovery file changed: {source.name}")
+                output_file.flush()
+                os.fsync(output_file.fileno())
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _atomic_restore_regular_file(destination: Path, backup: Path) -> None:
+    temporary = destination.with_name(f".save-atomic-{secrets.token_hex(16)}.tmp")
+    try:
+        _copy_regular_file_and_fsync(backup, temporary)
+        _replace_path(temporary, destination)
+        _fsync_directory(destination.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _read_bounded_regular_file(path: Path, max_bytes: int) -> bytes:
+    descriptor, size = _open_regular_readonly(path)
+    try:
+        if size > max_bytes:
+            raise VaultError(f"vault save recovery file is too large: {path.name}")
+        with os.fdopen(descriptor, "rb") as input_file:
+            descriptor = -1
+            data = input_file.read(max_bytes + 1)
+        if len(data) != size or len(data) > max_bytes:
+            raise VaultError(f"vault save recovery file changed while reading: {path.name}")
+        return data
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
+def _atomic_replace_file(path: Path, data: bytes) -> None:
+    """Flush a same-directory temporary file, replace ``path``, and sync its directory."""
+    temporary = path.with_name(f".save-atomic-{secrets.token_hex(16)}.tmp")
+    try:
+        _write_new_file_and_fsync(temporary, data)
+        _replace_path(temporary, path)
+        _fsync_directory(path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _write_new_file_and_fsync(path: Path, data: bytes) -> None:
+    with path.open("xb") as handle:
+        written = handle.write(data)
+        if written != len(data):
+            raise OSError(f"short write for {path.name}")
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def _replace_path(source: Path, destination: Path) -> None:
+    source.replace(destination)
+
+
+_UNSUPPORTED_DIRECTORY_FSYNC = {
+    errno.EACCES,
+    errno.EBADF,
+    errno.EINVAL,
+    errno.EPERM,
+    getattr(errno, "ENOTSUP", errno.EINVAL),
+    getattr(errno, "EOPNOTSUPP", errno.EINVAL),
+}
+
+
+def _fsync_directory(path: Path) -> bool:
+    """Sync directory entries when the host/filesystem exposes that operation."""
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        if os.name == "nt" or exc.errno in _UNSUPPORTED_DIRECTORY_FSYNC:
+            return False
+        raise
+    try:
+        try:
+            os.fsync(descriptor)
+        except OSError as exc:
+            if os.name == "nt" or exc.errno in _UNSUPPORTED_DIRECTORY_FSYNC:
+                return False
+            raise
+    finally:
+        os.close(descriptor)
+    return True
 
 
 def _read_blob(path: Path, dek: SymmetricKey, name: str) -> bytes:

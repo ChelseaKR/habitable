@@ -84,6 +84,41 @@ Every authentication failure (wrong passphrase, tampered keyfile, malformed base
 single `CryptoError` — "decryption failed (wrong key or tampered data)" — never a bare library
 exception and never a distinguishable oracle beyond pass/fail.
 
+### Normal save transaction and crash recovery
+
+`Vault.save` preserves the existing encrypted filenames and AEAD associated data, but publishes its
+five mutable state blobs (`case.enc`, `custody.enc`, `deferred.enc`, `peer_have.enc`, and
+`sync_security.enc`) as one recoverable generation:
+
+1. Encrypt every new blob in memory. Write each ciphertext and an exact encrypted backup of every
+   existing live blob to uniquely named siblings in the vault directory; flush and `fsync` each
+   staged file.
+2. Atomically publish a small `.save-transaction.json` marker in the **prepared** phase. It contains
+   only a random transaction id, the phase, and encrypted-state filenames—no case content, keys,
+   identities, or record values.
+3. Replace the five live blobs with same-directory renames, then sync the vault directory where the
+   host/filesystem supports directory `fsync`.
+4. Atomically change the marker to **committed**, then remove the encrypted backups, unused staged
+   files, and marker (the marker is removed last).
+
+`Vault.open` and the next `Vault.save` recover before reading or writing state. A prepared marker
+restores every old ciphertext (or removes a newly created blob); a committed marker keeps the full
+new generation and finishes cleanup. Recovery is repeatable if the recovery process itself is
+interrupted: after restoring and syncing the old generation, prepared recovery removes and syncs
+the journal **before** deleting backup copies, so a later open can safely discard any remaining
+orphans. The journal is limited to 4 KiB and must be a regular file; recovery does not follow a
+journal or encrypted-backup symlink, does not read from a FIFO, and streams backup restoration
+instead of loading an unbounded artifact into memory. The vault format is unchanged, so vaults
+created before this protocol still open and keep the same blob names.
+
+This is a transaction for **normal mutable-state saves**, not a claim that every filesystem write in
+the project is transactional. Keyfile changes, timestamp sidecars, sealed-original creation, legacy
+migrations, and DEK rotation retain their separately documented write/recovery boundaries. The
+strongest crash guarantee assumes a local filesystem that honors same-directory atomic replacement
+and file/directory `fsync`. Directory syncing is best-effort on platforms that do not expose it;
+network/exotic filesystems, lying storage hardware, media failure, and concurrent processes writing
+the same vault can still violate durability or isolation.
+
 ### 3.1 Key lifecycle (R-38, FIX-08)
 
 - **Rotation** (`habitable key rotate`): re-derive a KEK from the *new* passphrase over a *fresh*

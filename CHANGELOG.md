@@ -119,6 +119,16 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   path without following symlinks. This is cleanup, not secure erasure: decoded bytes still exist
   in process memory and briefly in OS temporary storage, and crash remnants, swap, snapshots, or
   storage forensics remain endpoint risks.
+- **Normal vault state saves are recoverable transactions instead of direct sequential
+  overwrites.** The five mutable encrypted blobs are now staged with flushed encrypted backups,
+  published by same-directory replacement behind prepared/committed recovery metadata, and cleaned
+  only after the new generation is durable to the extent the host filesystem supports. Injected
+  partial writes and real child-process deaths—including a second death during rollback
+  finalization—prove that the next open either restores the complete old generation or keeps the
+  complete committed one. Recovery bounds and validates the journal as a regular file and rejects
+  symlink/FIFO backup inputs. Existing vault filenames and encryption format are unchanged. This
+  does not make key rotation, token sidecars, sealed-original creation, network filesystems,
+  unsupported directory `fsync`, or concurrent writers transactional.
 - **Scoped packet and organizer-share exports now fail closed instead of leaking the
   complete source custody chain.** Packet v3 issue/date selectors and sync v2 issue
   subsets previously filtered visible records while still serializing custody entries
