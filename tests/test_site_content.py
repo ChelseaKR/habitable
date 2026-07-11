@@ -31,6 +31,11 @@ _PAGE_META = {
         "Preserve maintenance request records, attachments, confirmations, replies, status "
         "history, and exported copies before a phone or portal changes.",
     ),
+    "guides/housing-inspection-records": (
+        "Housing Inspection Records Guide | Habitable Evidence",
+        "Learn which housing complaint, inspection, violation, reinspection, and closure "
+        "records to preserve—and what official portal status cannot prove.",
+    ),
     "tenant-unions": (
         "Tenant Union Evaluation Guide | Habitable Evidence",
         "A bounded, synthetic-data evaluation plan for tenant unions reviewing Habitable Evidence "
@@ -367,3 +372,46 @@ def test_maintenance_request_guide_has_three_contextual_inbound_paths() -> None:
             if (resolved := _resolve_local(source, href)) is not None
         }
         assert target in linked_targets, f"missing contextual link from {source.relative_to(_SITE)}"
+
+
+def test_inspection_records_guide_preserves_source_and_status_boundaries() -> None:
+    slug = "guides/housing-inspection-records"
+    page = _SITE / slug / "index.html"
+    parser = _parse(page)
+    visible = re.sub(r"\s+", " ", " ".join(parser.visible_parts)).casefold()
+
+    assert visible.count("reviewed 10 july 2026") >= 3
+    assert "california · statewide" in visible
+    assert "new york city · citywide" in visible
+    assert "complaint or service-request id" in visible
+    assert "inspection report" in visible
+    assert "citation" in visible
+    assert "correspondence" in visible
+    assert "reinspection" in visible
+    assert "closure" in visible
+    assert "does not prove current physical conditions, legal compliance, receipt" in visible
+    assert "or completion of a remedy" in visible
+
+    official_sources = {
+        "https://www.nyc.gov/site/hpd/about/hpd-online.page?no_journeys=true",
+        "https://www.nyc.gov/site/hpd/services-and-information/report-a-maintenance-issue.page",
+        "https://leginfo.legislature.ca.gov/faces/codes_displayText.xhtml?article=2."
+        "&chapter=5.&division=13.&lawCode=HSC&part=1.5.&title=",
+    }
+    assert official_sources <= set(parser.anchors)
+
+    inbound_sources = {
+        _SITE / "index.html",
+        _SITE / "how-it-works" / "index.html",
+        _SITE / "documentation-checklist" / "index.html",
+        _SITE / "inspectors-code-enforcement" / "index.html",
+        _SITE / "legal-aid-reviewers" / "index.html",
+    }
+    expected_target = page.resolve()
+    for source in inbound_sources:
+        local_targets = {
+            target
+            for href in _parse(source).anchors
+            if (target := _resolve_local(source, href)) is not None
+        }
+        assert expected_target in local_targets, f"missing contextual link from {source}"
