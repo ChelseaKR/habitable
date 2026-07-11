@@ -46,6 +46,7 @@ from .disclosure import (
     packet_trust_text,
     proof_statement,
     scope_statement,
+    shared_metadata_may_be_retained,
 )
 from .letter import RepairLetter, letter_lines
 
@@ -168,6 +169,7 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
         lang,
         _bool(appendix, "includes_originals"),
         styles,
+        metadata_may_be_retained=shared_metadata_may_be_retained(_list(bundle, "disclosures")),
         awaiting=awaiting,
         total=item_count,
     )
@@ -235,13 +237,17 @@ def _render_disclosures(
     includes_originals: bool,
     styles: Any,
     *,
+    metadata_may_be_retained: bool = False,
     awaiting: int = 0,
     total: int = 0,
 ) -> None:
-    """Append the localized 'what this packet discloses' (location handling) block."""
+    """Append the localized 'what this packet discloses' block."""
     stmt = proof_statement(lang)
     story.append(_para(stmt.privacy_heading, styles["Heading3"]))
-    story.append(_para(f"- {stmt.privacy_stripped}", styles["Small"]))
+    metadata_note = (
+        stmt.privacy_metadata_warning if metadata_may_be_retained else stmt.privacy_stripped
+    )
+    story.append(_para(f"- {metadata_note}", styles["Small"]))
     if includes_originals:
         story.append(_para(f"- {stmt.privacy_originals_warning}", styles["Small"]))
     if awaiting > 0:

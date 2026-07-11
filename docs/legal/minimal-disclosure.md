@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-# Minimal-disclosure export scoping (item R-35)
+# Whole-unit packet disclosure boundary (item R-35)
 
 > **This is not legal advice.** This is **educational background** on what a habitable evidence
 > packet contains and, just as importantly, what it deliberately leaves out — so an attorney or
@@ -23,39 +23,39 @@ belongs with counsel, not the tool.
 A currently supported packet is assembled for the **whole unit recorded in that case vault**. It
 carries:
 
-- **Shared, sanitized copies** of the media for the in-scope issue(s) — location (GPS) metadata
-  stripped from every shared copy, so the images do not reveal where the tenant lives.
+- **An item record for every capture** in the opened unit vault. Supported media travels as a
+  shared copy with embedded metadata stripped under the default policy; supported instrument data
+  is included verbatim and disclosed as such. The packet does not select captures by issue or date.
 - **The unit's timeline and issue records** — every issue, timeline entry, and capture in the
   case is included.
 - **The complete chain-of-custody proof** — exported in **identity-stripped** form
-  (a hash-linked integrity proof), not the identities of who did what, unless custody-identity
-  export is explicitly enabled.
+  (a hash-linked integrity proof), not the identities of who did what.
 - **Trusted timestamps** (RFC 3161 tokens) over the content hashes of the included items.
 - **Disclosures** — a short, plain-language, localized statement (in `packet.html` and
   `packet.pdf`, and machine-readably in `bundle.json`) of what the packet reveals and what it
   omits, including the scope statement described below.
 
-## What a packet does *not* contain
+## What the default packet omits or transforms
 
-By construction, a currently supported packet excludes:
+By default, a currently supported packet omits or transforms:
 
-- **Other tenants' or other members' matters.** Nothing outside the exported scope leaves the
-  case vault. Keep unrelated people or units in separate case vaults; a whole-unit export includes
-  every issue in the opened case.
-- **Custody identities**, unless custody-identity export is deliberately enabled. The default
-  custody proof is identity-stripped.
-- **Location metadata**, unless the sealed originals are deliberately embedded
-  (`include_originals`). Shared copies are location-stripped; embedding originals is a
-  higher-disclosure choice and is flagged in the disclosures when made.
-- **Clear custody identities and vault-only private custody details.** The complete public proof
-  still exposes its opaque item identifiers, actions, commitments, hashes, and ordering.
-
+- **Other case vaults.** Export reads only the opened case vault; it does not traverse another
+  tenant's or member's vault. Keep unrelated people or units in separate case vaults because a
+  whole-unit export includes every issue in the opened case.
+- **Custody identities and vault-only private custody details.** The public custody proof omits
+  actor, salt, and signatures while retaining opaque item identifiers, actions, commitments,
+  hashes, and ordering.
+- **Embedded metadata in shared media**, under the default strip-all policy. A nondefault policy can
+  retain metadata in supported still-image copies; the packet disclosure states that risk.
+- **Sealed originals**, unless deliberately embedded with `include_originals`. Originals preserve
+  their bytes and full metadata, including any location, so embedding them is a higher-disclosure
+  choice and is flagged in the packet.
 Each supported packet emits a machine-readable **`scope`** object stating that it covers the whole
 unit. The older issue/date field shapes remain documented so historical packets keep verifying;
 their presence in the schema is not a claim that new scoped exports are enabled. See
 [`../bundle-schema.md`](../bundle-schema.md) for the compatibility contract.
 
-## Why the export is designed to be minimal
+## What minimization remains inside the fixed whole-unit boundary
 
 - **Privacy of the protected user.** Shared-copy location stripping and optional withholding of
   originals reduce disclosure inside a whole-unit packet.
@@ -73,10 +73,11 @@ their presence in the schema is not a claim that new scoped exports are enabled.
 - **Seek a protective order where appropriate.** Discuss with co-counsel whether a protective
   order should govern any production and whether the currently available whole-unit artifact is
   appropriate at all.
-- **Remember whose call it is.** The tool makes the export minimal and self-documenting; the
-  **disclosure decision — what to produce, and on what terms — is a legal one** for the attorney
-  in the matter, under the rules of the relevant jurisdiction. habitable makes no admissibility
-  or discovery-scope guarantee.
+- **Remember whose call it is.** The tool makes its fixed whole-unit boundary and optional
+  original/metadata choices visible; it does not decide legal relevance. The **disclosure
+  decision — what to produce, and on what terms — is a legal one** for the attorney in the
+  matter, under the rules of the relevant jurisdiction. habitable makes no admissibility or
+  discovery-scope guarantee.
 
 ## Related material
 

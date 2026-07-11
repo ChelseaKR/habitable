@@ -624,7 +624,14 @@ def _cmd_capture(args: argparse.Namespace) -> int:
         )
         print(f"           {also}")
     if result.had_location:
-        print("           note: original retains location; shared copies will strip it")
+        sharing = vault.config.sharing
+        if sharing.strip_all_metadata:
+            note = "original retains location; default packet copies strip embedded metadata"
+        elif sharing.strip_location:
+            note = "packet still-image copies strip EXIF GPS; other metadata may remain"
+        else:
+            note = "configured packet-copy policy may retain location"
+        print(f"           note: {note}")
     return 0
 
 

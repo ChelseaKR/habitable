@@ -155,9 +155,10 @@ and a verifiable `bundle.json`.
    receive those per-item proofs. Export and verification surface missing timestamps or integrity
    failures instead of silently describing them as complete.
 4. **Originals are sealed; sharing is a deliberate, minimizing act.** The original media is preserved
-   byte-for-byte for integrity. Any shared or exported copy strips location by default, and the user
-   is shown exactly what a packet will disclose before it is produced. The tool never silently
-   publishes a home's coordinates.
+   byte-for-byte for integrity. Packet shared-media copies strip embedded metadata by default. The
+   signed packet records its metadata handling and whether byte-exact originals were embedded. A
+   nondefault packet policy, `--include-originals`, sync, or organizer sharing can carry original
+   metadata, including location.
 5. **Retaliation is the threat model.** Defaults assume an adversary with resources and motive:
    persistent case data in the vault is encrypted; path-based media tools still require a brief
    plaintext working copy in a restrictive OS temporary workspace outside the vault, and unlink is
@@ -204,7 +205,7 @@ habitable/
 ├── src/habitable/
 │   ├── capture.py                 # media intake → hash → RFC 3161 timestamp → seal original
 │   ├── evidence.py                # content hashing, fixity checks, chain-of-custody log
-│   ├── exif.py                    # explicit EXIF handling: seal original, strip shared copies
+│   ├── exif.py                    # explicit EXIF handling for policy-processed packet copies
 │   ├── model.py                   # CRDT document model for cases/issues/timeline (offline-first)
 │   ├── crypto.py                  # local encryption at rest; E2E sync keys; key backup/rotation
 │   ├── sync.py                    # peer-to-peer encrypted sync; relay client sees ciphertext only
@@ -253,9 +254,9 @@ when you say?" habitable is built so those answers are independently checkable r
   hash-linked log. A break or reordering in the chain is
   detectable, and the export reports it rather than presenting a compromised item as clean.
 - **EXIF handled on purpose.** The sealed original keeps its embedded capture time and any GPS,
-  because that metadata is part of the evidentiary record. Shared and exported copies strip location
-  by default so producing a packet does not leak where a tenant lives, and the tool shows precisely
-  which metadata each output retains or removes.
+  because that metadata is part of the evidentiary record. Packet shared-media copies strip embedded
+  metadata by default, and signed packet records state what was removed or retained. A nondefault
+  packet policy, embedded originals, sync, and organizer sharing can carry original metadata.
 - **Independently verifiable.** `habitable verify` re-derives shared-media hashes, validates each
   timestamp token's imprint/signature, and walks the custody chain using the packet alone. Passing
   `--trusted-cert` additionally requires the timestamp certificate to chain to a root the recipient
@@ -329,7 +330,8 @@ but their real-world ceremony has not been piloted. **Degradability** and **fail
 missing timestamp token or a broken chain is shown as a degraded evidence status, never silently passed
 as clean. **Redundancy** — multiple sync peers and configurable multiple timestamp authorities remove
 single points of failure. **Stability** and **durability** — sealed originals are immutable; semver on
-the packet format and verification protocol. **Safety** — location-stripped sharing reduces harm to the
+the packet format and verification protocol. **Safety** — default packet shared-media sanitization
+reduces harm to the
 tenant, and a duress-safe open state (planned, not yet implemented; with the limits set out in the hard
 rules and *Honest limits*) is intended to add to that; the tool frames outputs as documentation, never
 as legal advice or a promise of a court outcome.

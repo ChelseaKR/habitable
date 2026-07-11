@@ -37,6 +37,16 @@ def test_no_empty_translations() -> None:
             assert value.strip(), f"{path.name}: empty translation for {key!r}"
 
 
+def test_export_scope_copy_is_whole_unit_and_fail_closed_in_both_languages() -> None:
+    en, es = _load(_EN), _load(_ES)
+    assert "whole unit only" in en["field_issue_optional"].casefold()
+    assert "unidad completa" in es["field_issue_optional"].casefold()
+    assert "temporarily blocked" in en["export_scope_help"].casefold()
+    assert "bloqueadas temporalmente" in es["export_scope_help"].casefold()
+    assert "outside the selected issue" in en["export_scope_help"].casefold()
+    assert "fuera del problema seleccionado" in es["export_scope_help"].casefold()
+
+
 def test_awaiting_timestamp_copy_is_reassuring() -> None:
     """RR-01: the offline 'awaiting timestamp' state must read as already-safe, not a
     dead-end, and must say what to do next — in both languages."""

@@ -107,10 +107,11 @@ Cover, in plain language:
   vault behind a decoy state. Today the icon, local files, an unlocked session, or a coerced
   real passphrase can reveal the vault. A future limits-first design is gated on human red-team
   review; it provides no protection anyone can rely on now.
-- **What leaves the device, ever.** Only two optional things, and only if used: an encrypted
-  sync relay (sees scrambled data plus *who-connected-when* metadata, never contents) and a
-  timestamp authority (sees a one-way fingerprint of a file, never the file). Photos of
-  someone's home never go to a server. Location is stripped from anything shared.
+- **What leaves the device, ever.** An optional sync relay sees ciphertext plus
+  *who-connected-when* metadata, never plaintext; the sealed payload can include original media.
+  A timestamp authority sees a one-way file fingerprint, never the file. Packet shared-media
+  copies strip embedded metadata by default, but sync/organizer sharing and optional packet
+  originals retain original metadata, including possible location.
 - **Consent to share is separate from consent to document.** Capturing for yourself is one
   decision; handing a packet to a lawyer, a court, or the union is another. Nothing is shared
   automatically.

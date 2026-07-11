@@ -86,7 +86,7 @@ entries from the existing chain or present a truncated chain as complete.
 > fixity, but those originals retain their full metadata (including any GPS). That is
 > acceptable because the organizer is a recipient the tenant has chosen and verified — but
 > it is a real disclosure to that person. A future enhancement could offer "shared copies
-> only" (location-stripped, as in a court packet) for a lower-trust organizer relationship;
+> only" (metadata-stripped under the default court-packet policy) for a lower-trust organizer relationship;
 > see *For human review* below.
 
 ## Guarantees preserved

@@ -89,9 +89,9 @@ Evidence and case model:
   SHA-256 and refuses mismatches; `CustodyLog` is an **append-only, hash-linked** chain
   of custody where each entry commits to the previous entry's hash, so insertion,
   deletion, or reordering breaks the chain detectably. Each entry's hash binds a *salted
-  commitment* to the actor (not the actor in clear); the exported form drops actor, salt,
-  and signature, and `integrity_proof()` emits an identity-free, standalone-verifiable
-  proof. Entries may be Ed25519-signed by the device identity.
+  commitment* to the actor. Encrypted vault entries also hold the clear actor, salt, and
+  signature. The public packet form drops those three fields, retains the commitment, and
+  `integrity_proof()` emits a clear-identity-free, standalone-verifiable proof.
 - **`exif.py`** — explicit, on-purpose EXIF handling. Reads embedded metadata without
   modifying the original; `make_shared_copy` writes a sanitized copy (default: strip all
   metadata; or strip GPS only) and returns a `StripReport` of exactly what was removed
@@ -124,14 +124,16 @@ Storage and capture:
   cleans partial writes and downstream failures. It does not claim secure erasure.
 - **`config.py`** — versioned, committed policy as plain files: configured timestamp
   authorities (`TSAConfig`), the node id, and the sharing policy (`SharingPolicy`:
-  `strip_location`, `strip_all_metadata`, `export_custody_identities`). No secrets.
+  `strip_location`, `strip_all_metadata`, and the compatibility-only
+  `export_custody_identities`, whose `true` value packet export rejects). No secrets.
 
 Export and verification:
 
 - **`packet.py`** — assembles a court/inspector evidence packet: a deterministic, signed
-  `bundle.json`, location-stripped shared copies of the media, an optional set of embedded
-  sealed originals, and (via `pdf.py`) a paginated PDF. Records the privacy/verifiability
-  binding described below.
+  `bundle.json`, whole-unit records, shared copies processed under the configured metadata
+  policy, an optional set of embedded byte-exact originals, and (via `pdf.py`) a paginated
+  PDF. Public custody is always identity-stripped. Records the privacy/verifiability binding
+  described below.
 - **`pdf.py`** — renders the human-readable, paginated `packet.pdf` from the bundle
   (selectable text, document language/title set for assistive tech, every visual status
   also stated in words). The machine-checkable truth stays in `bundle.json`; this is the
@@ -207,31 +209,32 @@ Key points:
 
 ### The privacy / verifiability bridge
 
-There is a real tension: the sealed original keeps its location metadata (it is part of
-the evidentiary record), but a shared packet must never leak where a tenant lives.
-habitable resolves it without weakening verifiability:
+There is a real tension: the sealed original keeps its metadata (it is part of the
+evidentiary record), while a packet can expose that metadata if the operator changes the
+default sharing policy or embeds originals. Habitable keeps the transformation verifiable:
 
-1. The packet exports a **location-stripped shared copy** of each image. Because metadata
-   is removed, the shared copy's bytes differ from the original — so its hash (`shared_hash`)
-   is *not* the recorded `content_hash`.
+1. The packet exports a **policy-processed shared copy** of supported media. The default
+   removes embedded metadata; a nondefault still-image policy may retain some or all of it.
+   The shared copy has its own `shared_hash`, distinct from the original `content_hash`.
 2. To keep the shared copy provably tied to the evidence, packet assembly appends a signed
    **`copied_for_sharing`** custody entry whose details bind the original `content_hash` to
    the shared copy's `shared_hash`.
 3. The RFC 3161 token still covers the original `content_hash`, and the custody chain still
    threads through the timestamp.
 
-So a recipient can confirm the image they hold is the one that was timestamped — via the
-binding — **without** the packet ever disclosing the home's coordinates. (Passing
-`include_originals=True` additionally embeds the sealed originals for end-to-end fixity, a
-deliberate higher-disclosure choice.)
+So a recipient can confirm the copy they hold is bound to the timestamped original. The
+signed disclosures and item-level `stripped` fields state metadata handling. Passing
+`include_originals=True` embeds byte-exact originals with their full metadata; that and any
+retention policy are deliberate higher-disclosure choices.
 
 ### Export (`packet.build_packet`)
 
 ```
 require whole-unit scope (--issue / --since fail closed before staging)
+require identity-stripped public custody (export_custody_identities=true fails closed)
    for each capture:
      read sealed original (re-checks fixity)
-     write location-stripped shared copy → media/<id>.<ext>, hash it → shared_hash
+     write policy-processed shared copy → media/<id>.<ext>, hash it → shared_hash
      custody: COPIED_FOR_SHARING (signed)  {content_hash, shared_hash, stripped}
      [optional] embed sealed original → originals/<id>
      attach its timestamp token (if present)
@@ -323,7 +326,7 @@ habitable/
         ├── config.py            # versioned policy: authorities, node id, sharing policy
         ├── vault.py             # encrypted per-case vault (sealed originals, state, tokens)
         ├── capture.py           # capture pipeline: hash → seal → custody → timestamp
-        ├── packet.py            # signed, location-stripped packet bundle
+        ├── packet.py            # signed whole-unit packet with policy-processed shared copies
         ├── pdf.py               # accessible paginated packet PDF
         ├── verify.py            # standalone packet verifier (Apache-2.0 subset)
         ├── sync.py              # E2E-encrypted peer-to-peer CRDT sync + transports

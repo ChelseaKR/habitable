@@ -103,11 +103,9 @@ class CaptureSize:
 class StorageFootprint:
     """How much space a case occupies on the device, and why (item R-03).
 
-    A sealed original is kept twice by design: the encrypted original stays in
-    the vault forever, and a location-stripped *shared copy* of roughly the same
-    size is produced whenever the case is exported. Surfacing both — plus the
-    small metadata overhead — lets a tenant on a low-end device budget honestly
-    instead of being surprised by the doubling.
+    The default packet needs two media-sized copies: the encrypted original stays
+    in the vault and a policy-processed shared copy is exported. This estimate does
+    not include an optional byte-exact packet original added by ``--include-originals``.
     """
 
     sealed_originals_bytes: int
@@ -702,10 +700,9 @@ class Vault:
         Sealed originals live under ``originals/`` (one ``.enc`` per capture);
         everything else in the vault (encrypted state blobs, tokens, config, the
         keyfile) is counted as metadata. The *shared copies* line reports the
-        by-design doubling: each sealed original is copied again, at roughly the
-        same size, into any exported packet, so a with-originals export needs
-        about twice the sealed-originals space. Reporting it up front keeps the
-        footprint honest on low-end devices.
+        default-packet doubling: each sealed original is copied again, at roughly
+        the same size, as shared media. A packet built with ``--include-originals``
+        adds another byte-exact copy that this estimate does not count.
         """
         originals_dir = self.path / _ORIGINALS
         per_capture: list[CaptureSize] = []

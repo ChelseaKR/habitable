@@ -23,8 +23,9 @@ written to help you make an honest call, not to sell you anything. Read it along
 - **Tampering after the fact.** Each photo is fingerprinted and sealed the moment it's
   captured, and gets a trusted date-stamp once online. A packet's claims can be **checked
   independently** by the recipient — even by the opposing side — rather than taken on trust.
-- **Accidental location leaks.** A home's GPS location is stripped from anything shared by
-  default; the original stays sealed on the device.
+- **Accidental location leaks.** Packet shared-media copies strip embedded metadata by default.
+  Sync/organizer sharing and packet `--include-originals` carry sealed originals with their
+  metadata, so those higher-disclosure choices require separate review.
 - **Surveillance of your members.** No analytics, no telemetry, nothing phones home. The
   union holds its own keys and its own data; no outside party can read, revoke, or seize it.
 

@@ -14,14 +14,15 @@ Packet construction happens in a fresh sibling staging directory. The completed
 directory is renamed into place only after its bundle, signature, media, HTML, and
 optional PDF have all rendered successfully. Re-exporting to an existing path
 replaces the entire directory instead of writing into it, preventing stale media
-or sealed originals from a broader prior export from leaking into a narrower one.
+or sealed originals from a prior higher-disclosure whole-unit export from leaking
+into a later export that omits those optional artifacts.
 An ordinary publication failure restores the previous complete directory.
 
 ```
 4B-packet/
 ├── bundle.json            # the canonical, signed manifest (this document)
 ├── bundle.sig.json        # producer Ed25519 signature over bundle.json's bytes
-├── media/                 # location-stripped shared copies (referenced by items[].shared_name)
+├── media/                 # policy-processed shared copies (referenced by items[].shared_name)
 ├── originals/             # OPTIONAL sealed originals (present only with --include-originals)
 ├── packet.html            # accessible human-readable rendering (the conformant view)
 └── packet.pdf             # paginated print rendering (optional)
@@ -59,7 +60,7 @@ re-serialize `bundle.json` before checking the signature.
 | `timeline` | array | Versioned timeline events in the declared scope; currently the whole unit (see below). |
 | `items` | array | The media items — the evidentiary core (see below). |
 | `custody_proof` | object | Identity-stripped chain-of-custody proof (see below). |
-| `disclosures` | array | Human-readable notes of what the packet reveals (location stripped, custody identities not exported, originals embedded). Also rendered, localized, in `packet.html`/`packet.pdf`. |
+| `disclosures` | array | Human-readable notes of what the packet reveals (shared-copy metadata handling, custody identities not exported, originals embedded). Also rendered, localized, in `packet.html`/`packet.pdf`. |
 | `appendix` | object | `{item_count, timestamped_count, includes_originals, timeline_count, custody_bound_timeline_count}` in v3; the timeline counts are absent in older packets. `timestamped_count` means a token record is attached; it does not assert token validity or authority trust. |
 
 ### Opaque identifiers (packet_version ≥ 2)
@@ -91,7 +92,7 @@ named facts. It does **not** redefine the old fields. Every v3 event carries:
 | `recorded_at` | ISO UTC timestamp | Device time when the append-only entry was created. It is separate from `occurred_at` and is not independently trusted time. |
 | `source` | enum | `firsthand`, `message`, `document`, `official_record`, `other`; `unspecified` only on an explicit legacy migration. |
 | `source_detail` | string | Required only with `source: other`. |
-| `links` | object | `{capture_ids[], notice_entry_id, receipt_entry_id, response_entry_id}`. Event links point to the named reviewed event type. A capture deliberately omitted by export scope may remain referenced by opaque id. |
+| `links` | object | `{capture_ids[], notice_entry_id, receipt_entry_id, response_entry_id}`. Event links point to the named reviewed event type. Historical scoped packets may retain an opaque reference to a capture omitted from that old packet; current packet-v3 construction is whole-unit only. |
 | `order_token` | string | Opaque CRDT ordering token. It is not a date. |
 | `integrity` | object | `{algorithm: sha256, commitment, custody_action: note_added, binding_stage}`. The verifier recomputes the commitment over the semantic fields and requires a matching custody entry. |
 | `migration` | object | Present only for an old case entry. Its free-form kind becomes an `other_label`; unknown occurrence/source remain empty/`unspecified`; `binding_stage` is `migration`. |
@@ -110,7 +111,7 @@ at the original occurrence or recording time.
 | `content_hash` | hex SHA-256 | Of the **sealed original**. The RFC 3161 token is taken over this. |
 | `media_type` | string | MIME type, e.g. `image/jpeg`. |
 | `captured_at` | string | Capture time. |
-| `shared_name` | string | Filename under `media/` of the location-stripped copy; empty if none. |
+| `shared_name` | string | Filename under `media/` of the policy-processed shared copy; empty if none. |
 | `shared_hash` | hex SHA-256 \| "" | Of the shared copy; empty when no shared media. |
 | `stripped` | string | Which metadata was removed from the shared copy (`gps`, `none`, `skipped`, …). |
 | `has_original` | bool | Whether the sealed original is embedded under `originals/`. |
@@ -157,10 +158,10 @@ after an outer-only re-sign unless the custody proof is also rewritten. As with 
 local custody model, a compromised keyholder can rewrite a still-local whole history before a peer
 or external anchor has seen its head; the packet does not claim otherwise.
 
-The verifiability bridge: because a shared copy is metadata-stripped, its bytes differ from the
-original and cannot hash back to `content_hash`. A signed `copied_for_sharing` entry whose `details`
-carry `content_hash` + `shared_hash` binds the two; the verifier requires that binding for any item
-with shared media.
+The verifiability bridge: a policy-processed shared copy has its own `shared_hash`; when metadata is
+removed, its bytes differ from the original `content_hash`. A signed `copied_for_sharing` entry whose
+`details` carry both hashes binds the two; the verifier requires that binding for any item with
+shared media. The `stripped` field and signed disclosures state the applied metadata handling.
 
 ### `bundle.sig.json` (sibling file)
 

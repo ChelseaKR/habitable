@@ -153,7 +153,7 @@ The strongest story is not “our hashes are better.” It is:
 - **Build the case, not just the photo:** condition → notice → delivery → silence/response → inspection/repair → recurrence/impact → packet.
 - **Collective power without a central honeypot:** tenant and organizer collaborate while the union keeps control.
 - **Offline truth:** seal immediately and add a trusted time bound when connectivity returns.
-- **Retaliation-grade privacy:** no account, product analytics, or central plaintext; location-stripped sharing; explicit disclosure preview.
+- **Retaliation-aware privacy:** no account, product analytics, or central plaintext; default packet shared-media metadata stripping; signed disclosure of metadata/original choices.
 - **Verification that survives the project:** open bundle, standard cryptography, CLI/browser verifier, backward-compatible fixtures.
 
 ### Recommended public positioning

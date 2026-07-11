@@ -9,8 +9,8 @@
 
 habitable is an alpha, offline-first, end-to-end-encrypted tool intended to help tenants document
 habitability problems with tamper-evident media: photos with RFC 3161 timestamp tokens,
-SHA-256 fixity, a hash-linked chain of custody, a standalone verifier, and location-stripped
-shareable packets. It is a free and open-source ([AGPL-3.0](../../LICENSE); the verifier is
+SHA-256 fixity, a hash-linked chain of custody, a standalone verifier, and packets whose
+shared media is metadata-stripped by default. It is a free and open-source ([AGPL-3.0](../../LICENSE); the verifier is
 also Apache-2.0), independent personal project by Chelsea Kelly-Reif, with **no funding**.
 
 This document is a companion to the role brief for the **legal reviewer** (a CA housing/tenant
@@ -44,8 +44,9 @@ built around them, and the pilot is how we find out whether the build actually d
 - **Output your forum accepts** — a clean, dated, printable packet a code inspector, rent-board
   clerk, small-claims judge, or UD-defense attorney can actually read, with a plain-English
   explanation of what the timestamp and fixity do and *do not* prove.
-- **Tenant-safety guarantees** — no central data, location stripped from shared copies by
-  default, organizer identity kept out of exports, because the data subjects face retaliation.
+- **Tenant-safety boundaries** — no central plaintext data; packet shared-media metadata is
+  stripped by default; sealed originals and public custody commitments are disclosed honestly,
+  because the data subjects face retaliation.
   This is the project's privacy posture, set out in [`../privacy.md`](../privacy.md) (DPIA-style)
   and [`../threat-model.md`](../threat-model.md).
 - **Low operational burden** — no servers to run, no accounts, no funding required; FOSS, so

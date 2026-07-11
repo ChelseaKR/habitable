@@ -193,9 +193,9 @@ evidence at capture, making his packet accessible to the *next* AT user downstre
 **Profile.** Shares a phone with two roommates. A landlord who has threatened to "call
 someone" if tenants complain. For him, discovery isn't embarrassment — it's existential.
 
-- ⚠️ **Current gap.** There is no server holding case contents and shared copies strip
-  location, but there is **no duress-safe open state**; coercing the real passphrase exposes
-  the vault.
+- ⚠️ **Current gap.** There is no server holding plaintext case contents and default packet
+  shared-media copies strip metadata, but sync/share and embedded originals carry it; there is
+  **no duress-safe open state**, so coercing the real passphrase exposes the vault.
 - ⚠️ "If a future duress mode hides the cases, the *app icon is still right there* on a shared phone.
   Someone sees 'habitable,' asks what it is, and now I'm explaining." → app
   disguise / discreet presence, and honest documentation of its limits. [R-12, E-06]
@@ -321,8 +321,8 @@ tool or run a CLI.
   "what this proves / what it does not" cover page (the upper-bound semantics, for a judge).
   [R-26]
 - ⚠️ Filing systems often want specific formats/redaction. "Can I file this? Is there a PII
-  problem if the original has GPS?" (Shared copies strip location — surface that clearly to
-  the recipient.) [R-27]
+  problem if the original has GPS?" (Surface the packet's actual metadata policy and whether
+  originals are embedded.) [R-27]
 
 **On the future.** A recipient-facing verification that's a *drag-the-file-onto-a-web-page*
 experience (served from the user's own device or a static, offline-capable verifier page),
@@ -386,10 +386,10 @@ admissibility foundation and what a paralegal can operate.
   good; document the boundary.) [R-34, E-20]
 - ⚠️ "Discovery cuts both ways. If we produce a packet, can opposing counsel demand the
   *whole* union vault? I need the export to be *scoped* and that scoping to be defensible."
-  → minimal-disclosure export scoping + documentation. [R-35] ✅ **Done** — each packet now
-  self-documents its scope (`scope.statement`/`scope.exclusions` in the signed bundle, rendered
-  localized in the packet) and ships [`legal/minimal-disclosure.md`](../legal/minimal-disclosure.md)
-  on responding to over-broad discovery.
+  → minimal-disclosure export scoping + documentation. [R-35] ⚠️ **Partially addressed** — each
+  packet states its whole-unit scope and ships
+  [`legal/minimal-disclosure.md`](../legal/minimal-disclosure.md), but issue/date export is blocked.
+  A narrower packet still requires a new versioned, scoped/rehashed custody-view contract.
 
 **On the future.** A jurisdiction pack (CA first): declaration/foundation templates, an
 evidence-rule cheat-sheet, and a "what to expect on cross" guide for the tenant. A
@@ -639,7 +639,7 @@ broadest dividend:
 | R-24 | Multi-device key rotation/lifecycle under partial connectivity — harden and document | P-08 | high | L | C | planned | clean |
 | R-25 | Stop assuming recipients can run a CLI; provide a non-technical verification path (→ E-15) | P-09 | critical | — | C | net-new | clean |
 | R-26 | Plain-language "what this proves / what it does not" cover page on every packet (upper-bound semantics for a judge) | P-09,P-11,P-22 | critical | S | A/D | implied | clean (honesty) |
-| R-27 | Tell recipients clearly that shared copies strip location; flag any residual PII before filing | P-09 | high | S | A | implied | clean |
+| R-27 | Tell recipients the packet's shared-copy metadata handling and whether originals are embedded; flag residual PII before filing | P-09 | high | S | A | implied | clean |
 | R-28 | Let jurisdiction templates speak the recipient's code/citation vocabulary, not just our 6 categories | P-10 | medium | M | C | planned | clean |
 | R-29 | Ensure the packet itself (not just the docs) states authorship/depiction are *not* proven | P-11 | high | S | A | implied | clean (honesty) |
 | R-30 | Document evidentiary-foundation guidance for counsel introducing a packet (self-auth vs independent proof) | P-11,P-12 | high | M | D | net-new | clean |

@@ -282,6 +282,13 @@ def data_flow_xray(vault: Vault) -> str:
     authorities = vault.config.timestamp_authorities
     tsa_names = ", ".join(t.name for t in authorities) if authorities else "none configured"
     unit = vault.document.get_meta("unit") or vault.document.case_id
+    sharing = vault.config.sharing
+    if sharing.strip_all_metadata:
+        packet_metadata = "all embedded metadata stripped from supported shared media"
+    elif sharing.strip_location:
+        packet_metadata = "still-image EXIF GPS stripped; other embedded metadata may remain"
+    else:
+        packet_metadata = "configured policy may retain embedded metadata, including location"
 
     rows = [
         (
@@ -304,7 +311,7 @@ def data_flow_xray(vault: Vault) -> str:
             "packet export",
             "a full plaintext packet (you initiate)",
             f"{len(issues)} issues / {len(captures)} items; only when you run "
-            "`habitable export`, with location stripped from shared copies",
+            f"`habitable export`; {packet_metadata}",
         ),
     ]
 

@@ -428,7 +428,7 @@ def test_v3_verifier_fails_closed_on_malformed_semantics_and_links(
     assert "does not point to a notice_sent" in "\n".join(_verify_v3_timeline(wrong_type, custody))
 
 
-def test_renderer_marks_a_linked_capture_omitted_by_packet_scope(
+def test_renderer_preserves_historical_omitted_capture_reference(
     make_vault: Callable[..., Vault],
     make_jpeg: Callable[..., Path],
     local_tsa: LocalRfc3161TSA,
@@ -441,6 +441,9 @@ def test_renderer_marks_a_linked_capture_omitted_by_packet_scope(
     bundle = json.loads((out / "bundle.json").read_text(encoding="utf-8"))
     assert any(entry["entry_id"] == summary_id for entry in bundle["timeline"])
 
+    # Compatibility fixture for a previously emitted scoped packet. Current v3
+    # construction blocks issue/date scope before output.
+    bundle["scope"] = {"type": "issue", "issue_id": "i1", "since": ""}
     bundle["items"] = []
     bundle["appendix"]["item_count"] = 0
     bundle["appendix"]["timestamped_count"] = 0

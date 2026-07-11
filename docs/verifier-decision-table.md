@@ -139,9 +139,9 @@ trust.
 
 ### 4.3 Custody binding (`custody_binding_ok`)
 
-The privacy/verifiability bridge: a shared copy is metadata-stripped, so its bytes differ from the
-sealed original and cannot hash back to `content_hash`. A signed `copied_for_sharing` custody entry
-therefore binds `content_hash → shared_hash`.
+The privacy/verifiability bridge: a policy-processed packet copy has its own `shared_hash`; when
+metadata is stripped, its bytes differ from the sealed original and cannot hash back to
+`content_hash`. A signed `copied_for_sharing` custody entry binds the two hashes.
 
 | Condition | `custody_binding_ok` | note |
 | --- | --- | --- |

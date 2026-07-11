@@ -250,24 +250,24 @@ introducing a packet as self-authenticating-plus-corroboration rather than indep
 vault** in discovery — every case, every building, every organizer's notes — and either
 bury them, expose other tenants and organizers, or find something to use elsewhere."
 
-**(b) What actually happens.** A packet is a **scoped export**, not a database dump. It is
-assembled for an issue or a unit and contains only that scope's items, timeline, custody
-integrity proof, and appendix; it is **not** the vault. The vault is encrypted at rest on
-the union's own devices, the exported custody form is **identity-stripped** (actor, salt,
-and signatures dropped), and shared copies have **location stripped** by default — so even
-the produced packet does not carry organizer identities or home coordinates unless the user
-made the deliberate, disclosed choice to embed originals.
+**(b) What actually happens.** A packet is a **whole-unit export of the opened case vault**,
+not a dump of every case vault a tenant or union maintains. Current packet-v3 construction
+includes every issue, timeline entry, and capture in that case plus its complete public custody
+proof; issue/date requests fail before output. Separate people or units therefore need separate
+case vaults. The vault is encrypted at rest on the user's own devices, the exported custody form
+is **identity-stripped**, and shared copies have embedded metadata stripped by default.
+Sealed originals are optional, preserve their original metadata (including possible location),
+and are called out in the packet disclosure when embedded.
 
 **(c) Residual risk and honest mitigation.** Whether a court *grants* an over-broad request
 is a **legal** question the tool cannot answer, and the scope of producible material is
-ultimately set by discovery rules, not by software. The defense is that the architecture
-makes a **minimal, defensible production** the natural one: there is no central database to
-subpoena, each union holds its own data, and a packet is already minimized. **Export
-scoping that is defensible against over-broad discovery (R-35)** and **foundation/scoping
-guidance for counsel (R-30)** are tracked remediations — the legal scaffolding that lets a
-tenant's lawyer resist "produce everything" by pointing to a tool designed to produce
-*only* what is relevant. This is harm-reduction by design, not a guarantee about what a
-given judge will order.
+ultimately set by discovery rules, not by software. The architecture limits one export to
+the opened case vault and avoids a central plaintext database, but it does **not** select only
+legally relevant issues or dates. Review the whole-unit packet before producing it; if that is
+too broad, do not export and seek case-specific legal advice. Shared-copy metadata stripping and
+withholding sealed originals reduce disclosure inside that fixed boundary. A new versioned,
+scoped/rehashed custody view is still required for narrower export (R-35). This is harm-reduction
+by design, not a guarantee about what a given judge will order.
 
 ### A8 · Subpoena the relay operator (metadata)
 

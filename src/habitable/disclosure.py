@@ -15,6 +15,7 @@ Realizes the recipient-facing disclosure (items R-26 / R-29 / R-40) from
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "packet_trust_text",
     "proof_statement",
     "scope_statement",
+    "shared_metadata_may_be_retained",
 ]
 
 _DEFAULT_LANG = "en"
@@ -41,6 +43,7 @@ class ProofStatement:
     verify_line: str
     privacy_heading: str
     privacy_stripped: str
+    privacy_metadata_warning: str
     privacy_originals_warning: str
     awaiting_timestamp_note: str
 
@@ -92,8 +95,13 @@ _STATEMENTS: dict[str, ProofStatement] = {
         ),
         privacy_heading="What this packet discloses",
         privacy_stripped=(
-            "The shared photos in this packet have had location (GPS) removed, so they "
-            "do not reveal where the tenant lives."
+            "The packet reports embedded location metadata removed from its shared media "
+            "copies. Item records state the metadata transformation applied to each copy."
+        ),
+        privacy_metadata_warning=(
+            "The configured sharing policy allows some or all embedded metadata to remain "
+            "in supported shared copies, possibly including location. Review each item's "
+            "metadata handling before sharing or filing the packet."
         ),
         privacy_originals_warning=(
             "This packet also embeds the sealed original files, which retain their full "
@@ -135,8 +143,14 @@ _STATEMENTS: dict[str, ProofStatement] = {
         ),
         privacy_heading="Lo que este expediente revela",
         privacy_stripped=(
-            "A las fotos compartidas de este expediente se les quitó la ubicación (GPS), "
-            "por lo que no revelan dónde vive la persona inquilina."
+            "El expediente informa que se quitaron los metadatos de ubicación incrustados "
+            "de sus copias multimedia compartidas. Los registros indican la transformación "
+            "aplicada a cada copia."
+        ),
+        privacy_metadata_warning=(
+            "La política configurada permite conservar algunos o todos los metadatos "
+            "incrustados en las copias compartidas compatibles, posiblemente incluso la "
+            "ubicación. Revise el tratamiento de cada elemento antes de compartir o presentar."
         ),
         privacy_originals_warning=(
             "Este expediente también incluye los archivos originales sellados, que "
@@ -208,14 +222,25 @@ def proof_statement(lang: str) -> ProofStatement:
     return _STATEMENTS.get(lang.lower().split("-", 1)[0], _STATEMENTS[_DEFAULT_LANG])
 
 
+def shared_metadata_may_be_retained(disclosures: Iterable[object]) -> bool:
+    """Whether signed disclosure notes warn that shared-copy metadata may remain.
+
+    The older ``location RETAINED`` spelling is recognized so a historical packet is
+    never rendered with the stronger metadata-removed copy.
+    """
+    markers = ("location retained", "metadata may be retained", "permits embedded metadata")
+    return any(
+        isinstance(note, str) and any(marker in note.casefold() for marker in markers)
+        for note in disclosures
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class ScopeStatement:
-    """The localized 'what this export covers, and what it deliberately omits' text.
+    """Localized scope text for current and historical packets.
 
-    A produced packet is scoped — to one issue or one unit — so it can be handed over
-    without dumping a union's whole vault. This states that scope, and the categories
-    of vault content it excludes, so an over-broad discovery demand meets an on-the-record
-    minimal-disclosure boundary (item R-35). See ``docs/legal/minimal-disclosure.md``.
+    Current construction uses the whole-unit form. Issue/date forms remain only so
+    previously emitted packets keep their signed meaning when rendered (item R-35).
     """
 
     heading: str
@@ -232,9 +257,9 @@ def scope_statement(
 ) -> ScopeStatement:
     """Return the localized scope statement for a packet, falling back to English.
 
-    ``scope_type`` is ``"issue"`` (a single issue, named by ``issue_id``) or ``"unit"``
-    (the whole unit). ``since`` — if set — is the lower bound on capture time; items
-    captured before it are excluded and that exclusion is stated explicitly.
+    Current construction passes ``"unit"`` with no ``since``. ``"issue"`` and
+    ``since`` remain compatibility inputs for rendering previously emitted packets;
+    they are not available packet-v3 export modes.
     """
     resolved = lang if lang in _SCOPE else _DEFAULT_LANG
     strings = _SCOPE[resolved]
@@ -243,9 +268,8 @@ def scope_statement(
     exclusions: list[str] = []
     if since:
         exclusions.append(strings["since"].format(since=since))
-    # Only state that vault contents "outside this scope" are withheld when the scope
-    # is actually partial (a single issue, or a since bound). A whole-unit export with
-    # no since filter includes everything, so there is nothing to exclude (R-35 fix).
+    # Historical compatibility: only state that content "outside this scope" was
+    # withheld for an old partial scope. Current construction is whole-unit only.
     if is_issue_scope or since:
         exclusions.append(strings["outside"])
     return ScopeStatement(
