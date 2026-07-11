@@ -223,6 +223,64 @@ li + li { margin-top: .5rem; }
 .review-card h3 { margin-top: 0; }
 .review-card p { margin-bottom: 0; color: var(--ink-soft); }
 
+.download-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1.5rem;
+  align-items: center;
+  margin: 1.5rem 0;
+  padding: clamp(1.2rem, 4vw, 1.8rem);
+  border: 2px solid var(--teal-deep);
+  background: var(--paper-raised);
+  box-shadow: 7px 7px 0 var(--rule);
+}
+.download-card h3 { margin: 0 0 .35rem; font-size: 1.35rem; }
+.download-card p { margin: 0; }
+.download-action {
+  display: inline-block;
+  padding: .85rem 1rem;
+  border: 2px solid var(--teal-deep);
+  color: #fff;
+  background: var(--teal-deep);
+  font-weight: 750;
+  line-height: 1.25;
+  text-align: center;
+  text-decoration: none;
+}
+.download-action:hover { background: var(--teal); text-decoration: underline; }
+.download-action:focus-visible { outline-color: var(--ink); }
+
+.field-list { margin: 0; }
+.field-list dt { margin-top: 1rem; font-weight: 750; }
+.field-list dt:first-child { margin-top: 0; }
+.field-list dd { margin: .2rem 0 0; color: var(--ink-soft); }
+.field-list code,
+.comparison code { overflow-wrap: anywhere; }
+
+.privacy-flow {
+  display: grid;
+  gap: .8rem;
+  max-width: 49rem;
+  margin: 1.5rem 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: privacy-layer;
+}
+.privacy-flow li {
+  display: grid;
+  grid-template-columns: minmax(10rem, .35fr) minmax(0, 1fr);
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--rule);
+  background: var(--paper-raised);
+  counter-increment: privacy-layer;
+}
+.privacy-flow strong::before {
+  content: "0" counter(privacy-layer) " / ";
+  color: var(--teal);
+  font: 750 .76rem/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 .side-nav {
   position: sticky;
   top: 1.25rem;
@@ -260,6 +318,8 @@ footer p { margin-bottom: 0; }
   .layout { grid-template-columns: 1fr; }
   .record-card { max-width: 24rem; }
   .side-nav { position: static; }
+  .download-card { grid-template-columns: 1fr; }
+  .download-action { justify-self: start; }
 }
 
 @media (max-width: 38rem) {
@@ -268,6 +328,7 @@ footer p { margin-bottom: 0; }
   .primary-nav ul { gap: .4rem 1rem; }
   .comparison,
   .review-grid { grid-template-columns: 1fr; }
+  .privacy-flow li { grid-template-columns: 1fr; gap: .35rem; }
   .breadcrumbs ol { gap: .3rem .45rem; }
   .breadcrumbs li + li::before { margin-right: .4rem; }
 }

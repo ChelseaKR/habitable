@@ -61,6 +61,7 @@ def test_landing_page_passes_axe() -> None:
         "guides/preserve-maintenance-request-records/index.html",
         "guides/housing-inspection-records/index.html",
         "tenant-unions/index.html",
+        "templates/tenant-union-building-condition-survey/index.html",
         "legal-aid-reviewers/index.html",
         "inspectors-code-enforcement/index.html",
         "trust-limitations/index.html",
