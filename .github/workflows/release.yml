@@ -133,6 +133,8 @@ jobs:
 
       - name: Build wheel + sdist, verifying the build is reproducible
         run: make repro
+      - name: Build relay OCI archives twice, verifying byte-identical output
+        run: make relay-repro
       - name: Smoke-test the installed wheel and packaged app
         run: |
           uv venv --python 3.14 /tmp/habitable-wheel-smoke

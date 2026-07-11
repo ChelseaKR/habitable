@@ -128,29 +128,33 @@ Packet-integrity claims live here; this work gets the most scrutiny.
   the hybrid logical clock stays internal for CRDT ordering/merge. Bundle format bumped to
   `packet_version` 2 (v1 packets still verify, guarded by the golden corpus); a `test_guards`
   invariant asserts no exported field reveals the wall-clock ms or node id.
-- **Continuous real public-TSA integration.** *Objective:* prove tokens from real
+- *Shipped:* **Continuous real public-TSA integration.** *Objective:* prove tokens from real
   authorities (e.g. FreeTSA, DigiCert) verify end to end, not just the local issuer.
-  *Exit:* a scheduled, network-gated CI job stamps and verifies against ≥2 public TSAs and
-  is green.
-- **Archive / re-timestamping.** *Objective:* keep old packets verifiable after a TSA
+  The scheduled, network-gated `tsa-integration` workflow stamps and verifies against
+  FreeTSA and DigiCert; its first three weekly runs are green.
+- *Shipped:* **Archive / re-timestamping.** *Objective:* keep old packets verifiable after a TSA
   signing cert expires. *Exit:* `habitable` can re-timestamp an existing token and the
   verifier accepts the archive chain; covered by a test with an expired-cert fixture.
 - *Shipped (R-16):* **Multiple-authority redundancy by default.** *Objective:* no packet's
   proof rests on a single TSA. Both the online capture path and deferred-capture resolution
   stamp against N configured authorities (best-effort extras that never block), and the
   verifier reports per-authority status.
-- **Fuzz & property-harden the verifier.** *Objective:* the verifier never accepts altered
-  evidence and never crashes on hostile input. *Exit:* a fuzzing target over packets/tokens
-  runs in CI with no accept-on-tamper and no crash.
+- *Shipped (in-repo):* **Property-harden the verifier.** The Hypothesis hostile-input
+  target runs in every merge gate with no accept-on-tamper and no crash. OSS-Fuzz
+  integration remains a separate ecosystem/discoverability improvement, not missing
+  in-repo adversarial coverage.
 - **Signed releases + build provenance (SLSA).** *Objective:* a downloader can verify a
   release was built from this source. *Exit:* tagged releases ship signatures + provenance
   attestations, documented in `docs/`.
-- *Shipped (partial):* **Reproducible wheel builds.** *Objective:* the same source yields
+- *Shipped:* **Reproducible wheel and relay-image builds.** *Objective:* the same source yields
   the same artifacts. `make repro` / `scripts/check_reproducible_build.py` builds the wheel
   and sdist twice from independent clean source copies with a normalized
   `SOURCE_DATE_EPOCH`/`PYTHONHASHSEED` and fails on any byte difference; the `release`
-  workflow runs it as a release-blocking gate (see `docs/releasing.md`). **Still open:** the
-  relay container image is not yet covered by the same byte-identical check.
+  workflow runs it as a release-blocking gate. `make relay-repro` independently builds
+  two no-cache linux/amd64 OCI relay archives with the pinned base and fixed source
+  epoch, rewrites layer timestamps, and fails unless the complete archives are
+  byte-identical; it runs in both the container merge gate and release workflow. See
+  `docs/releasing.md`.
 - **Versioned scoped/rehashed custody views (P0 restoration).** *Objective:* restore
   issue/date-scoped packets and issue-subset organizer shares without exposing identifiers from
   records outside the declared scope. *Current safety state:* packet-v3 and sync-v2 scoped
