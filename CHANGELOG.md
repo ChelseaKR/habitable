@@ -96,6 +96,15 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Changed
 
+- **Node.js 24 artifact transport in CI.** All workflow uses of
+  `actions/upload-artifact` now pin v7.0.1 and release promotion pins
+  `actions/download-artifact` v8.0.1. This removes the hosted-runner Node.js 20
+  deprecation path; named archived-artifact behavior is unchanged, while downloaded
+  artifact digest mismatches now fail closed by default. A regression guard prevents
+  an older artifact-action major from returning unnoticed. The verifier portability
+  matrix now also passes its version through a quoted environment variable instead of
+  interpolating an Actions expression directly into shell commands.
+
 - **Protected release-tag identity.** The committed `v*` tag ruleset is now active on
   GitHub (ruleset `18815834`): release tags cannot be moved or deleted, and future tags
   must be signed. Release documentation and regression coverage now keep the live
