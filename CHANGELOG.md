@@ -105,6 +105,12 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **Scoped packet and organizer-share exports now fail closed instead of leaking the
+  complete source custody chain.** Packet v3 issue/date selectors and sync v2 issue
+  subsets previously filtered visible records while still serializing custody entries
+  for excluded records. Those selectors now stop before staging, custody mutation, or
+  message creation. Whole-unit/full-case flows remain available; restoring narrower
+  exports requires a new versioned, scoped/rehashed custody-view contract.
 - **JPEG shared copies now remove every embedded metadata carrier under the default
   strip-all policy.** Export decodes and applies EXIF orientation, rebuilds pixels,
   removes APP0–APP15 and comment segments plus trailing data, verifies a metadata-free

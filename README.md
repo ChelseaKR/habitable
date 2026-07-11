@@ -73,11 +73,13 @@ auditability, accessibility, and saying plainly what the tool does not do.
   summary. Issue/date-scoped packet exports currently fail closed because packet v3 can carry only
   the complete custody chain. Technical integrity is independently checkable; legal, court, and
   inspector usefulness remain externally unvalidated.
-- **Shares with an organizer, end to end.** A tenant can hand a full case, optionally with the unit
-  label redacted, to a tenant-union organizer who was not on the case,
+- **Shares with an organizer, end to end.** A tenant can hand a full case, optionally with the
+  `unit` metadata field omitted, to a tenant-union organizer who was not on the case,
   signed and **sealed to the organizer's verified public key**, so any relay or courier sees only
   ciphertext. Issue-subset shares currently fail closed for the same complete-custody reason
-  (`habitable share` / `receive`; trust model in `docs/sharing-trust-model.md`).
+  (`habitable share` / `receive`; trust model in `docs/sharing-trust-model.md`). Omitting that one
+  field is not anonymization: case identifiers, descriptions, custody identifiers, or original
+  media metadata can still reveal the unit.
 - **Drafts the repair request.** From the logged evidence, `habitable letter` generates a dated
   repair-request / notice letter to the landlord (accessible HTML + PDF), with jurisdiction-aware
   *framing only* and a standing "not legal advice" disclaimer (`docs/letter-generator.md`). Its

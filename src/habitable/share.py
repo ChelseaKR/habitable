@@ -4,7 +4,8 @@
 
 Sync (:mod:`habitable.sync`) keeps two devices on *the same* case in step. Sharing
 is the one-way cousin: a tenant hands a case to an organizer who was not previously
-on it, without any server ever being able to read it. The unit label can be redacted.
+on it, without any server ever being able to read it. The ``unit`` metadata field can be
+omitted, but other full-case content can still identify the unit.
 Issue-subset sharing is temporarily blocked because sync v2 carries a complete custody
 proof that can reveal identifiers outside the selected subset.
 
@@ -76,7 +77,8 @@ def export_share(
 
     ``issue_ids`` is retained as an API/CLI compatibility parameter, but any value
     other than ``None`` fails before state attestation or sync-message construction.
-    ``redact_unit`` may still drop the unit label from an otherwise full-case state.
+    ``redact_unit`` may still omit the ``unit`` metadata field from an otherwise
+    full-case state. It is field-level omission, not an anonymity guarantee.
     The result is signed and sealed — safe to move over any untrusted channel.
     """
     if issue_ids is not None:

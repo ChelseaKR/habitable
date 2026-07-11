@@ -77,7 +77,7 @@ def test_full_case_share_can_redact_unit_label(
 
     blob = export_share(tenant, organizer.identity.public(), redact_unit=True)
     import_share(organizer, blob)
-    # The unit label was withheld; the organizer still gets the issue + evidence.
+    # The unit metadata field was omitted; the organizer still gets the full case.
     assert organizer.document.get_meta("unit") == ""
     assert {i.issue_id for i in organizer.document.issues()} == {"i1", "i2"}
 

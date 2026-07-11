@@ -9,7 +9,8 @@
 
 `habitable share` lets a tenant hand a **full case** to a
 tenant-union organizer who was not previously on the case, without any server, relay, or
-courier ever being able to read it. The unit label may be redacted. It is the one-way cousin of peer-to-peer sync
+courier ever being able to read it. The `unit` metadata field may be omitted; that one-field
+omission is not anonymization. It is the one-way cousin of peer-to-peer sync
 (`docs` → `sync`): sync keeps two devices on the *same* case in step; sharing bootstraps a
 *new* recipient.
 
@@ -48,7 +49,7 @@ server to compromise or subpoena. Trust is established directly between two huma
    case, and pairing key in each encrypted vault. A public id alone is not
    authorization.
 4. **The tenant shares to that key.** `habitable share --peer <public-id>` seals the
-   full case (optionally without its unit label) to exactly that key and prints back the fingerprint so the
+   full case (optionally without its `unit` metadata field) to exactly that key and prints back the fingerprint so the
    tenant can re-confirm before sending.
 5. **The organizer receives.** `habitable receive` opens the box with their private key,
    verifies the tenant's signature, checks the share is for the case they opened, re-checks
@@ -58,10 +59,10 @@ server to compromise or subpoena. Trust is established directly between two huma
 
 | Party | Can | Cannot |
 | --- | --- | --- |
-| Relay / courier / cloud drive | Move the sealed blob; see its size and timing | Read contents (sealed), forge it (signed), or learn the unit (redactable) |
+| Relay / courier / cloud drive | Move the sealed blob; see its size and timing | Read or forge the sealed payload; transport filenames and account metadata remain outside this protocol |
 | A wrong recipient | — | Open a box not sealed to their key (`receive` opens nothing and errors) |
 | Active network attacker | Drop or replay the blob (replay is detected and skipped) | Authenticate as an unpaired key; substitute the case/recipient; tamper undetected (AEAD + signature + pairing MAC) |
-| The organizer (trusted recipient) | Read the full case, including sealed originals with their original metadata | Recover a unit label deliberately redacted from the full-case state |
+| The organizer (trusted recipient) | Read the full case, including sealed originals with their original metadata | Read an omitted `unit` field from the CRDT state; other case content can still reveal the same fact |
 
 ## Redaction levers (what a tenant can withhold)
 
@@ -71,8 +72,11 @@ Sharing is currently **full-case**:
   recorded, signed, sealed, or returned. Sync v2 carries the complete source-custody proof on an
   original-bearing transfer; that proof can identify excluded capture and timeline records even
   when the CRDT state and originals are filtered.
-- **Unit redaction remains available** — `--redact-unit` drops the unit label from the otherwise
-  full-case CRDT state. Custody entries do not carry that label.
+- **One metadata field can be omitted** — `--redact-unit` drops the `unit` field from the
+  otherwise full-case CRDT state. Custody entries do not carry that field. This is not an
+  anonymity guarantee: the case identifier, issue text, timeline, opaque custody identifiers,
+  filenames outside the sealed protocol, and original EXIF/GPS can still identify a unit or
+  household. Review the decrypted payload as a full-case disclosure.
 
 The safe restoration path is a new, explicitly versioned scoped/rehashed custody-view contract.
 It must label the view as derived, bind it to its declared scope, and must not delete arbitrary

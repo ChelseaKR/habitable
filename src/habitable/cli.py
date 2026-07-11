@@ -295,7 +295,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "--issue", action="append", help="reserved: issue-scoped shares are temporarily blocked"
     )
     p_share.add_argument(
-        "--redact-unit", action="store_true", help="drop the unit label from the full-case share"
+        "--redact-unit",
+        action="store_true",
+        help="omit the unit metadata field (other full-case content can still identify it)",
     )
     p_share.set_defaults(func=_cmd_share)
 
@@ -955,7 +957,7 @@ def _cmd_share(args: argparse.Namespace) -> int:
     scope = f"{len(issue_ids)} issue(s)" if issue_ids else "the whole case"
     print(f"habitable: sealed {scope} to {peer.fingerprint}")
     if args.redact_unit:
-        print("           unit label redacted from the full-case share")
+        print("           unit metadata field omitted; other case content may still identify it")
     print(f"           encrypted share written to {args.out}")
     print("           confirm the recipient fingerprint out of band before sending.")
     return 0
