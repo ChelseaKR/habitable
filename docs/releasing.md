@@ -18,16 +18,18 @@ and are not signed).
    distribution (`importlib.metadata.version`), so there is nothing to hand-edit
    in `src/habitable/__init__.py` — that is the point (REL-02/03: no second place
    for the version to drift).
-3. Tag with a **signed, annotated tag** and push (see one-time setup below):
+3. From a reviewed commit already on `main`, create a **signed, annotated tag** and
+   push it (see one-time setup below):
    ```console
    $ git tag -s vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z
    ```
 4. The **`release` workflow** (`.github/workflows/release.yml`) first runs two
-   guards, *before* building anything: the requested tag is resolved and checked
-   out by exact commit, the tag must have a valid signature per
+   guards, *before* building anything: the requested tag is resolved, required to
+   be an ancestor of the fetched default branch, and checked out by exact commit;
+   the tag must have a valid signature per
    `.github/allowed_signers`, and its version at that commit must match
    `pyproject.toml`. It then re-runs `make verify` at that exact tagged commit — a
-   red or branch-drifted commit cannot ship.
+   red, branch-drifted, or unmerged commit cannot ship.
    Only then does it:
    - build the wheel + sdist **twice, from two independent clean copies of the
      tracked source, and verify the two builds are byte-identical**
@@ -69,6 +71,10 @@ CI cannot do for itself:
 - project `habitable`, owner `ChelseaKR`, repository `habitable`,
   workflow `release.yml`, environment `pypi`;
 - a matching GitHub Environment named `pypi` on this repo.
+
+Restrict that environment to the intended release-tag pattern and require any
+maintainer approval the project chooses. Repository workflow checks cannot replace
+the external environment policy.
 
 After that, every `vX.Y.Z` tag publishes with no API token.
 
@@ -117,4 +123,5 @@ successful `make repro` run. The build job smoke-tests and attaches Sigstore bui
 provenance to that pair, then hands the same bytes to the isolated OIDC publish job;
 PyPI adds its PEP 740 attestations during upload. A manual workflow rerun also
 checks out the requested tag commit explicitly, so the default branch cannot be
-published under an older tag.
+published under an older tag, and the tag commit must already belong to the fetched
+default-branch history.

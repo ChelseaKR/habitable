@@ -20,11 +20,21 @@ def _workflow_sections() -> tuple[str, str]:
 def test_release_checks_out_exact_tag_before_version_check_and_build() -> None:
     release, _pypi = _workflow_sections()
     resolve = release.index('git rev-parse --verify --end-of-options "${TAG}^{commit}"')
+    ancestry = release.index('git merge-base --is-ancestor "$TAG_COMMIT" "$DEFAULT_REF"')
     checkout = release.index('git checkout --detach "$TAG_COMMIT"')
     head_guard = release.index('"$(git rev-parse HEAD)" != "$TAG_COMMIT"')
     version_guard = release.index('TAG_VERSION="${TAG#v}"')
     build = release.index("run: make repro")
-    assert resolve < checkout < head_guard < version_guard < build
+    assert resolve < ancestry < checkout < head_guard < version_guard < build
+
+
+def test_release_tag_must_belong_to_fetched_default_branch_history() -> None:
+    release, _pypi = _workflow_sections()
+    assert "fetch-depth: 0" in release
+    assert "DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}" in release
+    assert 'DEFAULT_REF="refs/remotes/origin/$DEFAULT_BRANCH"' in release
+    assert 'git show-ref --verify --quiet "$DEFAULT_REF"' in release
+    assert 'git merge-base --is-ancestor "$TAG_COMMIT" "$DEFAULT_REF"' in release
 
 
 def test_pypi_job_only_publishes_artifacts_from_release_job() -> None:
