@@ -22,6 +22,8 @@ from dataclasses import replace
 from pathlib import Path
 
 import piexif
+from cryptography import x509
+from cryptography.hazmat.primitives import serialization
 from PIL import Image, ImageDraw
 
 from habitable.capture import capture
@@ -36,6 +38,8 @@ _GENERATED_AT = "2026-01-02T09:30:00Z"
 _ROOT = Path(__file__).resolve().parent.parent
 _SAMPLE = _ROOT / "site" / "sample-packet"
 _PASSPHRASE = "public-synthetic-sample-not-secret"  # noqa: S105 - generated demo only
+_SYNTHETIC_CERT = "synthetic-timestamp-authority.pem"
+_SYNTHETIC_NOTICE = "SYNTHETIC-AUTHORITY.txt"
 
 
 def _counter_ms(start_ms: int) -> Callable[[], int]:
@@ -148,31 +152,72 @@ def _build_sample(work: Path) -> Path:
         severity="urgent",
         description="Synthetic scenario: the room remained cold while the heater was set to warm.",
     )
-    vault.document.add_timeline_entry(
-        moisture, "observed", "Synthetic tenant observed new staining after rainfall."
-    )
-    vault.document.add_timeline_entry(
-        moisture, "sent_request", "Synthetic repair request sent to the property manager."
-    )
-    vault.document.add_timeline_entry(
-        moisture, "follow_up", "Synthetic follow-up recorded after the staining expanded."
-    )
-    vault.document.add_timeline_entry(
-        heat, "observed", "Synthetic thermostat display read 49 F during the night."
-    )
     vault.save()
 
     tsa = LocalRfc3161TSA("sample-offline-rfc3161", time_source=lambda: _FIXED_EPOCH)
-    capture(vault, ceiling, issue_id=moisture, tsa=tsa)
-    capture(vault, wall, issue_id=moisture, tsa=tsa)
-    capture(vault, thermostat, issue_id=heat, tsa=tsa)
+    ceiling_capture = capture(vault, ceiling, issue_id=moisture, tsa=tsa)
+    wall_capture = capture(vault, wall, issue_id=moisture, tsa=tsa)
+    thermostat_capture = capture(vault, thermostat, issue_id=heat, tsa=tsa)
+
+    vault.add_timeline_event(
+        moisture,
+        event_type="condition_observed",
+        text="Synthetic tenant observed new staining after rainfall.",
+        occurred_at="2026-01-02",
+        source="firsthand",
+        capture_ids=(ceiling_capture.capture_id, wall_capture.capture_id),
+    )
+    notice_id = vault.add_timeline_event(
+        moisture,
+        event_type="notice_sent",
+        text="Synthetic repair request sent to the property manager.",
+        occurred_at="2026-01-02",
+        source="message",
+    )
+    vault.add_timeline_event(
+        moisture,
+        event_type="delivery_confirmed",
+        text="Synthetic portal displayed a delivery confirmation.",
+        occurred_at="2026-01-02",
+        source="document",
+        notice_entry_id=notice_id,
+    )
+    vault.add_timeline_event(
+        heat,
+        event_type="condition_observed",
+        text="Synthetic thermostat display read 49 F during the night.",
+        occurred_at="2026-01-02",
+        source="firsthand",
+        capture_ids=(thermostat_capture.capture_id,),
+    )
 
     out = work / "sample-packet"
     build_packet(vault, out, generated_at=_GENERATED_AT)
-    report = verify_packet(out)
-    if not report.ok:
-        raise RuntimeError(f"refusing to publish invalid sample: {report.summary()}")
+    (out / _SYNTHETIC_CERT).write_bytes(tsa.certificate.public_bytes(serialization.Encoding.PEM))
+    (out / _SYNTHETIC_NOTICE).write_text(
+        "SYNTHETIC DEMONSTRATION AUTHORITY ONLY\n\n"
+        "This self-signed certificate was generated with this sample. Its presence "
+        "does not make the timestamp authority independently trusted. Use it only to "
+        "exercise Habitable's explicit --trusted-cert verification path against "
+        "synthetic data; do not use it to assess real evidence.\n",
+        encoding="utf-8",
+    )
+
+    unpinned = verify_packet(out)
+    if (
+        not unpinned.structurally_intact
+        or unpinned.status != "timestamp_authority_untrusted"
+        or unpinned.cryptographically_verified_items != 3
+    ):
+        raise RuntimeError(f"refusing to publish broken sample: {unpinned.summary()}")
+    pinned = verify_packet(out, trusted_certs=[tsa.certificate])
+    if not pinned.evidence_ready:
+        raise RuntimeError(f"refusing to publish invalid pinned sample: {pinned.summary()}")
     return out
+
+
+def _load_synthetic_cert(packet_dir: Path) -> x509.Certificate:
+    return x509.load_pem_x509_certificate((packet_dir / _SYNTHETIC_CERT).read_bytes())
 
 
 def main() -> int:
@@ -192,8 +237,10 @@ def main() -> int:
         shutil.rmtree(previous, ignore_errors=True)
 
     report = verify_packet(_SAMPLE)
+    pinned = verify_packet(_SAMPLE, trusted_certs=[_load_synthetic_cert(_SAMPLE)])
     print(
-        f"wrote {_SAMPLE.relative_to(_ROOT)} (packet_version={PACKET_VERSION}); {report.summary()}"
+        f"wrote {_SAMPLE.relative_to(_ROOT)} (packet_version={PACKET_VERSION}); "
+        f"default: {report.summary()}; explicitly pinned synthetic demo: {pinned.summary()}"
     )
     return 0
 

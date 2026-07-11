@@ -10,6 +10,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import cast
 
+from cryptography import x509
+
 from habitable.canonical import JSONValue, sha256_bytes
 from habitable.exif import read_metadata
 from habitable.packet import PACKET_VERSION
@@ -18,6 +20,7 @@ from habitable.verify import verify_packet
 _SAMPLE = Path(__file__).resolve().parent.parent / "site" / "sample-packet"
 _OPAQUE_ID = re.compile(r"^(?:issue|tl|cap|hlc)-[0-9a-f]{16}$")
 _RAW_HLC = re.compile(r"\d{15}\.\d{6}\.[0-9a-f]{16}")
+_SYNTHETIC_CERT = _SAMPLE / "synthetic-timestamp-authority.pem"
 
 
 def _walk_keys(value: JSONValue) -> set[str]:
@@ -34,17 +37,32 @@ def _walk_keys(value: JSONValue) -> set[str]:
 
 def test_public_sample_is_current_signed_and_intact() -> None:
     report = verify_packet(_SAMPLE)
-    assert report.ok, f"public sample is broken: {report.summary()} {report.problems}"
+    assert report.structurally_intact, (
+        f"public sample is broken: {report.summary()} {report.problems}"
+    )
+    assert report.status == "timestamp_authority_untrusted"
+    assert not report.timestamp_authority_trusted
+    assert not report.evidence_ready
     assert report.signature_ok and report.custody_ok
 
     bundle = json.loads((_SAMPLE / "bundle.json").read_text(encoding="utf-8"))
     assert bundle["packet_version"] == PACKET_VERSION
     assert bundle["appendix"]["item_count"] == len(bundle["items"]) == 3
-    assert report.verified_items == 3
+    assert report.cryptographically_verified_items == 3
+    assert report.verified_items == 0
     assert (_SAMPLE / "bundle.sig.json").is_file()
     assert (_SAMPLE / "packet.html").is_file()
     assert (_SAMPLE / "packet.pdf").is_file()
     assert "synthetic demonstration" in json.dumps(bundle).lower()
+
+
+def test_public_sample_can_exercise_explicit_synthetic_cert_pinning() -> None:
+    cert = x509.load_pem_x509_certificate(_SYNTHETIC_CERT.read_bytes())
+    report = verify_packet(_SAMPLE, trusted_certs=[cert])
+    assert report.evidence_ready, report.summary()
+    assert report.verified_items == 3
+    notice = (_SAMPLE / "SYNTHETIC-AUTHORITY.txt").read_text(encoding="utf-8")
+    assert "does not make the timestamp authority independently trusted" in notice
 
 
 def test_public_sample_exports_only_opaque_ids_and_sanitized_media() -> None:
@@ -52,13 +70,20 @@ def test_public_sample_exports_only_opaque_ids_and_sanitized_media() -> None:
     bundle = cast(dict[str, JSONValue], json.loads(raw))
 
     # The v1 sample leaked raw HLC/node-bearing identifiers and private source
-    # filenames. Packet v2 must keep both out of the public artifact.
+    # filenames. Current packets keep both out while `source` carries only the
+    # packet-v3 reviewed provenance vocabulary (firsthand/message/document/etc.).
     legacy_node_id = sha256_bytes(b"synthetic-demo-case" + b"public-synthetic-sample-not-secret")[
         :16
     ]
     assert _RAW_HLC.search(raw) is None
     assert legacy_node_id not in raw
-    assert not ({"actor", "source", "private_details"} & _walk_keys(bundle))
+    assert not ({"actor", "private_details"} & _walk_keys(bundle))
+    timeline = cast(list[dict[str, JSONValue]], bundle["timeline"])
+    assert {str(entry["source"]) for entry in timeline} == {
+        "document",
+        "firsthand",
+        "message",
+    }
     assert "/Users/" not in raw and "/home/" not in raw and "C:\\" not in raw
 
     ids: list[str] = []
@@ -68,7 +93,9 @@ def test_public_sample_exports_only_opaque_ids_and_sanitized_media() -> None:
     ids.extend(
         str(entry["entry_id"]) for entry in cast(list[dict[str, JSONValue]], bundle["timeline"])
     )
-    ids.extend(str(entry["hlc"]) for entry in cast(list[dict[str, JSONValue]], bundle["timeline"]))
+    ids.extend(
+        str(entry["order_token"]) for entry in cast(list[dict[str, JSONValue]], bundle["timeline"])
+    )
     ids.extend(
         str(item["capture_id"]) for item in cast(list[dict[str, JSONValue]], bundle["items"])
     )

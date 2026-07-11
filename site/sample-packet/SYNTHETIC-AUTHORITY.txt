@@ -1,0 +1,3 @@
+SYNTHETIC DEMONSTRATION AUTHORITY ONLY
+
+This self-signed certificate was generated with this sample. Its presence does not make the timestamp authority independently trusted. Use it only to exercise Habitable's explicit --trusted-cert verification path against synthetic data; do not use it to assess real evidence.
