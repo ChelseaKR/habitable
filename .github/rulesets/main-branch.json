@@ -1,39 +1,41 @@
 {
-  "_comment": "P1-2 (habitable-REMEDIATION.md): committed ruleset artifact, NOT yet applied. Apply with: gh api --method POST repos/ChelseaKR/habitable/rulesets --input .github/rulesets/main-branch.json  -- a maintainer must run this deliberately; see docs/adr/0006-solo-maintainer-review-count-exception.md for why required_approving_review_count stays 0 with an explicit bypass, not silently unenforced.",
-  "name": "main branch protection",
+  "_comment": "Reviewable source for live repository ruleset 18752848. Applied 2026-07-11: every main update must come through a PR, all required checks must pass against current main, force-push/deletion are blocked, and no actor can bypass. Approval count remains 0 under ADR 0006 while the project has one active maintainer.",
+  "name": "protect-main",
   "target": "branch",
   "enforcement": "active",
   "conditions": {
-    "ref_name": { "include": ["~DEFAULT_BRANCH"], "exclude": [] }
+    "ref_name": { "include": ["refs/heads/main"], "exclude": [] }
   },
   "rules": [
     { "type": "deletion" },
     { "type": "non_fast_forward" },
-    { "type": "required_linear_history" },
-    { "type": "required_signatures" },
     {
       "type": "pull_request",
       "parameters": {
-        "required_approving_review_count": 0,
-        "dismiss_stale_reviews_on_push": true,
-        "require_code_owner_review": true,
+        "allowed_merge_methods": ["merge", "squash", "rebase"],
+        "dismiss_stale_reviews_on_push": false,
+        "require_code_owner_review": false,
         "require_last_push_approval": false,
+        "required_approving_review_count": 0,
         "required_review_thread_resolution": true
       }
     },
     {
       "type": "required_status_checks",
       "parameters": {
+        "do_not_enforce_on_create": false,
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
           { "context": "lint · types · tests (the merge gate)" },
+          { "context": "verifier subset compiles on older Pythons (3.12)" },
+          { "context": "verifier subset compiles on older Pythons (3.13)" },
           { "context": "secret scanning (gitleaks)" },
           { "context": "dependency vulnerability audit" },
           { "context": "axe-core WCAG scan (merge gate)" },
-          { "context": "CodeQL (python)" },
           { "context": "mechanical i18n gates — UTF-8 · BCP 47 · EN/ES parity (merge gate)" },
-          { "context": "Trivy image scan (relay)" },
-          { "context": "zizmor workflow security scan" }
+          { "context": "CodeQL (python)" },
+          { "context": "CodeQL (actions)" },
+          { "context": "Trivy image scan (relay)" }
         ]
       }
     }

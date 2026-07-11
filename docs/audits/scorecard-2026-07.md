@@ -13,6 +13,11 @@ same checks `.github/workflows/scorecard.yml` runs weekly going forward).
 > deletion and requires signatures. The table below remains the unedited 2026-07-05
 > measurement. Signed-Releases cannot improve until a new release is actually cut
 > with a signed tag; the existing v0.1.0/v0.2.0 tags remain unsigned historical facts.
+> On the same date, live ruleset `18752848` was reconciled with the committed
+> main-branch policy: PRs and strict current-branch checks are required with no
+> bypass. Approval and code-owner counts remain zero under the explicit
+> solo-maintainer waiver in ADR 0006, so Branch-Protection will honestly remain
+> below maximal until a second maintainer can provide a real review.
 
 This is the honest number for the state of `main` **before** this remediation
 pass's changes are committed and pushed — per P1-5's own instruction ("expect
@@ -50,10 +55,10 @@ is actually cut with a signed tag under the new guard), a drafted-but-unapplied
 branch ruleset (`.github/rulesets/`), job-level workflow permissions (should
 fix Token-Permissions), and a Scorecard workflow itself (feeds future runs).
 
-**Re-run after:** the stronger proposed main-branch ruleset is reconciled with the
-active branch protection and the next release is cut with a signed tag. The tag
-protection half of this original action was applied on 2026-07-11; until a signed
-release exists, a re-run still cannot improve Signed-Releases.
+**Re-run after:** the next scheduled Scorecard run observes the reconciled
+main-branch ruleset, and again after the next release is cut with a signed tag.
+The live controls can improve detection of PR/current-check enforcement; an honest
+solo-maintainer project still cannot claim independent approval or code-owner review.
 
 ## Why record a "bad" number at all
 

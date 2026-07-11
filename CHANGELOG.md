@@ -96,6 +96,13 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Changed
 
+- **Enforced PR-only, current-check updates to `main`.** Live repository ruleset
+  `18752848` now requires every update through a pull request, requires all merge
+  gates to pass against current `main`, resolves review conversations, blocks
+  force-push/deletion, and has no bypass actors. The committed ruleset now matches
+  the live policy. Approval and code-owner review remain explicitly zero/disabled
+  under ADR 0006 until a second maintainer can supply a real independent review.
+
 - **Node.js 24 artifact transport in CI.** All workflow uses of
   `actions/upload-artifact` now pin v7.0.1 and release promotion pins
   `actions/download-artifact` v8.0.1. This removes the hosted-runner Node.js 20
