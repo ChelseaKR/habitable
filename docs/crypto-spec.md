@@ -104,8 +104,12 @@ five mutable state blobs (`case.enc`, `custody.enc`, `deferred.enc`, `peer_have.
 `Vault.open` and the next `Vault.save` recover before reading or writing state. A prepared marker
 restores every old ciphertext (or removes a newly created blob); a committed marker keeps the full
 new generation and finishes cleanup. Recovery is repeatable if the recovery process itself is
-interrupted. The vault format is unchanged, so vaults created before this protocol still open and
-keep the same blob names.
+interrupted: after restoring and syncing the old generation, prepared recovery removes and syncs
+the journal **before** deleting backup copies, so a later open can safely discard any remaining
+orphans. The journal is limited to 4 KiB and must be a regular file; recovery does not follow a
+journal or encrypted-backup symlink, does not read from a FIFO, and streams backup restoration
+instead of loading an unbounded artifact into memory. The vault format is unchanged, so vaults
+created before this protocol still open and keep the same blob names.
 
 This is a transaction for **normal mutable-state saves**, not a claim that every filesystem write in
 the project is transactional. Keyfile changes, timestamp sidecars, sealed-original creation, legacy

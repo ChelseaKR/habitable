@@ -44,6 +44,35 @@ def _run_child(path: Path, source: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _crash_mid_publish(path: Path) -> subprocess.CompletedProcess[str]:
+    return _run_child(
+        path,
+        """
+        import os
+        import sys
+        from pathlib import Path
+        import habitable.vault as module
+        from habitable.vault import Vault
+
+        vault = Vault.open(Path(sys.argv[1]), "test-passphrase")
+        vault.document.add_issue(category="mold", title="private crash marker", issue_id="crashed")
+        real_replace = module._replace_path
+        published = 0
+
+        def crash_after_second_publish(source, destination):
+            global published
+            real_replace(source, destination)
+            if source.name.endswith(".new") and destination.name in module._SAVE_BLOBS:
+                published += 1
+                if published == 2:
+                    os._exit(86)
+
+        module._replace_path = crash_after_second_publish
+        vault.save()
+        """,
+    )
+
+
 def test_normal_save_keeps_legacy_layout_and_leaves_no_transaction_files(
     make_vault: Callable[..., Vault], tmp_path: Path
 ) -> None:
@@ -148,7 +177,29 @@ def test_process_death_mid_publish_is_rolled_back_on_open(
 ) -> None:
     vault = make_vault()
     before = _snapshot(vault.path)
-    result = _run_child(
+    result = _crash_mid_publish(vault.path)
+
+    assert result.returncode == 86, result.stderr
+    assert (vault.path / _JOURNAL).is_file()
+    journal_text = (vault.path / _JOURNAL).read_text(encoding="utf-8")
+    assert json.loads(journal_text)["phase"] == "prepared"
+    assert "private crash marker" not in journal_text
+    assert _snapshot(vault.path) != before
+
+    reopened = Vault.open(tmp_path / "vault", "test-passphrase")
+    assert "crashed" not in _issue_ids(reopened)
+    assert _snapshot(vault.path) == before
+    assert _save_artifacts(vault.path) == []
+
+
+def test_process_death_during_prepared_rollback_cleanup_is_repeatable(
+    make_vault: Callable[..., Vault], tmp_path: Path
+) -> None:
+    vault = make_vault()
+    before = _snapshot(vault.path)
+    assert _crash_mid_publish(vault.path).returncode == 86
+
+    interrupted_recovery = _run_child(
         vault.path,
         """
         import os
@@ -157,30 +208,24 @@ def test_process_death_mid_publish_is_rolled_back_on_open(
         import habitable.vault as module
         from habitable.vault import Vault
 
-        vault = Vault.open(Path(sys.argv[1]), "test-passphrase")
-        vault.document.add_issue(category="mold", title="private crash marker", issue_id="crashed")
-        real_replace = module._replace_path
-        published = 0
+        def crash_during_artifact_cleanup(path, transaction):
+            if (path / module._SAVE_JOURNAL).exists():
+                os._exit(89)
+            first_backup = module._save_artifact(
+                path, transaction.transaction_id, module._SAVE_BLOBS[0], "old"
+            )
+            first_backup.unlink(missing_ok=True)
+            os._exit(88)
 
-        def crash_after_second_publish(source, destination):
-            global published
-            real_replace(source, destination)
-            if source.name.endswith(".new") and destination.name in module._SAVE_BLOBS:
-                published += 1
-                if published == 2:
-                    os._exit(86)
-
-        module._replace_path = crash_after_second_publish
-        vault.save()
+        module._discard_save_artifacts = crash_during_artifact_cleanup
+        Vault.open(Path(sys.argv[1]), "test-passphrase")
         """,
     )
 
-    assert result.returncode == 86, result.stderr
-    assert (vault.path / _JOURNAL).is_file()
-    journal_text = (vault.path / _JOURNAL).read_text(encoding="utf-8")
-    assert json.loads(journal_text)["phase"] == "prepared"
-    assert "private crash marker" not in journal_text
-    assert _snapshot(vault.path) != before
+    assert interrupted_recovery.returncode == 88, interrupted_recovery.stderr
+    assert not (vault.path / _JOURNAL).exists()
+    assert _snapshot(vault.path) == before
+    assert _save_artifacts(vault.path)
 
     reopened = Vault.open(tmp_path / "vault", "test-passphrase")
     assert "crashed" not in _issue_ids(reopened)
@@ -296,6 +341,37 @@ def test_unreadable_save_journal_fails_closed(make_vault: Callable[..., Vault]) 
         Vault.open(vault.path, "test-passphrase")
 
 
+def test_save_journal_symlink_is_not_followed(
+    make_vault: Callable[..., Vault], tmp_path: Path
+) -> None:
+    vault = make_vault()
+    outside = tmp_path / "outside-journal.json"
+    outside.write_text("{}", encoding="utf-8")
+    (vault.path / _JOURNAL).symlink_to(outside)
+
+    with pytest.raises(VaultError, match="recovery file must be regular"):
+        Vault.open(vault.path, "test-passphrase")
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO creation unavailable")
+def test_save_journal_fifo_is_rejected_without_blocking(make_vault: Callable[..., Vault]) -> None:
+    vault = make_vault()
+    os.mkfifo(vault.path / _JOURNAL)
+
+    with pytest.raises(VaultError, match="recovery file must be regular"):
+        Vault.open(vault.path, "test-passphrase")
+
+
+def test_oversized_save_journal_is_rejected_before_parsing(
+    make_vault: Callable[..., Vault],
+) -> None:
+    vault = make_vault()
+    (vault.path / _JOURNAL).write_bytes(b" " * 4097)
+
+    with pytest.raises(VaultError, match="recovery file is too large"):
+        Vault.open(vault.path, "test-passphrase")
+
+
 def test_prepared_journal_without_backup_fails_closed(make_vault: Callable[..., Vault]) -> None:
     vault = make_vault()
     record = {
@@ -307,6 +383,26 @@ def test_prepared_journal_without_backup_fails_closed(make_vault: Callable[..., 
     (vault.path / _JOURNAL).write_text(json.dumps(record), encoding="utf-8")
 
     with pytest.raises(VaultError, match=r"backup missing: case\.enc"):
+        Vault.open(vault.path, "test-passphrase")
+
+
+def test_prepared_backup_symlink_is_not_followed(
+    make_vault: Callable[..., Vault], tmp_path: Path
+) -> None:
+    vault = make_vault()
+    transaction_id = "a" * 32
+    record = {
+        "version": 1,
+        "transaction_id": transaction_id,
+        "phase": "prepared",
+        "existing": list(_STATE_FILES),
+    }
+    (vault.path / _JOURNAL).write_text(json.dumps(record), encoding="utf-8")
+    outside = tmp_path / "outside-backup.enc"
+    outside.write_bytes((vault.path / "case.enc").read_bytes())
+    (vault.path / f".save-{transaction_id}-case.enc.old").symlink_to(outside)
+
+    with pytest.raises(VaultError, match="recovery file must be regular"):
         Vault.open(vault.path, "test-passphrase")
 
 
