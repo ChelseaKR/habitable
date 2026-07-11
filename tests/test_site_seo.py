@@ -183,6 +183,7 @@ def test_sitemap_lists_the_canonical_indexable_pages() -> None:
         f"{_CANONICAL}guides/preserve-maintenance-request-records/",
         f"{_CANONICAL}guides/housing-inspection-records/",
         f"{_CANONICAL}tenant-unions/",
+        f"{_CANONICAL}templates/tenant-union-building-condition-survey/",
         f"{_CANONICAL}legal-aid-reviewers/",
         f"{_CANONICAL}inspectors-code-enforcement/",
         f"{_CANONICAL}trust-limitations/",

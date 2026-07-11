@@ -41,6 +41,11 @@ _PAGE_META = {
         "A bounded, synthetic-data evaluation plan for tenant unions reviewing Habitable Evidence "
         "workflows, privacy boundaries, and adoption gates.",
     ),
+    "templates/tenant-union-building-condition-survey": (
+        "Tenant Union Building Condition Survey | Habitable",
+        "Download a tenant union building survey CSV to organize condition scope, recurrence, "
+        "repair requests, access, consent, storage, and campaign follow-up.",
+    ),
     "legal-aid-reviewers": (
         "Legal Aid Evidence Packet Review | Habitable Evidence",
         "Review Habitable Evidence packet structure, integrity checks, disclosure, accessibility, "
