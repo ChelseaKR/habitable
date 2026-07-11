@@ -80,7 +80,7 @@ class SyncError(HabitableError):
 
 
 class ShareError(HabitableError):
-    """A case (or a redactable subset of one) could not be shared or received."""
+    """A case could not be shared or received."""
 
 
 class LetterError(HabitableError):

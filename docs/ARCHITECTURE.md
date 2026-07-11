@@ -215,7 +215,7 @@ deliberate higher-disclosure choice.)
 ### Export (`packet.build_packet`)
 
 ```
-select issues/captures (optional --issue / --since)
+require whole-unit scope (--issue / --since fail closed before staging)
    for each capture:
      read sealed original (re-checks fixity)
      write location-stripped shared copy → media/<id>.<ext>, hash it → shared_hash

@@ -32,6 +32,25 @@ from habitable.vault import Vault
 from habitable.verify import verify_packet
 
 
+def test_scoped_sync_message_fails_before_recording_message_state(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+) -> None:
+    sender = make_vault(name="sender")
+    recipient = make_vault(name="recipient")
+    issue = sender.document.add_issue(category="mold", issue_id="i1")
+    captured = capture(sender, make_jpeg(), issue_id=issue, tsa=local_tsa)
+    peer = sender.sync_peer(recipient.identity.public())
+    assert peer is not None
+    before_messages = dict(peer.sent_messages)
+
+    with pytest.raises(SyncError, match="scoped sync payloads are temporarily blocked"):
+        export_message(sender, recipient.identity.public(), capture_ids={captured.capture_id})
+
+    assert peer.sent_messages == before_messages
+
+
 def test_pairing_material_is_sealed_signed_case_bound_and_persistent(tmp_path: Path) -> None:
     a = Vault.create(tmp_path / "a", "pw-a", case_id="case-4B")
     b = Vault.create(tmp_path / "b", "pw-b", case_id="case-4B")

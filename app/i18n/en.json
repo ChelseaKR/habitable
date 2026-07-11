@@ -119,7 +119,8 @@
 
   "export_heading": "Export packet",
   "export_legend": "Export options",
-  "field_issue_optional": "Issue (optional)",
+  "field_issue_optional": "Scope (whole unit only)",
+  "export_scope_help": "Issue-scoped exports are temporarily blocked because the current custody proof can reveal records outside the selected issue.",
   "field_include_originals": "Include the sealed original photos",
   "field_include_originals_help": "The originals are your full-quality photos, kept locked in your vault. They can still hold location and other hidden details, so include them only when the recipient needs them.",
   "export_submit": "Export packet",

@@ -119,7 +119,8 @@
 
   "export_heading": "Exportar paquete",
   "export_legend": "Opciones de exportación",
-  "field_issue_optional": "Problema (opcional)",
+  "field_issue_optional": "Alcance (solo la unidad completa)",
+  "export_scope_help": "Las exportaciones por problema están bloqueadas temporalmente porque la prueba de custodia actual puede revelar registros fuera del problema seleccionado.",
   "field_include_originals": "Incluir las fotos originales selladas",
   "field_include_originals_help": "Los originales son tus fotos en calidad completa, guardadas bajo llave en tu bóveda. Todavía pueden contener la ubicación y otros datos ocultos, así que inclúyelas solo cuando quien las reciba las necesite.",
   "export_submit": "Exportar paquete",

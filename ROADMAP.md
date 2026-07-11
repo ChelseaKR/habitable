@@ -151,6 +151,16 @@ Packet-integrity claims live here; this work gets the most scrutiny.
   `SOURCE_DATE_EPOCH`/`PYTHONHASHSEED` and fails on any byte difference; the `release`
   workflow runs it as a release-blocking gate (see `docs/releasing.md`). **Still open:** the
   relay container image is not yet covered by the same byte-identical check.
+- **Versioned scoped/rehashed custody views (P0 restoration).** *Objective:* restore
+  issue/date-scoped packets and issue-subset organizer shares without exposing identifiers from
+  records outside the declared scope. *Current safety state:* packet-v3 and sync-v2 scoped
+  operations fail before any output or message is published; whole-unit/full-case operations
+  remain available. *Exit:* new packet and sync protocol versions define a derived custody-view
+  schema that binds the selected scope and entries, rehashes the view under its own domain and
+  labels, preserves a verifiable relationship to the source proof where possible, and never
+  deletes arbitrary links or presents a truncated source chain as complete. Golden compatibility,
+  adversarial privacy tests, atomic-publication tests, migration notes, and independent crypto
+  review are required before re-enabling the CLI/app selectors.
 - **Independent security & cryptographic review.** *Objective:* an outside expert audits
   the crypto (vault, sealed-box sync, custody commitments) and the verifier. *Trigger:*
   before v0.5/beta and a precondition of v1.0; findings remediated or formally accepted in

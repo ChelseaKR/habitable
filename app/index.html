@@ -280,9 +280,10 @@
           <fieldset>
             <legend data-i18n="export_legend">Export options</legend>
             <div class="field">
-              <label for="ex-issue" data-i18n="field_issue_optional">Issue
-                (optional)</label>
-              <select id="ex-issue" name="issue_id"></select>
+              <label for="ex-issue" data-i18n="field_issue_optional">Scope (whole unit only)</label>
+              <select id="ex-issue" name="issue_id" aria-describedby="ex-scope-help"></select>
+              <p class="muted field-help" id="ex-scope-help"
+                 data-i18n="export_scope_help">Issue-scoped exports are temporarily blocked because the current custody proof can reveal records outside the selected issue.</p>
             </div>
             <div class="field field-check">
               <input type="checkbox" id="ex-originals" name="include_originals"

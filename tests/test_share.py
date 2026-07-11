@@ -52,41 +52,42 @@ def test_share_round_trip_full_case(
         organizer.read_original(cap.capture_id, cap.content_hash)
 
 
-def test_share_subset_excludes_other_issues(
+def test_share_subset_fails_before_queueing_a_sync_message(
+    make_vault: Callable[..., Vault], make_jpeg: Callable[..., Path], local_tsa: LocalRfc3161TSA
+) -> None:
+    tenant = _tenant_with_two_issues(make_vault, make_jpeg, local_tsa)
+    organizer = make_vault(name="org", case_id="case-4B", unit="")
+    peer = tenant.sync_peer(organizer.identity.public())
+    assert peer is not None
+    before_messages = dict(peer.sent_messages)
+
+    with pytest.raises(ShareError, match="scoped shares are temporarily blocked"):
+        export_share(tenant, organizer.identity.public(), issue_ids={"i1"})
+
+    assert peer.sent_messages == before_messages
+    assert organizer.document.issues() == []
+    assert organizer.document.captures() == []
+
+
+def test_full_case_share_can_redact_unit_label(
     make_vault: Callable[..., Vault], make_jpeg: Callable[..., Path], local_tsa: LocalRfc3161TSA
 ) -> None:
     tenant = _tenant_with_two_issues(make_vault, make_jpeg, local_tsa)
     organizer = make_vault(name="org", case_id="case-4B", unit="")
 
-    blob = export_share(tenant, organizer.identity.public(), issue_ids={"i1"})
+    blob = export_share(tenant, organizer.identity.public(), redact_unit=True)
     import_share(organizer, blob)
-
-    assert {i.issue_id for i in organizer.document.issues()} == {"i1"}
-    # Only i1's capture crossed over; i2's evidence never left the tenant device.
-    captures = organizer.document.captures()
-    assert len(captures) == 1
-    assert captures[0].issue_id == "i1"
-
-
-def test_share_can_redact_unit_label(
-    make_vault: Callable[..., Vault], make_jpeg: Callable[..., Path], local_tsa: LocalRfc3161TSA
-) -> None:
-    tenant = _tenant_with_two_issues(make_vault, make_jpeg, local_tsa)
-    organizer = make_vault(name="org", case_id="case-4B", unit="")
-
-    blob = export_share(tenant, organizer.identity.public(), issue_ids={"i1"}, redact_unit=True)
-    import_share(organizer, blob)
-    # The unit label was withheld; the organizer still gets the issue + evidence.
+    # The unit metadata field was omitted; the organizer still gets the full case.
     assert organizer.document.get_meta("unit") == ""
-    assert {i.issue_id for i in organizer.document.issues()} == {"i1"}
+    assert {i.issue_id for i in organizer.document.issues()} == {"i1", "i2"}
 
 
-def test_share_unknown_issue_is_rejected(
+def test_even_unknown_issue_selector_fails_as_a_scoped_share(
     make_vault: Callable[..., Vault], make_jpeg: Callable[..., Path], local_tsa: LocalRfc3161TSA
 ) -> None:
     tenant = _tenant_with_two_issues(make_vault, make_jpeg, local_tsa)
     organizer = make_vault(name="org", case_id="case-4B")
-    with pytest.raises(ShareError):
+    with pytest.raises(ShareError, match="scoped shares are temporarily blocked"):
         export_share(tenant, organizer.identity.public(), issue_ids={"nope"})
 
 

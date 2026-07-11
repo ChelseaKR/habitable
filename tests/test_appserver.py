@@ -172,6 +172,10 @@ def test_full_api_flow(app: App, make_jpeg: Callable[..., Path]) -> None:
     # not present it as evidence-ready. It is not in the awaiting state either.
     assert export["awaiting"] == 0 and export["awaiting_only"] is False
 
+    status, blocked = _call(app, "POST", "/api/export", {"issue_id": issue_id})
+    assert status == 400
+    assert "scoped packet exports are temporarily blocked" in cast(str, blocked["error"])
+
 
 def test_export_reports_awaiting_state_honestly(
     make_vault: Callable[..., Vault],

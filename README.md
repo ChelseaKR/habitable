@@ -68,21 +68,25 @@ auditability, accessibility, and saying plainly what the tool does not do.
   expected peer and case before any delta can merge; replayed deltas are detected and skipped. No
   server holds the plaintext, and no server is required at all.
 - **Exports a court/inspector-organized review bundle.** One command assembles a paginated PDF,
-  accessible HTML rendering, and structured `bundle.json` for an issue or a whole unit: a cover
+  accessible HTML rendering, and structured `bundle.json` for a whole unit: a cover
   sheet, chronological evidence timeline, per-issue detail, and a chain-of-custody/integrity
-  summary. Technical integrity is independently checkable; legal, court, and inspector usefulness
-  remain externally unvalidated.
-- **Shares with an organizer, end to end.** A tenant can hand a case — or a chosen subset of issues,
-  optionally with the unit label redacted — to a tenant-union organizer who was not on the case,
+  summary. Issue/date-scoped packet exports currently fail closed because packet v3 can carry only
+  the complete custody chain. Technical integrity is independently checkable; legal, court, and
+  inspector usefulness remain externally unvalidated.
+- **Shares with an organizer, end to end.** A tenant can hand a full case, optionally with the
+  `unit` metadata field omitted, to a tenant-union organizer who was not on the case,
   signed and **sealed to the organizer's verified public key**, so any relay or courier sees only
-  ciphertext (`habitable share` / `receive`; trust model in `docs/sharing-trust-model.md`).
+  ciphertext. Issue-subset shares currently fail closed for the same complete-custody reason
+  (`habitable share` / `receive`; trust model in `docs/sharing-trust-model.md`). Omitting that one
+  field is not anonymization: case identifiers, descriptions, custody identifiers, or original
+  media metadata can still reveal the unit.
 - **Drafts the repair request.** From the logged evidence, `habitable letter` generates a dated
   repair-request / notice letter to the landlord (accessible HTML + PDF), with jurisdiction-aware
   *framing only* and a standing "not legal advice" disclaimer (`docs/letter-generator.md`). Its
   wording and delivery workflow have not been validated by legal counsel or a pilot partner.
 
 ```console
-$ habitable export --vault ./case-vault --since 2026-01-01 --out ./4B-packet
+$ habitable export --vault ./case-vault --out ./4B-packet
 $ habitable verify ./4B-packet
 $ habitable verify --trusted-cert ./tsa-root.pem ./4B-packet  # additionally anchor TSA trust
 ```
