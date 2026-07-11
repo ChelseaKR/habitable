@@ -32,9 +32,11 @@ $ uv run habitable --help
 $ uv run habitable demo
 ```
 
-This makes up a couple of photos, captures them as evidence, builds a packet
-(with location removed from the shared copies), and checks it — all offline, with
-no real data. When you see `packet intact`, the tool is working.
+This fabricates a couple of photos, captures them as evidence, builds a packet
+(with location stripped from the shared copies), and verifies it — all offline,
+with no real data. The demo explicitly pins its synthetic RFC 3161 certificate;
+when all three claims read `intact`, `trusted`, and `READY`, the synthetic toolchain
+is healthy. That synthetic certificate is not a production trust decision.
 
 ## 2. Create a case (10 min)
 
@@ -63,9 +65,10 @@ $ uv run habitable timeline --vault ./case-4B --issue <issue-id> \
 $ uv run habitable status   --vault ./case-4B
 ```
 
-Offline is fine. Each capture is sealed and fingerprinted right away, and the
-trusted timestamp is queued for when you have a connection. Once you're back
-online, run `habitable resolve --vault ./case-4B` to add the waiting timestamps.
+Offline is fine. Each capture is sealed and fingerprinted right away, and a
+timestamp token is queued for when you have a connection. Once you're back
+online, run `habitable resolve --vault ./case-4B` to add the waiting tokens.
+Recipients must still verify each token against an authority certificate they trust.
 
 Prefer a screen? Run the local app (accessible, English/Español) and use a laptop
 or desktop browser on the same machine. The alpha has no supported phone package;
@@ -112,14 +115,16 @@ No relay, no data plan; a lost stick leaks nothing. See
 
 ```console
 $ uv run habitable export --vault ./case-4B --out ./4B-packet
-$ uv run habitable verify ./4B-packet
-habitable: N/N items verify against their sealed originals and timestamp tokens — packet intact
+$ uv run habitable verify ./4B-packet --trusted-cert ./independently-obtained-tsa-root.pem
+habitable: integrity: intact; timestamp authority: trusted (N/N items); evidence readiness: READY
 ```
 
 Hand the recipient `./4B-packet` (the `bundle.json`, the `media/`, and
 `packet.pdf`). Anyone — including the opposing side — can run `habitable verify`
-to confirm nothing was altered. The shared copies carry **no location**; the
-sealed originals stay encrypted in your vault.
+to confirm nothing was altered. The recipient must obtain and assess the timestamp
+authority certificate independently; without it, Habitable can confirm token mechanics
+but reports authority trust and evidence readiness as false. The shared copies carry
+**no location**; the sealed originals stay encrypted in your vault.
 
 ## Good habits
 

@@ -62,15 +62,19 @@ def _init_capture_export(
     return packet
 
 
-def test_cli_full_flow_verifies(
+def test_cli_dev_timestamp_is_intact_but_never_evidence_ready(
     tmp_path: Path,
     make_jpeg: Callable[..., Path],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     packet = _init_capture_export(tmp_path, make_jpeg, monkeypatch, capsys)
-    assert main(["verify", str(packet)]) == 0
-    assert "packet intact" in capsys.readouterr().out
+    assert main(["verify", str(packet)]) == 1
+    captured = capsys.readouterr()
+    assert "integrity: intact" in captured.out
+    assert "timestamp authority: NOT TRUSTED" in captured.out
+    assert "evidence readiness: NOT READY" in captured.out
+    assert "Development timestamps can never become trusted" in captured.err
 
 
 def test_cli_status_shows_record_strength(
@@ -98,7 +102,8 @@ def test_cli_status_shows_record_strength(
     assert main(["status", "--vault", str(vault)]) == 0
     status_out = capsys.readouterr().out
     assert "record strength: developing" in status_out
-    assert "not admissibility" in status_out
+    assert "not token validity, authority trust" in status_out
+    assert "or admissibility" in status_out
 
 
 def test_cli_verify_detects_tamper(
@@ -111,7 +116,9 @@ def test_cli_verify_detects_tamper(
     bundle = json.loads((packet / "bundle.json").read_text())
     bundle["unit"] = "TAMPERED"
     (packet / "bundle.json").write_text(json.dumps(bundle))
+    capsys.readouterr()
     assert main(["verify", str(packet)]) == 1
+    assert "integrity: NOT INTACT" in capsys.readouterr().out
 
 
 def test_cli_verify_json_is_structured(
@@ -122,14 +129,46 @@ def test_cli_verify_json_is_structured(
 ) -> None:
     packet = _init_capture_export(tmp_path, make_jpeg, monkeypatch, capsys)
     capsys.readouterr()  # drop prior output
-    assert main(["verify", str(packet), "--json"]) == 0
+    assert main(["verify", str(packet), "--json"]) == 1
     report = json.loads(capsys.readouterr().out)
-    assert report["ok"] is True
+    assert report["ok"] is False
+    assert report["structurally_intact"] is True
+    assert report["timestamp_authority_trusted"] is False
+    assert report["evidence_ready"] is False
+    assert report["status"] == "timestamp_authority_untrusted"
     assert report["signature_ok"] and report["custody_ok"]
-    assert report["item_count"] >= 1 and report["verified_items"] == report["item_count"]
+    assert report["item_count"] >= 1
+    assert report["cryptographically_verified_items"] == report["item_count"]
+    assert report["verified_items"] == 0
     item = report["items"][0]
-    for key in ("capture_id", "content_hash", "ok", "timestamp_verified", "notes"):
+    for key in (
+        "capture_id",
+        "content_hash",
+        "ok",
+        "structurally_intact",
+        "timestamp_verified",
+        "timestamp_authority_trusted",
+        "evidence_ready",
+        "notes",
+    ):
         assert key in item
+
+
+def test_cli_verify_spanish_trust_output(
+    tmp_path: Path,
+    make_jpeg: Callable[..., Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    packet = _init_capture_export(tmp_path, make_jpeg, monkeypatch, capsys)
+    capsys.readouterr()
+    assert main(["verify", str(packet), "--lang", "es"]) == 1
+    captured = capsys.readouterr()
+    assert "integridad: íntegra" in captured.out
+    assert "autoridad del sello de tiempo: NO CONFIABLE" in captured.out
+    assert "preparación probatoria: NO LISTA" in captured.out
+    assert "Los sellos de desarrollo nunca pueden volverse confiables" in captured.err
+    assert "el sello de desarrollo no es confiable" in captured.err
 
 
 def test_no_command_prints_help() -> None:
@@ -171,8 +210,8 @@ def test_cli_export_discloses_awaiting_state(
 ) -> None:
     """Exporting with queued-offline items states the degraded state and next step.
 
-    FIX-09: a packet with awaiting items reports NOT intact under `habitable verify`
-    (correct, degraded behavior) — the export must say so up front, with the
+    FIX-09: a packet with awaiting items can remain structurally intact but is not
+    evidence-ready — the export must say so up front, with the
     `habitable resolve` next step, instead of the recipient discovering it.
     """
     monkeypatch.setenv("HABITABLE_PASSPHRASE", "pw")
@@ -189,7 +228,7 @@ def test_cli_export_discloses_awaiting_state(
 
     assert main(["export", "--vault", str(vault), "--out", str(tmp_path / "p1")]) == 0
     out = capsys.readouterr().out
-    assert "awaiting a trusted timestamp" in out
+    assert "awaiting a timestamp token" in out
     assert "habitable resolve" in out
 
     # Once every item is timestamped, the hint disappears — nothing cries wolf.
@@ -197,4 +236,4 @@ def test_cli_export_discloses_awaiting_state(
     capsys.readouterr()
     assert main(["export", "--vault", str(vault), "--out", str(tmp_path / "p2")]) == 0
     out = capsys.readouterr().out
-    assert "awaiting a trusted timestamp" not in out
+    assert "awaiting a timestamp token" not in out

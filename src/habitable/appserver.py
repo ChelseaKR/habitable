@@ -279,29 +279,35 @@ class AppServer:
                 "not_proves": list(stmt.not_proves),
                 "verify_line": stmt.verify_line,
             },
-            "verified": report.ok,
+            # ``verified`` is retained for older app shells; it now means the
+            # fail-closed evidence-ready verdict. The named fields prevent a
+            # structurally intact but untrusted packet from being shown as ready.
+            "verified": report.evidence_ready,
+            "structurally_intact": report.structurally_intact,
+            "timestamp_authority_trusted": report.timestamp_authority_trusted,
+            "evidence_ready": report.evidence_ready,
+            "verification_status": report.status,
             "summary": report.summary(),
         }
 
 
 def _awaiting_only(report: VerificationReport) -> bool:
-    """Whether the packet fails verification *solely* because items await a timestamp.
+    """Whether a missing timestamp is the only active integrity/token-validity gap.
 
-    An un-timestamped item makes the whole packet report NOT intact — correct,
-    degraded behavior (see docs/verifier-decision-table.md §0). But for the person
-    exporting, "awaiting a trusted timestamp" is a different situation from a broken
-    chain or a failed hash, and the UI must not present the two identically (FIX-09,
-    R-01/R-17): the first has a clear next step, the second is an integrity alarm.
+    An un-timestamped item can still be structurally intact, but is not evidence-ready.
+    For the person exporting, "awaiting a timestamp" is different from a broken chain,
+    a failed hash, or an untrusted timestamp authority, and the UI must not collapse
+    those states (FIX-09, R-01/R-17). Authority trust may also remain unassessed because
+    the local app has no recipient trust store; the named trust fields disclose that
+    separately. This compatibility flag only promises there is no integrity failure or
+    attached-but-invalid token.
     """
-    if report.ok or not report.signature_ok or not report.custody_ok or report.problems:
+    if report.evidence_ready or not report.structurally_intact:
         return False
-    failing = [item for item in report.items if not item.ok]
-    return bool(failing) and all(
-        not item.timestamp_verified
-        and item.shared_media_ok
-        and item.custody_binding_ok
-        and item.original_fixity_ok is not False
-        for item in failing
+    awaiting = [item for item in report.items if not item.timestamp_present]
+    return bool(awaiting) and all(
+        item.structurally_intact and (item.timestamp_verified if item.timestamp_present else True)
+        for item in report.items
     )
 
 

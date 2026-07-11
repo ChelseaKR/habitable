@@ -71,7 +71,7 @@ _LEGACY_NODE_ID_LINE = re.compile(r"^\s*node_id\s*=")
 
 @dataclass(frozen=True, slots=True)
 class DeferredItem:
-    """A capture awaiting a trusted timestamp (created while offline)."""
+    """A capture awaiting a timestamp token (created while offline)."""
 
     capture_id: str
     digest: str

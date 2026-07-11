@@ -12,9 +12,11 @@ from __future__ import annotations
 import copy
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from cryptography.hazmat.primitives.serialization import Encoding
 
 # The importer lives in contrib/ (not the shipped wheel); put it on the path like an
 # integrator vendoring it would.
@@ -24,7 +26,11 @@ sys.path.insert(0, str(_CONTRIB))
 import legal_aid_importer as imp  # noqa: E402  (after sys.path insert, by design)
 
 from habitable.canonical import canonical_json, sha256_bytes  # noqa: E402
+from habitable.capture import capture  # noqa: E402
 from habitable.errors import VerificationError  # noqa: E402
+from habitable.packet import build_packet  # noqa: E402
+from habitable.tsa import LocalRfc3161TSA  # noqa: E402
+from habitable.vault import Vault  # noqa: E402
 
 _GOLDEN = Path(__file__).resolve().parent / "golden" / "packet-v1"
 
@@ -32,9 +38,10 @@ _GOLDEN = Path(__file__).resolve().parent / "golden" / "packet-v1"
 def test_import_golden_packet_verifies_and_builds_receipt() -> None:
     result = imp.import_packet(_GOLDEN, now="2026-01-02T00:10:00Z")
 
-    # The verifier's own verdict must survive into the receipt.
-    assert result.ok
-    assert result.report.ok
+    # The golden corpus has no independently supplied trust root: format and token
+    # mechanics pass, while authority trust/readiness fail closed.
+    assert result.structurally_intact
+    assert not result.evidence_ready and not result.ok
     receipt = result.receipt
     assert receipt["receipt_type"] == imp.RECEIPT_TYPE
     assert receipt["receipt_version"] == imp.RECEIPT_VERSION
@@ -42,10 +49,15 @@ def test_import_golden_packet_verifies_and_builds_receipt() -> None:
     assert receipt["verified_at"] == "2026-01-02T00:10:00Z"
 
     verdict = receipt["verdict"]
-    assert verdict["ok"] is True
+    assert verdict["ok"] is False
+    assert verdict["structurally_intact"] is True
+    assert verdict["timestamp_authority_trusted"] is False
+    assert verdict["evidence_ready"] is False
+    assert verdict["status"] == "timestamp_authority_untrusted"
     assert verdict["signature_ok"] is True
     assert verdict["custody_ok"] is True
-    assert verdict["items_total"] == verdict["items_verified"] == 1
+    assert verdict["items_total"] == verdict["items_cryptographically_verified"] == 1
+    assert verdict["items_verified"] == verdict["items_trusted_timestamp"] == 0
 
     # The receipt is pinned to the exact bundle bytes (the packet's identity).
     expected = sha256_bytes((_GOLDEN / "bundle.json").read_bytes())
@@ -55,10 +67,51 @@ def test_import_golden_packet_verifies_and_builds_receipt() -> None:
 
     # Per-item verdict is carried through with its timestamp authority.
     (item,) = receipt["items"]
-    assert item["ok"] is True
+    assert item["ok"] is False
+    assert item["structurally_intact"] is True
+    assert item["cryptographically_verified"] is True
     assert item["timestamp_verified"] is True
+    assert item["timestamp_authority_trusted"] is False
+    assert item["evidence_ready"] is False
     assert item["tsa_name"] == "golden-tsa"
     assert item["verified_authorities"] == ["golden-tsa"]
+    assert item["trusted_authorities"] == []
+
+
+def test_import_with_trusted_root_is_evidence_ready(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    vault: Vault = make_vault()
+    issue = vault.document.add_issue(category="mold", issue_id="i1")
+    capture(vault, make_jpeg(), issue_id=issue, tsa=local_tsa)
+    packet = tmp_path / "packet"
+    build_packet(vault, packet, generated_at="2026-01-02T00:10:00Z")
+
+    result = imp.import_packet(packet, trusted_certs=[local_tsa.certificate])
+    assert result.ok and result.evidence_ready and result.structurally_intact
+    verdict = result.receipt["verdict"]
+    assert verdict["ok"] is True
+    assert verdict["timestamp_authority_trusted"] is True
+    assert verdict["evidence_ready"] is True
+
+    pem = tmp_path / "tsa.pem"
+    pem.write_bytes(local_tsa.certificate.public_bytes(Encoding.PEM))
+    assert imp._main([str(packet), "--trusted-cert", str(pem)]) == 0
+    cli_receipt = json.loads(capsys.readouterr().out)
+    assert cli_receipt["verdict"]["evidence_ready"] is True
+
+
+def test_importer_cli_rejects_bad_trust_certificate(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bad = tmp_path / "not-a-cert.pem"
+    bad.write_text("not a certificate", encoding="utf-8")
+    assert imp._main([str(_GOLDEN), "--trusted-cert", str(bad)]) == 2
+    assert "could not load trusted certificate" in json.loads(capsys.readouterr().out)["error"]
 
 
 def test_receipt_is_canonical_serializable() -> None:
@@ -101,7 +154,7 @@ def test_tampered_receipt_fails_digest() -> None:
 
     # Flip the stored verdict after signing — a downstream store must catch it.
     tampered = copy.deepcopy(envelope)
-    tampered["receipt"]["verdict"]["ok"] = False
+    tampered["receipt"]["verdict"]["ok"] = True
     result = imp.verify_receipt(tampered, expected_public=public)
     assert not result.ok
     assert not result.digest_ok

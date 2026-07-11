@@ -37,8 +37,9 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from cryptography import x509
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
@@ -50,9 +51,6 @@ from habitable.verify import (
     VerificationReport,
     verify_packet,
 )
-
-if TYPE_CHECKING:
-    from cryptography import x509
 
 __all__ = [
     "PACKET_SCHEMA_ID",
@@ -74,7 +72,7 @@ __all__ = [
 
 #: Format version of the receipt object this module emits. A downstream store keys its
 #: compatibility off this: it accepts receipts it understands and rejects a newer major.
-RECEIPT_VERSION = 1
+RECEIPT_VERSION = 2
 
 #: A stable discriminator so a receipt is self-identifying in a mixed document store.
 RECEIPT_TYPE = "habitable.evidence-receipt"
@@ -84,7 +82,7 @@ RECEIPT_TYPE = "habitable.evidence-receipt"
 PACKET_SCHEMA_ID = "https://chelseakr.github.io/habitable/schema/packet-bundle-v1.schema.json"
 
 #: Human/machine label for the tool that produced a receipt, recorded in every receipt.
-_IMPORTER = "habitable-contrib-importer/1"
+_IMPORTER = "habitable-contrib-importer/2"
 
 #: Ed25519 signature algorithm label recorded in a signed receipt envelope.
 _SIG_ALG = "ed25519"
@@ -108,8 +106,16 @@ class ImportResult:
 
     @property
     def ok(self) -> bool:
-        """True iff the packet verified intact (delegates to the verifier's verdict)."""
-        return self.report.ok
+        """Fail-closed compatibility alias for :attr:`evidence_ready`."""
+        return self.report.evidence_ready
+
+    @property
+    def structurally_intact(self) -> bool:
+        return self.report.structurally_intact
+
+    @property
+    def evidence_ready(self) -> bool:
+        return self.report.evidence_ready
 
 
 @dataclass(frozen=True)
@@ -146,8 +152,9 @@ def import_packet(
     receipt is reproducible; leave it ``None`` to omit the field rather than invent a time.
 
     Fails closed exactly like the verifier: a malformed or newer-than-supported packet yields a
-    receipt whose ``verdict.ok`` is ``False``. The two pre-structural conditions (missing
-    ``bundle.json`` or bytes that are not valid JSON) raise :class:`VerificationError`.
+    receipt whose ``verdict.ok`` is ``False``. ``ok`` is the verifier's fail-closed
+    evidence-readiness alias, not structural integrity. Pre-structural read/parse failures
+    raise :class:`VerificationError`.
     """
     packet_dir = Path(packet_dir)
     report = verify_packet(packet_dir, trusted_certs=trusted_certs)
@@ -181,10 +188,17 @@ def build_receipt(
         {
             "capture_id": item.capture_id,
             "content_hash": item.content_hash,
+            "structurally_intact": item.structurally_intact,
+            "cryptographically_verified": item.cryptographically_verified,
+            "timestamp_present": item.timestamp_present,
+            "timestamp_kind": item.timestamp_kind,
             "timestamp_verified": item.timestamp_verified,
+            "timestamp_authority_trusted": item.timestamp_authority_trusted,
+            "evidence_ready": item.evidence_ready,
             "gen_time": item.gen_time,
             "tsa_name": item.tsa_name,
             "verified_authorities": list(item.verified_authorities),
+            "trusted_authorities": list(item.trusted_authorities),
             "shared_media_ok": item.shared_media_ok,
             "custody_binding_ok": item.custody_binding_ok,
             "original_fixity_ok": item.original_fixity_ok,
@@ -209,13 +223,20 @@ def build_receipt(
         },
         "verdict": {
             "ok": report.ok,
+            "status": report.status,
+            "structurally_intact": report.structurally_intact,
+            "timestamp_authority_trusted": report.timestamp_authority_trusted,
+            "evidence_ready": report.evidence_ready,
             "signature_ok": report.signature_ok,
             "custody_ok": report.custody_ok,
             "custody_length": report.custody_length,
             "items_total": len(report.items),
             "items_verified": report.verified_items,
+            "items_cryptographically_verified": report.cryptographically_verified_items,
+            "items_trusted_timestamp": report.trusted_timestamp_items,
             "problems": list(report.problems),
             "summary": report.summary(),
+            "guidance": report.guidance(),
         },
         "items": items,
     }
@@ -352,6 +373,13 @@ def _main(argv: Sequence[str]) -> int:
     parser.add_argument("packet_dir", type=Path, help="a habitable packet directory")
     parser.add_argument("--now", default=None, help="ISO-8601 UTC time to record as verified_at")
     parser.add_argument(
+        "--trusted-cert",
+        action="append",
+        type=Path,
+        metavar="PEM",
+        help="trusted RFC 3161 authority certificate; repeatable",
+    )
+    parser.add_argument(
         "--sign-key",
         type=Path,
         default=None,
@@ -360,7 +388,8 @@ def _main(argv: Sequence[str]) -> int:
     args = parser.parse_args(argv)
 
     try:
-        result = import_packet(args.packet_dir, now=args.now)
+        trusted_certs = _load_trusted_certs(args.trusted_cert)
+        result = import_packet(args.packet_dir, trusted_certs=trusted_certs, now=args.now)
     except VerificationError as exc:
         print(json.dumps({"error": str(exc)}))
         return 2
@@ -371,6 +400,19 @@ def _main(argv: Sequence[str]) -> int:
 
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0 if result.ok else 1
+
+
+def _load_trusted_certs(paths: list[Path] | None) -> list[x509.Certificate] | None:
+    """Load explicitly supplied trust roots; malformed paths are clean importer errors."""
+    if not paths:
+        return None
+    certs: list[x509.Certificate] = []
+    for path in paths:
+        try:
+            certs.append(x509.load_pem_x509_certificate(path.read_bytes()))
+        except (OSError, ValueError) as exc:
+            raise VerificationError(f"could not load trusted certificate {path}: {exc}") from exc
+    return certs
 
 
 if __name__ == "__main__":  # pragma: no cover

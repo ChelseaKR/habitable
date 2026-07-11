@@ -173,7 +173,7 @@ class TestCampaignPacket:
 
         # Each unit's own packet independently verifies with the existing verifier.
         for unit_result in result.units:
-            report = verify_packet(unit_result.out_dir)
+            report = verify_packet(unit_result.out_dir, trusted_certs=[local_tsa.certificate])
             assert report.ok
 
     def test_duplicate_unit_labels_get_distinct_directories(

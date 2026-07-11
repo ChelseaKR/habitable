@@ -119,7 +119,7 @@ this list can grow):
 | `alpha_warning` | "Alpha software — do not rely on this for real legal matters yet." | The core honesty caveat. Must stay a real warning, not a soft "still improving." |
 | `alpha_label` | "Alpha software warning" | The accessible label for the warning; must read as a warning to AT users too. |
 | `alpha_tag` | "Alpha" | A status badge; keep it as a clear maturity marker, not omitted. |
-| `verify_intact` / `verify_failed` | "Packet intact" / "Packet NOT intact" | Integrity verdicts. The *failed* state must be unmistakable — keep the emphasis (the English shouts "NOT" on purpose). Never round a failure up to a pass. |
+| `verify_ready` / `verify_intact_untrusted` / `verify_failed` / `verify_awaiting` | Ready / intact-but-untrusted / failed / awaiting | Integrity, authority trust, and readiness are separate claims. Never round token presence or structural integrity up to evidence readiness. |
 | `custody_broken` | "Broken — verify the record" | A tamper/integrity warning. Must stay a clear "something is wrong, check it," never softened to "minor issue." |
 | `custody_intact` | "Intact" | Its honest counterpart; do not overstate it as a guarantee of truth. |
 | `capture_timestamped_no` | "not timestamped" | Reflects a real, weaker evidentiary state. Do not phrase it as if equivalent to "timestamped." |

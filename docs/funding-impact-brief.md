@@ -21,7 +21,7 @@
 A tenant — or their union — documents a habitability problem (mold, no heat, a
 leak, pests, electrical or structural hazards) on the only device they have,
 offline, end-to-end encrypted. Each photo or note is sealed byte-for-byte,
-content-hashed at capture, trusted-timestamped (RFC 3161) once the device has a
+content-hashed at capture, given an RFC 3161 timestamp token once the device has a
 connection, and recorded in an append-only chain of custody. One command
 exports a court- or inspector-ready packet that the **other side** can verify
 hasn't been altered — using a small, standalone verifier, with no call back to

@@ -325,19 +325,26 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         "strength_level_developing": "developing",
         "strength_level_strong": "strong",
         "status_strength_caveat": (
-            "record strength reflects what is in this record (timestamps, custody, "
-            "corroborating timeline) — not a legal judgment, and not admissibility"
+            "record strength reflects token presence, custody, and corroborating timeline — "
+            "not token validity, authority trust, a legal judgment, or admissibility"
         ),
         "custody_intact": "intact",
         "custody_broken": "BROKEN",
-        "capture_timestamped": "timestamped ({when})",
-        "capture_awaiting": "awaiting timestamp (queued)",
+        "capture_timestamped": "timestamp token attached ({when})",
+        "capture_awaiting": "awaiting timestamp token (queued)",
+        "capture_trust_unassessed": (
+            "timestamp token attached; authority trust is assessed only by `habitable verify` "
+            "with an independently trusted certificate"
+        ),
+        "capture_dev_untrusted": (
+            "development timestamp only; it is untrusted and never evidence-ready"
+        ),
         "capture_also_timestamped": (
             "also timestamped by {count, plural, one {# more authority} "
             "other {# more authorities}}: {names}"
         ),
         "resolve_done": (
-            "timestamped {count, plural, =0 {no queued items} "
+            "attached timestamp tokens to {count, plural, =0 {no queued items} "
             "one {# previously-queued item} other {# previously-queued items}}"
         ),
         "retimestamp_done": (
@@ -345,16 +352,16 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         ),
         "export_timestamped_line": (
             "{timestamped} of {total, plural, one {# media item} other {# media items}}: "
-            "content hash present, trusted timestamp attached"
+            "content hash present, timestamp token attached; authority trust not assessed"
         ),
         "export_awaiting_hint": (
             "{awaiting, plural, "
-            "one {# item is still awaiting a trusted timestamp, so this packet does not "
-            "verify as complete yet. Its content hash already anchors it at capture. "
+            "one {# item is still awaiting a timestamp token, so this packet is not "
+            "evidence-ready. Its content hash already identifies the sealed bytes. "
             "Run `habitable resolve` when online, then export again.} "
-            "other {# items are still awaiting a trusted timestamp, so this packet does "
-            "not verify as complete yet. Their content hashes already anchor them at "
-            "capture. Run `habitable resolve` when online, then export again.}}"
+            "other {# items are still awaiting timestamp tokens, so this packet is not "
+            "evidence-ready. Their content hashes already identify the sealed bytes. "
+            "Run `habitable resolve` when online, then export again.}}"
         ),
         "sync_done": (
             "synced — merged {messages, plural, one {# message} other {# messages}}, "
@@ -370,7 +377,7 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         "campaign_unit_line": (
             "{unit}: {issues, plural, one {# issue} other {# issues}}, "
             "{timestamped}/{captures, plural, one {# capture} other {# captures}} "
-            "timestamped, custody {custody} — {flag}"
+            "with timestamp tokens attached, custody {custody} — {flag}"
         ),
         "campaign_flag_ready": "export-ready",
         "campaign_flag_broken": "custody broken",
@@ -414,22 +421,29 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         "strength_level_developing": "en desarrollo",
         "strength_level_strong": "sólida",
         "status_strength_caveat": (
-            "la solidez del registro refleja lo que contiene este registro (sellos de "
-            "tiempo, custodia, cronología corroborante); no es un juicio legal ni implica "
-            "admisibilidad"
+            "la solidez del registro refleja la presencia de tokens, la custodia y la "
+            "cronología corroborante; no afirma la validez del token, la confianza en la "
+            "autoridad, un juicio legal ni la admisibilidad"
         ),
         "custody_intact": "intacta",
         "custody_broken": "ROTA",
-        "capture_timestamped": "con sello de tiempo ({when})",
-        "capture_awaiting": "pendiente de sello de tiempo (en cola)",
+        "capture_timestamped": "token de sello de tiempo adjunto ({when})",
+        "capture_awaiting": "pendiente de token de sello de tiempo (en cola)",
+        "capture_trust_unassessed": (
+            "token de sello adjunto; la confianza en la autoridad solo se evalúa con "
+            "`habitable verify` y un certificado de confianza independiente"
+        ),
+        "capture_dev_untrusted": (
+            "solo sello de desarrollo; no es confiable ni puede estar listo como prueba"
+        ),
         "capture_also_timestamped": (
             "también sellado por {count, plural, one {# autoridad más} "
             "other {# autoridades más}}: {names}"
         ),
         "resolve_done": (
             "{count, plural, =0 {no había elementos en cola} "
-            "one {se selló # elemento que estaba en cola} "
-            "other {se sellaron # elementos que estaban en cola}}"
+            "one {se adjuntó un token a # elemento que estaba en cola} "
+            "other {se adjuntaron tokens a # elementos que estaban en cola}}"
         ),
         "retimestamp_done": (
             "{count, plural, =0 {ningún elemento re-sellado} "
@@ -439,17 +453,17 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         "export_timestamped_line": (
             "{timestamped} de {total, plural, one {# elemento multimedia} "
             "other {# elementos multimedia}}: "
-            "hash del contenido presente, sello de tiempo confiable adjunto"
+            "hash del contenido presente, token de sello adjunto; confianza no evaluada"
         ),
         "export_awaiting_hint": (
             "{awaiting, plural, "
-            "one {# elemento sigue pendiente de un sello de tiempo confiable, así que "
-            "este paquete aún no se verifica como completo. Su hash de contenido ya lo "
-            "ancla en el momento de la captura. Ejecute `habitable resolve` cuando tenga "
+            "one {# elemento sigue pendiente de un token de sello de tiempo, así que "
+            "este paquete no está listo como prueba. Su hash ya identifica los bytes "
+            "sellados. Ejecute `habitable resolve` cuando tenga "
             "conexión y vuelva a exportar.} "
-            "other {# elementos siguen pendientes de un sello de tiempo confiable, así "
-            "que este paquete aún no se verifica como completo. Sus hashes de contenido "
-            "ya los anclan en el momento de la captura. Ejecute `habitable resolve` "
+            "other {# elementos siguen pendientes de tokens de sello de tiempo, así "
+            "que este paquete no está listo como prueba. Sus hashes ya identifican los "
+            "bytes sellados. Ejecute `habitable resolve` "
             "cuando tenga conexión y vuelva a exportar.}}"
         ),
         "sync_done": (
@@ -468,7 +482,7 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         "campaign_unit_line": (
             "{unit}: {issues, plural, one {# problema} other {# problemas}}, "
             "{timestamped}/{captures, plural, one {# captura} other {# capturas}} "
-            "con sello de tiempo, custodia {custody} — {flag}"
+            "con tokens de sello adjuntos, custodia {custody} — {flag}"
         ),
         "campaign_flag_ready": "lista para exportar",
         "campaign_flag_broken": "cadena de custodia rota",

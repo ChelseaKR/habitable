@@ -3,11 +3,15 @@
 """Independent verification of an evidence packet.
 
 This is the module a skeptic runs. Given only a packet directory (and, optionally,
-trusted TSA root certificates), it re-derives every hash, validates each trusted
-timestamp against its authority, checks the producer's signature over the whole
-bundle, validates packet-v3 timeline commitments/links, and walks the chain of
-custody — confirming the packet has not been altered after the fact, without access
-to the union's other data.
+trusted TSA root certificates), it re-derives every hash, validates each timestamp
+token, checks whether its authority chains to a caller-supplied trust root, verifies
+the producer's signature over the whole bundle, validates packet-v3 timeline
+commitments and links, and walks the chain of custody.
+
+Those are deliberately separate claims.  A packet can be structurally intact while
+its timestamps are untrusted (or still absent), and neither state is silently
+promoted to ``evidence_ready``.  In particular, development timestamps are useful
+for exercising the proof format but can never make evidence ready for review.
 
 Licensing: this verifier, together with the pure modules it imports
 (:mod:`habitable.canonical`, :mod:`habitable.crypto`, :mod:`habitable.evidence`,
@@ -56,6 +60,95 @@ SUPPORTED_PACKET_VERSION = 3
 # vendor it onto older interpreters (see docs/embedding-the-verifier.md).
 _SIGNATURE_READ_ERRORS = (json.JSONDecodeError, UnicodeDecodeError, ValueError, OSError)
 
+_SUMMARY_TEXT = {
+    "en": {
+        "intact": "intact",
+        "not_intact": "NOT INTACT",
+        "trusted": "trusted",
+        "not_trusted": "NOT TRUSTED",
+        "ready": "READY",
+        "not_ready": "NOT READY",
+        "summary": (
+            "integrity: {integrity}; timestamp authority: {trust} "
+            "({trusted_items}/{total} items); evidence readiness: {readiness}"
+        ),
+        "guidance_evidence_ready": (
+            "Technical evidence readiness does not decide admissibility or any legal outcome."
+        ),
+        "guidance_integrity_failed": (
+            "Not evidence-ready: one or more packet integrity checks failed."
+        ),
+        "guidance_no_items": "Not evidence-ready: the packet contains no evidence items.",
+        "guidance_timestamp_missing": (
+            "Not evidence-ready: one or more evidence items are awaiting a timestamp."
+        ),
+        "guidance_timestamp_invalid": (
+            "Not evidence-ready: one or more attached timestamp tokens are invalid."
+        ),
+        "guidance_timestamp_authority_untrusted": (
+            "Not evidence-ready: rerun with --trusted-cert PEM for an authority you "
+            "independently trust. Development timestamps can never become trusted."
+        ),
+    },
+    "es": {
+        "intact": "íntegra",
+        "not_intact": "NO ÍNTEGRA",
+        "trusted": "confiable",
+        "not_trusted": "NO CONFIABLE",
+        "ready": "LISTA",
+        "not_ready": "NO LISTA",
+        "summary": (
+            "integridad: {integrity}; autoridad del sello de tiempo: {trust} "
+            "({trusted_items}/{total} elementos); preparación probatoria: {readiness}"
+        ),
+        "guidance_evidence_ready": (
+            "La preparación técnica no determina la admisibilidad ni ningún resultado legal."
+        ),
+        "guidance_integrity_failed": (
+            "No está lista como prueba: falló una o más comprobaciones de integridad."
+        ),
+        "guidance_no_items": (
+            "No está lista como prueba: el expediente no contiene elementos probatorios."
+        ),
+        "guidance_timestamp_missing": (
+            "No está lista como prueba: uno o más elementos esperan un sello de tiempo."
+        ),
+        "guidance_timestamp_invalid": (
+            "No está lista como prueba: uno o más sellos de tiempo adjuntos no son válidos."
+        ),
+        "guidance_timestamp_authority_untrusted": (
+            "No está lista como prueba: vuelva a ejecutar con --trusted-cert PEM para una "
+            "autoridad que usted confíe de forma independiente. Los sellos de desarrollo "
+            "nunca pueden volverse confiables."
+        ),
+    },
+}
+
+_ITEM_DETAIL_TEXT = {
+    "en": {
+        "shared_media": "shared media is missing or does not match its recorded hash",
+        "custody_binding": "shared media is not bound to the original by custody",
+        "original_fixity": "embedded original does not match its recorded hash",
+        "timestamp_missing": "awaiting timestamp",
+        "timestamp_invalid": "attached timestamp is invalid",
+        "timestamp_untrusted": "timestamp is valid but its authority is not trusted",
+        "timestamp_dev": "development timestamp is untrusted and never evidence-ready",
+        "not_ready": "not evidence-ready",
+    },
+    "es": {
+        "shared_media": "falta el archivo compartido o no coincide con su hash registrado",
+        "custody_binding": "la custodia no vincula el archivo compartido con el original",
+        "original_fixity": "el original incluido no coincide con su hash registrado",
+        "timestamp_missing": "sello de tiempo pendiente",
+        "timestamp_invalid": "el sello de tiempo adjunto no es válido",
+        "timestamp_untrusted": ("el sello de tiempo es válido, pero su autoridad no es confiable"),
+        "timestamp_dev": (
+            "el sello de desarrollo no es confiable ni puede estar listo como prueba"
+        ),
+        "not_ready": "no está listo como prueba",
+    },
+}
+
 
 @dataclass(frozen=True, slots=True)
 class ItemVerdict:
@@ -71,15 +164,63 @@ class ItemVerdict:
     original_fixity_ok: bool | None  # None when the sealed original is not included
     notes: tuple[str, ...] = field(default_factory=tuple)
     verified_authorities: tuple[str, ...] = field(default_factory=tuple)
+    timestamp_authority_trusted: bool = False
+    trusted_authorities: tuple[str, ...] = field(default_factory=tuple)
+    timestamp_present: bool = False
+    timestamp_kind: str = ""
 
     @property
-    def ok(self) -> bool:
+    def structurally_intact(self) -> bool:
+        """Whether media, custody binding, and any embedded original are intact.
+
+        Timestamp presence, token validity, and authority trust are intentionally
+        excluded: those are separate claims and must not redefine byte integrity.
+        """
         return (
-            self.timestamp_verified
-            and self.shared_media_ok
+            self.shared_media_ok
             and self.custody_binding_ok
             and self.original_fixity_ok is not False
         )
+
+    @property
+    def cryptographically_verified(self) -> bool:
+        """Legacy proof check: integrity plus a valid token, regardless of trust root."""
+        return self.structurally_intact and self.timestamp_verified
+
+    @property
+    def evidence_ready(self) -> bool:
+        """Whether this item passes integrity, token, and authority-trust checks."""
+        return self.cryptographically_verified and self.timestamp_authority_trusted
+
+    @property
+    def ok(self) -> bool:
+        """Backward-compatible field name, tightened to mean ``evidence_ready``.
+
+        Older callers used ``ok`` for a valid token even when its authority was not
+        trusted.  Keeping that meaning would continue the unsafe ambiguity this
+        report is designed to remove, so callers that only need the old mechanical
+        check should use :attr:`cryptographically_verified` explicitly.
+        """
+        return self.evidence_ready
+
+    def human_detail(self, language: str = "en") -> str:
+        """Return a localized, non-technical explanation of this item's failed checks."""
+        text = _item_detail_text(language)
+        reasons: list[str] = []
+        if not self.shared_media_ok:
+            reasons.append(text["shared_media"])
+        if not self.custody_binding_ok:
+            reasons.append(text["custody_binding"])
+        if self.original_fixity_ok is False:
+            reasons.append(text["original_fixity"])
+        if not self.timestamp_verified:
+            reasons.append(
+                text["timestamp_invalid"] if self.timestamp_present else text["timestamp_missing"]
+            )
+        elif not self.timestamp_authority_trusted:
+            key = "timestamp_dev" if self.timestamp_kind == "dev" else "timestamp_untrusted"
+            reasons.append(text[key])
+        return "; ".join(reasons) or text["not_ready"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,32 +233,91 @@ class VerificationReport:
     custody_length: int
     items: tuple[ItemVerdict, ...]
     problems: tuple[str, ...]
+    language: str = "en"
 
     @property
-    def ok(self) -> bool:
+    def structurally_intact(self) -> bool:
+        """Whether packet structure, signature, custody, and media checks pass."""
         return (
             self.signature_ok
             and self.custody_ok
             and not self.problems
-            and all(item.ok for item in self.items)
+            and all(item.structurally_intact for item in self.items)
         )
 
     @property
-    def verified_items(self) -> int:
-        return sum(1 for item in self.items if item.ok)
+    def timestamp_authority_trusted(self) -> bool:
+        """Whether every evidence item has a valid token anchored to a trusted root."""
+        return bool(self.items) and all(item.timestamp_authority_trusted for item in self.items)
 
-    def summary(self) -> str:
-        total = len(self.items)
-        if self.ok:
-            return (
-                f"{self.verified_items}/{total} items verify against their sealed originals "
-                f"and timestamp tokens — packet intact"
-            )
+    @property
+    def evidence_ready(self) -> bool:
+        """Technical readiness: integrity plus trusted timestamp coverage for all items."""
         return (
-            f"{self.verified_items}/{total} items verified; "
-            f"signature={'ok' if self.signature_ok else 'FAILED'}, "
-            f"custody={'ok' if self.custody_ok else 'BROKEN'} — packet NOT intact"
+            self.structurally_intact
+            and bool(self.items)
+            and all(item.evidence_ready for item in self.items)
         )
+
+    @property
+    def ok(self) -> bool:
+        """Backward-compatible field name, now a fail-closed alias for evidence readiness."""
+        return self.evidence_ready
+
+    @property
+    def verified_items(self) -> int:
+        """Number of evidence-ready items (the historical field name is retained)."""
+        return sum(1 for item in self.items if item.evidence_ready)
+
+    @property
+    def cryptographically_verified_items(self) -> int:
+        """Items with intact bytes and a valid token, whether or not its root is trusted."""
+        return sum(1 for item in self.items if item.cryptographically_verified)
+
+    @property
+    def trusted_timestamp_items(self) -> int:
+        return sum(1 for item in self.items if item.timestamp_authority_trusted)
+
+    @property
+    def status(self) -> str:
+        """Stable machine-readable reason for the overall readiness result."""
+        if self.evidence_ready:
+            return "evidence_ready"
+        if not self.structurally_intact:
+            return "integrity_failed"
+        if not self.items:
+            return "no_items"
+        if not all(item.timestamp_verified for item in self.items):
+            # An attached-but-invalid proof is an alarm even if another item merely
+            # awaits a token; never let the calm missing state hide invalid material.
+            if any(item.timestamp_present and not item.timestamp_verified for item in self.items):
+                return "timestamp_invalid"
+            return "timestamp_missing"
+        return "timestamp_authority_untrusted"
+
+    def summary(self, language: str | None = None) -> str:
+        """Return a localized, claim-separated human summary."""
+        text = _summary_text(language or self.language)
+        total = len(self.items)
+        return text["summary"].format(
+            integrity=text["intact"] if self.structurally_intact else text["not_intact"],
+            trust=(text["trusted"] if self.timestamp_authority_trusted else text["not_trusted"]),
+            trusted_items=self.trusted_timestamp_items,
+            total=total,
+            readiness=text["ready"] if self.evidence_ready else text["not_ready"],
+        )
+
+    def guidance(self, language: str | None = None) -> str:
+        """Return localized next-step/caveat text for :attr:`status`."""
+        return _summary_text(language or self.language)[f"guidance_{self.status}"]
+
+
+def _summary_text(language: str) -> dict[str, str]:
+    return _SUMMARY_TEXT.get(language.lower().split("-", 1)[0], _SUMMARY_TEXT["en"])
+
+
+def _item_detail_text(language: str) -> dict[str, str]:
+    return _ITEM_DETAIL_TEXT.get(language.lower().split("-", 1)[0], _ITEM_DETAIL_TEXT["en"])
 
 
 def verify_packet(
@@ -127,6 +327,7 @@ def verify_packet(
     packet_dir = Path(packet_dir)
     bundle_bytes = _read_bundle_bytes(packet_dir)
     bundle = _parse_bundle(bundle_bytes)
+    language = _s(bundle, "language") or "en"
 
     # Enforce the version contract before trusting the rest of the structure.
     version_problem = _check_packet_version(bundle)
@@ -138,6 +339,7 @@ def verify_packet(
             custody_length=0,
             items=(),
             problems=(version_problem,),
+            language=language,
         )
 
     signature_ok = _verify_signature(packet_dir, bundle_bytes)
@@ -163,6 +365,7 @@ def verify_packet(
         custody_length=custody_length,
         items=tuple(items),
         problems=tuple(problems),
+        language=language,
     )
 
 
@@ -189,20 +392,18 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
     #    timestamped if AT LEAST ONE authority verifies, so the proof never rests on a
     #    single TSA (item R-16). With no additional tokens this is identical to before.
     timestamp_verified = False
+    timestamp_authority_trusted = False
+    timestamp_kind = ""
     gen_time = ""
     tsa_name = ""
     verified_authorities: list[str] = []
+    trusted_authorities: list[str] = []
     token_raw = item.get("timestamp")
+    timestamp_present = isinstance(token_raw, dict)
     if isinstance(token_raw, dict):
         try:
             token = TimestampToken.from_dict(token_raw)
             info = verify_token(token, content_hash, trusted_certs=trusted_certs)
-            timestamp_verified = True
-            gen_time = info.gen_time
-            tsa_name = info.tsa_name
-            verified_authorities.append(info.tsa_name)
-            if not info.trusted_chain:
-                notes.append("timestamp valid but authority not chained to a trusted root")
             # Archive (re-)timestamps, if present, must chain back to this token.
             archive_raw = item.get("archive_timestamps")
             archives = (
@@ -213,6 +414,21 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
             if archives:
                 verify_archive_chain(content_hash, token, archives, trusted_certs=trusted_certs)
                 notes.append(f"archive-timestamped ({len(archives)} link(s))")
+            # Commit the primary verdict only after every attached archive link has
+            # passed. A broken attached archive is an invalid proof, not an ignorable
+            # decoration; a valid redundant authority below can still rescue the item.
+            timestamp_verified = True
+            timestamp_kind = info.kind
+            gen_time = info.gen_time
+            tsa_name = info.tsa_name
+            verified_authorities.append(info.tsa_name)
+            if info.trusted_chain:
+                timestamp_authority_trusted = True
+                trusted_authorities.append(info.tsa_name)
+            else:
+                notes.append(
+                    info.note or "timestamp valid but authority not chained to a trusted root"
+                )
         except Exception as exc:
             # A failed primary does not, by itself, condemn the item if a redundant
             # authority below still verifies the same content hash.
@@ -226,6 +442,7 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
         for extra_raw in additional_raw:
             if not isinstance(extra_raw, dict):
                 continue
+            timestamp_present = True
             try:
                 extra = TimestampToken.from_dict(extra_raw)
                 extra_info = verify_token(extra, content_hash, trusted_certs=trusted_certs)
@@ -234,12 +451,17 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
                 continue
             verified_authorities.append(extra_info.tsa_name)
             notes.append(f"also timestamped by {extra_info.tsa_name}")
-            if not extra_info.trusted_chain:
+            if extra_info.trusted_chain:
+                timestamp_authority_trusted = True
+                trusted_authorities.append(extra_info.tsa_name)
+            else:
                 notes.append(
-                    f"additional authority {extra_info.tsa_name} not chained to a trusted root"
+                    extra_info.note
+                    or f"additional authority {extra_info.tsa_name} not chained to a trusted root"
                 )
             if not timestamp_verified:
                 timestamp_verified = True
+                timestamp_kind = extra_info.kind
                 gen_time = extra_info.gen_time
                 tsa_name = extra_info.tsa_name
 
@@ -301,6 +523,10 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
         original_fixity_ok=original_fixity_ok,
         notes=tuple(notes),
         verified_authorities=tuple(verified_authorities),
+        timestamp_authority_trusted=timestamp_authority_trusted,
+        trusted_authorities=tuple(trusted_authorities),
+        timestamp_present=timestamp_present,
+        timestamp_kind=timestamp_kind,
     )
 
 

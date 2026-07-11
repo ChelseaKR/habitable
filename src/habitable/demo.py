@@ -66,13 +66,20 @@ def run_demo() -> int:
     packet = build_packet(vault, out)
     print(
         f"4. exported packet to {out.name}/  ({packet.item_count} items, "
-        f"{packet.timestamped_count} timestamped)"
+        f"{packet.timestamped_count} timestamp tokens attached)"
     )
     for note in packet.disclosures:
         print(f"     · {note}")
 
-    report = verify_packet(out)
-    print(f"\n5. independent verification: {report.summary()}")
+    # The demo creates its own synthetic RFC 3161 authority, so it also pins that
+    # synthetic certificate explicitly. Real recipients must obtain and assess a
+    # production authority certificate independently; omitting roots never reports
+    # evidence-ready, and DevTSA can never be trusted.
+    report = verify_packet(out, trusted_certs=[tsa.certificate])
+    # This synthetic demo status is intentional terminal output, not a log sink.
+    summary = report.summary()
+    # codeql[py/clear-text-logging-sensitive-data]
+    print(f"\n5. independent verification: {summary}")
     print(f"\nInspect the packet at: {out}")
     return 0 if report.ok else 1
 

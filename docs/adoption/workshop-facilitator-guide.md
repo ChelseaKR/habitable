@@ -202,9 +202,10 @@ $ uv run habitable demo
 ```
 
 This captures synthetic photos, builds a packet with location stripped from the shared
-copies, and verifies it — all offline. When you see `packet intact`, say what that means:
-every item was checked against its sealed original and its timestamp, and nothing was
-altered.
+copies, and verifies it — all offline. The demo pins its synthetic authority certificate.
+Read all three results aloud: packet integrity, timestamp-authority trust, and technical
+evidence readiness. Explain that a real recipient must obtain and assess the production
+authority certificate independently, and that `READY` does not decide admissibility.
 
 Then, time permitting, **let participants export and verify their own practice case** from
 the setup-guide flow ([`docs/setup-guide.md` §5](../setup-guide.md)), or watch you do it

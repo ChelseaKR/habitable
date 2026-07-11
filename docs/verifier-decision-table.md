@@ -6,45 +6,60 @@
 > reviewer fuzzes against (backlog **R-39**) — and how to confirm a packet **without** habitable at
 > all, using general RFC 3161 and SHA-256 tooling (backlog **R-31**).
 >
-> **Contract.** The verifier **fails closed**: it never accepts altered or unverifiable evidence as
-> intact, and never crashes on hostile input — malformed structure becomes a clean rejection, not an
-> exception escaping `verify_packet`. (Two pre-structural conditions are raised as
+> **Contract.** The verifier **fails closed**: it reports integrity, timestamp-authority trust, and
+> evidence readiness as separate claims, and never crashes on hostile input. Malformed structure
+> becomes a clean rejection, not an exception escaping `verify_packet`. (Pre-structural
+> read/parse conditions are raised as
 > `VerificationError` by design; see [§1](#1-packet-level-outcomes).) This file is normative for
-> `SUPPORTED_PACKET_VERSION = 1`.
+> `SUPPORTED_PACKET_VERSION = 2`.
 
-## 0. What "intact" means
+## 0. The three verdicts
 
-`VerificationReport.ok` is `True` **iff** *all* of:
+`VerificationReport.structurally_intact` is `True` **iff** *all* of:
 
 - `signature_ok` — the bundle signature verifies over the bundle's own SHA-256, **and**
 - `custody_ok` — the chain of custody walks cleanly **and** its computed head equals the declared
   `custody_proof.head_hash`, **and**
 - `problems` is empty (no version/structural problem), **and**
-- every item's `ItemVerdict.ok` is `True`.
+- every item's shared media, custody binding, and optional embedded-original fixity pass.
 
-`ItemVerdict.ok` is `True` **iff**: `timestamp_verified` **and** `shared_media_ok` **and**
-`custody_binding_ok` **and** `original_fixity_ok is not False` (i.e. the embedded original either
-matches or was not included).
+Timestamp presence and trust do **not** redefine structural integrity. A signed packet can therefore
+be structurally intact while an item awaits a timestamp, contains an invalid token, or has a valid
+token whose authority is untrusted.
 
-> **Consequence worth noting:** an item that is still **awaiting timestamp** has
-> `timestamp_verified = False`, so the item — and the whole packet — reports **NOT intact**. That is
-> correct *degraded* behavior: an un-timestamped item lacks its timestamp proof, and the
-> verifier says so rather than passing it as clean.
+`VerificationReport.timestamp_authority_trusted` is `True` **iff** the packet contains at least one
+item and every item has at least one cryptographically valid timestamp whose signing certificate
+chains to a caller-supplied trusted certificate. The certificate embedded in a token is evidence to
+check, never an implicit trust anchor. `DevTSA` always reports `False`.
+
+`VerificationReport.evidence_ready` is `True` **iff** the packet is structurally intact, contains at
+least one item, and every item has a valid, authority-trusted timestamp. `VerificationReport.ok` is
+retained as a fail-closed alias for `evidence_ready`; `ItemVerdict.ok` has the same tightened meaning.
+This is technical readiness, **not** an admissibility or legal-outcome claim.
+
+For migrations, `ItemVerdict.cryptographically_verified` and
+`VerificationReport.cryptographically_verified_items` expose the historical mechanical check:
+intact item bytes plus a valid timestamp token, regardless of root trust. They must never be
+presented as evidence readiness.
 
 ## 1. Packet-level outcomes
 
-| Condition | Verifier behavior | `report.ok` |
+| Condition | `structurally_intact` | `evidence_ready` / `ok` |
 | --- | --- | --- |
 | `bundle.json` missing | raises `VerificationError` (cannot verify what isn't there) | — |
 | `bundle.json` not valid JSON / not UTF-8 | raises `VerificationError` (clean message, no crash) | — |
 | `bundle.json` is JSON but not an object | raises `VerificationError` | — |
-| `packet_version` missing or not an integer | early return; `problems = ("bundle has no integer packet_version",)` | **False** |
-| `packet_version` > `SUPPORTED_PACKET_VERSION` | early return; `problems = ("packet_version N is newer than supported 1; upgrade habitable…",)` | **False** |
-| an entry in `items` is not an object | `problems` gains "malformed item in bundle"; that item is skipped | **False** |
-| everything well-formed | full per-item + custody + signature evaluation below | depends |
+| `packet_version` missing or not an integer | **False** (`problems` set) | **False** |
+| `packet_version` > supported | **False** (`problems` set) | **False** |
+| an entry in `items` is not an object | **False** (`problems` set) | **False** |
+| signed/custody-valid empty packet | **True** | **False** (`status = "no_items"`) |
+| intact packet; item awaits timestamp | **True** | **False** (`status = "timestamp_missing"`) |
+| intact packet; attached token invalid | **True** | **False** (`status = "timestamp_invalid"`) |
+| intact packet; all tokens valid but any authority untrusted | **True** | **False** (`status = "timestamp_authority_untrusted"`) |
+| intact packet; every item has a valid, trusted timestamp | **True** | **True** (`status = "evidence_ready"`) |
 
-> The two `VerificationError` cases are the only ones that do not return a `VerificationReport`.
-> Embedders should treat a raised `VerificationError` as "NOT intact / could not verify" (see
+> The `VerificationError` cases are the only ones that do not return a `VerificationReport`.
+> Embedders should treat a raised `VerificationError` as "could not assess integrity" (see
 > [`embedding-the-verifier.md`](embedding-the-verifier.md)). On the version-problem early return the
 > signature is still evaluated and reported, but `custody_ok` is forced `False` and `items` is empty.
 
@@ -81,30 +96,37 @@ Walking never throws out of `_verify_custody`; a broken chain is a verdict, not 
 
 ## 4. Per-item checks
 
-For each item the verifier sets four booleans and a list of human-readable `notes`.
+For each item the verifier exposes the structural checks below plus timestamp presence, mechanical
+token verification, authority trust, and evidence readiness. `notes` remains diagnostic English
+text for logs; localized CLI summaries are separate.
 
-### 4.1 Timestamp (`timestamp_verified`, `gen_time`, `tsa_name`)
+### 4.1 Timestamp (`timestamp_present`, `timestamp_verified`, authority trust)
 
-| Condition | `timestamp_verified` | note |
-| --- | --- | --- |
-| `item.timestamp` is not an object (null/absent) | `False` | `awaiting timestamp` |
-| token present, `verify_token(token, content_hash, trusted_certs)` succeeds | `True` | (sets `gen_time`, `tsa_name`) |
-| token valid but TSA does **not** chain to a supplied trusted root | `True` | `timestamp valid but authority not chained to a trusted root` |
-| `archive_timestamps` present and chain back to the primary token | `True` | `archive-timestamped (N link(s))` |
-| token, archive chain, digest, signature, or cert check fails | `False` | `timestamp check failed: <reason>` |
+| Condition | `timestamp_present` | `timestamp_verified` | `timestamp_authority_trusted` |
+| --- | --- | --- | --- |
+| no primary or additional token | `False` | `False` | `False` |
+| token signature/imprint fails | `True` | `False` | `False` |
+| valid token; no matching trusted certificate supplied | `True` | `True` | `False` |
+| valid `DevTSA` token, with any certificate arguments | `True` | `True` | `False` |
+| valid RFC 3161 token chaining to a supplied root | `True` | `True` | `True` |
+| at least one valid/trusted redundant authority | `True` | `True` | `True` |
 
 `verify_token` follows the **token's own** digest and signature algorithms (SHA-1…SHA-512, RSA or
 ECDSA), so real public-TSA tokens verify, not just SHA-256/RSA ones. Pass `trusted_certs` to assert
-the TSA chains to a root you trust; without it, a structurally valid token still verifies but is
-flagged as not-chained (the item can still be `ok`, but a reviewer/court should supply roots).
+the TSA chains to a root you trust. Without it, a mechanically valid token still has
+`timestamp_verified = True`, but `timestamp_authority_trusted`, `evidence_ready`, and `ok` remain
+`False`. `trusted_authorities` names only anchored authorities; `verified_authorities` names all
+mechanically valid ones.
 
 **Multiple-authority redundancy.** An item may also carry `additional_timestamps`: independent
 tokens from *other* authorities over the **same** `content_hash` (not a chain). The verifier checks
 each, lists every authority that verified in `verified_authorities`, and treats the item as
 timestamped if **at least one** authority (primary *or* additional) verifies — so the proof never
 rests on a single TSA. With no `additional_timestamps`, behaviour is identical to a single-authority
-packet: a failed/absent primary leaves the item not timestamp-verified. A token over a *different*
-hash never satisfies the item.
+packet: a failed/absent primary leaves the item not timestamp-verified unless a redundant token
+passes. A token over a *different* hash never satisfies the item. At least one valid token supplies
+mechanical timestamp verification; at least one valid **and anchored** token supplies authority
+trust.
 
 ### 4.2 Shared media (`shared_media_ok`)
 
@@ -132,7 +154,7 @@ therefore binds `content_hash → shared_hash`.
 | --- | --- |
 | `originals/<capture_id>` not embedded | `None` (not penalized) |
 | embedded and `sha256` matches `content_hash` | `True` |
-| embedded and hash mismatch | `False` → item NOT ok; note `embedded original failed fixity` |
+| embedded and hash mismatch | `False` → item not structurally intact; note `embedded original failed fixity` |
 
 ## 5. Independent cross-check without habitable (R-31)
 

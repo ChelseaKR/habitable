@@ -320,6 +320,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "timestamp chains to a root you trust. Omit to verify token signatures without "
         "anchoring to a specific authority.",
     )
+    p_verify.add_argument(
+        "--lang",
+        choices=("en", "es"),
+        help="verification output language (default: packet language, then English)",
+    )
     p_verify.set_defaults(func=_cmd_verify)
 
     p_sync = sub.add_parser("sync", help="sync the case with a peer")
@@ -601,6 +606,13 @@ def _cmd_capture(args: argparse.Namespace) -> int:
     )
     print(f"habitable: captured {result.capture_id}")
     print(f"           content hash {result.content_hash[:16]}… · {status}")
+    if result.timestamp_info is not None:
+        trust_key = (
+            "capture_dev_untrusted"
+            if result.timestamp_info.kind == "dev"
+            else "capture_trust_unassessed"
+        )
+        print(f"           {cli_text(trust_key, locale)}")
     if result.extra_authorities:
         also = cli_text(
             "capture_also_timestamped",
@@ -801,18 +813,19 @@ def _cmd_export(args: argparse.Namespace) -> int:
     print(f"           {stamped}")
     awaiting = result.item_count - result.timestamped_count
     if awaiting > 0:
-        # An awaiting-timestamp packet reports NOT intact under `habitable verify` —
-        # correct, degraded behavior. Say so at export time, with the next step,
-        # rather than letting a recipient's verify run be the first notice (FIX-09).
+        # An awaiting-token packet may remain structurally intact, but it is not
+        # evidence-ready. Say so at export time, with the next step, rather than
+        # letting a recipient's verify run be the first notice (FIX-09).
         hint = cli_text("export_awaiting_hint", locale, awaiting=awaiting)
         print(f"           {hint}")
     for note in result.disclosures:
         print(f"           {note}")
-    # Keep the honest framing unmissable: a timestamp is an upper bound, not proof of
-    # authorship/depiction, and this is documentation, not legal advice. The full
+    # Keep the honest framing unmissable: a trusted timestamp is an upper bound, not
+    # proof of authorship/depiction, and this is documentation, not legal advice. The full
     # "what this proves / does not" statement travels in packet.html and bundle.json.
     print(
-        "           what this proves / does not: a trusted timestamp is an upper bound "
+        "           what this proves / does not: a timestamp verified against an independently "
+        "trusted authority is an upper bound "
         "(content existed no later than that time), not proof of who took a photo or what "
         "it depicts; this is documentation, not legal advice and no guarantee of admissibility"
     )
@@ -973,14 +986,27 @@ def _load_trusted_certs(paths: list[Path] | None) -> list[x509.Certificate] | No
 
 def _cmd_verify(args: argparse.Namespace) -> int:
     report = verify_packet(args.packet, trusted_certs=_load_trusted_certs(args.trusted_cert))
+    summary = report.summary(args.lang)
+    guidance = report.guidance(args.lang)
     if args.json:
         payload = {
+            # ``ok`` remains for machine compatibility, but now fails closed and is
+            # exactly the same claim as ``evidence_ready``. Integrators that only
+            # want the old token-signature check have an explicit field below.
             "ok": report.ok,
-            "summary": report.summary(),
+            "status": report.status,
+            "language": args.lang or report.language,
+            "summary": summary,
+            "guidance": guidance,
+            "structurally_intact": report.structurally_intact,
+            "timestamp_authority_trusted": report.timestamp_authority_trusted,
+            "evidence_ready": report.evidence_ready,
             "signature_ok": report.signature_ok,
             "custody_ok": report.custody_ok,
             "custody_length": report.custody_length,
             "verified_items": report.verified_items,
+            "cryptographically_verified_items": report.cryptographically_verified_items,
+            "trusted_timestamp_items": report.trusted_timestamp_items,
             "item_count": len(report.items),
             "problems": list(report.problems),
             "items": [
@@ -988,25 +1014,41 @@ def _cmd_verify(args: argparse.Namespace) -> int:
                     "capture_id": item.capture_id,
                     "content_hash": item.content_hash,
                     "ok": item.ok,
+                    "structurally_intact": item.structurally_intact,
+                    "cryptographically_verified": item.cryptographically_verified,
+                    "timestamp_present": item.timestamp_present,
+                    "timestamp_kind": item.timestamp_kind,
                     "timestamp_verified": item.timestamp_verified,
+                    "timestamp_authority_trusted": item.timestamp_authority_trusted,
+                    "evidence_ready": item.evidence_ready,
                     "gen_time": item.gen_time,
                     "tsa_name": item.tsa_name,
                     "shared_media_ok": item.shared_media_ok,
                     "custody_binding_ok": item.custody_binding_ok,
                     "original_fixity_ok": item.original_fixity_ok,
                     "verified_authorities": list(item.verified_authorities),
+                    "trusted_authorities": list(item.trusted_authorities),
                     "notes": list(item.notes),
                 }
                 for item in report.items
             ],
         }
-        print(json.dumps(payload, indent=2, sort_keys=True))
-        return 0 if report.ok else 1
-    print(f"habitable: {report.summary()}")
-    if not report.ok:
+        # This is the explicit result of the user-requested `verify --json`
+        # command, not application logging; packet identifiers are intentionally
+        # returned to the local caller for machine processing.
+        encoded = json.dumps(payload, indent=2, sort_keys=True)
+        # codeql[py/clear-text-logging-sensitive-data]
+        print(encoded)
+        return 0 if report.evidence_ready else 1
+    # Verification status is intentional CLI output to the local caller, not a
+    # persistent log sink. The summary contains only fixed status vocabulary and counts.
+    # codeql[py/clear-text-logging-sensitive-data]
+    print(f"habitable: {summary}")
+    print(f"           {guidance}", file=sys.stderr if not report.evidence_ready else sys.stdout)
+    if not report.evidence_ready:
         for item in report.items:
-            if not item.ok:
-                detail = "; ".join(item.notes) or "failed"
+            if not item.evidence_ready:
+                detail = item.human_detail(args.lang or report.language)
                 print(f"  · {item.capture_id}: {detail}", file=sys.stderr)
         return 1
     return 0

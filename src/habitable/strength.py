@@ -7,9 +7,9 @@ an inspector, has had no way to tell a well-documented item from a thin one
 until a recipient runs ``verify``. This module gives that feedback locally,
 before anything is shared, from data already sitting in the vault:
 
-* whether a trusted timestamp is present at all;
-* how many *independent* timestamp authorities cover the item (redundancy,
-  item R-16) — read from token presence, not re-verified cryptographically,
+* whether a timestamp token is present at all;
+* how many distinct named timestamp authorities appear on attached tokens (redundancy,
+  item R-16) — read from token presence and untrusted metadata, not re-verified cryptographically,
   since ``verify``/``habitable verify`` already owns that check;
 * how deep the chain of custody is for the item (captured, fixity-checked,
   timestamped, viewed, shared, packeted — each an attested handling event);
@@ -52,12 +52,15 @@ __all__ = [
 class RecordStrengthLevel(StrEnum):
     """How well-documented one item or issue is, *as a record* — not a legal claim.
 
-    * ``MINIMAL`` — no trusted timestamp yet; only a content hash and whatever
+    * ``MINIMAL`` — no timestamp token yet; only a content hash and whatever
       custody/timeline exists so far. Still real evidence of content, with no
       upper-bound time claim.
-    * ``DEVELOPING`` — a trusted timestamp from a single authority.
-    * ``STRONG`` — a trusted timestamp corroborated by two or more independent
-      authorities (item R-16's redundancy target).
+    * ``DEVELOPING`` — a token naming one authority is attached.
+    * ``STRONG`` — tokens naming two or more distinct authorities are attached
+      (item R-16's redundancy target).
+
+    These levels describe documentation coverage only. They do not mean a token
+    signature or named authority has been trusted; the verifier owns that claim.
     """
 
     MINIMAL = "minimal"
@@ -92,9 +95,9 @@ class IssueStrength:
 
 
 def _authority_count(vault: Vault, capture_id: str) -> int:
-    """The number of distinct timestamp authorities that have stamped this item.
+    """The number of distinct authority names on this item's timestamp tokens.
 
-    Counts the primary token plus any independently-stamped additional tokens
+    Counts the primary token plus any additional tokens
     (:meth:`Vault.get_additional_tokens`) by distinct ``tsa_name`` — presence,
     not a fresh cryptographic re-verification (``habitable verify`` already
     owns that).
@@ -141,9 +144,9 @@ def assess_issue(vault: Vault, issue_id: str) -> IssueStrength:
     """The record-strength assessment for an issue, aggregated over its items.
 
     An issue is only as strong as its weakest documented item: any item still
-    awaiting a timestamp pulls the issue to ``MINIMAL``; otherwise any
-    single-authority item pulls it to ``DEVELOPING``; only when every item has
-    redundant-authority timestamps does the issue read as ``STRONG``. An issue
+    awaiting a token pulls the issue to ``MINIMAL``; otherwise any item with one
+    named authority pulls it to ``DEVELOPING``; only when every item has tokens
+    naming multiple authorities does the issue read as ``STRONG``. An issue
     with no captures yet is ``MINIMAL`` — there is nothing to corroborate.
     """
     items = [assess_capture(vault, c) for c in vault.document.captures(issue_id)]

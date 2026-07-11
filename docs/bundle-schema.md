@@ -29,7 +29,7 @@ An ordinary publication failure restores the previous complete directory.
 
 `bundle.json` is the source of truth a verifier reads. The other rendered files (`packet.html`,
 `packet.pdf`) are presentation; they are not what verification trusts. Those renderings present a
-court-organized layout — a cover sheet, a single chronological timeline interleaving events and photos,
+recipient-oriented layout — a cover sheet, a single chronological timeline interleaving events and photos,
 the per-issue detail, and a chain-of-custody / integrity summary — all **derived from the fields
 below**. Timeline 2.0 is an intentional `packet_version` 3 change; v1/v2 retain their historical
 meanings. See `src/habitable/bundleview.py`.
@@ -60,7 +60,7 @@ re-serialize `bundle.json` before checking the signature.
 | `items` | array | The media items — the evidentiary core (see below). |
 | `custody_proof` | object | Identity-stripped chain-of-custody proof (see below). |
 | `disclosures` | array | Human-readable notes of what the packet reveals (location stripped, custody identities not exported, originals embedded). Also rendered, localized, in `packet.html`/`packet.pdf`. |
-| `appendix` | object | `{item_count, timestamped_count, includes_originals, timeline_count, custody_bound_timeline_count}` in v3; the timeline counts are absent in older packets. |
+| `appendix` | object | `{item_count, timestamped_count, includes_originals, timeline_count, custody_bound_timeline_count}` in v3; the timeline counts are absent in older packets. `timestamped_count` means a token record is attached; it does not assert token validity or authority trust. |
 
 ### Opaque identifiers (packet_version ≥ 2)
 
@@ -116,7 +116,7 @@ at the original occurrence or recording time.
 | `has_original` | bool | Whether the sealed original is embedded under `originals/`. |
 | `timestamp` | object \| null | RFC 3161/dev token over `content_hash`; `null` while **awaiting timestamp**. |
 | `archive_timestamps` | array | Archive (re-)timestamps chaining back to the primary token. |
-| `additional_timestamps` | array | Independent redundant tokens from **other** authorities over the same `content_hash` (not a chain). The verifier counts the item as timestamped if ≥1 authority verifies — no proof rests on a single TSA. Absent in single-authority packets. |
+| `additional_timestamps` | array | Optional redundant tokens naming other authorities over the same `content_hash` (not a chain). Token presence and authority names are untrusted metadata until the verifier validates each token against recipient-selected roots. Absent in single-authority packets. |
 | `sensor` | object \| null | Present (non-null) only for **instrument data-file** captures (EXP-09, e.g. a temperature-logger or moisture-meter CSV): the readings interpreted from the sealed original for accessible chart + table rendering. `null`/absent for photos and video. The CSV bytes themselves stay the hash-anchored evidence under `content_hash`. |
 
 A **timestamp token** is `{kind: "rfc3161"|"dev", tsa_name, token_b64}` where `token_b64` is base64

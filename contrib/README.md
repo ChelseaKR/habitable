@@ -18,10 +18,14 @@ next to the case file and re-check later without re-running the whole verifier.
 import sys
 sys.path.insert(0, "contrib")          # or vendor the single file into your tree
 
+from cryptography import x509
 from legal_aid_importer import import_packet, sign_receipt, verify_receipt, generate_signing_key
 
-# 1. Verify a packet and build a receipt (fails closed like the verifier).
-result = import_packet("4B-packet", now="2026-01-02T00:10:00Z")
+# 1. Verify with an authority certificate your organisation independently trusts.
+root = x509.load_pem_x509_certificate(open("tsa-root.pem", "rb").read())
+result = import_packet(
+    "4B-packet", trusted_certs=[root], now="2026-01-02T00:10:00Z"
+)
 print(result.report.summary())
 receipt = result.receipt               # a plain dict you can store as JSON
 
@@ -37,12 +41,14 @@ assert check.ok                        # digest + signature verify, and the key 
 From the command line:
 
 ```console
-$ python contrib/legal_aid_importer.py 4B-packet --now 2026-01-02T00:10:00Z            # prints receipt JSON
-$ python contrib/legal_aid_importer.py 4B-packet --sign-key org-ed25519.seed           # prints signed envelope
+$ python contrib/legal_aid_importer.py 4B-packet --trusted-cert tsa-root.pem --now 2026-01-02T00:10:00Z
+$ python contrib/legal_aid_importer.py 4B-packet --trusted-cert tsa-root.pem --sign-key org-ed25519.seed
 ```
 
-The exit code is `0` when the packet verifies intact, `1` when it does not, `2` when there is
-nothing to verify (no `bundle.json` / unreadable bundle).
+The exit code is `0` only when the packet is technically evidence-ready, `1` when it is not, and
+`2` for pre-verification input/trust-certificate errors. Without `--trusted-cert`, a packet may be
+structurally intact and its timestamp signatures mechanically valid, but authority trust,
+evidence readiness, and `ok` fail closed. Development timestamps can never become trusted.
 
 ### The receipt
 
@@ -53,10 +59,10 @@ the exact `bundle.json` bytes — so a relying party can independently re-hash t
 ```jsonc
 {
   "receipt_type": "habitable.evidence-receipt",
-  "receipt_version": 1,
-  "importer": "habitable-contrib-importer/1",
+  "receipt_version": 2,
+  "importer": "habitable-contrib-importer/2",
   "packet_schema": "https://chelseakr.github.io/habitable/schema/packet-bundle-v1.schema.json",
-  "supported_packet_version": 1,
+  "supported_packet_version": 2,
   "verified_at": "2026-01-02T00:10:00Z",      // present only when you pass `now`
   "packet": {
     "bundle_sha256": "58345801…",             // the packet's identity
@@ -66,14 +72,21 @@ the exact `bundle.json` bytes — so a relying party can independently re-hash t
     "producer_fingerprint": "e0f9-20ab-0253-70f3"
   },
   "verdict": {
-    "ok": true, "signature_ok": true, "custody_ok": true,
-    "custody_length": 5, "items_total": 1, "items_verified": 1,
-    "problems": [], "summary": "1/1 items verify …"
+    "ok": true, "status": "evidence_ready", "structurally_intact": true,
+    "timestamp_authority_trusted": true, "evidence_ready": true,
+    "signature_ok": true, "custody_ok": true, "custody_length": 5,
+    "items_total": 1, "items_verified": 1,
+    "items_cryptographically_verified": 1, "items_trusted_timestamp": 1,
+    "problems": [], "summary": "integrity: intact; timestamp authority: trusted …"
   },
   "items": [
-    { "capture_id": "cap-…", "content_hash": "80ff…", "timestamp_verified": true,
+    { "capture_id": "cap-…", "content_hash": "80ff…", "structurally_intact": true,
+      "cryptographically_verified": true, "timestamp_present": true,
+      "timestamp_kind": "rfc3161", "timestamp_verified": true,
+      "timestamp_authority_trusted": true, "evidence_ready": true,
       "gen_time": "2026-01-02T00:00:00Z", "tsa_name": "golden-tsa",
-      "verified_authorities": ["golden-tsa"], "shared_media_ok": true,
+      "verified_authorities": ["golden-tsa"], "trusted_authorities": ["golden-tsa"],
+      "shared_media_ok": true,
       "custody_binding_ok": true, "original_fixity_ok": null, "ok": true, "notes": [] }
   ]
 }
@@ -89,6 +102,9 @@ stored receipt after signing changes the digest and fails `verify_receipt`.
   against. A store should refuse a receipt whose `receipt_version` major it does not understand
   rather than mis-read a future format. The packet format itself is versioned by `packet_version`
   (accepted `1..supported_packet_version`; newer is rejected, not mis-verified).
+- Receipt version 2 separates structural integrity, mechanical timestamp verification,
+  timestamp-authority trust, and evidence readiness. Its legacy `ok` field is a fail-closed alias
+  for `evidence_ready`; version 1 consumers must migrate rather than infer old semantics.
 - The receipt canonicalises with the same encoder the packet signature relies on
   (`habitable.canonical.canonical_json`: UTF-8, sorted keys, tight separators), so its digest is
   reproducible across machines and Python versions.

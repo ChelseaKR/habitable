@@ -342,7 +342,7 @@
     setText("st-awaiting", formatNumber(deferred));
 
     // Plain, reassuring status copy (R-01, R-17): when items are still waiting
-    // for a trusted timestamp, explain that the photo is already sealed and the
+    // for a timestamp token, explain that the photo is already sealed and the
     // wait does not weaken the evidence; when nothing is pending, confirm there
     // is nothing left to do rather than leaving the reader unsure.
     var awaitingHelp = document.getElementById("st-awaiting-help");
@@ -788,11 +788,10 @@
         });
       }).then(function (res) {
         renderExportResult(res);
-        // Three honest outcomes, announced distinctly (FIX-09, R-01/R-17): fully
-        // verified; degraded only because items still await a trusted timestamp
-        // (calm copy + a clear next step, never the integrity alarm); or a real
-        // verification failure (keep the alarm).
-        if (res.verified) {
+        // Four honest outcomes: evidence-ready; structurally intact but authority
+        // trust not established; awaiting timestamps; or an integrity/token failure.
+        // Token presence alone is never announced as evidence-ready.
+        if (res.evidence_ready || res.verified) {
           announce(t("msg_export_done_ok"), "ok");
           signalSuccess();
         } else if (res.awaiting_only) {
@@ -800,6 +799,8 @@
             fm("msg_export_done_awaiting", { count: exportAwaitingCount(res) }) +
             " " + t("export_awaiting_next")
           );
+        } else if (res.verification_status === "timestamp_authority_untrusted") {
+          announce(t("msg_export_done_untrusted"));
         } else {
           announce(t("msg_export_done_warn"), "error");
         }
@@ -827,13 +828,20 @@
     h3.textContent = t("export_result_heading");
     box.appendChild(h3);
 
-    var awaitingOnly = !res.verified && !!res.awaiting_only;
+    var ready = !!(res.evidence_ready || res.verified);
+    var awaitingOnly = !ready && !!res.awaiting_only;
+    var intactUntrusted =
+      !ready && res.verification_status === "timestamp_authority_untrusted";
     var verdict = document.createElement("p");
     var v = document.createElement("span");
-    v.className = res.verified ? "verdict-ok" : (awaitingOnly ? "verdict-warn" : "verdict-bad");
-    v.textContent = res.verified
-      ? t("verify_intact")
-      : (awaitingOnly ? t("verify_awaiting") : t("verify_failed"));
+    v.className = ready
+      ? "verdict-ok"
+      : ((awaitingOnly || intactUntrusted) ? "verdict-warn" : "verdict-bad");
+    v.textContent = ready
+      ? t("verify_ready")
+      : (awaitingOnly
+        ? t("verify_awaiting")
+        : (intactUntrusted ? t("verify_intact_untrusted") : t("verify_failed")));
     verdict.appendChild(v);
     box.appendChild(verdict);
 
@@ -843,6 +851,10 @@
         fm("msg_export_done_awaiting", { count: exportAwaitingCount(res) }) +
         " " + t("export_awaiting_next");
       box.appendChild(next);
+    } else if (intactUntrusted) {
+      var trustNext = document.createElement("p");
+      trustNext.textContent = t("msg_export_done_untrusted");
+      box.appendChild(trustNext);
     }
 
     var ul = document.createElement("ul");
