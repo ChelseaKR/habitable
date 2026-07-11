@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # habitable — developer entry points. `make verify` reproduces the full CI gate.
 .DEFAULT_GOAL := help
-.PHONY: help bootstrap install fmt lint type test cov i18n doc-links markers verify audit a11y integration demo site-sample build repro clean
+.PHONY: help bootstrap install fmt lint type test cov i18n doc-links markers verify audit a11y integration demo site-sample build repro relay-repro clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -85,6 +85,9 @@ build: ## Build the wheel + sdist
 
 repro: ## Verify a byte-identical rebuild of the wheel + sdist (builds twice, compares); writes dist/ on success
 	uv run python scripts/check_reproducible_build.py --out-dir dist
+
+relay-repro: ## Verify byte-identical no-cache relay OCI rebuilds
+	bash scripts/check_reproducible_relay_image.sh
 
 clean: ## Remove build/test artifacts
 	rm -rf dist build .pytest_cache .mypy_cache .ruff_cache .coverage coverage.xml htmlcov
