@@ -46,6 +46,8 @@ class RelayStore:
     fetched: int                                 # total messages handed back on GET
     bytes_relayed: int                           # total bytes of ciphertext moved
     persist_dir: Path | None                     # opt-in on-disk journal; None = memory-only
+    capacity_rejections: int                     # aggregate rejected size/cap writes
+    journal_load_rejections: int                 # aggregate unsafe/invalid startup records
 ```
 
 **It stores, in process memory only:**
@@ -53,9 +55,9 @@ class RelayStore:
 | Held in memory | What it is | Sensitive? |
 | --- | --- | --- |
 | `rooms` keys | The **room id** chosen by the peers (the `--channel` value). 1–128 chars, `[A-Za-z0-9_-]`. | Metadata. Peer-chosen; opaque to the relay. See §6 and the observability matrix. |
-| `rooms` values | Per room, a list of `(store_ts, ciphertext)` pairs: a monotonic-ish store timestamp (used only for TTL expiry — see §4.5) beside each **sealed ciphertext blob**. Capped at 10,000 per room (`_MAX_MESSAGES_PER_ROOM`); when full the relay returns **413**, it does **not** silently drop the oldest message (see §4.5). | Ciphertext + a coarse per-message timestamp. The relay cannot open the blob. |
-| `tokens` values | Per room, the **write-capability token** bound on first use (see §4.4). | Metadata capability; compared with `hmac.compare_digest`, never logged. |
-| `posted` / `fetched` / `bytes_relayed` | Three running integer counters. | Aggregate metadata only. |
+| `rooms` values | Per room, a list of `(store_ts, ciphertext)` pairs: a coarse store timestamp (used only for TTL expiry — see §4.5) beside each **sealed ciphertext blob**. Fixed retained-state ceilings are 10,000 messages and 128 MiB per room, plus 4,096 rooms, 50,000 messages, and 512 MiB globally. Above-cap POSTs return **413**; nothing is silently displaced. | Ciphertext + a coarse per-message timestamp. The relay cannot open the blob. |
+| `tokens` values | Per live room, the **write-capability token** bound on first use (see §4.4), 1–256 ASCII characters in `[A-Za-z0-9_-]`. Capacity and size checks complete before a new binding is committed. | Metadata capability; its ASCII grammar makes `hmac.compare_digest` total, and it is never logged. |
+| passthrough / live-state / rejection counters | Accepted/fetched byte and message totals; current live rooms/messages/bytes; capacity and rejected-journal counts. | Aggregate metadata only. |
 
 **Crucial facts about this storage:**
 
@@ -63,9 +65,10 @@ class RelayStore:
   (the default, and what the shipped read-only container runs), `relay.py` never opens a
   file, never writes a database, and restarting the process **drops every undelivered
   message and resets every counter.** The relay is not a backup; peers simply re-sync
-  (sync is idempotent — see `sync.py`). An operator can *opt in* to a durable at-rest
+  (sync is idempotent — see `sync.py`). An operator can *opt in* to a best-effort at-rest
   **ciphertext** journal (`--persist-dir` / `HABITABLE_RELAY_PERSIST_DIR`); what that
-  writes, and what it does not, is documented in §4.6. Nothing touches disk unless you
+  writes, and what it does not, is documented in §4.6. It is a bounded best-effort
+  restart aid, not an fsync-backed delivery guarantee. Nothing touches disk unless you
   turn it on.
 - **It stores no peer addresses and no sender identity.** The sender's identity rides
   *inside* the sealed envelope (`export_message` puts `sender`/`sig` inside the bytes
@@ -85,6 +88,15 @@ class RelayStore:
 > default mode the relay code does not, by itself, persist anything to disk; the only way
 > it writes an at-rest store is the opt-in `persist_dir` you enable deliberately (§4.6).
 
+> **Memory cap is not RSS.** The 512 MiB ceiling covers ciphertext retained in
+> `RelayStore`. One handler can additionally hold a request body up to 128 MiB, and the
+> process also needs Python objects, threads, socket buffers, and runtime overhead. GET
+> responses are length-counted and base64-streamed in 48 KiB chunks, so a full room no
+> longer creates a second ~171 MiB encoded list plus a complete JSON body. Journal startup
+> streams bounded lines but can temporarily hold one encoded record and its decoded bytes.
+> Budget headroom and configure reverse-proxy concurrency/body-rate limits; this code does
+> not claim that whole-process RSS equals the retained-state cap.
+
 ---
 
 ## 3. What the relay does NOT store or log
@@ -100,10 +112,13 @@ class RelayStore:
       return
   ```
 
-  So out of the box the relay does **not** emit per-request log lines, peer IPs, room
-  ids, or sizes to its own logs. A structured, **metadata-only** per-request access
-  log is available but **opt-in and off by default** (`HABITABLE_RELAY_LOG=json`); see
-  §4.3 for exactly what it does and does not contain.
+  So out of the box the relay does **not** emit normal per-request log lines, peer IPs,
+  room ids, or sizes to its own logs. The stdlib's separate handler-error path is also
+  overridden: expected resets/broken pipes are silent instead of attacker-amplifiable,
+  while an unexpected handler fault emits only the fixed metadata-only event
+  `relay request handler failed`. A structured,
+  **metadata-only** per-request access log remains **opt-in and off by default**
+  (`HABITABLE_RELAY_LOG=json`); see §4.3 for exactly what is emitted.
 
 - **No contents, ever.** No note text, no image bytes (raw or base64), no sender
   fingerprint. These never reach the relay in cleartext; they are inside the sealed
@@ -118,15 +133,17 @@ class RelayStore:
 - **The only thing it exposes about itself is `/healthz`**, which returns:
 
   ```json
-  {"status": "ok", "rooms": 0, "posted": 0, "fetched": 0, "bytes_relayed": 0}
+  {"status":"ok","rooms":0,"live_messages":0,"live_ciphertext_bytes":0,
+   "posted":0,"fetched":0,"bytes_relayed":0,"capacity_rejections":0,
+   "journal_load_rejections":0}
   ```
 
-  That is the *entire* observable summary — four aggregate integers and a status. It
-  contains no room ids and no contents. `tests/test_relay.py::test_healthz_exposes_only_aggregate_counts`
+  That is the *entire* observable summary — aggregate retained-state, traffic, and
+  rejection integers plus a status. It contains no room ids, journal paths, tokens, or
+  contents. `tests/test_relay.py::test_healthz_exposes_only_aggregate_counts`
   pins exactly this: it posts to a room named `room-SECRETNAME-123` with a
   `SECRET-CIPHERTEXT-PAYLOAD` body and asserts neither the room name nor the payload
-  appears anywhere in the `/healthz` response, and that the response keys are a subset
-  of `{status, rooms, posted, fetched, bytes_relayed}`.
+  appears anywhere in the `/healthz` response.
 
 ---
 
@@ -139,11 +156,12 @@ or **aggregate metadata** — never plaintext contents.
 
 | Field | Type | Contents | Persistence |
 | --- | --- | --- | --- |
-| `rooms[<room_id>]` | list of `(store_ts, bytes)` | Sealed ciphertext blobs, opaque to the relay, each with a coarse store timestamp for TTL expiry | RAM by default; **message-capped at 10,000/room** (over-cap → 413, no silent eviction); TTL-expired lazily; dropped on restart unless persistence is on (§4.6) |
-| `tokens[<room_id>]` | `str` | Write-capability token bound on first use (§4.4) | RAM by default; persisted with the room when persistence is on |
+| `rooms[<room_id>]` | list of `(store_ts, bytes)` | Sealed ciphertext blobs, opaque to the relay, each with a coarse store timestamp for TTL expiry | RAM by default; capped at 10,000 messages / 128 MiB per room and 4,096 rooms / 50,000 messages / 512 MiB globally (over-cap → 413, no silent eviction); dropped on restart unless persistence is on (§4.6) |
+| `tokens[<room_id>]` | `str` (`[A-Za-z0-9_-]{1,256}`) | Write-capability token bound on first accepted use (§4.4) | RAM by default; a rejected size/capacity check never claims a new token; persisted with live messages when persistence is on |
 | `posted` | `int` | Count of accepted POSTs | RAM only; reset on restart |
 | `fetched` | `int` | Count of messages handed back | RAM only; reset on restart |
 | `bytes_relayed` | `int` | Total ciphertext bytes moved | RAM only; reset on restart |
+| live-state / rejection metrics | `int` | Current live messages/bytes and aggregate capacity/journal-load rejections | RAM only; reset on restart |
 
 Room ids are the keys; the **count** of rooms (`len(self.rooms)`) is exposed via
 `/healthz`, but the room **ids themselves are never serialized out** by any handler
@@ -154,11 +172,11 @@ named by the SHA-256 of the room id; §4.6).
 
 | Route | Method | Request body | Response body | Stores / logs |
 | --- | --- | --- | --- | --- |
-| `/rooms/<id>` | POST | raw sealed bytes (≤ 128 MiB, `_MAX_BODY`); requires header `X-Habitable-Room-Token` (§4.4) | `{"status": "stored"}` | Binds/verifies the room token; appends `(store_ts, blob)`; increments `posted`, `bytes_relayed` |
+| `/rooms/<id>` | POST | raw sealed bytes (≤ 128 MiB, `_MAX_BODY`); requires exactly one ≤9-digit ASCII-digits-only `Content-Length` and one `X-Habitable-Room-Token` (§4.4) | `{"status": "stored"}` | Rejects duplicate/transfer-encoded/nondigit/overlong framing before integer conversion, validates exact body length, verifies the existing token, checks all caps atomically, then binds a first token/appends/increments counts |
 | `/rooms/<id>` | POST (bad token) | — | `403 {"error":"room token mismatch"}` (or `"room write requires a token"`) | Nothing stored |
-| `/rooms/<id>` | POST (room full) | — | `413 {"error":"room full"}` | Nothing stored — the earlier messages are **not** evicted |
-| `/rooms/<id>` | GET | — | `{"messages": [<base64 blob>, ...]}` | Increments `fetched`; expires stale messages lazily; returns stored ciphertext unchanged |
-| `/healthz` | GET | — | `{"status":"ok","rooms":N,"posted":N,"fetched":N,"bytes_relayed":N}` | Nothing |
+| `/rooms/<id>` | POST (room/relay/size cap) | — | `413` with fixed `room full`, `relay full`, or `message too large` vocabulary | Candidate room/token/message is not stored; earlier messages are **not** evicted. A bounded TTL-only cleanup sweep may reclaim expired rooms before a global decision. |
+| `/rooms/<id>` | GET | — | `{"messages": [<base64 blob>, ...]}` | Increments `fetched`; expires stale messages lazily; returns stored ciphertext unchanged and **does not clear it**. JSON/base64 is streamed in bounded chunks with an exact length. |
+| `/healthz` | GET | — | status plus aggregate retained-state, passthrough, and rejection counts | Nothing |
 | anything else | any | — | `{"error":"not found"}` (404) / `413` on bad/oversized body | Nothing |
 
 Reads (`GET`) are **not** token-gated: the room's contents are already sealed
@@ -169,7 +187,7 @@ what stops an unrelated party from claiming or scribbling into a room (§4.4).
 
 **Structured JSON, metadata-only, and free of request lines by default.** The relay
 logs through the Python standard-library `logging` module (no third-party logging
-dependency), emitting one JSON object per line. There are two kinds of line:
+dependency), emitting one JSON object per line. There are four kinds of line:
 
 - **Lifecycle lines — always emitted.** One at startup and one at shutdown. The
   startup line (`serve()` in `relay.py`) carries only the bind host/port you
@@ -181,6 +199,19 @@ dependency), emitting one JSON object per line. There are two kinds of line:
 
   The startup line logs only *whether* persistence is on (`"persist":true|false`), never
   the `persist_dir` path itself.
+
+- **Bounded-startup warning — only when a journal record/path is rejected.** One aggregate
+  warning may report `journal_load_rejections: N`. It carries no filename, room id, token,
+  timestamp, or body and is not emitted once per hostile line, so malformed persistence
+  input cannot create a content-bearing log or an unbounded log storm.
+
+- **Handler-failure line — fixed metadata only.** If an expected client reset, abort, or
+  broken pipe reaches `ThreadingHTTPServer.handle_error`, the relay emits nothing; these
+  unauthenticated faults cannot amplify logs. An unexpected handler fault emits exactly
+  `ts`, `level`, and fixed `msg: "relay request handler failed"`. The override never
+  delegates to the stdlib implementation, so no peer IP/port, exception class/text,
+  traceback, room, token, or request body reaches stderr. The fixed unexpected-fault line
+  can appear even when access logging is off; it contains no request-derived value.
 
 - **Per-request access lines — opt-in and OFF by default.** `log_message` is a no-op
   (§3), so `BaseHTTPRequestHandler`'s own request lines stay suppressed. A structured
@@ -207,7 +238,9 @@ it sees for a room** (trust-on-first-use) and thereafter rejects any POST whose 
 does not match (`hmac.compare_digest`) with **403**; a POST with no token is likewise
 rejected. This replaces the previous "any anonymous client may write to any room id"
 behavior: a room, once claimed, can only be written by a peer presenting the matching
-token.
+token. Every admission path (HTTP/direct post, explicit constructor state, and journal
+startup) enforces `[A-Za-z0-9_-]{1,256}` before `hmac.compare_digest`, so a non-ASCII
+first-use value cannot bind and later crash comparison.
 
 Honest scope, so you can attest accurately: because the token is *derived from the room
 id*, it defends against **accidental cross-talk and casual room-squatting by a party who
@@ -219,7 +252,13 @@ end-to-end sealing (§5), not this token. The interface (an opaque header compar
 `hmac.compare_digest`) leaves room to swap in a shared-secret HMAC later without changing
 the relay's contract.
 
-### 4.5 Message TTL and explicit room-full (413)
+The binding is live-state scoped: when TTL cleanup removes a room's last message, it
+removes that room's token too. A later accepted POST can therefore bind the now-empty
+room again. This keeps token memory under the same 4,096-room cap and matches restart
+behavior (a journal with no fresh message restores no token). With TTL disabled, the
+message and binding remain until restart; a different token still receives 403.
+
+### 4.5 Message TTL and explicit capacity rejection (413)
 
 - **TTL.** Each stored message carries a coarse store timestamp, and undelivered
   ciphertext older than `_MESSAGE_TTL_SECONDS` (default **30 days**) is expired
@@ -228,18 +267,28 @@ the relay's contract.
   **`HABITABLE_RELAY_TTL_SECONDS`** environment variable (a non-positive value disables
   expiry). Shorter TTL = less at-rest ciphertext retained; pick a value that still lets
   your peers reconnect and drain their rooms.
-- **No silent eviction.** A room at its 10,000-message cap now returns **413
-  `{"error":"room full"}`** instead of silently discarding the oldest (still-undelivered)
-  message with `pop(0)`. A peer therefore *learns* its write was refused rather than
-  quietly displacing someone else's message. `RelayClient` surfaces the 413 as a clear
-  error telling peers to fetch-and-clear or the operator to raise the cap.
+- **Clock-skew bound.** A persisted store timestamp more than **five minutes ahead** of
+  startup's finite clock is skipped and counted as invalid. The boundary permits a small
+  host-clock correction without allowing an attacker-authored far-future record to pin a
+  room token or retained capacity indefinitely; an accepted boundary record still expires
+  under the normal TTL.
+- **Bounded global reclaim.** If a new POST would hit a global cap, the store sweeps all
+  retained rooms for TTL-expired messages under the same lock, then recomputes capacity.
+  That sweep is itself bounded by 4,096 rooms / 50,000 messages and prevents stale rooms
+  whose ids no caller remembers from deadlocking the relay. It may remove expired
+  room/token state even if the candidate still receives 413; it never binds the candidate.
+- **No silent eviction.** The fixed ceilings are 10,000 messages / 128 MiB per room and
+  4,096 rooms / 50,000 messages / 512 MiB globally. Crossing one returns **413** with
+  fixed `room full`, `relay full`, or `message too large` vocabulary instead of deleting
+  an unexpired message. GET is intentionally non-destructive, so fetching does not make
+  room capacity disappear; peers can wait for the documented TTL/retry or use a new
+  deployment after the operator deliberately changes retention/capacity policy.
 
 ### 4.6 Opt-in on-disk persistence (the at-rest ciphertext store)
 
 By default the relay writes nothing to disk. If you set **`--persist-dir PATH`** (CLI) or
-**`HABITABLE_RELAY_PERSIST_DIR=PATH`** (env), the relay keeps an **append-only,
-at-rest ciphertext journal** so undelivered messages survive a restart. Attest to it
-precisely:
+**`HABITABLE_RELAY_PERSIST_DIR=PATH`** (env), the relay keeps a compactable,
+at-rest ciphertext JSONL journal as a **best-effort restart aid**. Attest to it precisely:
 
 - **One file per room, named by a hash — not the room id.** Each room's journal is
   `sha256(<room id>).hexdigest() + ".jsonl"`, so a **raw room id never becomes a
@@ -253,18 +302,68 @@ precisely:
   blob). Enabling persistence writes the room id and token *to disk* where in the default
   mode they lived only in RAM; that is the whole trade-off, and it is why persistence is
   off unless you choose it.
-- **Bounded, and TTL-honoring.** A room's journal is size-capped
-  (`_MAX_PERSIST_BYTES_PER_ROOM`, 256 MiB) and compacted from the in-memory, TTL-filtered
-  queue when it grows past the cap, so it cannot grow without bound. On startup the relay
-  reloads each journal, **skips messages already past their TTL**, and restores the
-  trust-on-first-use token binding.
-  (`tests/test_relay.py::TestPersistence` pins the round-trip, the expiry-on-load, and
-  the filename-hashing.)
+- **Bounded append and compaction.** A room's journal is capped at 256 MiB. Before an
+  append would cross that cap, a random owner-only temporary file is written from the
+  current TTL-filtered live queue and atomically replaces the journal. No append silently
+  evicts a live message, and the on-disk path is never intentionally grown past the cap.
+  If an earlier interrupted `os.write` left a non-newline tail, the next POST does not
+  concatenate another record onto it: after identity-checked open, the relay atomically
+  compacts the complete current live queue before acknowledging that POST.
+  Any post/fetch TTL cleanup also compacts promptly; when no live message/token remains,
+  identity-verified non-following cleanup removes the canonical journal instead of leaving
+  unbounded empty files behind.
+- **Bounded crash-temp cleanup.** Compaction uses only exact app-owned names matching
+  `.habitable-relay-[0-9a-f]{32}.tmp`. Before journal admission, startup may identity-check
+  and non-followingly remove at most 128 regular remnants. That is a separate allowance:
+  cleanup may traverse up to 8,192 non-temp entries **plus** 128 exact temp entries, so a
+  temp after the ordinary-entry boundary is not order-stranded. A 129th exact temp or an
+  over-limit non-temp scan fails closed before any journal loads; near-match names and
+  nonregular paths are not removed.
+- **Bounded, non-following startup.** After temp cleanup, startup examines at most 8,192
+  directory entries
+  and reads at most 20,000 physical lines per journal, 200,000 lines / 1 GiB in total,
+  considers only canonical 64-hex `.jsonl` regular files, opens with non-following and
+  nonblocking flags where the OS provides them, confirms the opened descriptor is regular,
+  and refuses an oversized file/line. Symlinks and FIFOs are never followed or blocking-read.
+  Lines are streamed, not loaded with `read_text()`. JSON structure, 1–128-character room
+  syntax, canonical room-hash filename, live-token grammar/consistency, finite timestamp within
+  the five-minute future-skew window, strict base64, TTL, per-room caps, and global caps are
+  checked before a staged record can bind a token or enter live state. A malformed record is
+  skipped and counted; valid records for one room/token elsewhere in that same journal may
+  still load, but the mixed source file is left untouched rather than compacted. Expired records
+  are eligible for pruning but do not establish or conflict with the staged live TOFU token; this
+  permits a post-TTL rebind even if an earlier unlink transiently failed. Noncanonical paths are
+  not opened, while a live-room/token-ambiguous or over-cap journal is refused as a unit, left
+  untouched, and counted; ambiguous live tokens never win by file iteration order. After a completely valid load, expired
+  lines are compacted away before startup completes; a stale-only, zero-byte, or blank-only
+  canonical journal is identity-checked and removed. This prevents repeated clean restarts
+  from accumulating expired lines ahead of a newer live append.
+- **Honest durability limit.** Appends are not fsynced and there is no acknowledgement
+  protocol with the host storage device. A process/host/storage failure can lose the most
+  recent accepted append or leave a malformed partial record. Startup skips and counts
+  that record, may load earlier valid same-room/same-token records, and leaves the mixed source
+  journal untouched. If the process survives the interrupted append, a later retry repairs
+  the tail as described above; it cannot recover state lost with process memory. Compaction
+  uses atomic rename on the configured filesystem but is not a transactional database.
+  A crash can leave an exact temp containing room/token/time/ciphertext until bounded startup
+  cleanup runs. Unlinking a journal or temp is ordinary cleanup, **not secure erasure** from
+  snapshots, remanence, or storage forensics. POSIX cleanup keeps the verified descriptor open;
+  Windows closes it, rechecks device/inode/size/mtime/ctime, then unlinks because Windows rejects
+  unlinking an open file. That fallback assumes a single local relay writer per persistence
+  directory, and a dedicated Windows CI lane remains out of scope. Peers must retain/retry their
+  sealed sync delta; do not describe this option as guaranteed delivery or a backup.
+  (`tests/test_relay.py::TestPersistence` pins round-trip, TTL/future-skew behavior, caps,
+  strict decoding, noncanonical/token conflict rejection, generation swaps, symlink/FIFO
+  behavior, interrupted-append recovery, bounded crash-temp cleanup, Windows fallback, and
+  bounded compaction.)
 
-If you enable persistence for a high-risk union, treat the `persist_dir` like any at-rest
-ciphertext store: put it on an encrypted volume, restrict its permissions, and include it
-in your retention story (the TTL bounds how long undelivered ciphertext lingers). The
-shipped read-only container does **not** enable persistence; to use it you must mount a
+If you enable persistence for a high-risk union, give exactly one local relay process ownership
+of the `persist_dir` and treat it like any at-rest ciphertext store: put it on an encrypted
+volume, restrict its permissions, and include it in your retention story (the TTL bounds how
+long undelivered ciphertext remains **eligible** for retention; lazy expiry is enforced on a
+room touch, a prospective global-cap sweep, or startup, so physical state/journals can linger
+until one of those events, and crash remnants last until cleanup).
+The shipped read-only container does **not** enable persistence; to use it you must mount a
 writable volume and set the env var deliberately.
 
 ---
@@ -288,7 +387,8 @@ tests, runnable by anyone who clones the repo.
   the no-plaintext property holds whether or not a relay is used.
 
 - **`tests/test_relay.py::test_healthz_exposes_only_aggregate_counts`** — pins that
-  `/healthz` leaks no room ids and no message contents, only the four aggregate counts.
+  `/healthz` leaks no room ids and no message contents, only aggregate retained-state,
+  traffic, and rejection counts.
 
 > **A precise note for accuracy.** `tests/test_guards.py` exists, but it guards a
 > *different* invariant — that an exported **packet/bundle** drops the source filename
@@ -355,11 +455,13 @@ metadata leaks accumulate — turn it off or minimize it (§7).
 
 ```console
 $ curl -s http://localhost:8787/healthz
-{"status": "ok", "rooms": 1, "posted": 1, "fetched": 0, "bytes_relayed": 21}
+{"status":"ok","rooms":1,"live_messages":1,"live_ciphertext_bytes":21,
+ "posted":1,"fetched":0,"bytes_relayed":21,"capacity_rejections":0,
+ "journal_load_rejections":0}
 ```
 
-Confirm the response contains the four counters and `status` only — no room id
-(`audit-probe-room` must not appear) and no body content.
+Confirm the response contains aggregate counters and `status` only — no room id
+(`audit-probe-room` must not appear), token, journal path, or body content.
 
 ### Step 3 — Confirm the relay cannot read what it forwards
 
@@ -383,13 +485,14 @@ $ docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' habitable-relay   # -
 $ docker diff habitable-relay   # expect no added/changed files under the app dir
 # Restart and show state is gone (proving memory-only storage):
 $ docker restart habitable-relay
-$ curl -s http://localhost:8787/healthz   # rooms/posted/fetched/bytes_relayed back to 0
+$ curl -s http://localhost:8787/healthz   # live state and passthrough counters back to 0
 ```
 
 A reset-to-zero after restart is direct evidence the relay persists nothing in this mode.
 If you *deliberately* enabled persistence, this step will instead show the journal
-directory and state surviving restart — attest to that mode using §4.6, and disclose the
-encrypted-at-rest handling of the `persist_dir`.
+directory and may show accepted state restored after a clean restart — attest to that
+best-effort mode using §4.6, and disclose the encrypted-at-rest handling of the
+`persist_dir` plus its non-fsync durability limit.
 
 ### Step 5 — Confirm the end-to-end-encryption invariant holds in the code you run
 
@@ -409,8 +512,9 @@ short signed statement to the union can then say, truthfully:
 
 > *"This relay, running image `<digest>` from commit `<sha>` with on-disk persistence
 > disabled, stores only opaque ciphertext blobs, per-room write tokens, and aggregate
-> counters in memory; it persists nothing to disk; it writes no request logs; its
-> `/healthz` exposes only aggregate counts; room writes are gated by a capability token
+> counters in memory under fixed aggregate/per-room caps; it persists nothing to disk;
+> it writes no request logs; its `/healthz` exposes only aggregate counts; room writes
+> are gated by a capability token
 > (never logged); and the project's own guard tests confirm note text, image bytes, and
 > sender identity never reach it. It can still observe connection metadata — see the
 > observability matrix — which I have disclosed separately and have not tried to hide."*
@@ -437,14 +541,15 @@ The relay is already no-log and minimal-retention by default. To keep it that wa
   core dumps for the process; the shipped container already runs read-only, non-root,
   with all capabilities dropped and `no-new-privileges`.
 - **Embrace restart-as-erasure (default mode).** With persistence off (the default),
-  storage is in-memory, message-capped, and TTL-bounded (§4.5): the relay retains only
-  recent, undelivered ciphertext and forgets everything on restart. Leaving persistence
-  off *is* the minimal-retention story. If you must survive restarts, enabling it (§4.6)
-  is a deliberate, bounded, encrypted-at-rest choice — not a default — and the TTL still
-  caps how long undelivered ciphertext lingers; keep the TTL as short as your peers'
-  reconnect cadence allows (`HABITABLE_RELAY_TTL_SECONDS`).
-- **Scale to zero between sessions.** A union can run one small instance only when a
-  sync session is happening, or none at all — pure peer-to-peer needs no relay.
+  storage is in-memory, room/message/byte-capped, and TTL-bounded (§4.5): the relay
+  retains only recent, undelivered ciphertext and forgets everything on restart. Leaving
+  persistence off *is* the minimal-retention story. If you need a best-effort restart
+  aid, enabling it (§4.6) is a deliberate, bounded, encrypted-at-rest choice — not a
+  default — and the TTL still caps how long undelivered ciphertext lingers; keep the TTL
+  as short as your peers' reconnect cadence allows (`HABITABLE_RELAY_TTL_SECONDS`).
+- **Scale to zero between sessions.** A union can run one appropriately memory-sized
+  instance only when a sync session is happening, or none at all — pure peer-to-peer
+  needs no relay.
 
 ---
 

@@ -227,8 +227,12 @@ def test_relay_client_raises_clear_error_when_room_full(
     monkeypatch.setattr(relay_mod, "_MAX_MESSAGES_PER_ROOM", 1)
     client = RelayClient(url)
     client.post("room-full", b"first")  # fills the room
-    with pytest.raises(SyncError, match="full"):
+    with pytest.raises(SyncError, match="full") as raised:
         client.post("room-full", b"second")
+    message = str(raised.value)
+    assert "GET does not clear" in message
+    assert "TTL and retry" in message
+    assert "fetch and clear" not in message
 
 
 def test_relay_client_raises_clear_error_when_token_rejected(

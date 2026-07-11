@@ -99,8 +99,11 @@ It is deliberately a dumb mailbox: ciphertext in, ciphertext out.
 - The relay writes **no per-request logs by default**; per-request access logging is opt-in
   (`HABITABLE_RELAY_LOG=json`). Its logs are always **metadata-only** — a structured JSON line
   never carries a peer address, a room id (the logged route is redacted to `/rooms/{room}`), or
-  message contents. Aggregate passthrough counts (rooms, posted, fetched, bytes_relayed) remain
-  exposed only via `/healthz`.
+  message contents. The server error hook replaces the stdlib's peer-address/traceback stderr
+  dump: unauthenticated connection errors are silent, and unexpected faults emit only a fixed
+  `{ts,level,msg}` failure event.
+  Aggregate passthrough, retained-state, capacity-rejection, and rejected-journal
+  counts remain exposed only via `/healthz`; no room id, token, path, or body is included.
 
 **What the relay can nonetheless see — connection metadata:** because it forwards traffic, it
 necessarily observes **who connects, to which room, when, and roughly how much data moves**. That
@@ -204,7 +207,7 @@ courtroom fails the people relying on it.
 | Device seized while **locked** | ChaCha20-Poly1305 at rest under a scrypt-wrapped DEK; contents and identity are ciphertext. | Offline guessing of a weak passphrase; future cryptographic breaks; the keyfile and ciphertext are in the adversary's hands for as long as they keep the device. |
 | Device seized while **unlocked**, or passphrase **coerced** | Passphrase rotation; recovery blob under an independent passphrase. *(A duress-safe open state to hide case contents is planned, not yet implemented.)* | Not a guarantee against coercion or forensic imaging; an unlocked vault exposes plaintext; a compelled passphrase reveals everything. |
 | Plaintext media working copy recovered | Browser/packet path files use random names, an owner-only workspace outside the vault, and cleanup on partial writes, normal completion, and exceptions; old `_incoming` is purged without following symlinks. | Memory, OS temp, swap, crash remnants, snapshots, and storage forensics remain in the endpoint trust boundary; unlink is not secure erasure. |
-| Relay operator or its subpoena | Messages sealed to recipient keys before leaving the sender; no-log, self-hostable relay; pure peer-to-peer option removes the party entirely. | Connection **metadata** (who/when/how-much) is visible to any relay; only peer-to-peer sync avoids it. |
+| Relay operator or its subpoena | Messages sealed to recipient keys before leaving the sender; no-log, self-hostable relay; fixed live/startup bounds; pure peer-to-peer option removes the party entirely. | Connection **metadata** (who/when/how-much) is visible to any relay; opt-in persistence also writes ciphertext plus room/token/time metadata. Journal/temp unlink is not secure erasure, persistence is not fsync-backed delivery, and only peer-to-peer sync avoids the relay. |
 | Timestamp authority compromised, colluding, or subpoenaed | Authority sees only a SHA-256 hash; multiple authorities configurable; tokens verified offline against their certificate chain. | A single TSA could backdate or refuse; a hash leak still reveals nothing about contents; trust in *any one* TSA is reduced, not eliminated, by using several. |
 | Evidence altered after capture | SHA-256 fixity re-checked on every read; append-only hash-linked custody; RFC 3161 upper-bound timestamps, kept durable by archive re-timestamping before an authority ages out; standalone verifier. | Custody is tamper-*evident* only: a hostile keyholder can rewrite the whole local chain before any external anchor exists; detection needs a counterpart or a timestamp over the head. |
 | Tenant location leaked through sharing | Packet shared-media copies strip embedded metadata by default, and signed disclosures state metadata/original choices. | A retention policy, `--include-originals`, sync/organizer share, screenshot, or forwarded original can carry location. Recipients can make further copies. |

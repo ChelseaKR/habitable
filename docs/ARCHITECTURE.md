@@ -151,8 +151,14 @@ Sync and transport:
   transports: `LocalDirTransport` (a shared-directory mailbox, also good for USB/AirDrop)
   and `RelayClient` (ciphertext over HTTP).
 - **`relay.py`** — the optional, zero-trust relay server: stores opaque blobs per room and
-  hands them back, with a `/healthz` endpoint and passthrough-only metrics. It can read
-  nothing (every message is sealed before it arrives) and keeps no per-message logs.
+  hands them back, with fixed per-room/aggregate retained-state caps, streamed GET responses,
+  strict wire/token grammar, bounded opt-in journal loading and crash-temp cleanup, and
+  aggregate-only `/healthz` saturation metrics. Shared
+  state is locked because the HTTP server is threaded; rejected capacity checks never evict
+  an **unexpired** message or bind a new room token, persisted future timestamps cannot pin a
+  binding, and an interrupted append is compacted from live state before a later POST is
+  acknowledged. It can
+  read nothing (every message is sealed before it arrives) and keeps no per-message logs.
   Optional and replaceable; pure peer-to-peer needs no relay.
 
 Entry points:
@@ -282,8 +288,8 @@ Sync exchanges **state-based CRDT** messages between peers:
   associative, and idempotent.
 - **Transport-agnostic.** A shared directory (`LocalDirTransport`) or an HTTP relay
   (`RelayClient`) moves the bytes. The optional **relay sees ciphertext and room metadata
-  only** — never contents — and keeps only aggregate passthrough counts. Pure peer-to-peer
-  sync needs no relay at all.
+  only** — never contents — and exposes only aggregate traffic, retained-state, and
+  saturation counts. Pure peer-to-peer sync needs no relay at all.
 
 ## Determinism and reproducibility
 
