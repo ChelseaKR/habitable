@@ -23,9 +23,11 @@ and are not signed).
    $ git tag -s vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z
    ```
 4. The **`release` workflow** (`.github/workflows/release.yml`) first runs two
-   guards, *before* building anything: the tag must be a valid signature per
-   `.github/allowed_signers`, and its version must match `pyproject.toml`. It
-   then re-runs `make verify` at the tagged commit — a red commit cannot ship.
+   guards, *before* building anything: the requested tag is resolved and checked
+   out by exact commit, the tag must have a valid signature per
+   `.github/allowed_signers`, and its version at that commit must match
+   `pyproject.toml`. It then re-runs `make verify` at that exact tagged commit — a
+   red or branch-drifted commit cannot ship.
    Only then does it:
    - build the wheel + sdist **twice, from two independent clean copies of the
      tracked source, and verify the two builds are byte-identical**
@@ -36,11 +38,13 @@ and are not signed).
    - produce a **signed build-provenance attestation** for the artifacts
      (`actions/attest-build-provenance`, Sigstore);
    - create/update the GitHub release and upload `dist/*`;
-   - in a separate `pypi-publish` job (scoped to `contents: read` plus
-     `id-token: write`),
-     rebuilds the wheel + sdist from the tagged source and **publishes to PyPI
-     via Trusted Publishing** (`pypa/gh-action-pypi-publish`, OIDC — no stored
-     token), which also attaches PEP 740 provenance to the PyPI artifacts.
+   - transfer those exact wheel/sdist bytes as a short-lived workflow artifact to
+     a separate `pypi-publish` job (scoped to `contents: read` plus
+     `id-token: write`), which validates the distribution set and **publishes the
+     same files to PyPI via Trusted Publishing**
+     (`pypa/gh-action-pypi-publish`, OIDC — no stored token). The publish action
+     also attaches PEP 740 provenance to those PyPI artifacts. No build tool or
+     source checkout runs in the OIDC-enabled publish job.
 
 ### One-time setup: signing release tags
 
@@ -108,10 +112,9 @@ golden-packet corpus and the version-contract test (see
 [`evidence-method.md`](evidence-method.md) and `tests/test_golden.py`), not by
 prose.
 
-Note that the GitHub-release artifacts and the PyPI artifacts are still
-produced by two independent `uv build` invocations of the same tagged source
-(one in the `release` job, one in `pypi-publish`), each independently attested
-(Sigstore build-provenance for the release artifacts, PEP 740 for the PyPI
-artifacts) — `make repro`'s reproducibility check runs in the `release` job
-before either publish step, so a divergence there would already have failed
-the release.
+The GitHub release and PyPI now receive the exact wheel/sdist pair emitted by the
+successful `make repro` run. The build job smoke-tests and attaches Sigstore build
+provenance to that pair, then hands the same bytes to the isolated OIDC publish job;
+PyPI adds its PEP 740 attestations during upload. A manual workflow rerun also
+checks out the requested tag commit explicitly, so the default branch cannot be
+published under an older tag.
