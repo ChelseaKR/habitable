@@ -13,13 +13,15 @@ losing the case and without rebuilding a honeypot.
 > **passphrase**, **recovery blob**, the **who-can-recover-what map**, and the
 > **two-person rule per case** — and does not re-explain them.
 >
-> **Honesty note.** There is **no built-in "transfer custody" command** and **no
-> threshold / split-key recovery** ("any 3 of 5 organizers"). The playbook says so
-> plainly and so does this doc: threshold recovery *does not exist*. What follows is
-> a **manual, documented flow** built entirely on commands that exist today —
-> `habitable sync`, `habitable key rotate`, `habitable key backup`,
-> `habitable key restore`, `habitable status`, and `habitable export`. Every command
-> cited below is real; nothing here invents a feature.
+> **Honesty note.** There is **no built-in "transfer custody" command**. Threshold
+> recovery does exist: `habitable key share` can prepare an M-of-N split and
+> `habitable key recover` can restore from a quorum. It only helps when the bundle,
+> enough separate shares, and a surviving encrypted vault were arranged beforehand.
+> What follows is a **manual, documented flow** built entirely on commands that exist
+> today — `habitable sync`, `habitable key rotate`, `habitable key backup`,
+> `habitable key restore`, `habitable key rotate-dek`, `habitable key share`,
+> `habitable key recover`, `habitable status`, and `habitable export`. Every
+> command cited below is real; nothing here invents a feature.
 
 ## Scope and principles
 
@@ -80,10 +82,11 @@ to make easy at onboarding by keeping the recovery backup and the map current.
      ```
 
 3. **Update the who-can-recover-what map.** Record the new keyholder and/or the new
-   second organizer, and retire the departing member's entry. Old recovery blobs the
-   departing member still holds do **not** expire on their own — if the case was
-   re-keyed in step 2, re-issue the backup so stale blobs no longer open the current
-   vault, and note it on the map.
+   second organizer, and retire the departing member's entry. Old recovery blobs or
+   threshold shares do **not** expire after `key rotate`; that command changes the
+   everyday passphrase wrapping only. If the departing person held recovery material,
+   run `key rotate-dek`, then issue a new backup or threshold split and retire every
+   old copy. Note the change on the map.
 
 4. **The departing member's obligations — decide and record which:**
    - **Delete their copy.** Cleanest. Once the new custodian has synced state and
@@ -111,8 +114,9 @@ consent to sync a fresh copy, so recovery depends **entirely** on a backup the u
 arranged **earlier**. This is why the playbook insists on the two-person rule at
 setup: Scenario B is only survivable if you prepared for it.
 
-**If a recovery backup exists** (the baseline the playbook recommends — each case's
-recovery blob held by a *second* organizer, with a recovery passphrase held apart):
+**If recovery material exists**, use the ceremony arranged at onboarding. The
+single-custodian baseline is a recovery blob held by a *second* organizer, with its
+recovery passphrase held apart:
 
 1. **Restore access from the second organizer's blob.** The second organizer, using
    their recovery passphrase, rebuilds a usable keyfile on a device that holds the
@@ -127,31 +131,48 @@ recovery blob held by a *second* organizer, with a recovery passphrase held apar
    still exist somewhere — the blob recovers *access*, not the *data*. A synced peer
    who still holds the case is itself that vault directory.
 
-2. **Rotate immediately.** The departed member may still know the old passphrase, and
-   the recovery blob just used is now a spent secret. Set a new everyday passphrase
-   and, right after, re-issue the recovery backup under a fresh recovery passphrase:
+2. **Replace the data key immediately.** The departed member may still know the old
+   passphrase, and the recovery blob just used is now spent material. Replace the DEK
+   so the old blob cannot recover the current vault, then issue a fresh backup under
+   a fresh recovery passphrase:
 
    ```console
-   $ uv run habitable key rotate --vault ./case-4B
+   $ uv run habitable key rotate-dek --vault ./case-4B
    $ uv run habitable key backup --vault ./case-4B --out ./case-4B-recovery.txt
    ```
 
 3. **Update the map** with the new keyholder, the new second organizer, and the fact
    that the departed member's old secrets no longer open the current vault.
 
-**If no recovery backup exists — be plain: the case is gone.** No operator, not the
-project, not the steward, can recover a vault whose only passphrase left with a
-member who will not return it, when no recovery blob and no surviving synced peer
-exist. This is the same by-design unrecoverability that stops a landlord, a breach,
-or a subpoena — it does not make an exception for the union. There is **no threshold
-recovery** and no back door. The only defense is to have set up the backup *before*
-this scenario, which is the whole point of the two-person rule.
+**If the case uses threshold custody instead**, assemble the non-secret bundle and
+the configured quorum of separately held shares, then restore on a device that still
+holds the encrypted vault directory:
+
+```console
+$ uv run habitable key recover ./case-4B \
+    --bundle ./case-4B-custody/recovery-bundle.json \
+    --share ./from-ana.json --share ./from-cy.json
+```
+
+No single share can recover the key. After recovery, run `key rotate-dek`, issue a
+fresh split, distribute its shares separately, and retire the used bundle and shares.
+See the current [key-management incident procedure](key-management.md).
+
+**If no usable recovery material exists — be plain: the case is gone.** No operator,
+not the project, not the steward, can recover a vault whose only passphrase left with
+a member who will not return it, when neither a usable single backup nor a threshold
+bundle and quorum nor a surviving synced peer exists. A threshold setup also fails
+if its bundle or quorum of shares is unavailable.
+This is the same by-design unrecoverability that stops a landlord, a breach, or a
+subpoena — it does not make an exception for the union. There is no back door. The
+only defense is to have set up and protected recovery material *before* this
+scenario.
 
 ### Scenario B checklist
 
-- [ ] Confirmed a recovery blob **and** a surviving vault directory both exist. (If not, stop — the case is unrecoverable; record that honestly.)
-- [ ] Second organizer ran `key restore` with the recovery passphrase.
-- [ ] `key rotate` run immediately after restore; fresh `key backup` re-issued under a new recovery passphrase.
+- [ ] Confirmed a single recovery blob **or** a threshold bundle plus quorum of shares, **and** a surviving vault directory, all exist. (If not, stop — the case is unrecoverable; record that honestly.)
+- [ ] Custodian ran `key restore`, or the quorum ran `key recover`, using the prearranged material.
+- [ ] `key rotate-dek` run immediately after restore; fresh backup or split issued; used material retired.
 - [ ] Who-can-recover-what map updated; departed member's old secrets marked dead.
 
 ## Scenario C — case handoff without a departure (steward change)
@@ -211,10 +232,11 @@ When a member leaves mid-case: if they cooperate, have them `sync` their final s
 to the new custodian, then have the custodian `key rotate` (or re-issue `key backup`
 to a new second organizer), update the who-can-recover-what map, and record whether
 the member deleted or kept their copy. If they are unreachable, recover *only* if a
-second organizer's recovery blob and a surviving vault still exist — `key restore`,
-then `key rotate` and a fresh `key backup` immediately — and if no backup was ever
-made, be honest that the case is permanently gone by design. For a steward change
+surviving encrypted vault exists together with either a usable single backup or a
+prearranged threshold bundle and its quorum. Run `key restore` or `key recover`, then
+`key rotate-dek` and issue fresh recovery material immediately. If neither recovery
+path was arranged, be honest that the case is permanently gone by design.
+For a steward change
 with nobody leaving, just re-issue the recovery backup to the new organizer and
-update the map. There is no transfer command and no threshold recovery; this is a
-manual flow on real commands, and it only works if the backup existed before you
-needed it.
+update the map. There is no transfer command; this is a manual flow on real commands,
+and it only works if the chosen recovery material existed before you needed it.
