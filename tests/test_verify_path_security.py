@@ -16,6 +16,7 @@ import pytest
 import habitable.verify as verifier
 from habitable.canonical import JSONValue, canonical_json
 from habitable.capture import capture
+from habitable.errors import VerificationError
 from habitable.packet import _write_signature, build_packet
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
@@ -172,9 +173,72 @@ def test_rejects_packet_directory_symlink(
     alias = tmp_path / "packet-alias"
     alias.symlink_to(packet, target_is_directory=True)
 
-    item = _only_item(alias, local_tsa)
-    assert not item.shared_media_ok
-    assert any("packet directory must not be a symlink" in note for note in item.notes)
+    with pytest.raises(VerificationError, match="packet directory must not be a symlink"):
+        verifier.verify_packet(alias, trusted_certs=[local_tsa.certificate])
+
+
+def test_rejects_symlinked_bundle_before_parsing(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    _, packet = _make_packet(make_vault, make_jpeg, local_tsa, tmp_path)
+    bundle = packet / "bundle.json"
+    outside = tmp_path / "outside-bundle.json"
+    bundle.replace(outside)
+    bundle.symlink_to(outside)
+
+    with pytest.raises(VerificationError, match=r"bundle\.json must not be a symlink"):
+        verifier.verify_packet(packet, trusted_certs=[local_tsa.certificate])
+
+
+def test_symlinked_signature_fails_without_following_it(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    _, packet = _make_packet(make_vault, make_jpeg, local_tsa, tmp_path)
+    signature = packet / "bundle.sig.json"
+    outside = tmp_path / "outside-signature.json"
+    signature.replace(outside)
+    signature.symlink_to(outside)
+
+    report = verifier.verify_packet(packet, trusted_certs=[local_tsa.certificate])
+    assert not report.signature_ok
+    assert not report.items[0].shared_media_ok
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO creation is not portable")
+def test_rejects_fifo_bundle_before_reading(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    _, packet = _make_packet(make_vault, make_jpeg, local_tsa, tmp_path)
+    bundle = packet / "bundle.json"
+    bundle.unlink()
+    os.mkfifo(bundle)
+
+    with pytest.raises(VerificationError, match=r"bundle\.json is not a regular file"):
+        verifier.verify_packet(packet, trusted_certs=[local_tsa.certificate])
+
+
+def test_rejects_oversized_bundle_before_parsing(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, packet = _make_packet(make_vault, make_jpeg, local_tsa, tmp_path)
+    bundle = packet / "bundle.json"
+    monkeypatch.setattr(verifier, "_MAX_BUNDLE_BYTES", bundle.stat().st_size - 1)
+
+    with pytest.raises(VerificationError, match=r"bundle\.json exceeds"):
+        verifier.verify_packet(packet, trusted_certs=[local_tsa.certificate])
 
 
 def test_rejects_directory_in_place_of_media_file(

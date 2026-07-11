@@ -52,6 +52,8 @@ _SIGNATURE = "bundle.sig.json"
 _MEDIA = "media"
 _ORIGINALS = "originals"
 _HASH_CHUNK = 1024 * 1024
+_MAX_BUNDLE_BYTES = 256 * 1024 * 1024
+_MAX_SIGNATURE_BYTES = 1024 * 1024
 
 # Keep a hostile packet from turning verification into an unbounded read. This is
 # deliberately much larger than the app and relay upload ceilings, so ordinary
@@ -68,7 +70,13 @@ SUPPORTED_PACKET_VERSION = 3
 # to the parenthesis-free PEP 758 form, a SyntaxError on Python < 3.14. verify.py is
 # the entry point of the Apache-2.0 verifier subset, kept portable for embedders who
 # vendor it onto older interpreters (see docs/embedding-the-verifier.md).
-_SIGNATURE_READ_ERRORS = (json.JSONDecodeError, UnicodeDecodeError, ValueError, OSError)
+_SIGNATURE_READ_ERRORS = (
+    json.JSONDecodeError,
+    UnicodeDecodeError,
+    ValueError,
+    OSError,
+    VerificationError,
+)
 
 _SUMMARY_TEXT = {
     "en": {
@@ -1036,11 +1044,16 @@ def _valid_recorded_at(value: str) -> bool:
 
 
 def _verify_signature(packet_dir: Path, bundle_bytes: bytes) -> bool:
-    sig_path = packet_dir / _SIGNATURE
-    if not sig_path.exists():
-        return False
     try:
-        doc = json.loads(sig_path.read_text(encoding="utf-8"))
+        signature_bytes = _read_packet_control_file(
+            packet_dir,
+            _SIGNATURE,
+            limit=_MAX_SIGNATURE_BYTES,
+            required=False,
+        )
+        if signature_bytes is None:
+            return False
+        doc = json.loads(signature_bytes)
         if not isinstance(doc, dict):
             return False
         bundle_hash = sha256_bytes(bundle_bytes)
@@ -1101,10 +1114,86 @@ def _poster_bindings(custody: CustodyLog) -> dict[str, set[tuple[str, str]]]:
 
 
 def _read_bundle_bytes(packet_dir: Path) -> bytes:
-    bundle_path = packet_dir / _BUNDLE
-    if not bundle_path.exists():
+    bundle_bytes = _read_packet_control_file(
+        packet_dir,
+        _BUNDLE,
+        limit=_MAX_BUNDLE_BYTES,
+        required=True,
+    )
+    if bundle_bytes is None:  # required=True always raises instead
         raise VerificationError(f"no {_BUNDLE} in {packet_dir}")
-    return bundle_path.read_bytes()
+    return bundle_bytes
+
+
+def _read_packet_control_file(  # noqa: C901 -- ordered hostile-file checks stay explicit
+    packet_dir: Path,
+    name: str,
+    *,
+    limit: int,
+    required: bool,
+) -> bytes | None:
+    """Read one fixed packet control file without following hostile file types."""
+    try:
+        root_before = packet_dir.lstat()
+    except OSError as exc:
+        raise VerificationError("packet directory could not be safely inspected") from exc
+    if stat.S_ISLNK(root_before.st_mode):
+        raise VerificationError("packet directory must not be a symlink")
+    if not stat.S_ISDIR(root_before.st_mode):
+        raise VerificationError("packet path is not a directory")
+
+    path = packet_dir / name
+    try:
+        file_before = path.lstat()
+    except FileNotFoundError:
+        if required:
+            raise VerificationError(f"no {name} in {packet_dir}") from None
+        return None
+    except OSError as exc:
+        raise VerificationError(f"{name} could not be safely inspected") from exc
+    if stat.S_ISLNK(file_before.st_mode):
+        raise VerificationError(f"{name} must not be a symlink")
+    if not stat.S_ISREG(file_before.st_mode):
+        raise VerificationError(f"{name} is not a regular file")
+    if file_before.st_size > limit:
+        raise VerificationError(f"{name} exceeds the {limit}-byte verification limit")
+
+    try:
+        root_resolved = packet_dir.resolve(strict=True)
+        path_resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise VerificationError(f"{name} could not be safely resolved") from exc
+    if path_resolved.parent != root_resolved:
+        raise VerificationError(f"{name} escapes the packet directory")
+
+    file_fd = -1
+    try:
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+        )
+        file_fd = os.open(path, flags)
+        handle = os.fdopen(file_fd, "rb", closefd=True)
+        file_fd = -1
+        with handle:
+            opened = os.fstat(handle.fileno())
+            if not stat.S_ISREG(opened.st_mode) or _different_file(file_before, opened):
+                raise VerificationError(f"{name} changed during safety checks")
+            data = handle.read(limit + 1)
+            after = os.fstat(handle.fileno())
+    except VerificationError:
+        raise
+    except OSError as exc:
+        raise VerificationError(f"{name} could not be safely read") from exc
+    finally:
+        _close_fd(file_fd)
+    if len(data) > limit:
+        raise VerificationError(f"{name} exceeds the {limit}-byte verification limit")
+    if _file_changed_while_reading(opened, after):
+        raise VerificationError(f"{name} changed while it was read")
+    return data
 
 
 def _parse_bundle(bundle_bytes: bytes) -> Mapping[str, JSONValue]:

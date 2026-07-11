@@ -71,10 +71,13 @@ except VerificationError as exc:
 
 ## Untrusted packet filesystem boundary
 
-Treat an incoming packet directory as hostile input. The verifier checks
-`bundle.sig.json` before it opens any file named by `bundle.json`; when that signature
-fails, referenced media, posters, and originals are not read at all. Even a mechanically
-valid signature is not an identity trust decision, so every reference is still confined:
+Treat an incoming packet directory as hostile input. Before parsing or signature
+verification, the verifier requires fixed `bundle.json` and `bundle.sig.json` control
+files to be bounded regular files directly inside a non-symlink packet directory. It
+then checks `bundle.sig.json` before it opens any file named by `bundle.json`; when that
+signature fails, referenced media, posters, and originals are not read at all. Even a
+mechanically valid signature is not an identity trust decision, so every reference is
+still confined:
 
 - `shared_name`, `poster_name`, and an embedded original's `capture_id` must be one
   basename. Absolute paths, `..`, POSIX or Windows separators, and Windows drive names

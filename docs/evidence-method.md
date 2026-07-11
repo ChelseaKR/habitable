@@ -348,12 +348,14 @@ runs. Given only a packet directory — and, optionally, trusted TSA root certif
 re-derives every hash and checks every claim, with no access to the union's other data.
 The steps below match the code; run them, or read the code, to confirm.
 
-Before opening any bundle-named file, the verifier checks the producer signature. A
-failed signature makes the bundle's references unauthenticated, so media, poster, and
-original files are not read. A valid self-contained signature is still not a trusted
-identity, so references remain confined to one basename in their designated `media/` or
-`originals/` directory. Symlinks, containment escapes, non-regular files, and files over
-the 1 GiB verification ceiling fail closed. The path-based safety checks have a
+The verifier first requires bounded, regular, non-symlink `bundle.json` and
+`bundle.sig.json` files directly inside a non-symlink packet directory. Before opening
+any bundle-named file, it checks the producer signature. A failed signature makes the
+bundle's references unauthenticated, so media, poster, and original files are not read.
+A valid self-contained signature is still not a trusted identity, so references remain
+confined to one basename in their designated `media/` or `originals/` directory.
+Symlinks, containment escapes, non-regular files, and files over the 1 GiB verification
+ceiling fail closed. The path-based safety checks have a
 documented concurrent-mutation race; recipients should verify a private, quiescent copy
 as described in the [embedding guide](./embedding-the-verifier.md#untrusted-packet-filesystem-boundary).
 
