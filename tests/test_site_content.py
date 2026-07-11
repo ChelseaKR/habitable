@@ -43,8 +43,8 @@ _PAGE_META = {
     ),
     "templates/tenant-union-building-condition-survey": (
         "Tenant Union Building Condition Survey | Habitable",
-        "Download a local-only tenant union building survey CSV to organize condition scope, "
-        "recurrence, repair requests, access, consent, and campaign follow-up.",
+        "Download a tenant union building survey CSV to organize condition scope, recurrence, "
+        "repair requests, access, consent, storage, and campaign follow-up.",
     ),
     "legal-aid-reviewers": (
         "Legal Aid Evidence Packet Review | Habitable Evidence",

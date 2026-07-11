@@ -36,7 +36,7 @@ _FIELDS = (
     "permission_to_aggregate",
     "aggregation_limits",
     "organizer_campaign_status",
-    "follow_up_owner",
+    "follow_up_owner_reference",
     "supporting_record_reference",
     "last_reviewed_date",
     "organizer_notes",
@@ -116,6 +116,7 @@ def test_survey_csv_is_utf8_header_only_and_uses_bounded_fields() -> None:
         "apartment_number",
         "phone",
         "email",
+        "follow_up_owner",
     }
     assert direct_identity_fields.isdisjoint(_FIELDS)
 
@@ -151,6 +152,7 @@ def test_survey_explains_every_safety_and_interpretation_boundary() -> None:
         "official_record_reference",
         "permission_to_aggregate",
         "organizer_campaign_status",
+        "follow_up_owner_reference",
         "underlying private records",
         "does not verify evidence",
         "does not diagnose",
@@ -160,6 +162,14 @@ def test_survey_explains_every_safety_and_interpretation_boundary() -> None:
     }
     missing = {phrase for phrase in required_phrases if phrase not in visible}
     assert not missing
+
+    html = _SURVEY.read_text(encoding="utf-8")
+    assert "local-only" not in html.casefold()
+    assert "spreadsheet formula safety" in visible
+    assert "copied or untrusted values as plain text" in visible
+    assert "name or contact details" in visible
+    for formula_prefix in ("=", "+", "-", "@"):
+        assert f"<code>{formula_prefix}</code>" in html
 
     hrefs = {anchor.get("href") for anchor in parser.anchors}
     assert hrefs >= {
