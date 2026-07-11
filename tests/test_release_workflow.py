@@ -9,7 +9,10 @@ import re
 from pathlib import Path
 
 _WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "release.yml"
+_WORKFLOWS = Path(__file__).resolve().parent.parent / ".github" / "workflows"
 _TAG_RULESET = Path(__file__).resolve().parent.parent / ".github" / "rulesets" / "release-tags.json"
+_UPLOAD_ARTIFACT_V7_SHA = "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
+_DOWNLOAD_ARTIFACT_V8_SHA = "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
 
 
 def _workflow_sections() -> tuple[str, str]:
@@ -57,6 +60,18 @@ def test_release_artifact_actions_are_pinned_to_full_commits() -> None:
     download = re.search(r"actions/download-artifact@([0-9a-f]{40})", pypi)
     assert upload is not None
     assert download is not None
+
+
+def test_artifact_actions_use_node24_releases() -> None:
+    workflow_text = "\n".join(
+        path.read_text(encoding="utf-8") for path in sorted(_WORKFLOWS.glob("*.yml"))
+    )
+    upload_shas = re.findall(r"actions/upload-artifact@([0-9a-f]{40})", workflow_text)
+    download_shas = re.findall(r"actions/download-artifact@([0-9a-f]{40})", workflow_text)
+    assert upload_shas
+    assert download_shas
+    assert set(upload_shas) == {_UPLOAD_ARTIFACT_V7_SHA}
+    assert set(download_shas) == {_DOWNLOAD_ARTIFACT_V8_SHA}
 
 
 def test_committed_release_tag_ruleset_protects_v_tags() -> None:
