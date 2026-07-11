@@ -374,6 +374,22 @@ def _wait_for_lines(buffer: io.StringIO, count: int, timeout: float = 3.0) -> li
     return _lines(buffer)
 
 
+def _wait_for_request_lines(buffer: io.StringIO, count: int, timeout: float = 3.0) -> list[str]:
+    """Wait for request records, not unrelated events emitted by a request.
+
+    A capture emits its own metadata event before the handler writes the access
+    record. Counting all log lines therefore races with the final request log.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        lines = _lines(buffer)
+        requests = [line for line in lines if json.loads(line).get("msg") == "request"]
+        if len(requests) >= count:
+            return lines
+        time.sleep(0.02)
+    return _lines(buffer)
+
+
 def test_appserver_logs_redacted_routes_without_bodies(
     make_vault: Callable[..., Vault],
     local_tsa: LocalRfc3161TSA,
@@ -410,7 +426,7 @@ def test_appserver_logs_redacted_routes_without_bodies(
             token=token,
         )
         _call(url, "GET", "/api/status", token=token)
-        lines = _wait_for_lines(buffer, 4)
+        lines = _wait_for_request_lines(buffer, 4)
     finally:
         server.shutdown()
         server.server_close()
