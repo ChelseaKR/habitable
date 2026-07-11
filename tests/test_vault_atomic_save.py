@@ -406,6 +406,25 @@ def test_prepared_backup_symlink_is_not_followed(
         Vault.open(vault.path, "test-passphrase")
 
 
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO creation unavailable")
+def test_prepared_backup_fifo_is_rejected_without_blocking(
+    make_vault: Callable[..., Vault],
+) -> None:
+    vault = make_vault()
+    transaction_id = "a" * 32
+    record = {
+        "version": 1,
+        "transaction_id": transaction_id,
+        "phase": "prepared",
+        "existing": list(_STATE_FILES),
+    }
+    (vault.path / _JOURNAL).write_text(json.dumps(record), encoding="utf-8")
+    os.mkfifo(vault.path / f".save-{transaction_id}-case.enc.old")
+
+    with pytest.raises(VaultError, match="recovery file must be regular"):
+        Vault.open(vault.path, "test-passphrase")
+
+
 def test_committed_journal_without_live_file_fails_closed(make_vault: Callable[..., Vault]) -> None:
     vault = make_vault()
     record = {
@@ -419,6 +438,32 @@ def test_committed_journal_without_live_file_fails_closed(make_vault: Callable[.
 
     with pytest.raises(VaultError, match=r"committed vault save is missing state file.*case\.enc"):
         Vault.open(vault.path, "test-passphrase")
+
+
+def test_committed_live_blob_symlink_fails_closed_without_touching_target(
+    make_vault: Callable[..., Vault], tmp_path: Path
+) -> None:
+    vault = make_vault()
+    transaction_id = "a" * 32
+    outside = tmp_path / "outside-case.enc"
+    case_blob = vault.path / "case.enc"
+    case_blob.replace(outside)
+    before = outside.read_bytes()
+    case_blob.symlink_to(outside)
+    record = {
+        "version": 1,
+        "transaction_id": transaction_id,
+        "phase": "committed",
+        "existing": list(_STATE_FILES),
+    }
+    (vault.path / _JOURNAL).write_text(json.dumps(record), encoding="utf-8")
+
+    with pytest.raises(VaultError, match=r"missing state file.*case\.enc"):
+        Vault.open(vault.path, "test-passphrase")
+
+    assert case_blob.is_symlink()
+    assert outside.read_bytes() == before
+    assert (vault.path / _JOURNAL).is_file()
 
 
 def test_prepared_recovery_removes_blob_that_did_not_exist_before_save(

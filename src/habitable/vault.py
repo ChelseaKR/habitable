@@ -1007,7 +1007,8 @@ def _open_regular_readonly(path: Path) -> tuple[int, int]:
     try:
         opened = os.fstat(descriptor)
         if not stat.S_ISREG(opened.st_mode) or (
-            before.st_ino and opened.st_ino and before.st_ino != opened.st_ino
+            before.st_dev != opened.st_dev
+            or (before.st_ino and opened.st_ino and before.st_ino != opened.st_ino)
         ):
             raise VaultError(f"vault save recovery file changed while opening: {path.name}")
     except BaseException:
