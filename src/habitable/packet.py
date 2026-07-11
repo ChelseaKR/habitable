@@ -37,6 +37,7 @@ from .evidence import CustodyAction, CustodyLog
 from .exif import make_shared_copy
 from .media import extract_poster_frame, make_shared_media_copy
 from .model import Capture, Issue, TimelineEntry
+from .private_temp import PrivateTempWorkspace, private_temp_workspace
 from .sensor import parse_sensor_csv
 from .vault import Vault
 
@@ -199,8 +200,7 @@ def _build_packet_in_dir(
 
     items: list[dict[str, JSONValue]] = []
     timestamped = 0
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_dir = Path(tmp)
+    with private_temp_workspace(forbidden_root=vault.path) as workspace:
         for capture in vault.document.captures():
             if capture.issue_id not in issue_ids:
                 continue
@@ -212,7 +212,7 @@ def _build_packet_in_dir(
                 sharing,
                 media_dir,
                 originals_dir,
-                tmp_dir,
+                workspace,
                 include_originals=include_originals,
                 actor=actor,
             )
@@ -363,7 +363,7 @@ def _build_item(
     sharing: SharingPolicy,
     media_dir: Path,
     originals_dir: Path,
-    tmp_dir: Path,
+    workspace: PrivateTempWorkspace,
     *,
     include_originals: bool,
     actor: str,
@@ -387,25 +387,30 @@ def _build_item(
     sensor: dict[str, JSONValue] | None = None
 
     if ext:  # a media type we know how to sanitize (image, or video/audio via ffmpeg)
-        source = tmp_dir / f"{capture_id}{ext}"
-        source.write_bytes(original_bytes)
+        source = workspace.write_bytes(original_bytes, suffix=ext)
         shared_name = f"{capture_id}{ext}"
-        if is_video or is_audio:
-            report = make_shared_media_copy(source, media_dir / shared_name, sharing)
-        else:
-            report = make_shared_copy(source, media_dir / shared_name, sharing)
+        try:
+            if is_video or is_audio:
+                report = make_shared_media_copy(source, media_dir / shared_name, sharing)
+            else:
+                report = make_shared_copy(source, media_dir / shared_name, sharing)
+
+            # A poster frame is the accessible fallback for video (E-03/R-06-style alt
+            # text has nothing to attach to for a moving image); best-effort -- a
+            # missing ffmpeg or an unreadable frame degrades to transcript-only, it
+            # never blocks packet assembly (R-03: media handling stays optional).
+            if is_video:
+                poster_path = media_dir / f"{capture_id}-poster.jpg"
+                if extract_poster_frame(source, poster_path):
+                    poster_name = poster_path.name
+                    poster_hash = sha256_file(poster_path)
+        finally:
+            # Minimize the path-based copy's lifetime to this one sanitizer invocation;
+            # the enclosing workspace remains a second cleanup boundary on failure.
+            source.unlink(missing_ok=True)
+
         shared_hash = sha256_file(media_dir / shared_name)
         stripped = ", ".join(report.removed) or "none"
-
-        # A poster frame is the accessible fallback for video (E-03/R-06-style alt
-        # text has nothing to attach to for a moving image); best-effort -- a
-        # missing ffmpeg or an unreadable frame degrades to transcript-only, it
-        # never blocks packet assembly (R-03: media handling stays optional).
-        if is_video:
-            poster_path = media_dir / f"{capture_id}-poster.jpg"
-            if extract_poster_frame(source, poster_path):
-                poster_name = poster_path.name
-                poster_hash = sha256_file(poster_path)
 
         custody_details: dict[str, str] = {
             "content_hash": content_hash,

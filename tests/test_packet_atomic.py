@@ -4,13 +4,16 @@
 
 from __future__ import annotations
 
+import os
+import stat
 from collections.abc import Callable
 from pathlib import Path
+from typing import NoReturn, cast
 
 import pytest
 
 from habitable.capture import capture
-from habitable.errors import PacketError
+from habitable.errors import CaptureError, PacketError
 from habitable.packet import build_packet
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
@@ -164,6 +167,48 @@ def test_failed_first_export_publishes_nothing(
     with pytest.raises(RuntimeError, match="boom"):
         build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
 
+    assert not out.exists()
+    assert vault.custody.to_vault_records() == before_custody
+    assert _transaction_debris(tmp_path, out.name) == []
+
+
+def test_packet_sanitization_plaintext_is_private_random_and_cleaned_on_failure(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from habitable import packet as packet_module
+
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", issue_id="i1")
+    photo = make_jpeg("private-original.jpg", with_location=True)
+    original = photo.read_bytes()
+    captured = capture(vault, photo, issue_id=issue, tsa=local_tsa)
+    before_custody = vault.custody.to_vault_records()
+    observed: dict[str, object] = {}
+
+    def fail_sanitization(source: Path, *_args: object, **_kwargs: object) -> NoReturn:
+        observed["path"] = source
+        observed["bytes"] = source.read_bytes()
+        observed["file_mode"] = stat.S_IMODE(source.stat().st_mode)
+        observed["directory_mode"] = stat.S_IMODE(source.parent.stat().st_mode)
+        raise CaptureError("synthetic sanitizer failure")
+
+    monkeypatch.setattr(packet_module, "make_shared_copy", fail_sanitization)
+    out = tmp_path / "packet"
+    with pytest.raises(CaptureError, match="synthetic sanitizer failure"):
+        build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
+
+    staged = cast(Path, observed["path"])
+    assert observed["bytes"] == original
+    assert not staged.resolve().is_relative_to(vault.path.resolve())
+    assert captured.capture_id not in staged.name
+    if os.name == "posix":
+        assert observed["file_mode"] == 0o600
+        assert observed["directory_mode"] == 0o700
+    assert not staged.exists() and not staged.parent.exists()
     assert not out.exists()
     assert vault.custody.to_vault_records() == before_custody
     assert _transaction_debris(tmp_path, out.name) == []

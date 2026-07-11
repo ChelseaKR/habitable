@@ -44,6 +44,7 @@ can accidentally leak, a tenant's data — because no operator holds it.**
 | Data | Where it lives | Form | Leaves the device? |
 | --- | --- | --- | --- |
 | Photos/video (sealed originals, incl. EXIF GPS + capture time) | Device vault `originals/` | Encrypted (ChaCha20-Poly1305) | Only as **shared copies with location stripped** in an exported packet, at the user's explicit action |
+| Browser-upload / packet-sanitization working copy | Process memory, then a random OS temporary path **outside the vault** while a path-based media tool runs | Plaintext; short-lived; owner-only `0700` directory and `0600` file on POSIX | No network egress; removed on success and exceptions, but unlinking is not secure erasure |
 | Case document (issues, notes, timeline) | Device vault `case.enc` | Encrypted | Only via E2E-sealed sync to a peer the user chooses, or in an exported packet |
 | Chain of custody (who did what, when) | Device vault `custody.enc` | Encrypted; actor stored as a **salted commitment** | Exported form **drops the actor, salt, and signature** — the chain verifies without naming anyone |
 | Device identity / keys | Device vault `identity.enc`, `keyfile.json` | Encrypted (keyfile passphrase-wrapped) | Never |
@@ -66,6 +67,10 @@ can accidentally leak, a tenant's data — because no operator holds it.**
 - **No collection the tool does not need:** no contact lists, no location services beyond the
   photo's own EXIF, no usage analytics. The minimal-by-construction design means there is
   little personal data to mishandle in the first place.
+- **No plaintext upload staging in the vault:** the browser and packet-sanitization paths use a
+  random, restrictive OS temporary workspace outside the vault and remove it on all ordinary and
+  exceptional exits. Older `_incoming` directories are removed when the app server starts without
+  following a symlink.
 
 ## 5. Data-subject rights — how the design serves them
 
@@ -74,8 +79,10 @@ Because the controller holds all the data locally and unencrypted only in memory
 - **Access & portability:** the user has the complete record on their own device and can
   export a self-contained, openly-verifiable packet at any time. The packet format and
   standalone Apache-2.0 verifier mean the data is not locked to this software.
-- **Erasure:** deleting the vault (and any synced copies) destroys the data; there is no
-  operator copy to chase. There is no backup the user did not themselves make.
+- **Erasure:** deleting the vault (and any synced copies) removes the active application data;
+  there is no operator copy to chase and no backup the user did not themselves make. This is not
+  a physical-media sanitization claim: unlinked temporary blocks, swap, and filesystem snapshots
+  follow the endpoint/storage platform's retention behavior.
 - **Rectification:** the CRDT case model lets the user correct the working record, while the
   append-only custody chain preserves an honest, tamper-evident history of changes.
 - **No automated decision-making or profiling** occurs.
@@ -89,6 +96,7 @@ frozen [audit baseline](audits/threat-model-baseline.md).
 | --- | --- | --- |
 | Home address / identity leaked through a shared copy | Location stripped from shared/exported copies by default; pre-export disclosure summary | A screenshot or forwarded *original* taken outside habitable can still leak; stripping covers habitable's own outputs only |
 | Device seized | Vault encrypted at rest; passphrase rotation (a duress-safe open state is planned, not yet implemented) | A coerced passphrase or forensic imaging of an unlocked device defeats it |
+| Temporary plaintext recovered from the endpoint | Random owner-only workspace outside the vault; generic names; partial-write and downstream-failure cleanup; legacy `_incoming` cleanup | Decoded bytes exist in memory and briefly in OS temp. `SIGKILL`/power loss can prevent cleanup, and unlink cannot defeat swap, snapshots, SSD remanence, privileged malware, or forensic recovery; use full-disk encryption on a trusted device |
 | Organizer re-identified from an exported record | Custody actor exported only as nothing (dropped); salted commitment in-vault | Correlation across packets or out-of-band knowledge can still re-identify; in-vault clear identity exposed if the vault itself is breached |
 | Network party (relay/TSA) sees something | Relay gets ciphertext + metadata only; TSA gets a hash only; self-host / peer-to-peer options | Relay connection **metadata** is observable; only peer-to-peer removes it |
 | Data loss harms the subject | Encrypted recovery blob; multi-peer sync replicates the case | No operator recovery: lost passphrase + no blob + no peer = permanent loss, by design |

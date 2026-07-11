@@ -111,6 +111,14 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **Browser uploads no longer create plaintext files inside the encrypted vault.** The
+  app server now hands path-based capture tools a random file in a short-lived operating-system
+  temporary workspace outside the vault, created with owner-only `0700`/`0600` modes on POSIX and
+  removed on success or failure. Packet sanitization uses the same private workspace instead of
+  umask-dependent plaintext source files. App startup removes the reserved legacy `_incoming`
+  path without following symlinks. This is cleanup, not secure erasure: decoded bytes still exist
+  in process memory and briefly in OS temporary storage, and crash remnants, swap, snapshots, or
+  storage forensics remain endpoint risks.
 - **Scoped packet and organizer-share exports now fail closed instead of leaking the
   complete source custody chain.** Packet v3 issue/date selectors and sync v2 issue
   subsets previously filtered visible records while still serializing custody entries

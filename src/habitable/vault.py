@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright 2026 Chelsea Kelly-Reif
-"""The encrypted case vault: everything on the device, nothing readable off it.
+"""The encrypted case vault and its persistent at-rest boundary.
 
-A vault is a directory holding one case. Sealed originals, the CRDT document, the
-chain of custody, the device identity, and the deferred-timestamp queue are all
-encrypted at rest under a data key that is itself wrapped by the user's
-passphrase. The only plaintext is ``config.toml`` (committed policy, no secrets)
-and ``keyfile.json`` (the passphrase-wrapped data key).
+A vault is a directory holding one case. Sealed originals, the CRDT document,
+chain of custody, device identity, and deferred-timestamp queue are encrypted at
+rest under a data key that is itself wrapped by the user's passphrase. The vault
+also contains plaintext ``config.toml`` policy, the wrapped ``keyfile.json``, and
+timestamp-token sidecars. Path-based media tools receive short-lived plaintext
+working copies in a private OS-temporary workspace outside the vault; unlinking
+those files is cleanup, not guaranteed physical erasure.
 
 Reading a sealed original always re-checks its fixity, so corruption or tampering
 surfaces as an error rather than a quietly altered exhibit.

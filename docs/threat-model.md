@@ -68,9 +68,15 @@ The device is the trusted base. It is the only place that ever holds plaintext o
 - The DEK is a random 32-byte key used with **ChaCha20-Poly1305** (an AEAD: confidentiality plus
   integrity). It is itself wrapped under a key-encryption key (KEK) derived from the user's
   passphrase with **scrypt** (`crypto.py`).
-- The only plaintext on disk is `config.toml` (committed policy, no secrets) and `keyfile.json`
-  (the passphrase-wrapped DEK). Everything else — `case.enc`, `custody.enc`, `identity.enc`,
-  `deferred.enc`, the sealed `originals/` — is ciphertext.
+- Inside the vault tree, persistent case contents — `case.enc`, `custody.enc`, `identity.enc`,
+  `deferred.enc`, and sealed `originals/` — are ciphertext. `config.toml`, the
+  passphrase-wrapped `keyfile.json`, and timestamp-token sidecars are non-secret plaintext.
+- Browser upload and packet-sanitization tools sometimes require a filesystem path. Their
+  plaintext working copy is a random file in a short-lived OS temporary directory **outside the
+  vault**, never the old vault `_incoming` path. On POSIX the directory/file are explicitly
+  `0700`/`0600`; generic names reveal no client filename or case/capture id; partial writes and
+  downstream exceptions clean the whole workspace. App startup removes the legacy reserved
+  `_incoming` path without following symlinks.
 - The device also holds the **Ed25519** signing key (signs custody entries, sync messages, packets)
   and the **X25519** key-agreement key (receives sealed sync deltas).
 
@@ -183,6 +189,11 @@ courtroom fails the people relying on it.
 - **Endpoint compromise defeats everything.** Confidentiality at rest protects a *locked* vault on
   a *clean* device. Malware on an unlocked device, a keylogger capturing the passphrase, or a screen
   recorder defeats the encryption entirely. The cryptography assumes a trustworthy endpoint.
+- **Temporary cleanup is not secure erasure.** Browser JSON/base64 and decoded media exist in
+  process memory, and path-based libraries briefly need an OS temporary file. An abrupt power loss
+  or `SIGKILL` can prevent ordinary cleanup; unlinking does not defeat swap, filesystem snapshots,
+  SSD remanence, privileged malware, or forensic recovery. Keep the endpoint and its temporary
+  volume under full-disk encryption; habitable does not claim to sanitize free space.
 
 ---
 
@@ -192,6 +203,7 @@ courtroom fails the people relying on it.
 | --- | --- | --- |
 | Device seized while **locked** | ChaCha20-Poly1305 at rest under a scrypt-wrapped DEK; contents and identity are ciphertext. | Offline guessing of a weak passphrase; future cryptographic breaks; the keyfile and ciphertext are in the adversary's hands for as long as they keep the device. |
 | Device seized while **unlocked**, or passphrase **coerced** | Passphrase rotation; recovery blob under an independent passphrase. *(A duress-safe open state to hide case contents is planned, not yet implemented.)* | Not a guarantee against coercion or forensic imaging; an unlocked vault exposes plaintext; a compelled passphrase reveals everything. |
+| Plaintext media working copy recovered | Browser/packet path files use random names, an owner-only workspace outside the vault, and cleanup on partial writes, normal completion, and exceptions; old `_incoming` is purged without following symlinks. | Memory, OS temp, swap, crash remnants, snapshots, and storage forensics remain in the endpoint trust boundary; unlink is not secure erasure. |
 | Relay operator or its subpoena | Messages sealed to recipient keys before leaving the sender; no-log, self-hostable relay; pure peer-to-peer option removes the party entirely. | Connection **metadata** (who/when/how-much) is visible to any relay; only peer-to-peer sync avoids it. |
 | Timestamp authority compromised, colluding, or subpoenaed | Authority sees only a SHA-256 hash; multiple authorities configurable; tokens verified offline against their certificate chain. | A single TSA could backdate or refuse; a hash leak still reveals nothing about contents; trust in *any one* TSA is reduced, not eliminated, by using several. |
 | Evidence altered after capture | SHA-256 fixity re-checked on every read; append-only hash-linked custody; RFC 3161 upper-bound timestamps, kept durable by archive re-timestamping before an authority ages out; standalone verifier. | Custody is tamper-*evident* only: a hostile keyholder can rewrite the whole local chain before any external anchor exists; detection needs a counterpart or a timestamp over the head. |

@@ -19,6 +19,8 @@ import hmac
 import json
 import re
 import secrets
+import shutil
+import stat
 import threading
 import time
 from collections.abc import Callable, Sequence
@@ -33,6 +35,7 @@ from .disclosure import proof_statement
 from .errors import HabitableError
 from .obslog import configure_logging, enabled_from_env, is_configured, log_event
 from .packet import build_packet
+from .private_temp import private_temp_workspace
 from .strength import assess_issue
 from .tsa import DevTSA, TimestampAuthority
 from .vault import Vault
@@ -110,6 +113,10 @@ class AppServer:
     static_root: Path
     lock: threading.Lock
     extra_tsas: Sequence[TimestampAuthority] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Remove the reserved plaintext staging directory used by older versions."""
+        _remove_legacy_incoming(self.vault.path)
 
     # --- API actions (called under the lock) ---------------------------------
 
@@ -234,15 +241,17 @@ class AppServer:
         tsa = self.tsa
         if _opt_bool(body, "dev_tsa"):
             tsa = DevTSA("dev-tsa")
-        tmp = self.vault.path / "_incoming"
-        tmp.mkdir(exist_ok=True)
-        staged = tmp / Path(filename).name
-        staged.write_bytes(media)
         transcript = _opt_str(body, "transcript")
-        try:
-            result = capture(self.vault, staged, issue_id=issue_id, tsa=tsa, transcript=transcript)
-        finally:
-            staged.unlink(missing_ok=True)
+        with private_temp_workspace(forbidden_root=self.vault.path) as workspace:
+            staged = workspace.write_bytes(media, suffix=Path(filename).suffix)
+            result = capture(
+                self.vault,
+                staged,
+                issue_id=issue_id,
+                tsa=tsa,
+                transcript=transcript,
+                source_name=Path(filename).name,
+            )
         return {
             "capture_id": result.capture_id,
             "content_hash": result.content_hash,
@@ -615,6 +624,25 @@ def make_app_server(
         extra_tsas=tuple(extra_tsas),
     )
     return AppHTTPServer((host, port), _AppRequestHandler, app=app, session_token=session_token)
+
+
+def _remove_legacy_incoming(vault_path: Path) -> None:
+    """Delete the reserved pre-fix upload workspace without following a symlink."""
+    legacy = vault_path / "_incoming"
+    try:
+        try:
+            mode = legacy.lstat().st_mode
+        except FileNotFoundError:
+            return
+        if stat.S_ISDIR(mode):
+            shutil.rmtree(legacy)
+        else:
+            legacy.unlink()
+    except OSError as exc:
+        raise HabitableError(
+            "could not remove the legacy plaintext upload staging directory; "
+            "close other processes and remove the vault's _incoming path before opening the app"
+        ) from exc
 
 
 def _is_loopback_host(host: str) -> bool:

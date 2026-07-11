@@ -47,7 +47,7 @@ def test_packet_ids_do_not_encode_passphrase_derived_material(
     # The device id itself is random, not the passphrase-derived value.
     assert vault.document.clock.node_id != leaked
 
-    # No passphrase-derived material in the only two plaintext files ...
+    # No passphrase-derived material in the two plaintext bootstrap files ...
     config_text = (vault.path / "config.toml").read_text(encoding="utf-8")
     assert leaked not in config_text
     assert "node_id" not in config_text

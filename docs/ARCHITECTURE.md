@@ -112,12 +112,16 @@ Storage and capture:
 
 - **`vault.py`** — the encrypted case vault: one directory per case. Sealed originals, the
   CRDT document, the custody log, the device identity, and the deferred-timestamp queue
-  are all encrypted at rest under the DEK; the only plaintext is `config.toml` (policy, no
-  secrets) and `keyfile.json` (the passphrase-wrapped DEK). Sealed originals are bound to
-  their content hash via AEAD associated data, and every read re-checks fixity.
+  are all encrypted at rest under the DEK. Non-secret configuration, the wrapped keyfile,
+  and timestamp-token sidecars are plaintext. Sealed originals are bound to their content
+  hash via AEAD associated data, and every read re-checks fixity.
 - **`capture.py`** — the capture pipeline. Hashes the media, seals the original, appends
   custody entries, and obtains a timestamp now-or-deferred (details below). Never blocks
   on the network.
+- **`private_temp.py`** — the narrow plaintext bridge for browser uploads and packet
+  sanitizers that require a filesystem path. It creates random owner-only files in a
+  short-lived OS temporary workspace, proves that workspace is outside the vault, and
+  cleans partial writes and downstream failures. It does not claim secure erasure.
 - **`config.py`** — versioned, committed policy as plain files: configured timestamp
   authorities (`TSAConfig`), the node id, and the sharing policy (`SharingPolicy`:
   `strip_location`, `strip_all_metadata`, `export_custody_identities`). No secrets.
@@ -181,6 +185,15 @@ trusted timestamp, now or deferred ───┬─ authority reachable: stamp(co
    ▼
 add Capture to the CRDT document  → save vault (all blobs encrypted)
 ```
+
+The CLI starts from a file the operator already owns. The browser first decodes the request in
+memory, then places the bytes in a random private temporary file **outside the vault** only for the
+duration of this same pipeline. Packet sanitization uses the same bridge when Pillow or ffmpeg
+needs a path. On POSIX the directory/file modes are explicitly `0700`/`0600`; every ordinary or
+exceptional exit removes the workspace. Names contain neither the client filename nor case/capture
+ids. This is risk reduction, not secure deletion: an abrupt power loss or `SIGKILL`, swap,
+filesystem snapshots, or forensic recovery can outlive an unlink, so full-disk encryption remains
+part of endpoint security.
 
 Key points:
 
