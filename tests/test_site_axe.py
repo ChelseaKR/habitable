@@ -59,6 +59,7 @@ def test_landing_page_passes_axe() -> None:
         "how-it-works/index.html",
         "documentation-checklist/index.html",
         "guides/preserve-maintenance-request-records/index.html",
+        "guides/housing-inspection-records/index.html",
         "tenant-unions/index.html",
         "legal-aid-reviewers/index.html",
         "inspectors-code-enforcement/index.html",
