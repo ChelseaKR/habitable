@@ -1,0 +1,2 @@
+# Generated PDFs are binary release/site artifacts. Do not text-diff or normalize them.
+*.pdf binary

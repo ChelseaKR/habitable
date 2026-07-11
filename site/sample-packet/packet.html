@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Habitability evidence packet — unit 4B</title>
+<title>Habitability evidence packet — unit 4B (synthetic)</title>
 <style>
 :root { color-scheme: light dark; }
 body { max-width: 50rem; margin: 0 auto; padding: 1.5rem;
@@ -16,6 +16,9 @@ h1, h2, h3 { line-height: 1.25; }
 .warning { border: 2px solid #7a1f1f; background: #fdecec; color: #5a1414;
   padding: .6rem .8rem; border-radius: 6px; font-weight: 600; }
 .meta { color: #333; }
+dl.cover { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .8rem; }
+dl.cover dt { font-weight: 600; }
+dl.cover dd { margin: 0; }
 figure { margin: 0 0 1rem; border: 1px solid #ccc; border-radius: 6px; padding: .6rem; }
 img { max-width: 100%; height: auto; }
 figcaption { font-size: .9rem; color: #222; }
@@ -26,43 +29,126 @@ th, td { border: 1px solid #999; padding: .35rem .5rem; text-align: left;
 th { background: #1f4e5f; color: #fff; }
 footer { margin-top: 2rem; border-top: 1px solid #ccc; padding-top: 1rem;
   color: #222; font-size: .9rem; }
+.sensor-chart { max-width: 30rem; height: auto; display: block; margin: .4rem 0; }
+.sensor-chart .line { fill: none; stroke: #1f4e5f; stroke-width: 2; }
+.sensor-chart .point { fill: #1f4e5f; }
+.sensor-chart .axis { stroke: #999; stroke-width: 1; }
+details.sensor-readings summary { cursor: pointer; font-weight: 600; }
 </style>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<header><h1>Habitability evidence packet — unit 4B</h1>
-<p class="meta">Generated 2026-01-02T09:30:00Z · 3 item(s), 3 trusted-timestamped · producer 9636-7c84-aed5-ab6f</p>
-<p class="warning">This packet is evidence, not legal advice, and does not guarantee admissibility. Verify integrity with <code>habitable verify</code> against the accompanying bundle.json.</p>
+<header><h1>Habitability evidence packet — unit 4B (synthetic)</h1>
+<p class="meta">Generated 2026-01-02T09:30:00Z · Timestamp tokens attached: 3/3. Authority trust is not assessed by this human-readable view. · producer 95bd-e08a-f8c8-2e6a</p>
+<p class="meta">SYNTHETIC DEMONSTRATION — NOT A REAL TENANT CASE</p>
+<p class="warning">This human-readable view is not a verification result and is not legal advice. Use `habitable verify` with an independently trusted authority certificate. Only the verifier can report integrity, timestamp-authority trust, and technical evidence readiness; none guarantees admissibility.</p>
 </header>
 <main id="main">
+<section aria-labelledby="cover-heading">
+<h2 id="cover-heading">Cover sheet</h2>
+<dl class="cover">
+<dt>Case</dt><dd>synthetic-demo-case</dd>
+<dt>Unit</dt><dd>4B (synthetic)</dd>
+<dt>Covers</dt><dd>the whole unit</dd>
+<dt>Generated</dt><dd>2026-01-02T09:30:00Z</dd>
+<dt>Producer device</dt><dd>95bd-e08a-f8c8-2e6a</dd>
+<dt>Issues</dt><dd>2</dd>
+<dt>Media items</dt><dd>3 (3 timestamp tokens attached; authority trust not assessed here)</dd>
+<dt>Chain-of-custody entries</dt><dd>19</dd>
+<dt>Date range of evidence</dt><dd>2026-01-02 to 2026-01-02T09:15:00Z</dd>
+<dt>Sealed originals embedded</dt><dd>no</dd>
+</dl>
+</section>
+<section aria-labelledby="proves-heading">
+<h2 id="proves-heading">What this packet proves — and what it does not</h2>
+<h3>What successful verification can establish</h3>
+<ul>
+<li>If integrity reports intact, the shared files match their recorded SHA-256 hashes and the signed, hash-linked custody record has not changed.</li>
+<li>If the timestamp authority reports trusted, the item existed no later than the verified RFC 3161 time — an upper bound on when it was created.</li>
+<li>Integrity and timestamp-authority trust are separate checks; both must pass before Habitable reports the item technically evidence-ready.</li>
+</ul>
+<h3>What this packet does not prove</h3>
+<ul>
+<li>Who took a photo, or that it depicts a particular home or unit.</li>
+<li>That the underlying condition was as described — that rests on the tenant&#x27;s own account, not on the cryptography.</li>
+<li>That a timestamp is the exact moment of capture — it is only an upper bound (the content existed by then).</li>
+<li>That an attached timestamp token comes from a trusted authority. That requires verification against a certificate you independently trust; development timestamps are never evidence-ready.</li>
+<li>Admissibility or any legal outcome. This is documentation, not legal advice.</li>
+</ul>
+<p>How to verify: run `habitable verify PACKET --trusted-cert AUTHORITY.pem`, using a certificate you independently trust, or cross-check the hashes and RFC 3161 tokens with standard tools. The accessible reading is packet.html.</p>
+</section>
+<section aria-labelledby="scope-heading">
+<h2 id="scope-heading">Scope of this export</h2>
+<p>Scope: the whole unit — every issue recorded in this vault is included.</p>
+<ul>
+</ul>
+</section>
+<section aria-labelledby="discloses-heading">
+<h2 id="discloses-heading">What this packet discloses</h2>
+<ul>
+<li>The shared photos in this packet have had location (GPS) removed, so they do not reveal where the tenant lives.</li>
+</ul>
+</section>
+<section aria-labelledby="chronology-heading">
+<h2 id="chronology-heading">Chronological evidence timeline</h2>
+<p>Occurred is the date reported by the person; recorded is the separate device time when the entry was added. Version 3 events are custody-bound. Photos appear when captured.</p>
+<ol>
+<li><strong>Occurred: 2026-01-02</strong> — <span class="meta">[Delivery confirmed] Recurring ceiling leak and mold-like spotting:</span> Synthetic portal displayed a delivery confirmation. <span class="meta">(Source: Document or receipt · Recorded: 2026-01-02T00:00:00.021Z · custody-bound when recorded · notice tl-1fdcc9479e50aada)</span></li>
+<li><strong>Occurred: 2026-01-02</strong> — <span class="meta">[Repair notice sent] Recurring ceiling leak and mold-like spotting:</span> Synthetic repair request sent to the property manager. <span class="meta">(Source: Message or conversation · Recorded: 2026-01-02T00:00:00.019Z · custody-bound when recorded)</span></li>
+<li><strong>Occurred: 2026-01-02</strong> — <span class="meta">[Condition observed] Recurring ceiling leak and mold-like spotting:</span> Synthetic tenant observed new staining after rainfall. <span class="meta">(Source: Firsthand observation · Recorded: 2026-01-02T00:00:00.017Z · custody-bound when recorded · capture cap-7aa9ba7988096dfc · capture cap-94e20dd1ca0f0b31)</span></li>
+<li><strong>Occurred: 2026-01-02</strong> — <span class="meta">[Condition observed] No heat overnight:</span> Synthetic thermostat display read 49 F during the night. <span class="meta">(Source: Firsthand observation · Recorded: 2026-01-02T00:00:00.023Z · custody-bound when recorded · capture cap-c3a435d5b9a14d37)</span></li>
+<li><strong>Captured: 2026-01-02T09:05:00Z</strong> — <span class="meta">[photo] Recurring ceiling leak and mold-like spotting:</span> Evidence captured for Recurring ceiling leak and mold-like spotting <span class="meta">(hash 3b8407885635d168… · timestamp token attached; authority trust not assessed)</span></li>
+<li><strong>Captured: 2026-01-02T09:10:00Z</strong> — <span class="meta">[photo] Recurring ceiling leak and mold-like spotting:</span> Evidence captured for Recurring ceiling leak and mold-like spotting <span class="meta">(hash 3ee3f8106e1718fd… · timestamp token attached; authority trust not assessed)</span></li>
+<li><strong>Captured: 2026-01-02T09:15:00Z</strong> — <span class="meta">[photo] No heat overnight:</span> Evidence captured for No heat overnight <span class="meta">(hash 81dc3e113fbab34c… · timestamp token attached; authority trust not assessed)</span></li>
+</ol>
+</section>
 <section>
-<h2>Issue: Black mold on ceiling</h2>
-<p class="meta">Category: mold · Room: bathroom · Severity: high · Status: open</p>
+<h2>Issue: No heat overnight</h2>
+<p class="meta">Category: heat · Room: bedroom · Severity: urgent · Status: open</p>
+<p>Synthetic scenario: the room remained cold while the heater was set to warm.</p>
 <h3>Timeline</h3><ul>
-<li><strong>observed:</strong> Mold spreading after roof leak</li>
-<li><strong>sent_request:</strong> Emailed landlord requesting repair</li>
+<li><strong>Occurred: 2026-01-02 · Condition observed:</strong> Synthetic thermostat display read 49 F during the night. <span class="meta">(Source: Firsthand observation · Recorded: 2026-01-02T00:00:00.023Z · custody-bound when recorded · capture cap-c3a435d5b9a14d37)</span></li>
 </ul>
 <h3>Captured evidence</h3>
 <figure>
-<img src="media/cap-001767312000006.000000.a561aba5562888f6.jpg" alt="Evidence photo for this issue, captured 2026-01-02T09:15:00Z, content hash d283e0b6b0a6, trusted-timestamped.">
-<figcaption>Captured 2026-01-02T09:15:00Z · hash d283e0b6b0a6411b… · trusted-timestamped</figcaption>
-</figure>
-<figure>
-<img src="media/cap-001767312000010.000000.a561aba5562888f6.jpg" alt="Evidence photo for this issue, captured 2026-01-02T09:15:00Z, content hash 687fead7fb01, trusted-timestamped.">
-<figcaption>Captured 2026-01-02T09:15:00Z · hash 687fead7fb018d53… · trusted-timestamped</figcaption>
+<img src="media/cap-c3a435d5b9a14d37.jpg" alt="Evidence photo for this issue, captured 2026-01-02T09:15:00Z, content hash 81dc3e113fba, timestamp attached; authority trust not assessed.">
+<figcaption>Captured 2026-01-02T09:15:00Z · hash 81dc3e113fbab34c… · timestamp attached; authority trust not assessed</figcaption>
 </figure>
 </section>
 <section>
-<h2>Issue: No heat</h2>
-<p class="meta">Category: heat · Room: bedroom · Severity: urgent · Status: open</p>
+<h2>Issue: Recurring ceiling leak and mold-like spotting</h2>
+<p class="meta">Category: moisture · Room: bathroom · Severity: high · Status: open</p>
+<p>Synthetic scenario: staining returned after rain and spread across the ceiling.</p>
+<h3>Timeline</h3><ul>
+<li><strong>Occurred: 2026-01-02 · Delivery confirmed:</strong> Synthetic portal displayed a delivery confirmation. <span class="meta">(Source: Document or receipt · Recorded: 2026-01-02T00:00:00.021Z · custody-bound when recorded · notice tl-1fdcc9479e50aada)</span></li>
+<li><strong>Occurred: 2026-01-02 · Repair notice sent:</strong> Synthetic repair request sent to the property manager. <span class="meta">(Source: Message or conversation · Recorded: 2026-01-02T00:00:00.019Z · custody-bound when recorded)</span></li>
+<li><strong>Occurred: 2026-01-02 · Condition observed:</strong> Synthetic tenant observed new staining after rainfall. <span class="meta">(Source: Firsthand observation · Recorded: 2026-01-02T00:00:00.017Z · custody-bound when recorded · capture cap-7aa9ba7988096dfc · capture cap-94e20dd1ca0f0b31)</span></li>
+</ul>
 <h3>Captured evidence</h3>
 <figure>
-<img src="media/cap-001767312000014.000000.a561aba5562888f6.jpg" alt="Evidence photo for this issue, captured 2026-01-02T09:15:00Z, content hash 83668853a196, trusted-timestamped.">
-<figcaption>Captured 2026-01-02T09:15:00Z · hash 83668853a196988e… · trusted-timestamped</figcaption>
+<img src="media/cap-7aa9ba7988096dfc.jpg" alt="Evidence photo for this issue, captured 2026-01-02T09:05:00Z, content hash 3b8407885635, timestamp attached; authority trust not assessed.">
+<figcaption>Captured 2026-01-02T09:05:00Z · hash 3b8407885635d168… · timestamp attached; authority trust not assessed</figcaption>
+</figure>
+<figure>
+<img src="media/cap-94e20dd1ca0f0b31.jpg" alt="Evidence photo for this issue, captured 2026-01-02T09:10:00Z, content hash 3ee3f8106e17, timestamp attached; authority trust not assessed.">
+<figcaption>Captured 2026-01-02T09:10:00Z · hash 3ee3f8106e1718fd… · timestamp attached; authority trust not assessed</figcaption>
 </figure>
 </section>
+<section aria-labelledby="integrity-heading">
+<h2 id="integrity-heading">Chain of custody &amp; integrity</h2>
+<p>Hash algorithm sha256 · 19 custody entries (append-only, hash-linked) · 3/3 items have timestamp tokens attached. This view does not validate token signatures or authority trust; use habitable verify with recipient-selected roots. The chain head below commits to the entire history; any insertion, deletion, or reordering changes it.</p>
+<p class="meta">Custody chain head: <code>47cd701647624ecb536747d27091e6d273f3522b5ffe7e04406df6a8d25a8dee</code></p>
+<table>
+<caption>Per-item content hash, timestamp-token presence, named authority, and custody depth. Authority trust is not assessed here.</caption>
+<thead><tr><th scope="col">Capture</th><th scope="col">Content hash (SHA-256)</th><th scope="col">Timestamp authorities</th><th scope="col">Custody</th></tr></thead><tbody>
+<tr><td>cap-7aa9ba7988096dfc</td><td>3b8407885635d168ac0a676d18c194cd170403f4b559e69df29af8ef02be9ec8</td><td>attached-unassessed: sample-offline-rfc3161</td><td>5 entries</td></tr>
+<tr><td>cap-94e20dd1ca0f0b31</td><td>3ee3f8106e1718fdc4699c3bfa99ff005446008d54f0a71499c5aeb58dff8103</td><td>attached-unassessed: sample-offline-rfc3161</td><td>5 entries</td></tr>
+<tr><td>cap-c3a435d5b9a14d37</td><td>81dc3e113fbab34c8134646e2856cd546d668a6169d958aff5012a1c4e26e95d</td><td>attached-unassessed: sample-offline-rfc3161</td><td>5 entries</td></tr>
+</tbody></table>
+</section>
 <h2>Evidence appendix</h2>
-<table><caption>Per-item content hash, trusted-timestamp status, and authority (verify independently against bundle.json).</caption><thead><tr><th scope="col">Capture</th><th scope="col">Content hash (SHA-256)</th><th scope="col">Timestamp</th><th scope="col">Authority</th></tr></thead><tbody><tr><td>cap-001767312000006.000000.a561aba5562888f6</td><td>d283e0b6b0a6411b2a97856c3456bc93340e40dfd7e4a1a331a0d4acf4f97929</td><td>verified</td><td>demo-rfc3161-tsa</td></tr><tr><td>cap-001767312000010.000000.a561aba5562888f6</td><td>687fead7fb018d53824056eb84a6ab694d40f51e4280f42cf0adc1518ff4adf1</td><td>verified</td><td>demo-rfc3161-tsa</td></tr><tr><td>cap-001767312000014.000000.a561aba5562888f6</td><td>83668853a196988ed3563461e7c5efa0cc5b4ebdb93b30073b3b0cb69a6de149</td><td>verified</td><td>demo-rfc3161-tsa</td></tr></tbody></table>
+<p>Each row reports token presence only. It does not claim the token is valid or its authority trusted; verify independently against bundle.json.</p>
+<table><caption>Per-item timestamp-token presence and named authority.</caption><thead><tr><th scope="col">Capture</th><th scope="col">Content hash (SHA-256)</th><th scope="col">Timestamp status</th><th scope="col">Named authority</th></tr></thead><tbody><tr><td>cap-7aa9ba7988096dfc</td><td>3b8407885635d168ac0a676d18c194cd170403f4b559e69df29af8ef02be9ec8</td><td>timestamp attached; authority trust not assessed</td><td>sample-offline-rfc3161</td></tr><tr><td>cap-94e20dd1ca0f0b31</td><td>3ee3f8106e1718fdc4699c3bfa99ff005446008d54f0a71499c5aeb58dff8103</td><td>timestamp attached; authority trust not assessed</td><td>sample-offline-rfc3161</td></tr><tr><td>cap-c3a435d5b9a14d37</td><td>81dc3e113fbab34c8134646e2856cd546d668a6169d958aff5012a1c4e26e95d</td><td>timestamp attached; authority trust not assessed</td><td>sample-offline-rfc3161</td></tr></tbody></table>
 </main>
-<footer><p>habitable — local-first, end-to-end-encrypted habitability evidence.</p></footer>
+<footer><p>Generated sample data only. Not legal advice and not evidence from a real home.</p></footer>
 </body></html>

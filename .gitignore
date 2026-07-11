@@ -49,6 +49,8 @@ dmypy.json
 .env.*
 !.env.example
 *.pem
+# Public certificate generated only for the committed synthetic site sample.
+!site/sample-packet/synthetic-timestamp-authority.pem
 *.key
 *.keys
 secrets/

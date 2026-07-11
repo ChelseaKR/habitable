@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # habitable — developer entry points. `make verify` reproduces the full CI gate.
 .DEFAULT_GOAL := help
-.PHONY: help bootstrap install fmt lint type test cov i18n doc-links markers verify audit a11y integration demo build repro clean
+.PHONY: help bootstrap install fmt lint type test cov i18n doc-links markers verify audit a11y integration demo site-sample build repro clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -76,6 +76,9 @@ a11y: ## Accessibility gate: structural + i18n + PWA, then the axe-core browser 
 
 demo: ## Walk a synthetic case from capture to a verified packet (no real data)
 	uv run habitable demo
+
+site-sample: ## Regenerate and verify the synthetic packet published on GitHub Pages
+	uv run python scripts/make_site_sample.py
 
 build: ## Build the wheel + sdist
 	uv build
