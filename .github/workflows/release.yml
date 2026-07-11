@@ -131,9 +131,11 @@ jobs:
       - name: Run the full gate at the tagged commit (ruff + mypy --strict + pytest + coverage + i18n)
         run: make verify
 
+      - name: Set up Buildx with an OCI-export-capable builder
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Build wheel + sdist, verifying the build is reproducible
         run: make repro
-      - name: Build relay image archives twice, verifying byte-identical output
+      - name: Build relay OCI archives twice, verifying byte-identical output
         run: make relay-repro
       - name: Smoke-test the installed wheel and packaged app
         run: |

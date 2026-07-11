@@ -151,7 +151,7 @@ Packet-integrity claims live here; this work gets the most scrutiny.
   and sdist twice from independent clean source copies with a normalized
   `SOURCE_DATE_EPOCH`/`PYTHONHASHSEED` and fails on any byte difference; the `release`
   workflow runs it as a release-blocking gate. `make relay-repro` independently builds
-  two no-cache linux/amd64 relay image archives with the pinned base and fixed source
+  two no-cache linux/amd64 OCI relay archives with the pinned base and fixed source
   epoch, rewrites layer timestamps, and fails unless the complete archives are
   byte-identical; it runs in both the container merge gate and release workflow. See
   `docs/releasing.md`.
