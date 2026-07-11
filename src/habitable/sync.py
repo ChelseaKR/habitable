@@ -760,8 +760,8 @@ class RelayClient:
         exc.close()
         if exc.code == 413:
             return SyncError(
-                "relay room is full — peers must fetch and clear it, or the operator "
-                "must raise the room cap"
+                "relay is full — GET does not clear messages; wait for the configured "
+                "TTL and retry, or ask the operator to adjust retention/capacity"
             )
         if exc.code == 403:
             return SyncError(

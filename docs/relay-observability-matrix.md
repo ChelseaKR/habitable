@@ -69,7 +69,7 @@ subpoena."*
 | **Volume / size** — roughly how much moves | **Yes** (plain) / **bucketed** (`PaddingTransport`) | same | `bytes_relayed` is counted aggregate; per-message size is visible via `Content-Length`. Plain transports leak exact payload size. With the opt-in `PaddingTransport` (§4.5) every message is padded to block-sized buckets and each flush is one uniform size, so size reveals only the block-rounded size of the *largest* message in a batch. |
 | **Frequency / real-message count** — how often / how many | **Yes** (plain) / **hidden up to batch size** (`PaddingTransport`) | same | Plain: inferable from repeated activity and per-message posts on a room id. With `PaddingTransport`, each flush posts a fixed number of indistinguishable blobs (real + decoys), so the operator cannot tell how many were real (up to `batch_size`). *That* a room is active, and roughly when, is still visible. |
 | **Peer IP addresses** | **Yes** (at network/proxy layer) | **Yes** | Not stored by `relay.py` itself, but visible to the host's network stack, the TLS-terminating proxy, and any on-path observer. The relay's *application* logs are empty by default (see audit doc), but the proxy and the network are not the application. |
-| Aggregate counts (`rooms`, `posted`, `fetched`, `bytes_relayed`) | **Yes** | **Yes** | Exposed by `/healthz` by design; harmless aggregates, but they do confirm the relay is in use and how busy it is. |
+| Aggregate counts (`rooms`, live messages/bytes, posted/fetched/relayed totals, capacity rejections, rejected journal records) | **Yes** | **Yes** | Exposed by `/healthz` by design; no room id, token, path, or body is included. The aggregates still confirm relay use, load, and saturation. |
 
 ### 2.3 The residual exposure, stated so it can't be spun as hidden (R-33)
 
@@ -121,8 +121,10 @@ metadata to leak.
 ### 4.2 Run a no-log, self-hosted relay
 
 If a relay is needed, a union running **its own** relay shrinks the trust surface to
-itself. The shipped relay is already no-log by default (request logging is suppressed in
-`relay.py`; it persists nothing to disk; `/healthz` exposes only aggregate counts). The
+itself. The shipped relay is already no-request-log by default (normal request logging is
+suppressed; the stdlib error path silences expected connection faults and emits only a fixed
+metadata-only event for unexpected faults in `relay.py`;
+it persists nothing to disk; `/healthz` exposes only aggregate counts). The
 operator can verify and attest all of this — see
 [`relay-operator-self-audit.md`](relay-operator-self-audit.md). This does **not** remove
 the metadata exposure (a self-hosted relay still observes who/when/how-much), but it

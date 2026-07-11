@@ -338,8 +338,9 @@ as legal advice or a promise of a court outcome.
 
 ### Performance, scale, cost
 **Efficiency** — hashing and sync deltas are incremental; the app does not re-process sealed media.
-**Scalability** and **elasticity** — sync is peer to peer with no central bottleneck; a relay, if used,
-forwards ciphertext and scales to zero between sessions. **Timeliness** — capture, hashing, and sealing
+**Scalability** and **elasticity** — sync is peer to peer with no required central bottleneck; a relay,
+if used, forwards ciphertext under fixed fail-closed retained-state caps and scales to zero between
+sessions. **Timeliness** — capture, hashing, and sealing
 complete within a perceptible moment with no network in the loop, and the RFC 3161 token is fetched
 asynchronously once the device is online; [latency budgets for the local path](docs/performance-budget.md) are asserted in CI.
 **Affordability** — the tool is free, uses free public timestamp authorities, and needs no paid
@@ -365,7 +366,8 @@ the packet format is versioned so old packets still verify.
 **Operability** and **manageability** — the optional relay ships with a runbook and a health endpoint; an
 organizer needs none of it to work. **Administrability** — there is nothing to administer centrally;
 policy is committed config a union edits for itself. **Observability** — on-device logs of capture and
-sync events, kept local and never exfiltrated; the relay logs only ciphertext-passthrough metrics.
+sync events, kept local and never exfiltrated; the relay keeps request logging off by default and
+exposes metadata-only aggregate traffic, live-state, and saturation metrics.
 **Debuggability** — a case can be traced from capture through custody to packet under a debug flag,
 without exposing plaintext off-device. **Serviceability / supportability** and **repairability** — issue
 templates and a "reproduce on sample data" path; most fixes are template or config edits, and the

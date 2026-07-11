@@ -89,8 +89,10 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   threat-model default of no request lines. New `/livez` (liveness, no dependency calls)
   and `/readyz` (readiness — fails **closed** with 503 when the store is unhealthy) sit
   alongside the existing `/healthz`; health probes are excluded from the access log.
-  Guard test `test_access_log_never_leaks_room_id_key_or_payload` reinforces the
-  no-leak invariant.
+  The threaded server's error hook also replaces stdlib's client-address + traceback stderr
+  dump: attacker-triggerable connection resets/broken pipes are silent, while an unexpected
+  handler fault emits one fixed `{ts,level,msg}` event. Guard tests cover normal access lines,
+  direct fault classification, and repeated real TCP RSTs.
 
 ### Changed
 
@@ -111,6 +113,30 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **Relay retained state and persistence startup are now resource-bounded.** The shared
+  threaded store atomically caps live rooms (4,096), messages (50,000 aggregate / 10,000
+  per room), ciphertext (512 MiB aggregate / 128 MiB per room), and ASCII base64url-style
+  room tokens; excess POSTs return an explicit 413 without evicting messages or claiming a
+  new TOFU token. Content lengths must be a bounded ASCII-digits-only field before parsing.
+  A bounded TTL sweep can reclaim otherwise unreachable stale rooms before a global
+  rejection. GET remains non-destructive but now streams base64/JSON in fixed-size chunks.
+  Persistence startup scans and reads bounded amounts without following symlinks or blocking
+  on FIFOs, validates canonical room journals, timestamps no more than five minutes ahead of
+  startup, live-token consistency, and strict base64, and applies the same live caps. Individual
+  malformed records are skipped and counted; valid same-room/same-token records beside them may
+  still load, but the mixed source journal is left untouched. Expired records do not establish
+  or conflict with live TOFU state, so a legitimate post-TTL rebind survives a transient cleanup
+  failure and restart. Live-token-ambiguous or over-cap journals are refused as a unit, and
+  noncanonical paths are not opened. Fully valid loads prune expired lines and remove
+  stale-only/empty canonical files. Device, inode, size, mtime, and ctime
+  generation checks protect startup, append, and cleanup; Windows uses a close/recheck/unlink
+  fallback under the documented single-local-writer assumption.
+  Journals compact before crossing their cap and repair an unterminated prior append from live
+  state before acknowledging the next POST. Exact app-owned compaction crash temps have their own
+  128-file startup cleanup allowance, separate from the 8,192 non-temp scan allowance; excess
+  remnants fail closed before journal admission. Persistence remains a best-effort restart aid,
+  not an fsync-backed delivery guarantee; abrupt failure can lose the newest append or leave a
+  malformed record/temp, and unlink cleanup is not secure erasure.
 - **Browser uploads no longer create plaintext files inside the encrypted vault.** The
   app server now hands path-based capture tools a random file in a short-lived operating-system
   temporary workspace outside the vault, created with owner-only `0700`/`0600` modes on POSIX and
