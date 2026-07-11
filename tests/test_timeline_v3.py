@@ -178,7 +178,8 @@ def test_packet_v3_links_and_custody_verify_and_render_deterministically(
         "response_entry_id": response,
     }
     assert event["integrity"]["binding_stage"] == "recorded"
-    assert verify_packet(out).ok
+    report = verify_packet(out, trusted_certs=[local_tsa.certificate])
+    assert report.structurally_intact and report.evidence_ready
 
     html_once = (out / "packet.html").read_text(encoding="utf-8")
     assert "Occurred: 2026-01-05" in html_once
@@ -212,7 +213,8 @@ def test_legacy_case_entry_migrates_without_inventing_occurrence_or_source(
     assert event["source"] == "unspecified"
     assert event["migration"]["occurred_at_unknown"] is True
     assert event["integrity"]["binding_stage"] == "migration"
-    assert verify_packet(out).ok
+    report = verify_packet(out)
+    assert report.structurally_intact and report.status == "no_items"
 
 
 def test_export_repairs_incomplete_or_version_inappropriate_timeline_bindings(
@@ -266,7 +268,8 @@ def test_export_repairs_incomplete_or_version_inappropriate_timeline_bindings(
     by_id = {entry["entry_id"]: entry for entry in bundle["timeline"]}
     assert by_id[current_id]["integrity"]["binding_stage"] == "backfill"
     assert by_id[legacy_id]["integrity"]["binding_stage"] == "migration"
-    assert verify_packet(out).ok
+    report = verify_packet(out)
+    assert report.structurally_intact and report.status == "no_items"
 
 
 def test_resigned_timeline_tamper_fails_v3_commitment_check(
@@ -472,5 +475,6 @@ def test_spanish_timeline_rendering_uses_same_signed_fields(
     assert "Ocurrió: 2026-01-03" in html
     assert "Fuente: Otra fuente: testigo presencial" in html
     assert "protegido por custodia al registrarse" in html
-    assert verify_packet(out).ok
+    report = verify_packet(out, trusted_certs=[local_tsa.certificate])
+    assert report.structurally_intact and report.evidence_ready
     assert result.pdf_path is not None and result.pdf_path.stat().st_size > 1000
