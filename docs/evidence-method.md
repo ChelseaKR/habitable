@@ -348,6 +348,15 @@ runs. Given only a packet directory — and, optionally, trusted TSA root certif
 re-derives every hash and checks every claim, with no access to the union's other data.
 The steps below match the code; run them, or read the code, to confirm.
 
+Before opening any bundle-named file, the verifier checks the producer signature. A
+failed signature makes the bundle's references unauthenticated, so media, poster, and
+original files are not read. A valid self-contained signature is still not a trusted
+identity, so references remain confined to one basename in their designated `media/` or
+`originals/` directory. Symlinks, containment escapes, non-regular files, and files over
+the 1 GiB verification ceiling fail closed. The path-based safety checks have a
+documented concurrent-mutation race; recipients should verify a private, quiescent copy
+as described in the [embedding guide](./embedding-the-verifier.md#untrusted-packet-filesystem-boundary).
+
 For each media item (`_verify_item`):
 
 1. **Recompute the shared-media hash.** Read the file in `media/<shared_name>` and
@@ -361,10 +370,11 @@ For each media item (`_verify_item`):
    item's `content_hash` (CMS signature, certificate chain, SHA-256 message-imprint
    binding, and `genTime`, as detailed under [Trusted timestamps](#token-verification)).
    No token serializes as `null` and is reported as `awaiting timestamp`, not a pass.
-4. **Re-derive the embedded original's content hash, if present.** If
-   `originals/<capture_id>` exists, confirm its SHA-256 equals `content_hash`
-   (`original_fixity_ok`). When no original is embedded, this is `None` (not applicable),
-   and verification rests on steps 1–3.
+4. **Re-derive the declared embedded original's content hash.** When `has_original` is
+   true, require a safe regular `originals/<capture_id>` file and confirm its SHA-256
+   equals `content_hash` (`original_fixity_ok`). A missing declared original is a
+   failure. When `has_original` is false, this is `None` (not applicable), and
+   verification rests on steps 1–3.
 
 For the packet as a whole (`verify_packet` / `_verify_signature` / `_verify_custody`):
 

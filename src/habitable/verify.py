@@ -24,14 +24,18 @@ their code.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
+import os
+import stat
 from collections.abc import Mapping
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
-from typing import TYPE_CHECKING
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import TYPE_CHECKING, BinaryIO
 
-from .canonical import JSONValue, canonical_json, sha256_bytes, sha256_file
+from .canonical import JSONValue, canonical_json, sha256_bytes
 from .crypto import verify as verify_signature
 from .errors import VerificationError
 from .evidence import CustodyLog
@@ -47,6 +51,12 @@ _BUNDLE = "bundle.json"
 _SIGNATURE = "bundle.sig.json"
 _MEDIA = "media"
 _ORIGINALS = "originals"
+_HASH_CHUNK = 1024 * 1024
+
+# Keep a hostile packet from turning verification into an unbounded read. This is
+# deliberately much larger than the app and relay upload ceilings, so ordinary
+# exported photos, recordings, and supported legacy packets retain ample headroom.
+_MAX_REFERENCED_FILE_BYTES = 1024 * 1024 * 1024
 
 # The newest packet format this verifier understands. The contract: every version
 # from 1..SUPPORTED_PACKET_VERSION still verifies (guarded by the golden-packet
@@ -353,7 +363,16 @@ def verify_packet(
         if not isinstance(raw_item, dict):
             problems.append("malformed item in bundle")
             continue
-        items.append(_verify_item(raw_item, packet_dir, bindings, poster_bindings, trusted_certs))
+        items.append(
+            _verify_item(
+                raw_item,
+                packet_dir,
+                bindings,
+                poster_bindings,
+                trusted_certs,
+                inspect_references=signature_ok,
+            )
+        )
 
     if bundle.get("packet_version") == 3:
         problems.extend(_verify_v3_timeline(bundle, custody))
@@ -376,6 +395,8 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
     bindings: dict[str, set[tuple[str, str]]],
     poster_bindings: dict[str, set[tuple[str, str]]],
     trusted_certs: list[x509.Certificate] | None,
+    *,
+    inspect_references: bool = True,
 ) -> ItemVerdict:
     capture_id = _s(item, "capture_id")
     content_hash = _s(item, "content_hash")
@@ -385,7 +406,11 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
     poster_name = _s(item, "poster_name")
     poster_hash = _s(item, "poster_hash")
     transcript = _s(item, "transcript")
+    has_original = item.get("has_original") is True
     notes: list[str] = []
+
+    if not inspect_references and (shared_name or poster_name or has_original):
+        notes.append("bundle signature invalid; referenced packet files were not read")
 
     # 1. Trusted timestamp(s) over the original content hash. The primary token plus any
     #    independent "additional" authorities give redundancy: the item counts as
@@ -468,13 +493,18 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
     # 2. Shared media hashes to its recorded shared_hash.
     shared_media_ok = True
     if shared_name:
-        media_path = packet_dir / _MEDIA / shared_name
-        if not media_path.exists():
+        if not inspect_references:
             shared_media_ok = False
-            notes.append("shared media file missing")
-        elif sha256_file(media_path) != shared_hash:
-            shared_media_ok = False
-            notes.append("shared media does not match its recorded hash")
+        else:
+            media_digest, media_problem = _hash_packet_reference(
+                packet_dir, _MEDIA, shared_name, label="shared media"
+            )
+            if media_problem is not None:
+                shared_media_ok = False
+                notes.append(media_problem)
+            elif media_digest != shared_hash:
+                shared_media_ok = False
+                notes.append("shared media does not match its recorded hash")
     else:
         notes.append("no shared media included for this item")
 
@@ -487,16 +517,21 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
 
     # 3b. Video's poster frame (EXP-07), if present, hashes and binds the same way.
     if poster_name:
-        poster_path = packet_dir / _MEDIA / poster_name
-        if not poster_path.exists():
+        if not inspect_references:
             shared_media_ok = False
-            notes.append("poster frame file missing")
-        elif sha256_file(poster_path) != poster_hash:
-            shared_media_ok = False
-            notes.append("poster frame does not match its recorded hash")
-        elif (content_hash, poster_hash) not in poster_bindings.get(capture_id, set()):
-            custody_binding_ok = False
-            notes.append("no signed custody entry binds the poster frame to the original")
+        else:
+            poster_digest, poster_problem = _hash_packet_reference(
+                packet_dir, _MEDIA, poster_name, label="poster frame"
+            )
+            if poster_problem is not None:
+                shared_media_ok = False
+                notes.append(poster_problem)
+            elif poster_digest != poster_hash:
+                shared_media_ok = False
+                notes.append("poster frame does not match its recorded hash")
+            elif (content_hash, poster_hash) not in poster_bindings.get(capture_id, set()):
+                custody_binding_ok = False
+                notes.append("no signed custody entry binds the poster frame to the original")
 
     # 3c. Video/audio needs a transcript or poster frame to meet the accessibility
     #     gate (EXP-07 excellence bar); surfaced as a note, not a hard failure --
@@ -506,11 +541,20 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
 
     # 4. If the sealed original is embedded, re-derive its content hash.
     original_fixity_ok: bool | None = None
-    original_path = packet_dir / _ORIGINALS / capture_id
-    if original_path.exists():
-        original_fixity_ok = sha256_file(original_path) == content_hash
-        if not original_fixity_ok:
-            notes.append("embedded original failed fixity")
+    if has_original:
+        if not inspect_references:
+            original_fixity_ok = False
+        else:
+            original_digest, original_problem = _hash_packet_reference(
+                packet_dir, _ORIGINALS, capture_id, label="embedded original"
+            )
+            if original_problem is not None:
+                original_fixity_ok = False
+                notes.append(original_problem)
+            else:
+                original_fixity_ok = original_digest == content_hash
+                if not original_fixity_ok:
+                    notes.append("embedded original failed fixity")
 
     return ItemVerdict(
         capture_id=capture_id,
@@ -528,6 +572,160 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
         timestamp_present=timestamp_present,
         timestamp_kind=timestamp_kind,
     )
+
+
+def _hash_packet_reference(  # noqa: C901 -- security checks are intentionally linear
+    packet_dir: Path, directory: str, reference: str, *, label: str
+) -> tuple[str | None, str | None]:
+    """Hash one strictly confined packet file, returning ``(digest, problem)``.
+
+    Bundle fields are attacker-controlled until proven otherwise. A file reference is
+    therefore one basename, never a path. The directory and file are lstat-checked,
+    resolved for containment, and rechecked after opening before any bytes are hashed.
+    ``O_NOFOLLOW``/``O_NONBLOCK`` add final-component protection where the host exposes
+    them. Path-based check/open operations are not atomic, so a concurrent directory
+    replacement remains a documented residual race (see the embedding guide).
+    """
+    name_problem = _reference_name_problem(reference, label)
+    if name_problem is not None:
+        return None, name_problem
+    try:
+        root_before = packet_dir.lstat()
+    except OSError:
+        return None, "packet directory could not be safely inspected"
+    if stat.S_ISLNK(root_before.st_mode):
+        return None, "packet directory must not be a symlink"
+    if not stat.S_ISDIR(root_before.st_mode):
+        return None, "packet path is not a directory"
+
+    directory_path = packet_dir / directory
+    try:
+        directory_before = directory_path.lstat()
+    except FileNotFoundError:
+        return None, f"{label} directory missing"
+    except OSError:
+        return None, f"{label} directory could not be safely inspected"
+    if stat.S_ISLNK(directory_before.st_mode):
+        return None, f"{label} directory must not be a symlink"
+    if not stat.S_ISDIR(directory_before.st_mode):
+        return None, f"{label} directory is not a regular directory"
+
+    candidate = directory_path / reference
+    try:
+        file_before = candidate.lstat()
+    except FileNotFoundError:
+        return None, f"{label} file missing"
+    except OSError:
+        return None, f"{label} file could not be safely inspected"
+    file_problem = _regular_file_problem(file_before, label)
+    if file_problem is not None:
+        return None, file_problem
+
+    try:
+        root_resolved = packet_dir.resolve(strict=True)
+        directory_resolved = directory_path.resolve(strict=True)
+        candidate_resolved = candidate.resolve(strict=True)
+    except OSError:
+        return None, f"{label} path could not be safely resolved"
+    if not directory_resolved.is_relative_to(root_resolved):
+        return None, f"{label} directory escapes the packet directory"
+    if not candidate_resolved.is_relative_to(directory_resolved):
+        return None, f"{label} path escapes its designated directory"
+
+    file_fd = -1
+    try:
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+        )
+        file_fd = os.open(candidate, flags)
+        handle = os.fdopen(file_fd, "rb", closefd=True)
+        file_fd = -1  # ownership transferred to ``handle``
+        with handle:
+            opened = os.fstat(handle.fileno())
+            file_problem = _regular_file_problem(opened, label)
+            if file_problem is not None:
+                return None, file_problem
+            if _different_file(file_before, opened):
+                return None, f"{label} file changed during safety checks"
+            digest = _stream_sha256(handle)
+            after = os.fstat(handle.fileno())
+    except OSError:
+        return None, f"{label} file could not be safely read"
+    finally:
+        _close_fd(file_fd)
+    if digest is None:
+        return None, _oversized_problem(label)
+    if _file_changed_while_reading(opened, after):
+        return None, f"{label} file changed while it was hashed"
+    return digest, None
+
+
+def _reference_name_problem(reference: str, label: str) -> str | None:
+    """Reject every spelling that can be interpreted as more than one basename."""
+    windows = PureWindowsPath(reference)
+    posix = PurePosixPath(reference)
+    if (
+        not reference
+        or reference in {".", ".."}
+        or "\x00" in reference
+        or "/" in reference
+        or "\\" in reference
+        or posix.is_absolute()
+        or windows.is_absolute()
+        or bool(windows.drive)
+    ):
+        return (
+            f"{label} reference must be one basename "
+            "(absolute paths, separators, drive names, and '..' are forbidden)"
+        )
+    return None
+
+
+def _regular_file_problem(file_stat: os.stat_result, label: str) -> str | None:
+    if stat.S_ISLNK(file_stat.st_mode):
+        return f"{label} path must not be a symlink"
+    if not stat.S_ISREG(file_stat.st_mode):
+        return f"{label} path is not a regular file"
+    if file_stat.st_size > _MAX_REFERENCED_FILE_BYTES:
+        return _oversized_problem(label)
+    return None
+
+
+def _stream_sha256(handle: BinaryIO) -> str | None:
+    """Hash at most the configured ceiling, including files that grow while read."""
+    digest = hashlib.sha256()
+    total = 0
+    while chunk := handle.read(min(_HASH_CHUNK, _MAX_REFERENCED_FILE_BYTES + 1 - total)):
+        total += len(chunk)
+        if total > _MAX_REFERENCED_FILE_BYTES:
+            return None
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _oversized_problem(label: str) -> str:
+    return f"{label} exceeds the {_MAX_REFERENCED_FILE_BYTES}-byte verification limit"
+
+
+def _different_file(before: os.stat_result, after: os.stat_result) -> bool:
+    return (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino)
+
+
+def _file_changed_while_reading(before: os.stat_result, after: os.stat_result) -> bool:
+    return _different_file(before, after) or (before.st_size, before.st_mtime_ns) != (
+        after.st_size,
+        after.st_mtime_ns,
+    )
+
+
+def _close_fd(fd: int) -> None:
+    if fd < 0:
+        return
+    with suppress(OSError):
+        os.close(fd)
 
 
 def _check_packet_version(bundle: Mapping[str, JSONValue]) -> str | None:

@@ -69,6 +69,31 @@ except VerificationError as exc:
     print(f"could not verify: {exc}")
 ```
 
+## Untrusted packet filesystem boundary
+
+Treat an incoming packet directory as hostile input. The verifier checks
+`bundle.sig.json` before it opens any file named by `bundle.json`; when that signature
+fails, referenced media, posters, and originals are not read at all. Even a mechanically
+valid signature is not an identity trust decision, so every reference is still confined:
+
+- `shared_name`, `poster_name`, and an embedded original's `capture_id` must be one
+  basename. Absolute paths, `..`, POSIX or Windows separators, and Windows drive names
+  fail verification.
+- `media/`, `originals/`, and their referenced entries may not be symlinks. A reference
+  must resolve inside its designated directory and must be a regular file — directories,
+  FIFOs, sockets, and devices are rejected before hashing.
+- One referenced file may be at most 1 GiB. The stream also stops at that ceiling if a
+  file grows after the initial size check.
+
+The implementation uses `lstat`, strict resolution/containment checks, no-follow and
+nonblocking open flags where the operating system provides them, then `fstat` before
+reading. This is a path-based portable implementation, not a claim of atomic filesystem
+snapshotting: a local process that can concurrently replace a parent directory between
+the check and open can still create a time-of-check/time-of-use race. Verify an
+untrusted packet from a private, quiescent copy that other users and processes cannot
+modify. Concurrent in-place mutation and resource exhaustion through many individually
+in-limit regular files remain residual risks.
+
 ## Reading the report
 
 `VerificationReport` (frozen dataclass):
