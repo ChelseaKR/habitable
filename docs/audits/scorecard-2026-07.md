@@ -8,6 +8,12 @@ same checks `.github/workflows/scorecard.yml` runs weekly going forward).
 
 **Aggregate score: 5.5 / 10.**
 
+> **Post-baseline deployment update (2026-07-11):** repository branch protection is
+> active, and repository ruleset `18815834` now protects `v*` tags from update or
+> deletion and requires signatures. The table below remains the unedited 2026-07-05
+> measurement. Signed-Releases cannot improve until a new release is actually cut
+> with a signed tag; the existing v0.1.0/v0.2.0 tags remain unsigned historical facts.
+
 This is the honest number for the state of `main` **before** this remediation
 pass's changes are committed and pushed — per P1-5's own instruction ("expect
 Branch-Protection/Signed-Releases to score red until P1-2/P0-3 land — commit
@@ -44,12 +50,10 @@ is actually cut with a signed tag under the new guard), a drafted-but-unapplied
 branch ruleset (`.github/rulesets/`), job-level workflow permissions (should
 fix Token-Permissions), and a Scorecard workflow itself (feeds future runs).
 
-**Re-run after:** (1) the branch ruleset is actually applied
-(`gh api --method POST .../rulesets --input .github/rulesets/main-branch.json`
-and the tag-protection equivalent — both explicitly left to the maintainer,
-see the remediation log) and (2) the next tagged release is cut with a signed
-tag. Until then, a re-run mostly reflects committing the files in this pass,
-not the still-pending manual steps.
+**Re-run after:** the stronger proposed main-branch ruleset is reconciled with the
+active branch protection and the next release is cut with a signed tag. The tag
+protection half of this original action was applied on 2026-07-11; until a signed
+release exists, a re-run still cannot improve Signed-Releases.
 
 ## Why record a "bad" number at all
 

@@ -96,6 +96,11 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Changed
 
+- **Protected release-tag identity.** The committed `v*` tag ruleset is now active on
+  GitHub (ruleset `18815834`): release tags cannot be moved or deleted, and future tags
+  must be signed. Release documentation and regression coverage now keep the live
+  protection contract distinct from the still-open maintainer signing-key setup.
+
 - **Plain-language & cognitive review of the in-app copy and setup guide (R-41 / R-04).**
   A reviewed plain-language pass (target ~grade 6–8) over `app/i18n/en.json`,
   `app/i18n/es.json`, and `docs/setup-guide.md`. Jargon was replaced or glossed:

@@ -4,10 +4,12 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
 _WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "release.yml"
+_TAG_RULESET = Path(__file__).resolve().parent.parent / ".github" / "rulesets" / "release-tags.json"
 
 
 def _workflow_sections() -> tuple[str, str]:
@@ -55,3 +57,20 @@ def test_release_artifact_actions_are_pinned_to_full_commits() -> None:
     download = re.search(r"actions/download-artifact@([0-9a-f]{40})", pypi)
     assert upload is not None
     assert download is not None
+
+
+def test_committed_release_tag_ruleset_protects_v_tags() -> None:
+    ruleset = json.loads(_TAG_RULESET.read_text(encoding="utf-8"))
+    assert ruleset["name"] == "release tag protection (v*)"
+    assert ruleset["target"] == "tag"
+    assert ruleset["enforcement"] == "active"
+    assert ruleset["conditions"]["ref_name"] == {
+        "include": ["refs/tags/v*"],
+        "exclude": [],
+    }
+    assert {rule["type"] for rule in ruleset["rules"]} == {
+        "deletion",
+        "update",
+        "required_signatures",
+    }
+    assert ruleset["bypass_actors"] == []
