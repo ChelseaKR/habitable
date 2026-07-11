@@ -180,6 +180,7 @@ def test_sitemap_lists_the_canonical_indexable_pages() -> None:
         _CANONICAL,
         f"{_CANONICAL}how-it-works/",
         f"{_CANONICAL}documentation-checklist/",
+        f"{_CANONICAL}guides/preserve-maintenance-request-records/",
         f"{_CANONICAL}tenant-unions/",
         f"{_CANONICAL}legal-aid-reviewers/",
         f"{_CANONICAL}inspectors-code-enforcement/",
