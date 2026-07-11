@@ -6,6 +6,23 @@ rest of the repository (AGPL-3.0), everything in this directory is offered under
 builds only on the habitable *verification subset*, so an integrator inherits no copyleft
 obligation. See [`../NOTICE`](../NOTICE) and [`../docs/embedding-the-verifier.md`](../docs/embedding-the-verifier.md).
 
+## `bagit_packet_adapter.py` — exact packet transfer
+
+Creates and validates a strict [BagIt 1.0](https://www.rfc-editor.org/rfc/rfc8493.html) directory
+containing an exact, Habitable-verified packet under `data/packet/`. SHA-256 payload and tag
+manifests detect transfer corruption; the adapter rejects unsafe filesystem objects, path escapes,
+and case/Unicode ambiguities, then publishes through a single rename to a new destination.
+
+```console
+$ python contrib/bagit_packet_adapter.py create 4B-packet 4B-transfer.bag
+$ python contrib/bagit_packet_adapter.py validate 4B-transfer.bag
+$ habitable verify 4B-transfer.bag/data/packet --trusted-cert independently-trusted-tsa.pem
+```
+
+BagIt does not protect against an active attacker and does not replace Habitable signature,
+custody, timestamp, or authority-trust verification. See the full [profile, usage, security
+boundary, and RFC choices](bagit-packet-adapter.md).
+
 ## `legal_aid_importer.py` — importer + signed evidence receipt
 
 Realizes roadmap **EXP-10**. It lets a legal-aid case-management system ingest and independently
