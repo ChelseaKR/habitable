@@ -26,6 +26,11 @@ _PAGE_META = {
         "Use this safety-first checklist to organize repair photos, notices, responses, and "
         "recurring conditions without posting private tenant data online.",
     ),
+    "guides/preserve-maintenance-request-records": (
+        "Preserve Maintenance Request Records | Habitable Evidence",
+        "Preserve maintenance request records, attachments, confirmations, replies, status "
+        "history, and exported copies before a phone or portal changes.",
+    ),
     "tenant-unions": (
         "Tenant Union Evaluation Guide | Habitable Evidence",
         "A bounded, synthetic-data evaluation plan for tenant unions reviewing Habitable Evidence "
@@ -282,10 +287,11 @@ def test_public_content_links_resolve_and_pages_are_cross_linked() -> None:
 def test_content_assets_resolve(slug: str) -> None:
     page = _SITE / slug / "index.html"
     parser = _parse(page)
+    root_prefix = "../" * len(Path(slug).parts)
     local_assets = [
         item["href"] for item in parser.links if item.get("rel") in {"icon", "stylesheet"}
     ]
-    assert local_assets == ["../img/icon.svg", "../content.css"]
+    assert local_assets == [f"{root_prefix}img/icon.svg", f"{root_prefix}content.css"]
     for href in local_assets:
         target = _resolve_local(page, href)
         assert target is not None and target.is_file()
@@ -313,3 +319,51 @@ def test_public_issue_links_carry_a_visible_privacy_warning() -> None:
         visible = " ".join(parser.visible_parts).casefold()
         assert "public github issue" in visible
         assert "never include tenant" in visible or "do not include client" in visible
+
+
+def test_maintenance_request_guide_preserves_the_full_record_without_overclaiming() -> None:
+    slug = "guides/preserve-maintenance-request-records"
+    page = _SITE / slug / "index.html"
+    parser = _parse(page)
+    visible = re.sub(r"\s+", " ", " ".join(parser.visible_parts)).casefold()
+
+    required_record_stages = {
+        "request input",
+        "attachments",
+        "confirmation or ticket",
+        "status history",
+        "replies and visits",
+        "closure and what followed",
+        "exported copy",
+    }
+    assert all(stage in visible for stage in required_record_stages)
+    assert "phones are lost, damaged, replaced, or reset" in visible
+    assert "portal migration" in visible
+    assert "does not prove that a recipient received or read the request" in visible
+    assert "does not by itself establish that notice was legally sufficient" in visible
+    assert parser.collection_controls == []
+    assert parser.non_json_scripts == []
+
+    authoritative_sources = {
+        "https://oag.ca.gov/node/554793",
+        "https://www.masslegalhelp.org/housing-apartments-shelter/tenants-rights/keep-records-now-avoid-problems-later",
+        "https://consumer.ftc.gov/articles/sample-customer-complaint-letter",
+    }
+    assert authoritative_sources <= set(parser.anchors)
+
+
+def test_maintenance_request_guide_has_three_contextual_inbound_paths() -> None:
+    target = (_SITE / "guides" / "preserve-maintenance-request-records" / "index.html").resolve()
+    expected_sources = {
+        _SITE / "index.html",
+        _SITE / "how-it-works" / "index.html",
+        _SITE / "documentation-checklist" / "index.html",
+    }
+
+    for source in expected_sources:
+        linked_targets = {
+            resolved
+            for href in _parse(source).anchors
+            if (resolved := _resolve_local(source, href)) is not None
+        }
+        assert target in linked_targets, f"missing contextual link from {source.relative_to(_SITE)}"
