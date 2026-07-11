@@ -9,8 +9,8 @@
 
 habitable is an alpha, offline-first, end-to-end-encrypted tool intended to help tenants
 document habitability problems as tamper-evident evidence (photos with RFC 3161 timestamps,
-SHA-256 fixity, a hash-linked chain of custody, a standalone verifier, location-stripped
-shareable packets). It is an independent personal project, no funding, AGPL-3.0 (the
+SHA-256 fixity, a hash-linked chain of custody, a standalone verifier, and packets whose
+shared media is metadata-stripped by default). It is an independent personal project, no funding, AGPL-3.0 (the
 verifier subset is also Apache-2.0), and it is **alpha — not for real legal use yet.**
 Evaluation uses synthetic data only (`habitable demo`); no real tenant data, ever.
 

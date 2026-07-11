@@ -301,26 +301,25 @@ the original note was written.
 
 ## Packet binding: the privacy/verifiability bridge
 
-This is the crux that reconciles two goals that otherwise conflict: *do not leak where a
-tenant lives*, and *let a stranger verify the evidence*.
+This is the crux that reconciles two goals that otherwise conflict: *minimize packet
+metadata disclosure*, and *let a stranger verify the evidence*.
 
-**The tension.** Fixity pins the original bytes — which include EXIF location. But a
-shared copy must have its location and metadata stripped, so producing a packet does not
-publish a home's coordinates. Once stripped, the shared copy's bytes **differ** from the
-original, so the shared copy **cannot** be hashed to `content_hash`. A naive scheme would
-have to choose between privacy and verifiability.
+**The tension.** Fixity pins the original bytes — which can include EXIF location. The
+default packet policy strips embedded metadata from supported shared media, while a
+nondefault policy may retain it. When a shared copy is transformed, its bytes **differ**
+from the original, so it **cannot** be hashed to `content_hash`. A naive scheme would
+have to choose between minimization and verifiability.
 
 **The bridge.** habitable records two hashes and a signed binding between them
 (`_build_item` in [`packet.py`](../src/habitable/packet.py)):
 
 - `content_hash` — SHA-256 of the sealed original (what the timestamp token is over).
-- `shared_hash` — SHA-256 of the location/metadata-stripped shared copy that actually
+- `shared_hash` — SHA-256 of the policy-processed shared copy that actually
   travels in the packet's `media/` directory.
 
 When the shared copy is produced, the packet appends a signed `copied_for_sharing`
 custody entry whose details bind the two: `content_hash`, `shared_hash`, and what was
-`stripped`. A recipient can then verify, end to end and without ever seeing the
-location:
+`stripped`. A recipient can then verify the copy-to-original binding:
 
 1. the image they hold hashes to `shared_hash`;
 2. a signed custody entry binds that `shared_hash` to `content_hash`;
@@ -330,8 +329,8 @@ location:
 in the packet's `originals/` directory, enabling *direct* end-to-end fixity — the
 verifier re-derives the content hash from the embedded original itself. This is a
 deliberate, higher-disclosure choice: the disclosures list flags that sealed originals
-(with full metadata, including any location) are embedded, and the user is shown what a
-packet will reveal before it is produced.
+(with full metadata, including any location) are embedded. Review the signed packet
+disclosures before handing it to a recipient.
 
 **The signed bundle.** The packet's `bundle.json` is the canonical-JSON serialization of
 the whole packet (version, case/unit, scope, items, timeline, the custody integrity
@@ -366,7 +365,7 @@ For each media item (`_verify_item`):
    fails `shared_media_ok`.
 2. **Check the custody binding.** Confirm a `copied_for_sharing` custody entry exists for
    this item binding `(content_hash, shared_hash)` (collected by `_sharing_bindings`).
-   Without it, the shared copy is not provably the stripped form of the timestamped
+   Without it, the shared copy is not provably the policy-processed form of the timestamped
    original, and `custody_binding_ok` fails.
 3. **Verify the RFC 3161 token over `content_hash`.** Run `verify_token` against the
    item's `content_hash` (CMS signature, certificate chain, SHA-256 message-imprint
@@ -434,8 +433,9 @@ a courtroom fails the people relying on it.
   signed custody record has not changed since the producer signed the bundle.
 - When timestamp-authority trust also passes, the exact hashed content existed no later
   than the verified token's `genTime` (an upper bound).
-- A stripped shared copy's hash is bound to the original content hash by the intact
-  custody record, without disclosing the original's location.
+- A policy-processed shared copy's hash is bound to the original content hash by the intact
+  custody record. Metadata minimization depends on the recorded packet policy and whether
+  byte-exact originals were embedded.
 
 **What it does not establish:**
 

@@ -69,7 +69,8 @@ def test_chronology_interleaves_notes_and_photos_in_time_order() -> None:
     assert "timestamp token attached; authority trust not assessed" in photo.detail
 
 
-def test_chronology_scope_subset_for_issue() -> None:
+def test_cover_sheet_preserves_historical_issue_scope() -> None:
+    """Old packets still render their signed scope; new issue-scoped export is blocked."""
     bundle = _bundle()
     bundle["scope"] = {"type": "issue", "issue_id": "i1", "since": "2026-01-01"}
     cover = cover_sheet(bundle)

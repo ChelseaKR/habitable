@@ -11,10 +11,10 @@ module provides the two answers habitable rests on:
   each entry commits to the previous entry's hash, so any insertion, deletion, or
   reordering breaks the chain detectably.
 
-Privacy note: each entry's hash binds a *salted commitment* to the actor, not the
-actor in the clear. The exported (packet) form drops the actor and salt entirely,
-so a recipient can confirm the chain is intact **without** learning who viewed or
-copied an item. The clear identity stays in the union's vault.
+Privacy note: encrypted in-vault entries contain the clear actor, salt, salted
+commitment, and signature. The public packet form drops the clear actor, salt, and
+per-entry signature but retains the salted commitment, so a recipient can confirm
+the chain without receiving the clear actor. Private identity details stay in the vault.
 """
 
 from __future__ import annotations

@@ -30,6 +30,7 @@ from .disclosure import (
     packet_trust_text,
     proof_statement,
     scope_statement,
+    shared_metadata_may_be_retained,
 )
 
 __all__ = ["render_inspector_html", "render_packet_html"]
@@ -112,6 +113,7 @@ def render_packet_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_pat
         _disclosure_section(
             lang,
             _bool(appendix, "includes_originals"),
+            metadata_may_be_retained=shared_metadata_may_be_retained(_list(bundle, "disclosures")),
             awaiting=awaiting,
             total=item_count,
         )
@@ -430,11 +432,16 @@ def _scope_section(lang: str, scope: Mapping[str, JSONValue]) -> list[str]:
 
 
 def _disclosure_section(
-    lang: str, includes_originals: bool, *, awaiting: int = 0, total: int = 0
+    lang: str,
+    includes_originals: bool,
+    *,
+    metadata_may_be_retained: bool = False,
+    awaiting: int = 0,
+    total: int = 0,
 ) -> list[str]:
-    """A short, localized note of what the packet reveals (location handling)."""
+    """A short, localized note of what the packet reveals."""
     stmt = proof_statement(lang)
-    notes = [stmt.privacy_stripped]
+    notes = [stmt.privacy_metadata_warning if metadata_may_be_retained else stmt.privacy_stripped]
     if includes_originals:
         notes.append(stmt.privacy_originals_warning)
     if awaiting > 0:

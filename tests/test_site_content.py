@@ -19,7 +19,7 @@ _PAGE_META = {
     "how-it-works": (
         "How Habitable Evidence Works | Offline Repair Records",
         "Learn how Habitable Evidence organizes repair conditions, notices, responses, sealed "
-        "captures, and selective exports in one offline record.",
+        "captures, and whole-unit packet disclosures in one offline record.",
     ),
     "documentation-checklist": (
         "Safe Repair Documentation Checklist | Habitable Evidence",
@@ -312,6 +312,28 @@ def test_metadata_is_unique_across_content_guides() -> None:
     descriptions = {description for _, description in _PAGE_META.values()}
     assert len(titles) == len(_PAGE_META)
     assert len(descriptions) == len(_PAGE_META)
+
+
+def test_public_export_copy_does_not_advertise_blocked_selection() -> None:
+    pages = {slug: _parse(_SITE / slug / "index.html") for slug in _PAGE_META}
+    parts = [_meta_values(parser, "name").get("description", "") for parser in pages.values()]
+    parts.extend(" ".join(parser.visible_parts) for parser in pages.values())
+    combined = " ".join(parts).casefold()
+    stale_claims = (
+        "selective exports",
+        "selective export controls",
+        "selected captures",
+        "selected images",
+        "use the minimum scope",
+        "selective disclosure",
+    )
+    assert not any(claim in combined for claim in stale_claims)
+
+    how_it_works = " ".join(pages["how-it-works"].visible_parts).casefold()
+    assert "current packets include every issue, timeline entry, and capture" in how_it_works
+    assert "embedding sealed originals is optional" in how_it_works
+    trust = " ".join(pages["trust-limitations"].visible_parts).casefold()
+    assert "if the whole-unit scope is too broad, do not export" in trust
 
 
 @pytest.mark.parametrize("slug", _PAGE_META)

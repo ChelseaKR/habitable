@@ -4,10 +4,9 @@
 
 Two facts are in tension. The original photo's embedded capture time and GPS are
 part of the evidentiary record, so the *sealed original* keeps them untouched.
-But producing a packet must never leak where a tenant lives, so any *shared or
-exported copy* strips location (and, by default, all metadata). This module makes
-both behaviours explicit and reports exactly what each output retains or removes —
-no silent disclosure, no silent loss.
+The default shared-copy policy removes all embedded metadata. A nondefault policy
+can retain non-GPS metadata or all metadata, including location. This module makes
+the selected behavior explicit and reports what each output retains or removes.
 
 Scope: still images. Full JPEG sanitization rebuilds decoded, correctly oriented
 pixels through Pillow and removes every APP/COM segment; location-only JPEG and

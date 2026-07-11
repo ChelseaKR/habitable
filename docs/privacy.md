@@ -43,10 +43,10 @@ can accidentally leak, a tenant's data — because no operator holds it.**
 
 | Data | Where it lives | Form | Leaves the device? |
 | --- | --- | --- | --- |
-| Photos/video (sealed originals, incl. EXIF GPS + capture time) | Device vault `originals/` | Encrypted (ChaCha20-Poly1305) | Only as **shared copies with location stripped** in an exported packet, at the user's explicit action |
-| Browser-upload / packet-sanitization working copy | Process memory, then a random OS temporary path **outside the vault** while a path-based media tool runs | Plaintext; short-lived; owner-only `0700` directory and `0600` file on POSIX | No network egress; removed on success and exceptions, but unlinking is not secure erasure |
+| Photos/video (sealed originals, incl. EXIF GPS + capture time) | Device vault `originals/` | Encrypted (ChaCha20-Poly1305) | Only at explicit action: sealed to a chosen sync/share peer; or in a packet as shared copies under the configured metadata policy and, with `--include-originals`, byte-exact originals with full metadata |
+| Browser-upload / packet-sanitization working copy | Process memory, then a random OS temporary path **outside the vault** while a path-based media tool runs | Plaintext; short-lived; owner-only `0700` directory and `0600` file on POSIX | Habitable does not transmit this working file; local path-based tools process it. Removed on success and exceptions, but unlinking is not secure erasure and a compromised endpoint or tool can still expose it |
 | Case document (issues, notes, timeline) | Device vault `case.enc` | Encrypted | Only via E2E-sealed sync to a peer the user chooses, or in an exported packet |
-| Chain of custody (who did what, when) | Device vault `custody.enc` | Encrypted; actor stored as a **salted commitment** | Exported form **drops the actor, salt, and signature** — the chain verifies without naming anyone |
+| Chain of custody (who did what, when) | Device vault `custody.enc` | Encrypted; each entry stores the clear actor, a random salt, its salted actor commitment, and a signature | Public packet proof **drops the clear actor, salt, and per-entry signature**, retains the salted actor commitment, and re-hashes the identity-stripped chain |
 | Device identity / keys | Device vault `identity.enc`, `keyfile.json` | Encrypted (keyfile passphrase-wrapped) | Never |
 | Sync messages | Relay mailbox (if used) | **Sealed to recipient's key** | Ciphertext only; relay cannot read |
 | Content hash | RFC 3161 authority (if used) | SHA-256 imprint | Hash only; discloses nothing about contents |
@@ -56,14 +56,15 @@ can accidentally leak, a tenant's data — because no operator holds it.**
 ## 4. Necessity, proportionality, and minimization
 
 - **Sealed originals keep EXIF** (GPS, capture time) because that metadata is part of the
-  evidentiary value of the original. It is held **encrypted at rest** and is never the copy
-  that gets shared.
-- **Shared/exported copies strip location by default**, and the user is shown exactly what a
-  packet discloses *before* it is produced. Disclosure is a deliberate, informed, per-export
-  act — not a default.
-- **Custody minimization:** organizer identities stay inside the union as salted commitments
-  and are removed entirely from exports, so a recipient can verify integrity without learning
-  who viewed or copied an item.
+  evidentiary value of the original. It is held **encrypted at rest** and omitted from packets
+  by default; `--include-originals` deliberately embeds its byte-exact contents and metadata.
+- **Packet shared-media copies strip embedded metadata by default.** The signed packet records the
+  configured handling and item-level transformation. Review those disclosures before handoff:
+  a retention policy or embedded original can carry location. Sync and organizer sharing transfer
+  sealed originals to the chosen peer and therefore carry their original metadata.
+- **Custody minimization:** clear actors, salts, and per-entry signatures stay inside the encrypted
+  vault. The public packet retains salted actor commitments in its identity-stripped proof, so a
+  recipient can verify the chain without receiving the clear actor names.
 - **No collection the tool does not need:** no contact lists, no location services beyond the
   photo's own EXIF, no usage analytics. The minimal-by-construction design means there is
   little personal data to mishandle in the first place.
@@ -94,10 +95,10 @@ frozen [audit baseline](audits/threat-model-baseline.md).
 
 | Risk to the data subject | Mitigation | Residual risk |
 | --- | --- | --- |
-| Home address / identity leaked through a shared copy | Location stripped from shared/exported copies by default; pre-export disclosure summary | A screenshot or forwarded *original* taken outside habitable can still leak; stripping covers habitable's own outputs only |
+| Home address / identity leaked through an export | Packet shared-media copies strip embedded metadata by default; optional originals and configured metadata handling are named in the packet disclosure | Retaining packet metadata, embedding originals, sync/organizer sharing, taking a screenshot, or forwarding an original can reveal location or identity |
 | Device seized | Vault encrypted at rest; passphrase rotation (a duress-safe open state is planned, not yet implemented) | A coerced passphrase or forensic imaging of an unlocked device defeats it |
 | Temporary plaintext recovered from the endpoint | Random owner-only workspace outside the vault; generic names; partial-write and downstream-failure cleanup; legacy `_incoming` cleanup | Decoded bytes exist in memory and briefly in OS temp. `SIGKILL`/power loss can prevent cleanup, and unlink cannot defeat swap, snapshots, SSD remanence, privileged malware, or forensic recovery; use full-disk encryption on a trusted device |
-| Organizer re-identified from an exported record | Custody actor exported only as nothing (dropped); salted commitment in-vault | Correlation across packets or out-of-band knowledge can still re-identify; in-vault clear identity exposed if the vault itself is breached |
+| Organizer re-identified from an exported record | Public packet custody drops the clear actor, salt, and per-entry signature but retains the salted actor commitment | Commitment correlation across packets or out-of-band knowledge can still re-identify; a breached vault exposes the clear actor and salt |
 | Network party (relay/TSA) sees something | Relay gets ciphertext + metadata only; TSA gets a hash only; self-host / peer-to-peer options | Relay connection **metadata** is observable; only peer-to-peer removes it |
 | Data loss harms the subject | Encrypted recovery blob; multi-peer sync replicates the case | No operator recovery: lost passphrase + no blob + no peer = permanent loss, by design |
 | Endpoint compromised | Encryption assumes a clean, locked device | Malware/keylogger on an unlocked device defeats confidentiality entirely |

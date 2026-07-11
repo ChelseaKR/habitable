@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives.serialization import Encoding
 
 from habitable.canonical import JSONValue, sha256_bytes
 from habitable.capture import capture, resolve_deferred
+from habitable.config import SharingPolicy
 from habitable.errors import PacketError
 from habitable.exif import read_metadata
 from habitable.packet import build_packet
@@ -71,7 +72,40 @@ def test_bundle_records_disclosures(
     build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
     bundle = json.loads((out / "bundle.json").read_text())
     disclosures = bundle["disclosures"]
-    assert any("location" in note for note in disclosures)
+    assert "all embedded metadata stripped from supported shared media" in disclosures
+    assert "custody identities not exported" in disclosures
+    assert not any("custody identities EXPORTED" in note for note in disclosures)
+
+
+def test_retained_metadata_policy_is_disclosed_in_bundle_and_human_view(
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    from habitable.disclosure import proof_statement
+
+    vault = Vault.create(tmp_path / "vault-retained", "pw", case_id="c", unit="4B", language="es")
+    issue = vault.document.add_issue(category="mold", title="Mold", issue_id="i1")
+    capture(vault, make_jpeg("retained.jpg", with_location=True), issue_id=issue, tsa=local_tsa)
+    out = tmp_path / "packet-retained"
+    build_packet(
+        vault,
+        out,
+        generated_at="2026-01-02T00:10:00Z",
+        make_pdf=False,
+        policy=SharingPolicy(strip_location=False, strip_all_metadata=False),
+    )
+
+    bundle = json.loads((out / "bundle.json").read_text(encoding="utf-8"))
+    disclosures = bundle["disclosures"]
+    assert any("permits embedded metadata, including location" in note for note in disclosures)
+    assert "custody identities not exported" in disclosures
+    shared = next((out / "media").glob("*.jpg"))
+    assert read_metadata(shared).has_location
+    html = (out / "packet.html").read_text(encoding="utf-8")
+    statement = proof_statement("es")
+    assert statement.privacy_metadata_warning in html
+    assert statement.privacy_stripped not in html
 
 
 def test_packet_html_has_proof_and_disclosure(
@@ -101,6 +135,7 @@ def test_packet_html_has_proof_and_disclosure(
         assert "trusted-timestamped" not in html
         # The embedded-originals residual-PII warning appears only when originals ship.
         assert (stmt.privacy_originals_warning in html) is include_originals
+        assert stmt.privacy_stripped in html
         # The minimal-disclosure scope statement renders, localized (R-35).
         scope = scope_statement(lang, scope_type="unit")
         assert scope.heading in html
@@ -415,7 +450,7 @@ def test_include_originals_enables_fixity(
     assert not broken.structurally_intact and not broken.ok
 
 
-def test_since_filter_and_issue_scope(
+def test_issue_selector_fails_even_when_selected_issue_has_no_captures(
     make_vault: Callable[..., Vault],
     make_jpeg: Callable[..., Path],
     local_tsa: LocalRfc3161TSA,

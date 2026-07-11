@@ -3,18 +3,17 @@
 """Assemble a court/inspector evidence packet.
 
 A packet is a self-contained directory: a deterministic, signed ``bundle.json``;
-location-stripped shared copies of the media; and a paginated, human-readable
-``packet.pdf`` with an evidence appendix.
+shared copies processed under the configured metadata policy; and a paginated,
+human-readable ``packet.pdf`` with an evidence appendix.
 
-The privacy/verifiability bridge: a shared copy has its metadata stripped, so its
-bytes differ from the sealed original and cannot be hashed back to the recorded
-``content_hash``. The packet therefore records a signed ``copied_for_sharing``
-custody entry binding the original's ``content_hash`` to the shared copy's
-``shared_hash``. A recipient can then verify the image they hold (via
-``shared_hash``), the custody binding to ``content_hash``, and the RFC 3161 token
-over ``content_hash`` — without the packet ever disclosing the home's location.
-Pass ``include_originals=True`` to also embed the sealed originals for end-to-end
-fixity (a deliberate, higher-disclosure choice).
+The privacy/verifiability bridge: a transformed shared copy has different bytes
+from the sealed original and cannot be hashed back to the recorded ``content_hash``.
+The packet therefore records a signed ``copied_for_sharing`` custody entry binding
+the original's ``content_hash`` to the shared copy's ``shared_hash``. A recipient
+can verify the copy they hold, the custody binding, and the RFC 3161 token over the
+original hash. The default policy strips embedded metadata; a configured policy may
+retain it. Pass ``include_originals=True`` to also embed byte-exact originals with
+their full metadata for end-to-end fixity (a deliberate, higher-disclosure choice).
 """
 
 from __future__ import annotations
@@ -109,14 +108,21 @@ def build_packet(
 
     Rendering happens in a fresh sibling directory. Only after every artifact is
     complete and the updated custody log is persisted is that directory renamed
-    into place. Re-exporting replaces the entire prior directory, so files from a
-    broader or originals-including export cannot survive a narrower one.
+    into place. Re-exporting replaces the entire prior directory, so optional files
+    from a higher-disclosure export cannot survive one that later omits them.
     """
     if issue_id is not None or since is not None:
         raise PacketError(
             "scoped packet exports are temporarily blocked: packet v3 carries the complete "
             "custody chain, which can reveal identifiers outside an issue or date scope; "
             "export the whole unit until a versioned scoped custody-view format is available"
+        )
+
+    sharing = policy or vault.config.sharing
+    if sharing.export_custody_identities:
+        raise PacketError(
+            "custody identity export is not supported: packet v3 public custody proofs are "
+            "always identity-stripped; set sharing.export_custody_identities to false"
         )
 
     parent = out_dir.parent
@@ -138,7 +144,7 @@ def build_packet(
             make_pdf=make_pdf,
             inspector_view=inspector_view,
             generated_at=generated_at,
-            policy=policy,
+            policy=sharing,
         )
         vault.save()
         vault_saved = True
@@ -240,8 +246,9 @@ def _build_packet_in_dir(
     def opaque_hlc(raw: str) -> str:
         return doc.opaque_id("hlc", raw)
 
-    # The export's minimal-disclosure scope, stated in English for the machine-readable
-    # bundle; the renderers localize it independently from the bundle's scope object.
+    # State the current whole-unit boundary in English for the machine-readable
+    # bundle; renderers localize it independently. Historical scope shapes remain in
+    # the helper and schema so previously emitted packets keep rendering/verifying.
     scope_type = "issue" if issue_id else "unit"
     scope = scope_statement("en", scope_type=scope_type, issue_id=issue_id or "", since=since or "")
     disclosures = _disclosures(
@@ -545,15 +552,22 @@ def _disclosures(
     awaiting: int,
     total: int,
 ) -> tuple[str, ...]:
-    location = "stripped from shared copies" if sharing.strip_location else "RETAINED"
-    identities = "not exported" if not sharing.export_custody_identities else "EXPORTED"
-    # Lead with the scope so an over-broad discovery demand meets an explicit,
-    # on-the-record minimal-disclosure boundary (item R-35).
+    if sharing.strip_all_metadata:
+        metadata = "all embedded metadata stripped from supported shared media"
+    elif sharing.strip_location:
+        metadata = (
+            "EXIF GPS stripped from supported still-image shared copies; "
+            "other embedded metadata may be retained"
+        )
+    else:
+        metadata = (
+            "shared-copy policy permits embedded metadata, including location, to be retained"
+        )
     notes = [
         *scope.lines(),
         f"{len(items)} media item(s) included as shared copies",
-        f"location {location}",
-        f"custody identities {identities}",
+        metadata,
+        "custody identities not exported",
     ]
     data_items = sum(1 for item in items if item.get("sensor") is not None)
     if data_items:

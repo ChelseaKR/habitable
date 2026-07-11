@@ -52,12 +52,14 @@ storage: 12.4 MB total — 6.1 MB sealed originals + 6.1 MB shared copies
 
 The doubling is deliberate. Every original is **sealed** (encrypted) into the
 vault and kept forever — that is the evidence. When you export a packet, habitable
-also writes a **location-stripped shared copy** of roughly the same size (the file
-you actually hand to an inspector or attorney, with GPS and metadata removed). So
-budget about **twice** the size of your photos and videos for a case you will
-export with originals, plus a small, fixed metadata overhead (the encrypted case
-document, custody log, timestamp tokens, and keyfile). `Vault.storage_footprint()`
-reports the exact bytes, including a per-capture breakdown.
+also writes a **policy-processed shared copy** of roughly the same size. The default
+removes embedded metadata; a nondefault policy may retain some or all of it. So
+budget about **twice** the media size for a default packet: one encrypted vault
+original plus one packet shared copy. `--include-originals` also writes a byte-exact
+packet original, bringing the rough total to **three media-sized copies**, plus small
+metadata overhead (the encrypted case document, custody log, timestamp tokens, and
+keyfile). `Vault.storage_footprint()` reports the default two-copy estimate and does
+not include that optional packet `originals/` directory.
 
 To reclaim space, export finished issues to an external drive and keep the vault
 itself somewhere durable — the sealed originals are the copy that must survive.

@@ -55,8 +55,9 @@ still rewrite a whole history before a peer or external anchor has seen the chai
 - Treat v1/v2 `hlc` and v3 `order_token` as opaque ordering data.
 - Present `occurred_at`, `recorded_at`, and `source` as separate facts.
 - Do not call a v3 event RFC 3161 timestamped; RFC 3161 tokens remain attached to media items.
-- Preserve links whose target capture was omitted by an export `since` scope; describe the target as
-  not included rather than silently dropping the signed reference.
+- When reading a historical scoped packet, preserve links whose target capture was omitted by its
+  old `since` scope; describe the target as not included rather than silently dropping the signed
+  reference. New packet-v3 construction is whole-unit only.
 - Reject unknown newer packet versions instead of guessing.
 
 See [`../bundle-schema.md`](../bundle-schema.md) for the field table and

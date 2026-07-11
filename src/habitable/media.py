@@ -115,8 +115,9 @@ def make_shared_media_copy(source: Path, destination: Path, policy: SharingPolic
     title, device make/model, embedded GPS, timestamps) using stream-copy, so
     the audio/video bytes themselves are untouched -- only the metadata atoms
     are dropped, exactly the same "sealed original keeps everything, shared
-    copy discloses only what policy allows" contract ``exif.make_shared_copy``
-    makes for photos.
+    copy reports a separate transformation" contract ``exif.make_shared_copy``
+    makes for photos. Video/audio sanitization currently always strips all container
+    and stream metadata; the still-image retention policy does not weaken this path.
 
     Raises :class:`CaptureError` -- never silently produces an unstripped or
     partial file -- if ffmpeg is unavailable or the remux fails.

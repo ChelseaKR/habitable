@@ -27,17 +27,17 @@
     "scope": {
       "type": "object",
       "properties": {
-        "type": { "type": "string", "enum": ["issue", "unit"] },
-        "issue_id": { "type": "string" },
-        "since": { "type": "string", "description": "Lower bound on capture time; may be empty." },
+        "type": { "type": "string", "enum": ["issue", "unit"], "description": "Current packet-v3 construction emits 'unit'; 'issue' remains accepted for historical packet compatibility." },
+        "issue_id": { "type": "string", "description": "Historical scoped-packet field; empty on current whole-unit exports." },
+        "since": { "type": "string", "description": "Historical lower bound on capture time; empty on current whole-unit exports." },
         "statement": {
           "type": "string",
-          "description": "Human-readable minimal-disclosure scope summary (e.g. 'Scope: issue <id> only …' or 'Scope: the whole unit …'). Also rendered, localized, in packet.html/packet.pdf; see docs/legal/minimal-disclosure.md."
+          "description": "Human-readable scope summary. Current packet-v3 construction emits 'Scope: the whole unit …'; issue-only statements are historical compatibility data, not an available export mode. Also rendered, localized, in packet.html/packet.pdf; see docs/legal/minimal-disclosure.md."
         },
         "exclusions": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Explicit statements of what this export does NOT include (vault contents outside the scope; items captured before 'since' when set). Defensible against over-broad discovery (item R-35)."
+          "description": "Historical scoped packets may state exclusions here. Current packet-v3 construction is whole-unit only and emits no issue/date exclusions; optional originals and metadata handling are described in disclosures. See item R-35."
         }
       },
       "additionalProperties": true
@@ -67,7 +67,7 @@
     "disclosures": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Human-readable notes of what the packet reveals (e.g. location stripped from shared copies; custody identities not exported; sealed originals embedded with full metadata). Also rendered, localized, in packet.html/packet.pdf."
+      "description": "Human-readable notes of what the packet reveals (e.g. shared-copy metadata handling; custody identities not exported; sealed originals embedded with full metadata). Also rendered, localized, in packet.html/packet.pdf."
     },
     "appendix": {
       "type": "object",
@@ -198,7 +198,7 @@
         "content_hash": { "$ref": "#/$defs/hexSha256", "description": "SHA-256 of the sealed original; the value the RFC 3161 token is taken over." },
         "media_type": { "type": "string", "description": "MIME type, e.g. image/jpeg." },
         "captured_at": { "type": "string" },
-        "shared_name": { "type": "string", "description": "Filename under media/ of the location-stripped shared copy; empty if none." },
+        "shared_name": { "type": "string", "description": "Filename under media/ of the shared copy processed under the configured metadata policy; empty if none." },
         "shared_hash": {
           "oneOf": [{ "$ref": "#/$defs/hexSha256" }, { "type": "string", "maxLength": 0 }],
           "description": "SHA-256 of the shared copy; empty when no shared media for this item."

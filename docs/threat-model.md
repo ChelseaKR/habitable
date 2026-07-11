@@ -45,7 +45,7 @@ called out explicitly in §5 and §6.
 
 | Asset | Why it matters |
 | --- | --- |
-| **Tenant identity and location** | A home address tied to a tenant who is organizing is exactly what enables retaliation. Originals carry EXIF GPS and capture time; that must never leak through a shared copy or an operator. |
+| **Tenant identity and location** | A home address tied to a tenant who is organizing is exactly what enables retaliation. Originals carry EXIF GPS and capture time. Packet shared-media copies strip embedded metadata by default; retention settings, embedded originals, sync, or organizer sharing can disclose it and must be reviewed before handoff. |
 | **Case contents** | The photos, video, condition notes, and timeline are sensitive both as private home imagery and as the substance of a legal position the landlord wants to know and weaken. |
 | **Integrity of the evidence** | The whole value of the tool is that a record was not altered after capture and existed by a given time. If integrity can be quietly broken, the evidence is worthless or worse. |
 | **Organizer identities** | Who is helping whom — which organizer works which building — is sensitive. Exposure invites targeted retaliation and chills organizing. Custody logs record who did what to an item; that "who" must stay inside the union. |
@@ -136,8 +136,8 @@ learns nothing about the contents.
 | **Tamper-evidence (sequence)** | The chain of custody is an append-only, hash-linked log: each entry commits to the previous entry's hash, so any insertion, deletion, or reordering breaks the chain detectably. Entries can also be Ed25519-signed. | `evidence.py` (`CustodyLog`) |
 | **Upper-bound timestamps** | A SHA-256 hash is sent to an RFC 3161 authority, which returns a signed token proving the content existed *no later than* that time. Tokens travel inside the packet for offline verification, and the verifier checks the signature and certificate chain. | `tsa.py` (`Rfc3161HttpTSA`, `verify_token`) |
 | **Proof durability over time** | Archive (re-)timestamping re-stamps over each capture's most recent token before the issuing authority's certificate or hash algorithm ages out (RFC 4998-style chaining). The existence proof stays anchored at the *primary* token's time while staying verifiable under a current authority; the standalone verifier walks the chain and fails closed on any break. | `tsa.py` (`retimestamp`, `verify_archive_chain`), `capture.py` (`retimestamp_all`) |
-| **Location stripping on shared copies** | The sealed original keeps EXIF (capture time, GPS) for evidentiary integrity; any shared or exported copy strips location by default, and the user is shown what a packet discloses before it is produced. | README *Hard rules* #4; `exif.py` (per architecture) |
-| **Custody-identity minimization in exports** | Each custody entry binds a *salted commitment* to the actor, not the actor in clear. The exported (packet) form drops the actor, salt, and signature entirely, so a recipient can confirm the chain is intact **without** learning who viewed or copied an item. The clear identity stays in the vault. | `evidence.py` (`public_payload`, `redacted`, `integrity_proof`) |
+| **Default packet metadata minimization** | The sealed original keeps EXIF (capture time, GPS) for evidentiary integrity; packet shared-media copies strip embedded metadata by default. Signed disclosures state the configured handling and whether originals were embedded. | README *Hard rules* #4; `exif.py`; `packet.py` |
+| **Custody-identity minimization in packets** | Encrypted in-vault entries hold the clear actor, salt, commitment, and signature. The public packet proof drops the clear actor, salt, and per-entry signature, retains the salted actor commitment, and re-hashes the identity-stripped chain. | `evidence.py` (`public_payload`, `redacted`, `integrity_proof`) |
 | **No telemetry / no analytics / no phone-home** | The tool collects no analytics and contacts no servers it is not told to. The relay logs only aggregate ciphertext-passthrough counts. There is no account system and no central database. | README *Hard rules* #1, #5; `relay.py` |
 
 ---
@@ -207,8 +207,8 @@ courtroom fails the people relying on it.
 | Relay operator or its subpoena | Messages sealed to recipient keys before leaving the sender; no-log, self-hostable relay; pure peer-to-peer option removes the party entirely. | Connection **metadata** (who/when/how-much) is visible to any relay; only peer-to-peer sync avoids it. |
 | Timestamp authority compromised, colluding, or subpoenaed | Authority sees only a SHA-256 hash; multiple authorities configurable; tokens verified offline against their certificate chain. | A single TSA could backdate or refuse; a hash leak still reveals nothing about contents; trust in *any one* TSA is reduced, not eliminated, by using several. |
 | Evidence altered after capture | SHA-256 fixity re-checked on every read; append-only hash-linked custody; RFC 3161 upper-bound timestamps, kept durable by archive re-timestamping before an authority ages out; standalone verifier. | Custody is tamper-*evident* only: a hostile keyholder can rewrite the whole local chain before any external anchor exists; detection needs a counterpart or a timestamp over the head. |
-| Tenant location leaked through sharing | Originals sealed with EXIF intact; shared/exported copies strip location by default; the user is shown what a packet discloses before producing it. | User error or an out-of-band copy (a screenshot, a forwarded original) can still leak; stripping covers habitable's own outputs, not other apps. |
-| Organizer identity exposed via exported records | Custody actor stored only as a salted commitment; exports drop actor, salt, and signature; clear identity stays in the vault. | The in-vault clear identity is exposed if the vault itself is compromised; correlation across packets or out-of-band knowledge can still re-identify. |
+| Tenant location leaked through sharing | Packet shared-media copies strip embedded metadata by default, and signed disclosures state metadata/original choices. | A retention policy, `--include-originals`, sync/organizer share, screenshot, or forwarded original can carry location. Recipients can make further copies. |
+| Organizer identity exposed via packet records | Public custody drops the clear actor, salt, and per-entry signature but retains the salted actor commitment. | A breached vault exposes the clear actor and salt; commitment correlation across packets or out-of-band knowledge can still re-identify. |
 | Tracking via telemetry | No analytics, no telemetry, no phone-home; relay logs only aggregate counts. | Network-level observation (ISP, Wi-Fi operator) of *connections* is outside the app's control; use of Tor/VPN is the user's responsibility. |
 | Lost access to data | Encrypted recovery blob; multi-peer sync replicates the case; encrypted backup. | No operator-side recovery: lost passphrase + no recovery blob + no surviving peer = permanent data loss, by design. |
 
@@ -218,8 +218,9 @@ courtroom fails the people relying on it.
 
 habitable concentrates trust on the **device**, keeps the **relay** to ciphertext plus unavoidable
 connection metadata, and shows the **timestamp authority** only a hash. It protects confidentiality
-at rest, end-to-end encryption in sync, content and sequence tamper-evidence, location stripping,
-and custody-identity minimization, with no telemetry. It does **not** protect against a hostile
+at rest, end-to-end encryption in sync, content and sequence tamper-evidence, default packet
+metadata minimization, and custody-identity minimization, with no telemetry. It does **not** protect
+against a hostile
 keyholder rewriting the local chain before any external anchor, relay metadata, a coercing or
 forensic adversary with the unlocked device (the duress-safe state that would blunt this is planned,
 not yet implemented), lost keys with no backup, or an endpoint that is already compromised — and a

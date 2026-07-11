@@ -135,6 +135,10 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   for excluded records. Those selectors now stop before staging, custody mutation, or
   message creation. Whole-unit/full-case flows remain available; restoring narrower
   exports requires a new versioned, scoped/rehashed custody-view contract.
+- **Unsupported custody-identity packet export now fails closed.** The compatibility
+  setting `sharing.export_custody_identities = true` previously changed only the disclosure
+  note while the public custody proof remained identity-stripped. Packet construction now
+  rejects that setting before staging or custody mutation instead of publishing a false claim.
 - **JPEG shared copies now remove every embedded metadata carrier under the default
   strip-all policy.** Export decodes and applies EXIF orientation, rebuilds pixels,
   removes APP0–APP15 and comment segments plus trailing data, verifies a metadata-free
@@ -148,10 +152,11 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   the isolated OIDC-enabled PyPI job; that job no longer checks out source or rebuilds.
 - **Packet publication is transactional and re-export is clean.** Exports are
   rendered in a fresh sibling directory and published only after every artifact
-  succeeds. Reusing an output path replaces the whole directory, so originals,
-  media, or other files from a broader prior export cannot survive a narrower
-  one. Ordinary render/publish failures restore the previous packet and roll back
-  the uncommitted custody entries.
+  succeeds. Reusing an output path replaces the whole directory, so sealed originals,
+  an inspector view, media, or other files from a prior higher-disclosure whole-unit
+  export cannot survive a later export that omits those optional artifacts. Ordinary
+  render/publish failures restore the previous packet and roll back the uncommitted
+  custody entries.
 - **Unlocked app server is loopback-only.** `habitable app` now rejects LAN,
   wildcard, tunneled, and public bind targets instead of exposing an unlocked case
   API over plaintext HTTP. Phone and workshop guides no longer recommend the old
@@ -188,11 +193,12 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   unaffected) by a new shared `bundleview` module, so the HTML and PDF cannot drift. The
   accessible HTML remains the conformant rendering (ADR 0004); the PDF keeps its
   accessibility hygiene.
-- **E2E-encrypted, redactable case sharing (`habitable share` / `habitable receive`).** A
-  tenant can hand a case — or a chosen subset of issues, optionally with the unit label
-  redacted — to a tenant-union organizer who was not previously on the case, preserving
-  end-to-end encryption: the payload is a CRDT subset plus sealed originals, **signed** by
-  the tenant and **sealed** to the organizer's verified public key, so a relay/courier sees
+- **E2E-encrypted full-case sharing (`habitable share` / `habitable receive`).** A
+  tenant can hand a full case, optionally with the `unit` metadata field omitted, to a
+  tenant-union organizer who was not previously on the case, preserving end-to-end
+  encryption: the payload is the full-case CRDT state plus any sealed originals the organizer
+  does not already hold; it is **signed** by the tenant and **sealed** to the organizer's verified
+  public key, so a relay/courier sees
   only ciphertext. Reuses the existing crypto + CRDT primitives; trust is direct and
   out-of-band (verify the short fingerprint), with no key directory. Trust/key-exchange
   model documented in `docs/sharing-trust-model.md`.
@@ -210,7 +216,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   so the HTML and PDF cannot drift. (Recipient personas: housing-court clerk,
   opposing counsel.)
 - **Recipient-facing disclosures.** Packets now carry a localized (EN/ES) "what
-  this packet discloses" note (shared copies have location removed; sealed
+  this packet discloses" note (shared copies have location removed under the default policy; sealed
   originals, when embedded, retain full metadata), and the machine-readable
   `disclosures` list is included in the signed `bundle.json` (schema documented).
 - **`habitable verify --json`.** A structured verification report (overall verdict
@@ -374,7 +380,7 @@ installable PWA covers mobile today) remain — see the ACR and the build plan.
 - **Vault + capture.** Encrypted on-disk case vault with fixity re-checked on
   read; capture pipeline that hashes, seals, and records custody offline, then
   obtains a trusted timestamp when online (queuing otherwise).
-- **Packet + verify.** Deterministic signed `bundle.json`, location-stripped
+- **Packet + verify.** Deterministic signed `bundle.json`, default location-stripped
   shared media, and an accessible paginated PDF; a standalone verifier
   (additionally Apache-2.0) that re-derives hashes, validates tokens and the
   producer signature, and walks custody.

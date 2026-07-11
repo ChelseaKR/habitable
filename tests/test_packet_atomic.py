@@ -46,7 +46,41 @@ def _transaction_debris(parent: Path, packet_name: str) -> list[Path]:
     ]
 
 
-def test_narrower_reexport_replaces_entire_directory(
+def test_custody_identity_policy_fails_before_output_or_custody_mutation(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    vault = _vault_with_capture(make_vault, make_jpeg, local_tsa)
+    out = tmp_path / "packet"
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
+    (out / "sentinel.txt").write_bytes(b"pre-existing packet must survive")
+
+    config_path = vault.path / "config.toml"
+    config_text = config_path.read_text(encoding="utf-8")
+    configured_text = config_text.replace(
+        "export_custody_identities = false",
+        "export_custody_identities = true",
+    )
+    assert configured_text != config_text
+    config_path.write_text(configured_text, encoding="utf-8")
+    configured_vault = Vault.open(vault.path, "test-passphrase")
+    assert configured_vault.config.sharing.export_custody_identities
+
+    before_files = _snapshot(out)
+    before_custody = configured_vault.custody.to_vault_records()
+
+    with pytest.raises(PacketError, match="custody identity export is not supported"):
+        build_packet(configured_vault, out, generated_at="2026-01-02T00:20:00Z")
+
+    assert _snapshot(out) == before_files
+    assert configured_vault.custody.to_vault_records() == before_custody
+    assert Vault.open(vault.path, "test-passphrase").custody.to_vault_records() == before_custody
+    assert _transaction_debris(tmp_path, out.name) == []
+
+
+def test_lower_disclosure_reexport_replaces_entire_directory(
     make_vault: Callable[..., Vault],
     make_jpeg: Callable[..., Path],
     local_tsa: LocalRfc3161TSA,

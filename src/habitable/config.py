@@ -3,7 +3,7 @@
 """Versioned, file-based configuration.
 
 Policy is committed config a union edits for itself: which timestamp authorities
-to trust, which peers to sync with, whether shared copies strip location, and the
+to trust, which peers to sync with, how packet shared copies handle metadata, and the
 default language. There is nothing to administer centrally — this file *is* the
 administration surface, and it is plain TOML so it diffs and reviews cleanly.
 """
@@ -74,10 +74,12 @@ class PeerConfig:
 
 @dataclass(frozen=True, slots=True)
 class SharingPolicy:
-    """What a shared/exported copy discloses. Defaults minimize disclosure."""
+    """How packet shared-media copies handle metadata. Defaults minimize disclosure."""
 
     strip_location: bool = True
     strip_all_metadata: bool = True
+    # Retained for config compatibility. Packet v3 has no identity-bearing public
+    # custody format, so packet export fails closed when this is true.
     export_custody_identities: bool = False
 
 
@@ -265,9 +267,10 @@ def default_config_toml(*, language: str = "en") -> str:
         f'language = "{language}"',
         "",
         "[sharing]",
-        "# Shared/exported copies minimize disclosure by default.",
+        "# Packet shared-media copies minimize disclosure by default.",
         "strip_location = true",
         "strip_all_metadata = true",
+        "# Reserved compatibility flag; packet export currently requires false.",
         "export_custody_identities = false",
         "",
         "[network]",

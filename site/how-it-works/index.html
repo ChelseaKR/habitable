@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#16424f" />
     <title>How Habitable Evidence Works | Offline Repair Records</title>
-    <meta name="description" content="Learn how Habitable Evidence organizes repair conditions, notices, responses, sealed captures, and selective exports in one offline record." />
+    <meta name="description" content="Learn how Habitable Evidence organizes repair conditions, notices, responses, sealed captures, and whole-unit packet disclosures in one offline record." />
     <meta name="robots" content="index, follow, max-image-preview:large" />
     <link rel="canonical" href="https://chelseakr.github.io/habitable/how-it-works/" />
     <link rel="icon" href="../img/icon.svg" type="image/svg+xml" />
@@ -17,12 +17,12 @@
     <meta property="og:site_name" content="Habitable Evidence" />
     <meta property="og:url" content="https://chelseakr.github.io/habitable/how-it-works/" />
     <meta property="og:title" content="How Habitable Evidence Works | Offline Repair Records" />
-    <meta property="og:description" content="Learn how Habitable Evidence organizes repair conditions, notices, responses, sealed captures, and selective exports in one offline record." />
+    <meta property="og:description" content="Learn how Habitable Evidence organizes repair conditions, notices, responses, sealed captures, and whole-unit packet disclosures in one offline record." />
     <meta property="og:image" content="https://chelseakr.github.io/habitable/img/app-en.png" />
     <meta property="og:image:alt" content="The Habitable Evidence app showing a synthetic repair case." />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="How Habitable Evidence Works | Offline Repair Records" />
-    <meta name="twitter:description" content="Learn how Habitable Evidence organizes repair conditions, notices, responses, sealed captures, and selective exports in one offline record." />
+    <meta name="twitter:description" content="Learn how Habitable Evidence organizes repair conditions, notices, responses, sealed captures, and whole-unit packet disclosures in one offline record." />
     <meta name="twitter:image" content="https://chelseakr.github.io/habitable/img/app-en.png" />
 
     <script type="application/ld+json">
@@ -33,7 +33,7 @@
             "@type": "Article",
             "@id": "https://chelseakr.github.io/habitable/how-it-works/#article",
             "headline": "How Habitable Evidence Works",
-            "description": "Learn how Habitable Evidence organizes repair conditions, notices, responses, sealed captures, and selective exports in one offline record.",
+            "description": "Learn how Habitable Evidence organizes repair conditions, notices, responses, sealed captures, and whole-unit packet disclosures in one offline record.",
             "datePublished": "2026-07-10",
             "dateModified": "2026-07-10",
             "inLanguage": "en",
@@ -96,7 +96,7 @@
                 <li><strong>Describe observable conditions.</strong> Record the location, what can be seen or heard, when it occurred, and how it affects use of the space. Keep conclusions separate from observations.</li>
                 <li><strong>Keep the communication trail.</strong> Add repair requests, delivery details, management responses, visits, work performed, and recurrence to the same chronology.</li>
                 <li><strong>Seal captures.</strong> Habitable preserves an original, computes a SHA-256 content hash, and records custody events. Timestamp tokens can be attached when a configured service is available.</li>
-                <li><strong>Choose what to disclose.</strong> The operator reviews the export scope. Originals and selected details can be withheld; packet disclosure notes describe what the resulting export includes or withholds.</li>
+                <li><strong>Review the whole-unit disclosure.</strong> Current packets include every issue, timeline entry, and capture in the opened unit vault. The operator can choose whether to embed sealed originals; packet notes state shared-copy metadata handling, while custody identities remain omitted.</li>
                 <li><strong>Give the recipient a check.</strong> A recipient can inspect the HTML designed for accessibility or the print-oriented PDF, then run the verifier against the signed bundle. Verification is a technical check, not a legal conclusion.</li>
               </ol>
             </section>
@@ -126,14 +126,15 @@
 
             <section id="packet" aria-labelledby="packet-h">
               <h2 id="packet-h">What a packet contains</h2>
-              <p>The synthetic packet is organized for reading rather than as a raw media dump. Depending on export choices, it can include:</p>
+              <p>The synthetic packet is organized for reading rather than as a raw media dump. A current export covers the whole unit recorded in the opened case vault and includes:</p>
               <ul class="checklist">
                 <li>issue summaries and the locations described by the operator;</li>
                 <li>an ordered history of conditions, repair notices, responses, visits, and recurrence;</li>
-                <li>selected captures with descriptions and capture metadata;</li>
+                <li>every recorded capture, with its capture time and media type;</li>
                 <li>an evidence appendix with hashes, timestamp status, and custody checks;</li>
                 <li>a disclosure statement explaining what the export includes or withholds.</li>
               </ul>
+              <p>Shared copies are produced according to the configured metadata policy. Embedding sealed originals is optional and preserves their original bytes and metadata, which can include location. Issue/date selection is not currently available.</p>
               <p class="plain-note"><strong>Inspect the artifact:</strong> open the <a href="../sample-packet/packet.html">synthetic sample packet</a> with its <a href="../sample-packet/bundle.json">signed bundle</a>. It is evaluation material, not a record of a real housing matter.</p>
             </section>
 
