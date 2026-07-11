@@ -324,8 +324,8 @@ def test_sync_preserves_complete_timestamp_and_custody_material_for_packet(
 
     packet = tmp_path / "packet"
     build_packet(b, packet, make_pdf=False, generated_at="2026-07-10T00:00:00Z")
-    report = verify_packet(packet)
-    assert report.ok
+    report = verify_packet(packet, trusted_certs=[local_tsa.certificate])
+    assert report.structurally_intact and report.evidence_ready
     bundle = json.loads((packet / "bundle.json").read_text(encoding="utf-8"))
     item = bundle["items"][0]
     assert len(item["additional_timestamps"]) == 1
