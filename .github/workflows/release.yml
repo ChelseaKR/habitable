@@ -24,6 +24,9 @@ jobs:
   release:
     name: build · SBOM · provenance · publish
     runs-on: ubuntu-latest
+    outputs:
+      release_commit: ${{ steps.tag.outputs.commit }}
+      release_tag: ${{ steps.tag.outputs.tag }}
     # P3 (CICD-04): write grants scoped to the job, not the whole workflow —
     # rewards a tighter blast radius (OpenSSF Scorecard Token-Permissions check).
     permissions:
@@ -45,7 +48,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Resolve the release tag
+      - name: Resolve and check out the exact release tag commit
         id: tag
         env:
           # Bind the (potentially attacker-influenceable, on a workflow_dispatch
@@ -53,7 +56,34 @@ jobs:
           # into the shell command — avoids template-injection (zizmor High).
           INPUT_TAG: ${{ github.event.inputs.tag }}
           REF_NAME: ${{ github.ref_name }}
-        run: echo "tag=${INPUT_TAG:-$REF_NAME}" >> "$GITHUB_OUTPUT"
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          TAG="${INPUT_TAG:-$REF_NAME}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Release tag '$TAG' is not a supported vX.Y.Z tag."
+            exit 1
+          fi
+          if ! TAG_COMMIT="$(git rev-parse --verify --end-of-options "${TAG}^{commit}")"; then
+            echo "::error::Release tag '$TAG' does not resolve to a commit."
+            exit 1
+          fi
+          DEFAULT_REF="refs/remotes/origin/$DEFAULT_BRANCH"
+          if ! git show-ref --verify --quiet "$DEFAULT_REF"; then
+            echo "::error::Fetched default branch ref '$DEFAULT_REF' is unavailable."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$TAG_COMMIT" "$DEFAULT_REF"; then
+            echo "::error::Release tag '$TAG' is not on the reviewed default-branch history."
+            exit 1
+          fi
+          git checkout --detach "$TAG_COMMIT"
+          if [ "$(git rev-parse HEAD)" != "$TAG_COMMIT" ]; then
+            echo "::error::Checked-out HEAD does not match release tag '$TAG'."
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "commit=$TAG_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "Building exact tag commit $TAG_COMMIT."
 
       # --- REL-02/03/08: release identity guard ---------------------------------
       # An evidence tool's artifact identity is part of its safety case: a tag whose
@@ -72,7 +102,7 @@ jobs:
         env:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          if ! git tag -v "$TAG" 2>/tmp/tag-verify.log; then
+          if ! git tag -v -- "$TAG" 2>/tmp/tag-verify.log; then
             echo "::error::Tag '$TAG' is not a valid signed tag (git tag -v failed)."
             echo "::error::habitable requires signed release tags (REL-08). See docs/releasing.md."
             cat /tmp/tag-verify.log
@@ -116,6 +146,15 @@ jobs:
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-path: "dist/*.whl,dist/*.tar.gz"
+      - name: Hand the exact attested distributions to the PyPI job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pypi-distributions
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
       - name: Publish artifacts to the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -132,24 +171,33 @@ jobs:
       name: pypi
       url: https://pypi.org/p/habitable
     permissions:
-      contents: read # checkout the tagged source
+      contents: read # retrieve workflow artifacts; no source build runs in this job
       id-token: write # OIDC token for PyPI Trusted Publishing (no long-lived secret)
     steps:
       - name: Harden Runner (audit mode)
         uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
         with:
           egress-policy: audit
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Download the exact distributions built, tested, and attested above
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          persist-credentials: false
-      - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
-        with:
-          version: "0.11.19"
-          enable-cache: false
-      - name: Build wheel + sdist
-        run: uv build
+          name: pypi-distributions
+          path: dist
+      - name: Guard the transferred distribution set
+        env:
+          RELEASE_COMMIT: ${{ needs.release.outputs.release_commit }}
+          RELEASE_TAG: ${{ needs.release.outputs.release_tag }}
+        run: |
+          mapfile -t WHEELS < <(find dist -maxdepth 1 -type f -name '*.whl' -print)
+          mapfile -t SDISTS < <(find dist -maxdepth 1 -type f -name '*.tar.gz' -print)
+          mapfile -t ALL_FILES < <(find dist -maxdepth 1 -type f -print)
+          if [ "${#WHEELS[@]}" -ne 1 ] || [ "${#SDISTS[@]}" -ne 1 ] \
+            || [ "${#ALL_FILES[@]}" -ne 2 ]; then
+            echo "::error::Expected exactly one wheel and one sdist from the release job."
+            find dist -maxdepth 1 -type f -print
+            exit 1
+          fi
+          echo "Publishing exact artifacts for $RELEASE_TAG at $RELEASE_COMMIT."
       # Trusted Publishing: requires a one-time PyPI "pending publisher" for project
       # "habitable" (repo ChelseaKR/habitable, workflow release.yml, environment pypi).
       # See docs/releasing.md. No API token needed once configured.

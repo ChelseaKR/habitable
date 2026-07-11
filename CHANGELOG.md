@@ -122,6 +122,12 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   removes APP0–APP15 and comment segments plus trailing data, verifies a metadata-free
   output, and publishes atomically. This closes the XMP/IPTC/ICC/comment leak left by
   EXIF-only removal; sealed originals remain byte-for-byte unchanged.
+- **Release identity and artifact promotion are bound end to end.** Manual release
+  runs now resolve the requested signed tag, require its commit to be on the fetched
+  default-branch history, and detach there before checking the version or building.
+  The reproducibility-checked wheel and sdist are built once,
+  smoke-tested, attested, uploaded to the GitHub release, and passed unchanged into
+  the isolated OIDC-enabled PyPI job; that job no longer checks out source or rebuilds.
 - **Packet publication is transactional and re-export is clean.** Exports are
   rendered in a fresh sibling directory and published only after every artifact
   succeeds. Reusing an output path replaces the whole directory, so originals,
