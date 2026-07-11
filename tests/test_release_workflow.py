@@ -10,6 +10,7 @@ from pathlib import Path
 
 _WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "release.yml"
 _WORKFLOWS = Path(__file__).resolve().parent.parent / ".github" / "workflows"
+_MAIN_RULESET = Path(__file__).resolve().parent.parent / ".github" / "rulesets" / "main-branch.json"
 _TAG_RULESET = Path(__file__).resolve().parent.parent / ".github" / "rulesets" / "release-tags.json"
 _UPLOAD_ARTIFACT_V7_SHA = "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
 _DOWNLOAD_ARTIFACT_V8_SHA = "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
@@ -88,4 +89,26 @@ def test_committed_release_tag_ruleset_protects_v_tags() -> None:
         "update",
         "required_signatures",
     }
+    assert ruleset["bypass_actors"] == []
+
+
+def test_committed_main_ruleset_requires_prs_and_current_checks() -> None:
+    ruleset = json.loads(_MAIN_RULESET.read_text(encoding="utf-8"))
+    rules = {rule["type"]: rule for rule in ruleset["rules"]}
+    assert ruleset["name"] == "protect-main"
+    assert ruleset["target"] == "branch"
+    assert ruleset["enforcement"] == "active"
+    assert ruleset["conditions"]["ref_name"] == {
+        "include": ["refs/heads/main"],
+        "exclude": [],
+    }
+    required_rule_types = {"deletion", "non_fast_forward", "pull_request", "required_status_checks"}
+    assert required_rule_types <= rules.keys()
+    pull_request = rules["pull_request"]["parameters"]
+    assert pull_request["required_approving_review_count"] == 0
+    assert pull_request["require_code_owner_review"] is False
+    assert pull_request["required_review_thread_resolution"] is True
+    status_checks = rules["required_status_checks"]["parameters"]
+    assert status_checks["strict_required_status_checks_policy"] is True
+    assert status_checks["required_status_checks"]
     assert ruleset["bypass_actors"] == []

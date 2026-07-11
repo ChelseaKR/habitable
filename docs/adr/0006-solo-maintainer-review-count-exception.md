@@ -21,13 +21,17 @@ pretend a review gate exists when it cannot, in practice, gate anything.
 ## Decision
 
 `.github/rulesets/main-branch.json`'s `pull_request` rule sets
-`required_approving_review_count: 0` **explicitly**, with
-`require_code_owner_review: true` and `dismiss_stale_reviews_on_push: true`
-left on (so the moment a second maintainer/CODEOWNER exists, those
-requirements immediately become meaningful without any further ruleset edit).
-Every other applicable rule — linear history, required signatures, the full
-required-status-checks list, no force-push, no deletion — is enforced with
-**no bypass actor**, including for the repository owner.
+`required_approving_review_count: 0` **explicitly**. Pull requests themselves,
+current-branch status checks, review-thread resolution, no force-push, and no
+deletion are enforced with **no bypass actor**, including for the repository
+owner.
+
+`require_code_owner_review` is deliberately `false` while the sole CODEOWNER is
+also the author of every maintainer PR. GitHub treats code-owner review as an
+independent approval requirement even when the general approval count is zero;
+turning it on now would deadlock every change, not add a second pair of eyes.
+When a second maintainer joins, this ADR requires enabling code-owner review and
+raising the approval count together.
 
 This is a **dated, explicit waiver**, not an absent gate: the ruleset artifact
 records the real posture (zero-review, solo-maintainer) instead of a
@@ -36,10 +40,12 @@ human who can approve is also the only human who can push.
 
 ## Consequences
 
-- All AUTO-checkable gates (status checks, linear history, tag/commit
-  signing) are enforced without exception, including against the maintainer.
+- All currently configured AUTO-checkable merge gates are enforced without
+  exception, including against the maintainer; required checks must be rerun
+  against current `main` before merge.
 - The moment a second regular contributor joins, this ADR is superseded: bump
-  `required_approving_review_count` to 1 in
+  `required_approving_review_count` to 1 and set
+  `require_code_owner_review` to `true` in
   `.github/rulesets/main-branch.json` and re-apply the ruleset. That is the
   trigger condition — not a calendar date.
 - Until then, the review-count control is scored as an honest, recorded
