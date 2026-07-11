@@ -114,6 +114,35 @@ def test_render_failure_preserves_previous_packet_and_custody(
     assert _transaction_debris(tmp_path, out.name) == []
 
 
+def test_scoped_reexport_fails_before_replacing_previous_packet(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """A rejected narrow export cannot mutate files or the complete custody chain."""
+    vault = _vault_with_capture(make_vault, make_jpeg, local_tsa)
+    other = vault.document.add_issue(category="heat", title="No heat", issue_id="i2")
+    capture(vault, make_jpeg("other.jpg"), issue_id=other, tsa=local_tsa)
+    out = tmp_path / "packet"
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
+    before_files = _snapshot(out)
+    before_custody = vault.custody.to_vault_records()
+
+    with pytest.raises(PacketError, match="scoped packet exports are temporarily blocked"):
+        build_packet(
+            vault,
+            out,
+            issue_id="i1",
+            generated_at="2026-01-02T00:20:00Z",
+        )
+
+    assert _snapshot(out) == before_files
+    assert vault.custody.to_vault_records() == before_custody
+    assert Vault.open(vault.path, "test-passphrase").custody.to_vault_records() == before_custody
+    assert _transaction_debris(tmp_path, out.name) == []
+
+
 def test_failed_first_export_publishes_nothing(
     make_vault: Callable[..., Vault],
     make_jpeg: Callable[..., Path],

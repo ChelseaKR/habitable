@@ -215,8 +215,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p_export = sub.add_parser("export", help="assemble a court/inspector evidence packet")
     add_vault(p_export)
     p_export.add_argument("--out", required=True, type=Path, help="output packet directory")
-    p_export.add_argument("--issue", help="export one issue (default: the whole unit)")
-    p_export.add_argument("--since", help="only items captured on/after this ISO date")
+    p_export.add_argument("--issue", help="reserved: scoped packet exports are temporarily blocked")
+    p_export.add_argument(
+        "--since", help="reserved: date-scoped packet exports are temporarily blocked"
+    )
     p_export.add_argument("--include-originals", action="store_true")
     p_export.add_argument("--no-pdf", action="store_true")
     p_export.add_argument(
@@ -285,17 +287,15 @@ def _build_parser() -> argparse.ArgumentParser:
     p_letter.add_argument("--no-pdf", action="store_true")
     p_letter.set_defaults(func=_cmd_letter)
 
-    p_share = sub.add_parser(
-        "share", help="seal a case (or a redactable subset) to an organizer's key"
-    )
+    p_share = sub.add_parser("share", help="seal a full case to an organizer's key")
     add_vault(p_share)
     p_share.add_argument("--peer", required=True, help="organizer public identity (`habitable id`)")
     p_share.add_argument("--out", required=True, type=Path, help="output .share file to write")
     p_share.add_argument(
-        "--issue", action="append", help="share only this issue (repeatable; default: whole case)"
+        "--issue", action="append", help="reserved: issue-scoped shares are temporarily blocked"
     )
     p_share.add_argument(
-        "--redact-unit", action="store_true", help="drop the unit label from the shared subset"
+        "--redact-unit", action="store_true", help="drop the unit label from the full-case share"
     )
     p_share.set_defaults(func=_cmd_share)
 
@@ -955,7 +955,7 @@ def _cmd_share(args: argparse.Namespace) -> int:
     scope = f"{len(issue_ids)} issue(s)" if issue_ids else "the whole case"
     print(f"habitable: sealed {scope} to {peer.fingerprint}")
     if args.redact_unit:
-        print("           unit label redacted from the shared subset")
+        print("           unit label redacted from the full-case share")
     print(f"           encrypted share written to {args.out}")
     print("           confirm the recipient fingerprint out of band before sending.")
     return 0

@@ -49,14 +49,14 @@ re-serialize `bundle.json` before checking the signature.
 | `packet_version` | int | Format version. Verifier accepts `1..SUPPORTED_PACKET_VERSION`; newer is rejected, not mis-verified. |
 | `case_id` | string | Case identifier. |
 | `unit` | string | Unit label; may be empty. |
-| `scope` | object | `{type: "issue"\|"unit", issue_id, since, statement, exclusions}` — what the packet covers. `statement` is a human-readable minimal-disclosure summary; `exclusions` is an array of what is deliberately *not* included (vault contents outside the scope; pre-`since` items). Defensible against over-broad discovery (item R-35); see [`legal/minimal-disclosure.md`](./legal/minimal-disclosure.md). Also rendered, localized, in `packet.html`/`packet.pdf`. |
+| `scope` | object | `{type: "issue"\|"unit", issue_id, since, statement, exclusions}` — the versioned/historical shape describing what a packet covers. New packet-v3 construction currently permits only `type: "unit"` with no `since`; issue/date requests fail before output because the v3 custody proof is complete-case. The other field values remain in the schema so previously emitted packets keep verifying, not as a claim that new scoped exports are safe. See [`legal/minimal-disclosure.md`](./legal/minimal-disclosure.md). |
 | `generated_at` | string | ISO 8601 UTC, e.g. `2026-01-02T00:00:00Z`. |
 | `producer_fingerprint` | string | Producing device fingerprint (`xxxx-xxxx-xxxx-xxxx`). |
 | `hash_algorithm` | string | Always `"sha256"`. |
 | `language` | string | Language of the rendered packet (e.g. `en`, `es`). |
 | `template` | object | `{header, footer}` — presentation only. |
-| `issues` | array | Selected issues (see below). |
-| `timeline` | array | Versioned timeline events for the selected issues (see below). |
+| `issues` | array | Issues in the declared scope; currently all issues in the unit. |
+| `timeline` | array | Versioned timeline events in the declared scope; currently the whole unit (see below). |
 | `items` | array | The media items — the evidentiary core (see below). |
 | `custody_proof` | object | Identity-stripped chain-of-custody proof (see below). |
 | `disclosures` | array | Human-readable notes of what the packet reveals (location stripped, custody identities not exported, originals embedded). Also rendered, localized, in `packet.html`/`packet.pdf`. |

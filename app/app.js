@@ -528,7 +528,7 @@
     var selects = [
       { el: document.getElementById("cap-issue"), allowEmpty: false },
       { el: document.getElementById("tl-issue"), allowEmpty: false },
-      { el: document.getElementById("ex-issue"), allowEmpty: true }
+      { el: document.getElementById("ex-issue"), allowEmpty: true, wholeCaseOnly: true }
     ];
     for (var s = 0; s < selects.length; s++) {
       var sel = selects[s].el;
@@ -547,6 +547,7 @@
         none.disabled = true;
         sel.appendChild(none);
       }
+      if (selects[s].wholeCaseOnly) { continue; }
       for (var i = 0; i < issues.length; i++) {
         var opt = document.createElement("option");
         opt.value = issues[i].issue_id;

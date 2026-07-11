@@ -120,14 +120,10 @@ Anticipate these and concede the honest ones; do not let them be "discovered" as
 
 ## Discovery caution
 
-A produced packet should be **scoped** — to the unit or issue at hand — not a dump of the
-union's whole vault. Over-broad production can expose other tenants and other matters. Discuss
-scoping and any protective order with co-counsel; the export is designed to be minimal and
-identity-stripped, but the disclosure decision is a legal one (item R-35).
-
-Each packet now states its own scope on the record: `bundle.json` carries a `scope` object with
-a plain-language `statement` and an `exclusions` list (rendered, localized, in `packet.html` and
-`packet.pdf`) declaring that captures, timeline, and custody records from other issues in the
-vault are not included. Use that self-documenting boundary when meeting an over-broad demand. The
-full treatment — what a packet contains and omits, why the export is minimal, and how to respond
-to over-broad discovery — is in [`minimal-disclosure.md`](./minimal-disclosure.md).
+A produced packet should disclose no more than counsel decides is appropriate. The current safe
+export is a **whole-unit** packet, not an issue/date subset. `--issue` and `--since` fail before
+output because packet v3's complete custody chain can reveal identifiers outside a filtered item
+list. Do not bypass that guard or manually delete custody entries and call the result complete.
+Discuss whether the whole-unit artifact is suitable and whether a protective order is needed. The
+current status and planned versioned scoped-custody design are in
+[`minimal-disclosure.md`](./minimal-disclosure.md).

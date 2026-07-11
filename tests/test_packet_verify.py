@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives.serialization import Encoding
 
 from habitable.canonical import JSONValue, sha256_bytes
 from habitable.capture import capture, resolve_deferred
+from habitable.errors import PacketError
 from habitable.exif import read_metadata
 from habitable.packet import build_packet
 from habitable.tsa import LocalRfc3161TSA
@@ -421,18 +422,16 @@ def test_since_filter_and_issue_scope(
     tmp_path: Path,
 ) -> None:
     vault = _case_with_two_captures(make_vault, make_jpeg, local_tsa)
-    # A second issue with no captures -> exporting it yields zero items.
+    # Even an apparently empty scope is blocked conservatively: the v3 custody
+    # proof is whole-chain and would otherwise expose records outside the scope.
     other = vault.document.add_issue(category="heat", issue_id="i2")
     out = tmp_path / "packet"
-    result = build_packet(vault, out, issue_id=other, generated_at="2026-01-02T00:10:00Z")
-    assert result.item_count == 0
-    report = verify_packet(out)
-    assert report.structurally_intact  # signed empty packet has intact structure
-    assert not report.evidence_ready and not report.ok  # but contains no evidence to ready
-    assert report.status == "no_items"
+    with pytest.raises(PacketError, match="scoped packet exports are temporarily blocked"):
+        build_packet(vault, out, issue_id=other, generated_at="2026-01-02T00:10:00Z")
+    assert not out.exists()
 
 
-def test_issue_scope_excludes_other_issues_and_states_scope(
+def test_issue_scope_fails_before_excluded_identifiers_can_be_published(
     make_vault: Callable[..., Vault],
     make_jpeg: Callable[..., Path],
     local_tsa: LocalRfc3161TSA,
@@ -443,35 +442,26 @@ def test_issue_scope_excludes_other_issues_and_states_scope(
     vault.document.add_timeline_entry(i1, "observed", "mold spreading")
     capture(vault, make_jpeg("a.jpg", with_location=True), issue_id=i1, tsa=local_tsa)
     i2 = vault.document.add_issue(category="heat", title="No heat", issue_id="i2")
-    vault.document.add_timeline_entry(i2, "observed", "freezing")
-    capture(vault, make_jpeg("b.jpg", with_location=True), issue_id=i2, tsa=local_tsa)
+    excluded_timeline = vault.document.add_timeline_entry(i2, "observed", "freezing")
+    excluded_capture = capture(
+        vault, make_jpeg("b.jpg", with_location=True), issue_id=i2, tsa=local_tsa
+    ).capture_id
 
     out = tmp_path / "packet"
-    result = build_packet(vault, out, issue_id="i1", generated_at="2026-01-02T00:10:00Z")
-    assert result.item_count == 1
+    before_custody = vault.custody.to_vault_records()
+    with pytest.raises(PacketError) as caught:
+        build_packet(vault, out, issue_id="i1", generated_at="2026-01-02T00:10:00Z")
 
-    bundle = json.loads((out / "bundle.json").read_text())
-    # The other issue's captures and timeline are absent, not merely down-ranked.
-    assert {item["issue_id"] for item in bundle["items"]} == {"i1"}
-    assert [e["issue_id"] for e in bundle["timeline"]] == ["i1"]
-    assert {issue["issue_id"] for issue in bundle["issues"]} == {"i1"}
-
-    # The machine-readable scope object states the minimal-disclosure boundary (R-35).
-    scope = bundle["scope"]
-    assert scope["type"] == "issue"
-    assert "issue i1 only" in scope["statement"]
-    assert scope["exclusions"] and any("not exported" in x for x in scope["exclusions"])
-
-    # The scope statement also rides in the human-readable disclosures and in packet.html.
-    assert any("issue i1 only" in note for note in bundle["disclosures"])
-    html = (out / "packet.html").read_text(encoding="utf-8")
-    assert "issue i1 only" in html
-    assert "Scope of this export" in html
-
-    assert verify_packet(out, trusted_certs=[local_tsa.certificate]).evidence_ready
+    error = str(caught.value)
+    assert "scoped packet exports are temporarily blocked" in error
+    assert "i2" not in error
+    assert excluded_capture not in error
+    assert excluded_timeline not in error
+    assert not out.exists()  # no bundle, media, HTML, PDF, or partial staging output
+    assert vault.custody.to_vault_records() == before_custody
 
 
-def test_since_excludes_earlier_items_and_states_exclusion(
+def test_since_scope_fails_closed_before_any_output(
     make_vault: Callable[..., Vault],
     make_jpeg: Callable[..., Path],
     local_tsa: LocalRfc3161TSA,
@@ -494,11 +484,8 @@ def test_since_excludes_earlier_items_and_states_exclusion(
 
     out = tmp_path / "packet"
     since = "2026-01-02T00:00:00Z"
-    result = build_packet(vault, out, since=since, generated_at="2026-01-04T00:10:00Z")
-    assert result.item_count == 1  # only the post-cutoff capture
-
-    bundle = json.loads((out / "bundle.json").read_text())
-    assert all(item["captured_at"] >= since for item in bundle["items"])
-    assert any(since in x for x in bundle["scope"]["exclusions"])
-    assert any(since in note for note in bundle["disclosures"])
-    assert verify_packet(out, trusted_certs=[local_tsa.certificate]).evidence_ready
+    before_custody = vault.custody.to_vault_records()
+    with pytest.raises(PacketError, match="scoped packet exports are temporarily blocked"):
+        build_packet(vault, out, since=since, generated_at="2026-01-04T00:10:00Z")
+    assert not out.exists()
+    assert vault.custody.to_vault_records() == before_custody

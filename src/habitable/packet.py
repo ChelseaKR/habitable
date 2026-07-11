@@ -102,11 +102,22 @@ def build_packet(
 ) -> PacketResult:
     """Assemble and publish a complete packet without exposing partial output.
 
+    Packet v3 exports the complete custody chain. Until a new packet version defines
+    a scoped, rehashed custody view, ``issue_id`` and ``since`` fail before staging so
+    an apparently narrow packet cannot reveal identifiers from excluded records.
+
     Rendering happens in a fresh sibling directory. Only after every artifact is
     complete and the updated custody log is persisted is that directory renamed
     into place. Re-exporting replaces the entire prior directory, so files from a
     broader or originals-including export cannot survive a narrower one.
     """
+    if issue_id is not None or since is not None:
+        raise PacketError(
+            "scoped packet exports are temporarily blocked: packet v3 carries the complete "
+            "custody chain, which can reveal identifiers outside an issue or date scope; "
+            "export the whole unit until a versioned scoped custody-view format is available"
+        )
+
     parent = out_dir.parent
     parent.mkdir(parents=True, exist_ok=True)
     if out_dir.is_symlink() or (out_dir.exists() and not out_dir.is_dir()):

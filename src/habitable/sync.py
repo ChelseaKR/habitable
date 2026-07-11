@@ -134,11 +134,21 @@ def export_message(
     the recipient. Originals retain FIX-02's incremental transfer behavior;
     timestamp and custody material remains present even when the peer already
     confirmed holding the original bytes.
+
+    ``capture_ids`` is retained for compatibility with the former share-subset
+    caller but fails closed. Protocol v2 has no honest representation for a
+    selected capture set plus its complete source custody proof.
     """
     peer = vault.sync_peer(recipient)
     if peer is None:
         raise SyncError(
             f"peer {recipient.fingerprint} is not authorized; exchange pairing material first"
+        )
+    if capture_ids is not None:
+        raise SyncError(
+            "scoped sync payloads are temporarily blocked: sync v2 carries the complete "
+            "custody chain; use a full-case message until a versioned scoped custody-view "
+            "protocol is available"
         )
     vault.document.attest_unsigned_fields()
     selected_state = dict(state) if state is not None else vault.document.to_state()
@@ -149,8 +159,6 @@ def export_message(
     captures: list[JSONValue] = []
     carries_original = False
     for capture in vault.document.captures():
-        if capture_ids is not None and capture.capture_id not in capture_ids:
-            continue
         have.append({"capture_id": capture.capture_id, "content_hash": capture.content_hash})
         primary = vault.get_token(capture.capture_id)
         additional = vault.get_additional_tokens(capture.capture_id)

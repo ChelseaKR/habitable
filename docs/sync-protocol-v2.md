@@ -48,6 +48,12 @@ metadata-only deltas carry an empty valid proof instead of uploading the entire
 chain again. An omitted original is accepted only if the recipient actually has
 that sealed capture.
 
+Because that proof is complete, protocol v2 does **not** safely represent an issue-scoped
+original-bearing share: filtering state/captures while retaining the proof can expose excluded
+record identifiers. Scoped message construction therefore fails before a message id is recorded.
+Restoring it requires a new protocol version and scoped/rehashed custody-view contract; v2 is not
+silently redefined and its chain is never truncated and called complete.
+
 The outer envelope contains the complete sender identity, pairing id, canonical
 inner bytes, an Ed25519 signature, and HMAC-SHA256 over those same inner bytes.
 The envelope is then sealed to the recipient. The signature preserves durable
