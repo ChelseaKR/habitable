@@ -4,11 +4,12 @@
 
 A vault is a directory holding one case. Sealed originals, the CRDT document,
 chain of custody, device identity, and deferred-timestamp queue are encrypted at
-rest under a data key that is itself wrapped by the user's passphrase. The vault
-also contains plaintext ``config.toml`` policy, the wrapped ``keyfile.json``, and
-timestamp-token sidecars. Path-based media tools receive short-lived plaintext
-working copies in a private OS-temporary workspace outside the vault; unlinking
-those files is cleanup, not guaranteed physical erasure.
+rest under a data key that is itself wrapped by the user's passphrase. Timestamp
+tokens are consolidated into per-capture AEAD-encrypted sidecars under the same
+data key. The vault also contains plaintext ``config.toml`` policy and the wrapped
+``keyfile.json``. Path-based media tools receive short-lived plaintext working
+copies in a private OS-temporary workspace outside the vault; unlinking those
+files is cleanup, not guaranteed physical erasure.
 
 Reading a sealed original always re-checks its fixity, so corruption or tampering
 surfaces as an error rather than a quietly altered exhibit.
@@ -16,6 +17,8 @@ surfaces as an error rather than a quietly altered exhibit.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import errno
 import json
 import os
@@ -23,7 +26,8 @@ import re
 import secrets
 import stat
 import tomllib
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -41,7 +45,7 @@ from .crypto import (
     import_recovery_blob,
     open_keyfile,
 )
-from .errors import FixityError, VaultError
+from .errors import CryptoError, FixityError, TimestampError, VaultError
 from .evidence import CustodyAction, CustodyLog
 from .model import CaseDocument
 from .syncstate import PeerAuthorization
@@ -59,6 +63,22 @@ _NODE = "node.enc"
 _DEFERRED = "deferred.enc"
 _ORIGINALS = "originals"
 _TOKENS = "tokens"
+_SIDECAR_SUFFIX = ".tokens.enc"
+_TOKEN_SIDECAR_VERSION = 1
+_TOKEN_AAD_PREFIX = b"habitable:timestamp-token-sidecar:v1:"
+_TOKEN_SIDECAR_NAME = re.compile(r"^[0-9a-f]{64}\.tokens\.enc$")
+_TOKEN_ATOMIC_TEMP = re.compile(r"^\.token-atomic-[0-9a-f]{32}\.tmp$")
+_MAX_TOKEN_SIDECAR_BYTES = 32 * 1024 * 1024
+_MAX_TOKEN_PLAINTEXT_BYTES = 24 * 1024 * 1024
+_MAX_LEGACY_TOKEN_BYTES = 16 * 1024 * 1024
+_MAX_TOKEN_DATA_BYTES = 8 * 1024 * 1024
+_MAX_TOKEN_TEXT_CHARS = 4096
+_MAX_TOKENS_PER_LIST = 256
+_MAX_TOKEN_JSON_NESTING = 64
+_MAX_TOKEN_JSON_STRUCTURAL_TOKENS = 8192
+_MAX_TOKEN_JSON_NUMBER_CHARS = 128
+_MAX_TOKEN_DIRECTORY_ENTRIES = 4096
+_MAX_TOKEN_TEMP_ENTRIES = 64
 # Local-only record of which captures each sync peer has already confirmed holding
 # (FIX-02: incremental sync deltas). Never merged via the CRDT and never exported —
 # it is purely an optimization so a later ``sync.export_message`` can skip re-sending
@@ -76,6 +96,11 @@ _SAVE_ARTIFACT = re.compile(
     r"\.(?:new|old)$"
 )
 _ATOMIC_TEMP = re.compile(r"^\.save-atomic-[0-9a-f]{32}\.tmp$")
+_KEYFILE_FORWARD_REPAIR_ARTIFACT = re.compile(r"^\.keyfile-forward-repair-[0-9a-f]{32}\.tmp$")
+_KEYFILE_ALTERNATE_RECOVERY_ARTIFACT = re.compile(
+    rf"^{re.escape(_KEYFILE)}\.recovery-[0-9a-f]{{32}}\.new$"
+)
+_MAX_ROOT_ROTATION_SCAN_ENTRIES = 256
 
 # Pre-FIX-01 vaults wrote the device node_id into plaintext config.toml; this
 # matches that line so a legacy vault can be migrated (the value moves into the
@@ -124,6 +149,193 @@ class _SaveTransaction:
     existing: frozenset[str]
 
 
+@dataclass(frozen=True, slots=True)
+class _TokenSidecar:
+    """Validated primary, redundant, and archive tokens for one capture."""
+
+    capture_id: str
+    primary: TimestampToken | None = None
+    additional: tuple[TimestampToken, ...] = ()
+    archive: tuple[TimestampToken, ...] = ()
+
+
+@dataclass(slots=True)
+class _PathRotationStage:
+    """One pre-registered root/original/keyfile DEK-rotation stage."""
+
+    final: Path
+    destination: Path
+    generation: os.stat_result | None = None
+    publish_descriptor: int = -1
+
+
+@dataclass(slots=True)
+class _TokenRotationStage:
+    """One pre-registered descriptor-relative token DEK-rotation stage."""
+
+    final_name: str
+    destination_name: str
+    generation: os.stat_result | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _TokenDirectory:
+    """A no-follow descriptor anchoring every operation beneath ``tokens/``."""
+
+    path: Path
+    descriptor: int
+
+    def stat(self, name: str) -> os.stat_result:
+        return os.stat(name, dir_fd=self.descriptor, follow_symlinks=False)
+
+    def exists(self, name: str) -> bool:
+        try:
+            self.stat(name)
+        except FileNotFoundError:
+            return False
+        return True
+
+    def unlink(self, name: str, *, missing_ok: bool = False) -> None:
+        try:
+            os.unlink(name, dir_fd=self.descriptor)
+        except FileNotFoundError:
+            if not missing_ok:
+                raise
+
+    def replace(self, source: str, destination: str) -> None:
+        os.rename(
+            source,
+            destination,
+            src_dir_fd=self.descriptor,
+            dst_dir_fd=self.descriptor,
+        )
+
+    def fsync(self) -> bool:
+        try:
+            os.fsync(self.descriptor)
+        except OSError as exc:
+            if os.name == "nt" or exc.errno in _UNSUPPORTED_DIRECTORY_FSYNC:
+                return False
+            raise
+        return True
+
+    def assert_attached(self) -> None:
+        """Fail if the pinned directory is no longer the vault's ``tokens/`` entry."""
+        try:
+            opened = os.fstat(self.descriptor)
+            current = self.path.lstat()
+        except OSError as exc:
+            raise VaultError("timestamp-token directory changed during operation") from exc
+        if (
+            not stat.S_ISDIR(opened.st_mode)
+            or not stat.S_ISDIR(current.st_mode)
+            or opened.st_dev != current.st_dev
+            or (opened.st_ino and current.st_ino and opened.st_ino != current.st_ino)
+        ):
+            raise VaultError("timestamp-token directory changed during operation")
+
+
+def _secure_token_directory_operations_supported() -> bool:
+    return (
+        bool(getattr(os, "O_DIRECTORY", 0))
+        and bool(getattr(os, "O_NOFOLLOW", 0))
+        and os.scandir in os.supports_fd
+        and os.mkdir in os.supports_dir_fd
+        and os.open in os.supports_dir_fd
+        and os.stat in os.supports_dir_fd
+        and os.stat in os.supports_follow_symlinks
+        and os.unlink in os.supports_dir_fd
+        and os.rename in os.supports_dir_fd
+    )
+
+
+def _require_secure_token_directory_operations() -> None:
+    if not _secure_token_directory_operations_supported():
+        raise VaultError(
+            "this platform cannot securely anchor timestamp-token storage; vaults are unsupported"
+        )
+
+
+def _prepare_new_vault_directory(path: Path) -> None:
+    """Create an empty, real vault tree before any key or case state is written."""
+    _require_secure_token_directory_operations()
+    try:
+        before = path.lstat()
+    except FileNotFoundError:
+        try:
+            path.mkdir(parents=True, exist_ok=False)
+            before = path.lstat()
+        except OSError as exc:
+            raise VaultError("vault destination could not be created safely") from exc
+    except OSError as exc:
+        raise VaultError("vault destination is unavailable") from exc
+    if not stat.S_ISDIR(before.st_mode):
+        raise VaultError("vault destination must be a real directory")
+
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise VaultError("vault destination cannot be securely opened") from exc
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISDIR(opened.st_mode) or (
+            before.st_dev != opened.st_dev
+            or (before.st_ino and opened.st_ino and before.st_ino != opened.st_ino)
+        ):
+            raise VaultError("vault destination changed while opening")
+        with os.scandir(descriptor) as entries:
+            if next(entries, None) is not None:
+                raise VaultError("vault destination must be empty")
+        try:
+            os.mkdir(_ORIGINALS, 0o700, dir_fd=descriptor)
+            os.mkdir(_TOKENS, 0o700, dir_fd=descriptor)
+        except OSError as exc:
+            raise VaultError("vault destination changed during initialization") from exc
+    finally:
+        os.close(descriptor)
+
+    # Prove the newly-created token child can be securely reopened before any
+    # config, keyfile, or encrypted state is committed to this destination.
+    with _open_token_directory(path):
+        pass
+
+
+@contextmanager
+def _open_token_directory(vault_path: Path) -> Iterator[_TokenDirectory]:
+    """Open ``tokens/`` once and keep all child operations anchored to that fd."""
+    _require_secure_token_directory_operations()
+    path = vault_path / _TOKENS
+    try:
+        before = path.lstat()
+    except OSError as exc:
+        raise VaultError("timestamp-token directory is unavailable") from exc
+    if not stat.S_ISDIR(before.st_mode):
+        raise VaultError("timestamp-token directory must be a real directory")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise VaultError("timestamp-token directory cannot be securely opened") from exc
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISDIR(opened.st_mode) or (
+            before.st_dev != opened.st_dev
+            or (before.st_ino and opened.st_ino and before.st_ino != opened.st_ino)
+        ):
+            raise VaultError("timestamp-token directory changed while opening")
+        directory = _TokenDirectory(path, descriptor)
+        directory.assert_attached()
+        try:
+            yield directory
+        except BaseException:
+            raise
+        else:
+            directory.assert_attached()
+    finally:
+        os.close(descriptor)
+
+
 def human_bytes(count: int) -> str:
     """A short, human-readable size using decimal (SI) units: ``6100000`` → ``6.1 MB``."""
     if count < 1000:
@@ -162,6 +374,7 @@ class Vault:
             fingerprint: set(capture_ids) for fingerprint, capture_ids in (peer_have or {}).items()
         }
         self._sync_peers = dict(sync_peers or {})
+        self._legacy_token_migration_complete = False
 
     # --- lifecycle ------------------------------------------------------------
 
@@ -178,11 +391,7 @@ class Vault:
         time_source: Callable[[], int] = wall_clock_ms,
     ) -> Vault:
         """Initialize a brand-new encrypted vault at ``path``."""
-        if (path / _KEYFILE).exists():
-            raise VaultError(f"a vault already exists at {path}")
-        path.mkdir(parents=True, exist_ok=True)
-        (path / _ORIGINALS).mkdir(exist_ok=True)
-        (path / _TOKENS).mkdir(exist_ok=True)
+        _prepare_new_vault_directory(path)
 
         # A random, passphrase-independent device id. Deriving it from the
         # passphrase (as pre-FIX-01 did) made the passphrase offline-brute-forceable
@@ -208,6 +417,8 @@ class Vault:
         vault._write_blob(_IDENTITY, identity.serialize())
         vault._write_blob(_NODE, canonical_json({"node_id": node_id}))
         vault.save()
+        # A newly-created token directory has no plaintext generation to migrate.
+        vault._legacy_token_migration_complete = True
         return vault
 
     @classmethod
@@ -246,7 +457,7 @@ class Vault:
         ]
         peer_have = _load_peer_have(path, dek)
         sync_peers = _load_sync_peers(path, dek)
-        return cls(
+        vault = cls(
             path,
             config,
             dek,
@@ -257,6 +468,11 @@ class Vault:
             peer_have,
             sync_peers,
         )
+        # Successful unlock is the authority to migrate pre-encryption token JSON.
+        # Publishing the encrypted aggregate precedes plaintext cleanup, so a crash
+        # leaves either the legacy generation or a recoverable both-present state.
+        vault._migrate_legacy_tokens()
+        return vault
 
     # --- key management -------------------------------------------------------
 
@@ -399,39 +615,145 @@ class Vault:
         accepted, documented tradeoff (see docs/crypto-spec.md sec 7) rather than a
         full transactional guarantee.
         """
+        # Legacy plaintext token records must enter the encrypted boundary before
+        # rotation inventories variable sidecars. This is idempotent after open.
+        self._migrate_legacy_tokens()
         new_dek = SymmetricKey.generate()
-        staged: list[tuple[Path, Path]] = []
-        try:
-            originals_dir = self.path / _ORIGINALS
-            for cap in self.document.captures():
-                sealed = originals_dir / cap.sealed_name
-                if not cap.sealed_name or not sealed.exists():
-                    continue
-                raw = self.read_original(cap.capture_id, cap.content_hash)
-                aad = f"original:{cap.capture_id}:{cap.content_hash}".encode()
-                dest = sealed.with_name(sealed.name + ".new")
-                dest.write_bytes(new_dek.encrypt(raw, aad=aad))
-                staged.append((sealed, dest))
+        staged_files: list[_PathRotationStage] = []
+        staged_tokens: list[_TokenRotationStage] = []
+        keyfile_final = self.path / _KEYFILE
+        keyfile_dest = keyfile_final.with_name(keyfile_final.name + ".new")
+        keyfile_stage = _PathRotationStage(keyfile_final, keyfile_dest)
+        keyfile_bytes: bytes | None = None
+        publication_attempted = False
+        keyfile_commit_attempted = False
+        with _open_token_directory(self.path) as token_dir:
+            self._assert_no_stale_root_rotation_stages(keyfile_dest)
+            try:
+                originals_dir = self.path / _ORIGINALS
+                for cap in self.document.captures():
+                    sealed = originals_dir / cap.sealed_name
+                    if not cap.sealed_name or not sealed.exists():
+                        continue
+                    raw = self.read_original(cap.capture_id, cap.content_hash)
+                    aad = f"original:{cap.capture_id}:{cap.content_hash}".encode()
+                    dest = sealed.with_name(sealed.name + ".new")
+                    ciphertext = new_dek.encrypt(raw, aad=aad)
+                    stage = _PathRotationStage(sealed, dest)
+                    staged_files.append(stage)
+                    _write_private_path_stage_and_fsync(stage, ciphertext)
 
-            for name, plaintext in self._blob_plaintexts():
-                final = self.path / name
-                dest = final.with_name(final.name + ".new")
-                dest.write_bytes(new_dek.encrypt(plaintext, aad=name.encode()))
-                staged.append((final, dest))
+                for name, plaintext in self._blob_plaintexts():
+                    final = self.path / name
+                    dest = final.with_name(final.name + ".new")
+                    ciphertext = new_dek.encrypt(plaintext, aad=name.encode())
+                    stage = _PathRotationStage(final, dest)
+                    staged_files.append(stage)
+                    _write_private_path_stage_and_fsync(stage, ciphertext)
 
-            keyfile_final = self.path / _KEYFILE
-            keyfile_dest = keyfile_final.with_name(keyfile_final.name + ".new")
-            keyfile_dest.write_text(export_recovery_blob(new_dek, passphrase), encoding="utf-8")
-            staged.append((keyfile_final, keyfile_dest))
+                self._stage_rotated_token_sidecars(token_dir, new_dek, staged_tokens)
 
-            for final, dest in staged:
-                dest.replace(final)
-        except BaseException:
-            for _final, dest in staged:
-                dest.unlink(missing_ok=True)
-            raise
+                keyfile_bytes = export_recovery_blob(new_dek, passphrase).encode("utf-8")
+                _write_private_path_stage_and_fsync(keyfile_stage, keyfile_bytes)
 
-        self._dek = new_dek
+                path_stage_directories = _dek_rotation_path_stage_directories(
+                    staged_files, keyfile_stage
+                )
+                _fsync_dek_rotation_directories(token_dir, path_stage_directories)
+                _assert_dek_rotation_stages_owned(
+                    token_dir, staged_files, staged_tokens, keyfile_stage
+                )
+                _open_path_rotation_stage_readonly(keyfile_stage)
+
+                # From this point forward preserve the complete remaining new-key
+                # generation even if the first rename raises. An asynchronous
+                # exception can arrive after the kernel committed rename but before
+                # Python could record success; conservative preservation avoids
+                # deleting the only wrapped key for possibly-published ciphertext.
+                publication_attempted = True
+                for path_stage in staged_files:
+                    _assert_path_rotation_stage_owned(path_stage)
+                    path_stage.destination.replace(path_stage.final)
+                for token_stage in staged_tokens:
+                    _assert_token_rotation_stage_owned(token_dir, token_stage)
+                    token_dir.replace(token_stage.destination_name, token_stage.final_name)
+                # Commit every new-key data/original/token rename before the
+                # wrapped key is replaced as the final generation marker.
+                _fsync_dek_rotation_directories(token_dir, path_stage_directories)
+                keyfile_commit_attempted = True
+                _assert_path_rotation_stage_owned(keyfile_stage)
+                keyfile_stage.destination.replace(keyfile_stage.final)
+                if not _published_keyfile_matches_open_stage(keyfile_stage, keyfile_bytes):
+                    raise VaultError("published DEK-rotation keyfile changed")
+                # Every live generation now uses the new key. Update memory before
+                # late durability calls so a reported flush failure cannot pair a
+                # fully swapped vault with the old in-memory key.
+                self._dek = new_dek
+                _fsync_directory(self.path)
+                _close_path_rotation_publish_descriptor(keyfile_stage, suppress_errors=True)
+            except BaseException as rotation_error:
+                # Before publication is attempted, every live file still uses the
+                # old key and staging is disposable. After the first attempt, an
+                # exception cannot prove rename did not commit, so deleting the new
+                # generation could destroy the only recovery path for new-key data.
+                if publication_attempted and keyfile_commit_attempted:
+                    # Every data rename was durably ordered before the commit
+                    # attempt, so current memory must use the new key even if
+                    # proof or forward repair reports a secondary error.
+                    self._dek = new_dek
+                try:
+                    _recover_failed_dek_rotation(
+                        token_dir,
+                        staged_files,
+                        staged_tokens,
+                        keyfile_stage,
+                        keyfile_bytes,
+                        publication_attempted=publication_attempted,
+                        keyfile_commit_attempted=keyfile_commit_attempted,
+                        rotation_error=rotation_error,
+                    )
+                finally:
+                    _close_path_rotation_publish_descriptor(keyfile_stage, suppress_errors=True)
+                raise
+
+    def _assert_no_stale_root_rotation_stages(self, keyfile_dest: Path) -> None:
+        staged_paths = [self.path / f"{name}.new" for name, _plaintext in self._blob_plaintexts()]
+        for capture in self.document.captures():
+            if capture.sealed_name:
+                sealed = self.path / _ORIGINALS / capture.sealed_name
+                staged_paths.append(sealed.with_name(sealed.name + ".new"))
+        staged_paths.append(keyfile_dest)
+        stale = next((path for path in staged_paths if _path_entry_exists(path)), None)
+        if stale is None:
+            stale = _first_keyfile_rotation_recovery_artifact(self.path)
+        if stale is not None:
+            raise VaultError(
+                f"stale DEK-rotation staging file requires manual recovery: {stale.name}"
+            )
+
+    def _stage_rotated_token_sidecars(
+        self,
+        directory: _TokenDirectory,
+        new_dek: SymmetricKey,
+        staged: list[_TokenRotationStage],
+    ) -> None:
+        for final_name in _token_sidecar_entry_names(directory):
+            record = self._read_token_sidecar_entry(directory, final_name)
+            dest_name = final_name + ".new"
+            if directory.exists(dest_name):
+                raise VaultError(
+                    "stale timestamp-token DEK-rotation staging file requires "
+                    f"manual recovery: {dest_name}"
+                )
+            ciphertext = new_dek.encrypt(
+                _encode_token_sidecar(record),
+                aad=_token_sidecar_aad(final_name),
+            )
+            # Register intent before creation so an exception immediately after
+            # the writer returns cannot strand an otherwise untracked stage.
+            stage = _TokenRotationStage(final_name, dest_name)
+            staged.append(stage)
+            _write_private_token_stage_and_fsync(directory, stage, ciphertext)
 
     def _blob_plaintexts(self) -> list[tuple[str, bytes]]:
         """Plaintext contents of every non-original encrypted blob (for DEK rotation)."""
@@ -727,17 +1049,15 @@ class Vault:
     # --- timestamp tokens -----------------------------------------------------
 
     def store_token(self, capture_id: str, token: TimestampToken) -> None:
-        path = self.path / _TOKENS / f"{capture_id}.json"
-        path.write_text(json.dumps(token.to_dict(), indent=2, sort_keys=True), encoding="utf-8")
+        """Store the primary token without exposing its metadata at rest."""
+        record = self._load_token_sidecar(capture_id) or _TokenSidecar(capture_id)
+        self._write_token_sidecar(
+            _TokenSidecar(capture_id, _validated_token(token), record.additional, record.archive)
+        )
 
     def get_token(self, capture_id: str) -> TimestampToken | None:
-        path = self.path / _TOKENS / f"{capture_id}.json"
-        if not path.exists():
-            return None
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(raw, dict):
-            raise VaultError(f"corrupt token record for {capture_id}")
-        return TimestampToken.from_dict(raw)
+        record = self._load_token_sidecar(capture_id)
+        return None if record is None else record.primary
 
     def add_additional_token(self, capture_id: str, token: TimestampToken) -> None:
         """Append a redundant primary timestamp from another authority.
@@ -745,44 +1065,179 @@ class Vault:
         Unlike an archive token (which chains *over* the primary token), an additional
         token is an independent RFC 3161 token over the same content hash, so the proof
         does not rest on a single authority (see docs/research, item R-16)."""
-        path = self.path / _TOKENS / f"{capture_id}.additional.json"
-        existing = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
-        if not isinstance(existing, list):
-            raise VaultError(f"corrupt additional-token record for {capture_id}")
-        existing.append(token.to_dict())
-        path.write_text(json.dumps(existing, indent=2, sort_keys=True), encoding="utf-8")
+        record = self._load_token_sidecar(capture_id) or _TokenSidecar(capture_id)
+        additional = (*record.additional, _validated_token(token))
+        _check_token_count(additional, "additional-token", capture_id)
+        self._write_token_sidecar(
+            _TokenSidecar(capture_id, record.primary, additional, record.archive)
+        )
 
     def get_additional_tokens(self, capture_id: str) -> list[TimestampToken]:
-        path = self.path / _TOKENS / f"{capture_id}.additional.json"
-        if not path.exists():
-            return []
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(raw, list):
-            raise VaultError(f"corrupt additional-token record for {capture_id}")
-        return [TimestampToken.from_dict(item) for item in raw if isinstance(item, dict)]
+        record = self._load_token_sidecar(capture_id)
+        return [] if record is None else list(record.additional)
 
     def add_archive_token(self, capture_id: str, token: TimestampToken) -> None:
         """Append an archive (re-)timestamp for a capture."""
-        path = self.path / _TOKENS / f"{capture_id}.archive.json"
-        existing = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
-        if not isinstance(existing, list):
-            raise VaultError(f"corrupt archive-token record for {capture_id}")
-        existing.append(token.to_dict())
-        path.write_text(json.dumps(existing, indent=2, sort_keys=True), encoding="utf-8")
+        record = self._load_token_sidecar(capture_id) or _TokenSidecar(capture_id)
+        archive = (*record.archive, _validated_token(token))
+        _check_token_count(archive, "archive-token", capture_id)
+        self._write_token_sidecar(
+            _TokenSidecar(capture_id, record.primary, record.additional, archive)
+        )
 
     def get_archive_tokens(self, capture_id: str) -> list[TimestampToken]:
-        path = self.path / _TOKENS / f"{capture_id}.archive.json"
-        if not path.exists():
-            return []
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(raw, list):
-            raise VaultError(f"corrupt archive-token record for {capture_id}")
-        return [TimestampToken.from_dict(item) for item in raw if isinstance(item, dict)]
+        record = self._load_token_sidecar(capture_id)
+        return [] if record is None else list(record.archive)
 
     def latest_token(self, capture_id: str) -> TimestampToken | None:
         """The most recent token for a capture (the last archive, else the primary)."""
         archives = self.get_archive_tokens(capture_id)
         return archives[-1] if archives else self.get_token(capture_id)
+
+    def _token_sidecar_path(self, capture_id: str) -> Path:
+        return self.path / _TOKENS / _token_sidecar_name(capture_id)
+
+    def _load_token_sidecar(self, capture_id: str) -> _TokenSidecar | None:
+        self._migrate_legacy_tokens()
+        name = _token_sidecar_name(capture_id)
+        with _open_token_directory(self.path) as directory:
+            if not directory.exists(name):
+                return None
+            return self._read_token_sidecar_entry(directory, name, expected_capture_id=capture_id)
+
+    def _read_token_sidecar_path(
+        self, path: Path, *, expected_capture_id: str | None = None
+    ) -> _TokenSidecar:
+        if path.parent != self.path / _TOKENS:
+            raise VaultError("invalid encrypted timestamp-token sidecar name")
+        with _open_token_directory(self.path) as directory:
+            return self._read_token_sidecar_entry(
+                directory, path.name, expected_capture_id=expected_capture_id
+            )
+
+    def _read_token_sidecar_entry(
+        self,
+        directory: _TokenDirectory,
+        name: str,
+        *,
+        expected_capture_id: str | None = None,
+    ) -> _TokenSidecar:
+        if not _TOKEN_SIDECAR_NAME.fullmatch(name):
+            raise VaultError("invalid encrypted timestamp-token sidecar name")
+        try:
+            ciphertext = _read_bounded_regular_entry(directory, name, _MAX_TOKEN_SIDECAR_BYTES)
+            plaintext = self._dek.decrypt(ciphertext, aad=_token_sidecar_aad(name))
+            record = _decode_token_sidecar(plaintext)
+        except (CryptoError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise VaultError(f"corrupt encrypted timestamp-token sidecar: {name}") from exc
+        if name != _token_sidecar_name(record.capture_id):
+            raise VaultError("encrypted timestamp-token sidecar capture id does not match its name")
+        if expected_capture_id is not None and record.capture_id != expected_capture_id:
+            raise VaultError("encrypted timestamp-token sidecar belongs to another capture")
+        return record
+
+    def _write_token_sidecar(self, record: _TokenSidecar) -> None:
+        with _open_token_directory(self.path) as directory:
+            self._write_token_sidecar_entry(directory, record)
+
+    def _write_token_sidecar_entry(
+        self,
+        directory: _TokenDirectory,
+        record: _TokenSidecar,
+        *,
+        migration_names: Mapping[str, str] | None = None,
+    ) -> None:
+        name = _token_sidecar_name(record.capture_id)
+        entries = _bounded_token_directory_entries(directory)
+        _remove_orphan_token_temps(directory, entries)
+        live_count = sum(not _TOKEN_ATOMIC_TEMP.fullmatch(entry) for entry in entries)
+        if not directory.exists(name) and live_count >= _MAX_TOKEN_DIRECTORY_ENTRIES:
+            migration_overlap = False
+            if live_count == _MAX_TOKEN_DIRECTORY_ENTRIES and migration_names is not None:
+                migration_overlap = _legacy_migration_names_match_record(
+                    directory, entries, record, migration_names
+                )
+            if not migration_overlap:
+                raise VaultError("timestamp-token directory is at its live-entry limit")
+        plaintext = _encode_token_sidecar(record)
+        ciphertext = self._dek.encrypt(plaintext, aad=_token_sidecar_aad(name))
+        if len(ciphertext) > _MAX_TOKEN_SIDECAR_BYTES:
+            raise VaultError("encrypted timestamp-token sidecar is too large")
+        _atomic_replace_private_entry(directory, name, ciphertext)
+
+    def _migrate_legacy_tokens(self) -> None:
+        """Durably replace plaintext token JSON after a successful unlock."""
+        if self._legacy_token_migration_complete:
+            return
+        with _open_token_directory(self.path) as directory:
+            entries = _bounded_token_directory_entries(directory, allow_migration_overlap=True)
+            _remove_orphan_token_temps(directory, entries)
+            groups = _legacy_token_groups(directory, entries)
+            self._validate_migration_overlap(directory, entries, groups)
+            for legacy_capture_id in sorted(groups):
+                names = groups[legacy_capture_id]
+                self._migrate_legacy_token_group(directory, legacy_capture_id, names)
+        self._legacy_token_migration_complete = True
+
+    def _validate_migration_overlap(
+        self,
+        directory: _TokenDirectory,
+        entries: Sequence[str],
+        groups: Mapping[str, Mapping[str, str]],
+    ) -> None:
+        live_count = sum(not _TOKEN_ATOMIC_TEMP.fullmatch(name) for name in entries)
+        if live_count <= _MAX_TOKEN_DIRECTORY_ENTRIES:
+            return
+        present = set(entries)
+        candidates = [
+            capture_id for capture_id in groups if _token_sidecar_name(capture_id) in present
+        ]
+        if len(candidates) != 1:
+            raise VaultError(
+                "timestamp-token directory has too many entries without a valid migration overlap"
+            )
+        capture_id = candidates[0]
+        legacy_names = groups[capture_id]
+        encrypted = self._read_token_sidecar_entry(
+            directory, _token_sidecar_name(capture_id), expected_capture_id=capture_id
+        )
+        legacy = _read_legacy_token_sidecar(directory, capture_id, legacy_names)
+        if live_count - len(
+            legacy_names
+        ) > _MAX_TOKEN_DIRECTORY_ENTRIES or not _remaining_legacy_tokens_match(
+            encrypted, legacy, legacy_names
+        ):
+            raise VaultError(
+                "timestamp-token directory has too many entries without a valid migration overlap"
+            )
+
+    def _migrate_legacy_token_group(
+        self,
+        directory: _TokenDirectory,
+        capture_id: str,
+        names: Mapping[str, str],
+    ) -> None:
+        snapshots = _snapshot_legacy_token_entries(directory, names.values())
+        legacy = _read_legacy_token_sidecar(directory, capture_id, names)
+        encrypted_name = _token_sidecar_name(capture_id)
+        if directory.exists(encrypted_name):
+            encrypted = self._read_token_sidecar_entry(
+                directory, encrypted_name, expected_capture_id=capture_id
+            )
+            if not _remaining_legacy_tokens_match(encrypted, legacy, names):
+                raise VaultError(
+                    f"encrypted and legacy timestamp-token records disagree for {capture_id}"
+                )
+        else:
+            self._write_token_sidecar_entry(directory, legacy, migration_names=names)
+            if (
+                self._read_token_sidecar_entry(
+                    directory, encrypted_name, expected_capture_id=capture_id
+                )
+                != legacy
+            ):
+                raise VaultError(f"timestamp-token migration verification failed for {capture_id}")
+        _remove_migrated_token_entries(directory, tuple(names.values()), snapshots)
 
     # --- deferred-timestamp queue ---------------------------------------------
 
@@ -801,6 +1256,774 @@ class Vault:
         _atomic_replace_file(
             self.path / name,
             self._dek.encrypt(plaintext, aad=name.encode()),
+        )
+
+
+def _token_sidecar_name(capture_id: str) -> str:
+    encoded_capture_id = _capture_id_bytes(capture_id)
+    return f"{sha256_bytes(encoded_capture_id)}{_SIDECAR_SUFFIX}"
+
+
+def _token_sidecar_aad(filename: str) -> bytes:
+    if not _TOKEN_SIDECAR_NAME.fullmatch(filename):
+        raise VaultError("invalid encrypted timestamp-token sidecar name")
+    digest = filename.removesuffix(_SIDECAR_SUFFIX)
+    return _TOKEN_AAD_PREFIX + digest.encode("ascii")
+
+
+def _validate_capture_id(capture_id: str) -> None:
+    _capture_id_bytes(capture_id)
+
+
+def _capture_id_bytes(capture_id: str) -> bytes:
+    if not isinstance(capture_id, str):
+        raise VaultError("timestamp-token capture id must be text")
+    if not capture_id:
+        raise VaultError("timestamp-token capture id must not be empty")
+    if len(capture_id) > _MAX_TOKEN_TEXT_CHARS:
+        raise VaultError("timestamp-token capture id is too large")
+    try:
+        return capture_id.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise VaultError("timestamp-token capture id must be valid UTF-8") from exc
+
+
+def _validated_token(token: TimestampToken) -> TimestampToken:
+    if not isinstance(token, TimestampToken):
+        raise VaultError("timestamp token has an invalid type")
+    if not isinstance(token.kind, str) or not isinstance(token.tsa_name, str):
+        raise VaultError("timestamp-token metadata must be text")
+    try:
+        token.kind.encode("utf-8")
+        token.tsa_name.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise VaultError("timestamp-token metadata must be valid UTF-8") from exc
+    if not isinstance(token.data, bytes):
+        raise VaultError("timestamp-token data must be bytes")
+    if len(token.kind) > _MAX_TOKEN_TEXT_CHARS or len(token.tsa_name) > _MAX_TOKEN_TEXT_CHARS:
+        raise VaultError("timestamp-token metadata is too large")
+    if len(token.data) > _MAX_TOKEN_DATA_BYTES:
+        raise VaultError("timestamp token is too large")
+    return token
+
+
+def _token_to_json(token: TimestampToken) -> dict[str, JSONValue]:
+    validated = _validated_token(token)
+    return {
+        "kind": validated.kind,
+        "tsa_name": validated.tsa_name,
+        "token_b64": base64.b64encode(validated.data).decode("ascii"),
+    }
+
+
+def _encode_token_sidecar(record: _TokenSidecar) -> bytes:
+    _validate_capture_id(record.capture_id)
+    _check_token_count(record.additional, "additional-token", record.capture_id)
+    _check_token_count(record.archive, "archive-token", record.capture_id)
+    payload: dict[str, JSONValue] = {
+        "version": _TOKEN_SIDECAR_VERSION,
+        "capture_id": record.capture_id,
+        "primary": None if record.primary is None else _token_to_json(record.primary),
+        "additional": [_token_to_json(token) for token in record.additional],
+        "archive": [_token_to_json(token) for token in record.archive],
+    }
+    encoded = canonical_json(payload)
+    if len(encoded) > _MAX_TOKEN_PLAINTEXT_BYTES:
+        raise VaultError("timestamp-token sidecar plaintext is too large")
+    return encoded
+
+
+def _check_token_json_nesting(text: str) -> None:
+    """Bound JSON shape before parsing, independently of mutable interpreter limits."""
+    depth = 0
+    structural_tokens = 0
+    number_chars = 0
+
+    for character in _token_json_characters_outside_strings(text):
+        if character in "{}[],:":
+            structural_tokens += 1
+            if structural_tokens > _MAX_TOKEN_JSON_STRUCTURAL_TOKENS:
+                raise ValueError("timestamp-token JSON has too many structural tokens")
+        if character in "{[":
+            depth += 1
+            if depth > _MAX_TOKEN_JSON_NESTING:
+                raise ValueError("timestamp-token JSON nesting is too deep")
+        elif character in "}]" and depth:
+            # Full delimiter matching remains json.loads' responsibility.
+            depth -= 1
+        if character in "-+0123456789.eE":
+            number_chars += 1
+            if number_chars > _MAX_TOKEN_JSON_NUMBER_CHARS:
+                raise ValueError("timestamp-token JSON number is too long")
+        else:
+            number_chars = 0
+
+
+def _token_json_characters_outside_strings(text: str) -> Iterator[str]:
+    """Yield only JSON text outside quoted strings, honoring backslash escapes."""
+    in_string = False
+    escaped = False
+    for character in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            continue
+        if character == '"':
+            in_string = True
+            continue
+        yield character
+
+
+def _parse_token_json_int(value: str) -> int:
+    if len(value) > _MAX_TOKEN_JSON_NUMBER_CHARS:
+        raise ValueError("timestamp-token JSON integer is too long")
+    return int(value)
+
+
+def _decode_token_sidecar(data: bytes) -> _TokenSidecar:
+    if len(data) > _MAX_TOKEN_PLAINTEXT_BYTES:
+        raise VaultError("timestamp-token sidecar plaintext is too large")
+    try:
+        text = data.decode("utf-8")
+        _check_token_json_nesting(text)
+        raw: JSONValue = json.loads(text, parse_int=_parse_token_json_int)
+    except (UnicodeDecodeError, RecursionError, ValueError) as exc:
+        raise VaultError("corrupt encrypted timestamp-token sidecar JSON") from exc
+    expected = {"version", "capture_id", "primary", "additional", "archive"}
+    if not isinstance(raw, dict) or set(raw) != expected:
+        raise VaultError("corrupt encrypted timestamp-token sidecar structure")
+    if type(raw["version"]) is not int or raw["version"] != _TOKEN_SIDECAR_VERSION:
+        raise VaultError("unsupported encrypted timestamp-token sidecar version")
+    capture_id = raw["capture_id"]
+    if not isinstance(capture_id, str):
+        raise VaultError("corrupt encrypted timestamp-token sidecar capture id")
+    _validate_capture_id(capture_id)
+    primary_raw = raw["primary"]
+    if primary_raw is not None and not isinstance(primary_raw, dict):
+        raise VaultError(f"corrupt token record for {capture_id}")
+    primary = (
+        None if primary_raw is None else _decode_timestamp_token(primary_raw, "token", capture_id)
+    )
+    additional = _decode_token_list(raw["additional"], "additional-token", capture_id)
+    archive = _decode_token_list(raw["archive"], "archive-token", capture_id)
+    return _TokenSidecar(capture_id, primary, additional, archive)
+
+
+def _decode_token_list(raw: JSONValue, label: str, capture_id: str) -> tuple[TimestampToken, ...]:
+    if not isinstance(raw, list):
+        raise VaultError(f"corrupt {label} record for {capture_id}")
+    _check_token_count(raw, label, capture_id)
+    tokens: list[TimestampToken] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise VaultError(f"corrupt {label} record for {capture_id}")
+        tokens.append(_decode_timestamp_token(item, label, capture_id))
+    return tuple(tokens)
+
+
+def _decode_timestamp_token(
+    raw: Mapping[str, JSONValue], label: str, capture_id: str
+) -> TimestampToken:
+    if set(raw) != {"kind", "tsa_name", "token_b64"}:
+        raise VaultError(f"corrupt {label} record for {capture_id}")
+    kind = raw["kind"]
+    tsa_name = raw["tsa_name"]
+    token_b64 = raw["token_b64"]
+    if not isinstance(kind, str) or not isinstance(tsa_name, str) or not isinstance(token_b64, str):
+        raise VaultError(f"corrupt {label} record for {capture_id}")
+    try:
+        strict_data = base64.b64decode(token_b64, validate=True)
+        token = TimestampToken.from_dict(raw)
+    except (binascii.Error, TimestampError, ValueError) as exc:
+        raise VaultError(f"corrupt {label} record for {capture_id}") from exc
+    if token.data != strict_data:
+        raise VaultError(f"corrupt {label} record for {capture_id}")
+    return _validated_token(token)
+
+
+def _first_keyfile_rotation_recovery_artifact(directory: Path) -> Path | None:
+    """Return one exact recovery artifact without unbounded root enumeration."""
+    with os.scandir(directory) as scanned:
+        for entry_count, entry in enumerate(scanned, start=1):
+            if entry_count > _MAX_ROOT_ROTATION_SCAN_ENTRIES:
+                raise VaultError(
+                    "vault root has too many entries for safe DEK rotation; "
+                    "manual recovery is required"
+                )
+            if _KEYFILE_FORWARD_REPAIR_ARTIFACT.fullmatch(
+                entry.name
+            ) or _KEYFILE_ALTERNATE_RECOVERY_ARTIFACT.fullmatch(entry.name):
+                return directory / entry.name
+    return None
+
+
+def _check_token_count(tokens: Sequence[object], label: str, capture_id: str) -> None:
+    if len(tokens) > _MAX_TOKENS_PER_LIST:
+        raise VaultError(f"{label} record has too many tokens for {capture_id}")
+
+
+def _bounded_token_directory_entries(
+    directory: _TokenDirectory, *, allow_migration_overlap: bool = False
+) -> list[str]:
+    entries: list[str] = []
+    temporary_count = 0
+    live_count = 0
+    live_limit = _MAX_TOKEN_DIRECTORY_ENTRIES + int(allow_migration_overlap)
+    with os.scandir(directory.descriptor) as scanned:
+        for entry in scanned:
+            name = entry.name
+            if _TOKEN_ATOMIC_TEMP.fullmatch(name):
+                temporary_count += 1
+                if temporary_count > _MAX_TOKEN_TEMP_ENTRIES:
+                    raise VaultError("timestamp-token directory has too many temporary entries")
+            else:
+                live_count += 1
+            if live_count > live_limit:
+                raise VaultError("timestamp-token directory has too many entries")
+            entries.append(name)
+    return entries
+
+
+def _token_sidecar_entry_names(directory: _TokenDirectory) -> list[str]:
+    return sorted(
+        name
+        for name in _bounded_token_directory_entries(directory)
+        if _TOKEN_SIDECAR_NAME.fullmatch(name)
+    )
+
+
+def _legacy_token_groups(
+    directory: _TokenDirectory, entries: Iterable[str]
+) -> dict[str, dict[str, str]]:
+    groups: dict[str, dict[str, str]] = {}
+    for name in sorted(entries):
+        if not name.endswith(".json"):
+            continue
+        raw = _read_legacy_token_json_value(directory, name)
+        if isinstance(raw, dict):
+            # A primary for capture id ``tenant.additional`` has the same
+            # filename as the additional component for ``tenant``. The legacy
+            # writer's object-versus-list shape is the only unambiguous signal.
+            capture_id = name.removesuffix(".json")
+            kind = "primary"
+        elif isinstance(raw, list) and name.endswith(".additional.json"):
+            capture_id = name.removesuffix(".additional.json")
+            kind = "additional"
+        elif isinstance(raw, list) and name.endswith(".archive.json"):
+            capture_id = name.removesuffix(".archive.json")
+            kind = "archive"
+        else:
+            detail = "legacy timestamp-token file has an invalid top-level shape"
+            if isinstance(raw, list):
+                detail = "corrupt token record: plain legacy JSON requires an object"
+            raise VaultError(f"{detail}: {name}")
+        _validate_capture_id(capture_id)
+        group = groups.setdefault(capture_id, {})
+        if kind in group:
+            raise VaultError(f"ambiguous legacy timestamp-token records for {capture_id}")
+        group[kind] = name
+    return groups
+
+
+def _legacy_migration_names_match_record(
+    directory: _TokenDirectory,
+    entries: Iterable[str],
+    record: _TokenSidecar,
+    names: Mapping[str, str],
+) -> bool:
+    """Validate one cap-overlap group without reclassifying the whole directory."""
+    expected_names = {
+        "primary": f"{record.capture_id}.json",
+        "additional": f"{record.capture_id}.additional.json",
+        "archive": f"{record.capture_id}.archive.json",
+    }
+    if (
+        not names
+        or not set(names).issubset(expected_names)
+        or any(expected_names[kind] != name for kind, name in names.items())
+        or not set(names.values()).issubset(entries)
+    ):
+        return False
+    legacy = _read_legacy_token_sidecar(directory, record.capture_id, names)
+    return _remaining_legacy_tokens_match(record, legacy, names)
+
+
+def _remaining_legacy_tokens_match(
+    encrypted: _TokenSidecar, legacy: _TokenSidecar, names: Mapping[str, str]
+) -> bool:
+    """Compare only components still present after a possibly partial cleanup."""
+    return (
+        ("primary" not in names or encrypted.primary == legacy.primary)
+        and ("additional" not in names or encrypted.additional == legacy.additional)
+        and ("archive" not in names or encrypted.archive == legacy.archive)
+    )
+
+
+def _read_legacy_token_sidecar(
+    directory: _TokenDirectory, capture_id: str, names: Mapping[str, str]
+) -> _TokenSidecar:
+    primary: TimestampToken | None = None
+    if name := names.get("primary"):
+        raw = _read_legacy_token_json(directory, name, "token", capture_id)
+        if not isinstance(raw, dict):
+            raise VaultError(f"corrupt token record for {capture_id}")
+        primary = _decode_timestamp_token(raw, "token", capture_id)
+    additional = _read_legacy_token_list(
+        directory, names.get("additional"), "additional-token", capture_id
+    )
+    archive = _read_legacy_token_list(directory, names.get("archive"), "archive-token", capture_id)
+    return _TokenSidecar(capture_id, primary, additional, archive)
+
+
+def _read_legacy_token_list(
+    directory: _TokenDirectory, name: str | None, label: str, capture_id: str
+) -> tuple[TimestampToken, ...]:
+    if name is None:
+        return ()
+    raw = _read_legacy_token_json(directory, name, label, capture_id)
+    return _decode_token_list(raw, label, capture_id)
+
+
+def _read_legacy_token_json(
+    directory: _TokenDirectory, name: str, label: str, capture_id: str
+) -> JSONValue:
+    return _read_legacy_token_json_value(
+        directory,
+        name,
+        parse_error=f"corrupt {label} record for {capture_id}",
+    )
+
+
+def _read_legacy_token_json_value(
+    directory: _TokenDirectory, name: str, *, parse_error: str | None = None
+) -> JSONValue:
+    # Keep no-follow, regular-file, race, and size failures precise. Only the
+    # parser boundary is normalized into a controlled corrupt-record error.
+    data = _read_bounded_regular_entry(directory, name, _MAX_LEGACY_TOKEN_BYTES)
+    try:
+        text = data.decode("utf-8")
+        _check_token_json_nesting(text)
+        raw: JSONValue = json.loads(text, parse_int=_parse_token_json_int)
+    except (UnicodeDecodeError, RecursionError, ValueError) as exc:
+        message = parse_error or f"corrupt token record in legacy file: {name}"
+        raise VaultError(message) from exc
+    return raw
+
+
+type _FileSnapshot = tuple[int, int, int, int, int]
+
+
+def _snapshot_legacy_token_entries(
+    directory: _TokenDirectory, names: Iterable[str]
+) -> dict[str, _FileSnapshot]:
+    snapshots: dict[str, _FileSnapshot] = {}
+    for name in names:
+        try:
+            info = directory.stat(name)
+        except OSError as exc:
+            raise VaultError(f"legacy timestamp-token file is unavailable: {name}") from exc
+        if not stat.S_ISREG(info.st_mode):
+            raise VaultError(f"legacy timestamp-token file must be regular: {name}")
+        snapshots[name] = (
+            info.st_dev,
+            info.st_ino,
+            info.st_size,
+            info.st_mtime_ns,
+            info.st_ctime_ns,
+        )
+    return snapshots
+
+
+def _remove_migrated_token_entries(
+    directory: _TokenDirectory,
+    names: tuple[str, ...],
+    snapshots: Mapping[str, _FileSnapshot],
+) -> None:
+    """Remove only the exact legacy generation that was encrypted and verified."""
+    for name in names:
+        try:
+            info = directory.stat(name)
+        except OSError as exc:
+            raise VaultError(f"legacy timestamp-token file changed before cleanup: {name}") from exc
+        current = (
+            info.st_dev,
+            info.st_ino,
+            info.st_size,
+            info.st_mtime_ns,
+            info.st_ctime_ns,
+        )
+        if not stat.S_ISREG(info.st_mode) or current != snapshots[name]:
+            raise VaultError(f"legacy timestamp-token file changed before cleanup: {name}")
+    for name in names:
+        directory.unlink(name)
+    if names:
+        directory.fsync()
+
+
+def _discard_dek_rotation_stages(
+    token_directory: _TokenDirectory,
+    staged_files: Sequence[_PathRotationStage],
+    staged_tokens: Sequence[_TokenRotationStage],
+    keyfile_stage: _PathRotationStage,
+) -> None:
+    """Discard a wholly unpublished new-key generation."""
+    for path_stage in staged_files:
+        _unlink_path_rotation_stage(path_stage)
+    for token_stage in staged_tokens:
+        _unlink_token_rotation_stage(token_directory, token_stage)
+    _unlink_path_rotation_stage(keyfile_stage)
+
+
+def _recover_failed_dek_rotation(
+    token_directory: _TokenDirectory,
+    staged_files: Sequence[_PathRotationStage],
+    staged_tokens: Sequence[_TokenRotationStage],
+    keyfile_stage: _PathRotationStage,
+    keyfile_bytes: bytes | None,
+    *,
+    publication_attempted: bool,
+    keyfile_commit_attempted: bool,
+    rotation_error: BaseException,
+) -> None:
+    if not publication_attempted:
+        try:
+            _discard_dek_rotation_stages(
+                token_directory, staged_files, staged_tokens, keyfile_stage
+            )
+        except BaseException as cleanup_error:
+            rotation_error.add_note(
+                "prepublication DEK-rotation stage cleanup also failed: " + repr(cleanup_error)
+            )
+            _copy_exception_notes(cleanup_error, rotation_error)
+        try:
+            _fsync_dek_rotation_directories(
+                token_directory,
+                _dek_rotation_path_stage_directories(staged_files, keyfile_stage),
+            )
+        except BaseException as cleanup_sync_error:
+            rotation_error.add_note(
+                "prepublication DEK-rotation cleanup directory sync also failed: "
+                + repr(cleanup_sync_error)
+            )
+            _copy_exception_notes(cleanup_sync_error, rotation_error)
+        return
+    if keyfile_commit_attempted:
+        _repair_committed_keyfile_if_needed(keyfile_stage, keyfile_bytes, rotation_error)
+        return
+    if keyfile_bytes is not None and not _path_rotation_stage_has_expected_bytes(
+        keyfile_stage, keyfile_bytes
+    ):
+        _preserve_alternate_keyfile_recovery(keyfile_stage.final, keyfile_bytes, rotation_error)
+
+
+def _repair_committed_keyfile_if_needed(
+    stage: _PathRotationStage,
+    expected_bytes: bytes | None,
+    rotation_error: BaseException,
+) -> None:
+    if expected_bytes is None:
+        rotation_error.add_note("DEK-rotation keyfile bytes were unavailable for repair")
+        return
+    if _published_keyfile_matches_open_stage(stage, expected_bytes):
+        return
+    try:
+        _forward_repair_published_keyfile(stage, expected_bytes)
+    except BaseException as repair_error:
+        rotation_error.add_note("forward keyfile repair also failed: " + repr(repair_error))
+        _copy_exception_notes(repair_error, rotation_error)
+        _preserve_alternate_keyfile_recovery(stage.final, expected_bytes, rotation_error)
+
+
+def _preserve_alternate_keyfile_recovery(
+    final: Path, expected_bytes: bytes, rotation_error: BaseException
+) -> None:
+    try:
+        recovery_path = _write_alternate_keyfile_recovery(final, expected_bytes)
+        rotation_error.add_note("new DEK recovery keyfile preserved at " + str(recovery_path))
+    except BaseException as recovery_error:
+        rotation_error.add_note("alternate keyfile recovery also failed: " + repr(recovery_error))
+        _copy_exception_notes(recovery_error, rotation_error)
+
+
+def _copy_exception_notes(source: BaseException, destination: BaseException) -> None:
+    for note in getattr(source, "__notes__", ()):
+        destination.add_note(note)
+
+
+def _unlink_path_rotation_stage(stage: _PathRotationStage) -> None:
+    """Remove only the exact path generation created by this rotation."""
+    if stage.generation is None:
+        return
+    try:
+        current = stage.destination.lstat()
+    except FileNotFoundError:
+        return
+    if _same_regular_file_generation(current, stage.generation):
+        stage.destination.unlink()
+
+
+def _unlink_token_rotation_stage(directory: _TokenDirectory, stage: _TokenRotationStage) -> None:
+    """Remove only the exact descriptor-relative generation created by this rotation."""
+    if stage.generation is None:
+        return
+    try:
+        current = directory.stat(stage.destination_name)
+    except FileNotFoundError:
+        return
+    if _same_regular_file_generation(current, stage.generation):
+        directory.unlink(stage.destination_name)
+
+
+def _assert_dek_rotation_stages_owned(
+    token_directory: _TokenDirectory,
+    staged_files: Sequence[_PathRotationStage],
+    staged_tokens: Sequence[_TokenRotationStage],
+    keyfile_stage: _PathRotationStage,
+) -> None:
+    for path_stage in staged_files:
+        _assert_path_rotation_stage_owned(path_stage)
+    for token_stage in staged_tokens:
+        _assert_token_rotation_stage_owned(token_directory, token_stage)
+    _assert_path_rotation_stage_owned(keyfile_stage)
+
+
+def _dek_rotation_path_stage_directories(
+    staged_files: Sequence[_PathRotationStage], keyfile_stage: _PathRotationStage
+) -> tuple[Path, ...]:
+    return tuple(
+        sorted(
+            {keyfile_stage.destination.parent}
+            | {stage.destination.parent for stage in staged_files},
+            key=lambda path: str(path),
+        )
+    )
+
+
+def _fsync_dek_rotation_directories(
+    token_directory: _TokenDirectory, path_directories: Iterable[Path]
+) -> None:
+    for directory_path in path_directories:
+        _fsync_directory(directory_path)
+    token_directory.fsync()
+
+
+def _assert_path_rotation_stage_owned(stage: _PathRotationStage) -> None:
+    if stage.generation is None:
+        raise VaultError(
+            f"DEK-rotation staging file was not safely created: {stage.destination.name}"
+        )
+    try:
+        current = stage.destination.lstat()
+    except OSError as exc:
+        raise VaultError(f"DEK-rotation staging file changed: {stage.destination.name}") from exc
+    if not _same_regular_file_generation(current, stage.generation):
+        raise VaultError(f"DEK-rotation staging file changed: {stage.destination.name}")
+
+
+def _open_path_rotation_stage_readonly(stage: _PathRotationStage) -> None:
+    """Open and pin the exact keyfile stage across its publication rename."""
+    _assert_path_rotation_stage_owned(stage)
+    flags = (
+        os.O_RDONLY
+        | os.O_NOFOLLOW
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = -1
+    try:
+        descriptor = os.open(stage.destination, flags)
+        opened = os.fstat(descriptor)
+        if stage.generation is None or not _same_regular_file_generation(opened, stage.generation):
+            raise VaultError(f"DEK-rotation staging file changed: {stage.destination.name}")
+        stage.publish_descriptor = descriptor
+    except BaseException:
+        try:
+            if descriptor >= 0:
+                os.close(descriptor)
+        finally:
+            stage.publish_descriptor = -1
+        raise
+
+
+def _published_keyfile_matches_open_stage(
+    stage: _PathRotationStage, expected_bytes: bytes | None
+) -> bool:
+    descriptor = stage.publish_descriptor
+    recorded = stage.generation
+    if descriptor < 0 or expected_bytes is None or recorded is None:
+        return False
+    try:
+        current = stage.final.lstat()
+        before = os.fstat(descriptor)
+        if (
+            not _same_regular_file_generation(current, before)
+            or not stat.S_ISREG(before.st_mode)
+            or before.st_dev != recorded.st_dev
+            or before.st_ino != recorded.st_ino
+            or before.st_size != recorded.st_size
+            or before.st_mtime_ns != recorded.st_mtime_ns
+            or stat.S_IMODE(before.st_mode) != stat.S_IMODE(recorded.st_mode)
+            or before.st_size != len(expected_bytes)
+        ):
+            return False
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        chunks: list[bytes] = []
+        remaining = len(expected_bytes) + 1
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 1024 * 1024))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        after = os.fstat(descriptor)
+        current_after = stage.final.lstat()
+    except OSError:
+        return False
+    return (
+        _same_regular_file_generation(before, after)
+        and _same_regular_file_generation(current_after, after)
+        and b"".join(chunks) == expected_bytes
+    )
+
+
+def _forward_repair_published_keyfile(stage: _PathRotationStage, expected_bytes: bytes) -> None:
+    """Atomically restore the wrapped new key after a final-commit race."""
+    repair = _PathRotationStage(
+        stage.final,
+        stage.final.with_name(f".keyfile-forward-repair-{secrets.token_hex(16)}.tmp"),
+    )
+    try:
+        _write_private_path_stage_and_fsync(repair, expected_bytes)
+        _fsync_directory(repair.destination.parent)
+        _open_path_rotation_stage_readonly(repair)
+        repair.destination.replace(repair.final)
+        _fsync_directory(repair.final.parent)
+        if not _published_keyfile_matches_open_stage(repair, expected_bytes):
+            raise VaultError("forward-repaired DEK-rotation keyfile verification failed")
+    except BaseException as exc:
+        verified_path = _verified_keyfile_recovery_path(repair, expected_bytes)
+        if verified_path is None:
+            exc.add_note("no verified forward-repair artifact retained")
+        else:
+            exc.add_note("forward-repair artifact retained at " + str(verified_path))
+        raise
+    finally:
+        _close_path_rotation_publish_descriptor(repair, suppress_errors=True)
+
+
+def _write_alternate_keyfile_recovery(final: Path, expected_bytes: bytes) -> Path:
+    """Durably retain one bounded, unambiguous recovery artifact for a partial publish."""
+    recovery = _PathRotationStage(
+        final,
+        final.with_name(f"{final.name}.recovery-{secrets.token_hex(16)}.new"),
+    )
+    try:
+        _write_private_path_stage_and_fsync(recovery, expected_bytes)
+        if not _path_rotation_stage_has_expected_bytes(recovery, expected_bytes):
+            raise VaultError("alternate DEK-rotation keyfile recovery verification failed")
+        _fsync_directory(recovery.destination.parent)
+    except BaseException as exc:
+        if _path_rotation_stage_has_expected_bytes(recovery, expected_bytes):
+            exc.add_note("alternate recovery artifact retained at " + str(recovery.destination))
+        else:
+            exc.add_note("no verified alternate recovery artifact retained")
+        raise
+    return recovery.destination
+
+
+def _verified_keyfile_recovery_path(
+    stage: _PathRotationStage, expected_bytes: bytes
+) -> Path | None:
+    if _path_rotation_stage_has_expected_bytes(stage, expected_bytes):
+        return stage.destination
+    if _published_keyfile_matches_open_stage(stage, expected_bytes):
+        return stage.final
+    return None
+
+
+def _path_rotation_stage_has_expected_bytes(
+    stage: _PathRotationStage, expected_bytes: bytes
+) -> bool:
+    recorded = stage.generation
+    if recorded is None:
+        return False
+    flags = (
+        os.O_RDONLY
+        | os.O_NOFOLLOW
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = -1
+    try:
+        current = stage.destination.lstat()
+        if not _same_regular_file_generation(current, recorded):
+            return False
+        descriptor = os.open(stage.destination, flags)
+        before = os.fstat(descriptor)
+        if not _same_regular_file_generation(before, recorded) or before.st_size != len(
+            expected_bytes
+        ):
+            return False
+        chunks: list[bytes] = []
+        remaining = len(expected_bytes) + 1
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 1024 * 1024))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        after = os.fstat(descriptor)
+        current_after = stage.destination.lstat()
+    except OSError:
+        return False
+    finally:
+        if descriptor >= 0:
+            with suppress(OSError):
+                os.close(descriptor)
+    return (
+        _same_regular_file_generation(before, after)
+        and _same_regular_file_generation(current_after, after)
+        and b"".join(chunks) == expected_bytes
+    )
+
+
+def _close_path_rotation_publish_descriptor(
+    stage: _PathRotationStage, *, suppress_errors: bool = False
+) -> None:
+    descriptor = stage.publish_descriptor
+    if descriptor < 0:
+        return
+    stage.publish_descriptor = -1
+    if suppress_errors:
+        with suppress(OSError):
+            os.close(descriptor)
+    else:
+        os.close(descriptor)
+
+
+def _assert_token_rotation_stage_owned(
+    directory: _TokenDirectory, stage: _TokenRotationStage
+) -> None:
+    if stage.generation is None:
+        raise VaultError(
+            "timestamp-token DEK-rotation staging file was not safely created: "
+            f"{stage.destination_name}"
+        )
+    try:
+        current = directory.stat(stage.destination_name)
+    except OSError as exc:
+        raise VaultError(
+            f"timestamp-token DEK-rotation staging file changed: {stage.destination_name}"
+        ) from exc
+    if not _same_regular_file_generation(current, stage.generation):
+        raise VaultError(
+            f"timestamp-token DEK-rotation staging file changed: {stage.destination_name}"
         )
 
 
@@ -1006,6 +2229,9 @@ def _open_regular_readonly(path: Path) -> tuple[int, int]:
         if not stat.S_ISREG(opened.st_mode) or (
             before.st_dev != opened.st_dev
             or (before.st_ino and opened.st_ino and before.st_ino != opened.st_ino)
+            or before.st_size != opened.st_size
+            or before.st_mtime_ns != opened.st_mtime_ns
+            or before.st_ctime_ns != opened.st_ctime_ns
         ):
             raise VaultError(f"vault save recovery file changed while opening: {path.name}")
     except BaseException:
@@ -1061,6 +2287,52 @@ def _read_bounded_regular_file(path: Path, max_bytes: int) -> bytes:
             os.close(descriptor)
 
 
+def _read_bounded_regular_entry(directory: _TokenDirectory, name: str, max_bytes: int) -> bytes:
+    """Read a direct token-directory entry without consulting its mutable path."""
+    try:
+        before = directory.stat(name)
+    except OSError as exc:
+        raise VaultError(f"timestamp-token file is unavailable: {name}") from exc
+    if not stat.S_ISREG(before.st_mode):
+        raise VaultError(f"timestamp-token file must be regular: {name}")
+    flags = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW
+    try:
+        descriptor = os.open(name, flags, dir_fd=directory.descriptor)
+    except OSError as exc:
+        raise VaultError(f"timestamp-token file cannot be opened: {name}") from exc
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode) or (
+            before.st_dev != opened.st_dev
+            or (before.st_ino and opened.st_ino and before.st_ino != opened.st_ino)
+            or before.st_size != opened.st_size
+            or before.st_mtime_ns != opened.st_mtime_ns
+            or before.st_ctime_ns != opened.st_ctime_ns
+        ):
+            raise VaultError(f"timestamp-token file changed while opening: {name}")
+        if opened.st_size > max_bytes:
+            raise VaultError(f"timestamp-token file is too large: {name}")
+        with os.fdopen(descriptor, "rb") as input_file:
+            descriptor = -1
+            data = input_file.read(max_bytes + 1)
+            after = os.fstat(input_file.fileno())
+        if (
+            not stat.S_ISREG(after.st_mode)
+            or opened.st_dev != after.st_dev
+            or (opened.st_ino and after.st_ino and opened.st_ino != after.st_ino)
+            or opened.st_size != after.st_size
+            or opened.st_mtime_ns != after.st_mtime_ns
+            or opened.st_ctime_ns != after.st_ctime_ns
+            or len(data) != opened.st_size
+            or len(data) > max_bytes
+        ):
+            raise VaultError(f"timestamp-token file changed while reading: {name}")
+        return data
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+
+
 def _atomic_replace_file(path: Path, data: bytes) -> None:
     """Flush a same-directory temporary file, replace ``path``, and sync its directory."""
     temporary = path.with_name(f".save-atomic-{secrets.token_hex(16)}.tmp")
@@ -1072,6 +2344,120 @@ def _atomic_replace_file(path: Path, data: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _atomic_replace_private_entry(directory: _TokenDirectory, name: str, data: bytes) -> None:
+    """Atomically publish flushed ciphertext with owner-only POSIX permissions."""
+    temporary = f".token-atomic-{secrets.token_hex(16)}.tmp"
+    try:
+        _write_private_entry_and_fsync(directory, temporary, data)
+        directory.replace(temporary, name)
+        directory.fsync()
+    finally:
+        directory.unlink(temporary, missing_ok=True)
+
+
+def _write_private_entry_and_fsync(directory: _TokenDirectory, name: str, data: bytes) -> None:
+    stage = _TokenRotationStage(name, name)
+    _write_private_token_stage_and_fsync(directory, stage, data)
+
+
+def _write_private_token_stage_and_fsync(
+    directory: _TokenDirectory, stage: _TokenRotationStage, data: bytes
+) -> None:
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | os.O_NOFOLLOW
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = -1
+    try:
+        descriptor = os.open(
+            stage.destination_name,
+            flags,
+            0o600,
+            dir_fd=directory.descriptor,
+        )
+        stage.generation = os.fstat(descriptor)
+        _write_all_private_and_fsync(descriptor, stage.destination_name, data)
+        stage.generation = os.fstat(descriptor)
+        try:
+            os.close(descriptor)
+        finally:
+            descriptor = -1
+    except BaseException:
+        try:
+            if descriptor >= 0:
+                with suppress(OSError):
+                    stage.generation = os.fstat(descriptor)
+                try:
+                    os.close(descriptor)
+                finally:
+                    descriptor = -1
+        finally:
+            _unlink_token_rotation_stage(directory, stage)
+        raise
+
+
+def _write_private_path_stage_and_fsync(stage: _PathRotationStage, data: bytes) -> None:
+    """Exclusively create one no-follow, owner-only, fully flushed path stage."""
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | os.O_NOFOLLOW
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = -1
+    try:
+        descriptor = os.open(stage.destination, flags, 0o600)
+        stage.generation = os.fstat(descriptor)
+        _write_all_private_and_fsync(descriptor, stage.destination.name, data)
+        stage.generation = os.fstat(descriptor)
+        try:
+            os.close(descriptor)
+        finally:
+            descriptor = -1
+    except BaseException:
+        try:
+            if descriptor >= 0:
+                with suppress(OSError):
+                    stage.generation = os.fstat(descriptor)
+                try:
+                    os.close(descriptor)
+                finally:
+                    descriptor = -1
+        finally:
+            _unlink_path_rotation_stage(stage)
+        raise
+
+
+def _write_all_private_and_fsync(descriptor: int, name: str, data: bytes) -> None:
+    if os.name == "posix":
+        os.fchmod(descriptor, 0o600)
+    view = memoryview(data)
+    written = 0
+    while written < len(view):
+        count = os.write(descriptor, view[written:])
+        if count <= 0:
+            raise OSError(f"short write for {name}")
+        written += count
+    os.fsync(descriptor)
+
+
+def _same_regular_file_generation(current: os.stat_result, expected: os.stat_result) -> bool:
+    return (
+        stat.S_ISREG(current.st_mode)
+        and current.st_dev == expected.st_dev
+        and current.st_ino == expected.st_ino
+        and current.st_size == expected.st_size
+        and current.st_mtime_ns == expected.st_mtime_ns
+        and current.st_ctime_ns == expected.st_ctime_ns
+    )
+
+
 def _write_new_file_and_fsync(path: Path, data: bytes) -> None:
     with path.open("xb") as handle:
         written = handle.write(data)
@@ -1079,6 +2465,16 @@ def _write_new_file_and_fsync(path: Path, data: bytes) -> None:
             raise OSError(f"short write for {path.name}")
         handle.flush()
         os.fsync(handle.fileno())
+
+
+def _remove_orphan_token_temps(directory: _TokenDirectory, entries: Iterable[str]) -> None:
+    removed = False
+    for name in entries:
+        if _TOKEN_ATOMIC_TEMP.fullmatch(name):
+            directory.unlink(name, missing_ok=True)
+            removed = True
+    if removed:
+        directory.fsync()
 
 
 def _replace_path(source: Path, destination: Path) -> None:

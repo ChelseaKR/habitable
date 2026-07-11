@@ -48,6 +48,8 @@ can accidentally leak, a tenant's data — because no operator holds it.**
 | Case document (issues, notes, timeline) | Device vault `case.enc` | Encrypted | Only via E2E-sealed sync to a peer the user chooses, or in an exported packet |
 | Chain of custody (who did what, when) | Device vault `custody.enc` | Encrypted; each entry stores the clear actor, a random salt, its salted actor commitment, and a signature | Public packet proof **drops the clear actor, salt, and per-entry signature**, retains the salted actor commitment, and re-hashes the identity-stripped chain |
 | Device identity / keys | Device vault `identity.enc`, `keyfile.json` | Encrypted (keyfile passphrase-wrapped) | Never |
+| Primary, additional, and archive timestamp tokens (TSA name and token-embedded time) | Device vault `tokens/<sha256(capture_id)>.tokens.enc` | Consolidated per capture and AEAD-encrypted under the vault DEK | Yes, deliberately: sync and exported packets carry the unchanged public token records so a recipient can verify them |
+| Configuration (including TSA names/URLs and user-edited peer, sharing, packet, or letter settings) | Device vault `config.toml` | **Plaintext policy** | Settings drive local/network behavior; configured packet/letter text may appear in an output the user creates |
 | Sync messages | Relay mailbox (if used) | **Sealed to recipient's key** | Ciphertext only; relay cannot read |
 | Content hash | RFC 3161 authority (if used) | SHA-256 imprint | Hash only; discloses nothing about contents |
 | Aggregate commons summary (opt-in) | A file the union writes | **k-anonymous counts** by building label / category / coarse period | Only as a file the union **manually chooses to publish**; computed on-device, aggregate-only, no case/person linkage, and never transmitted by the tool (EXP-14, see [`commons.md`](commons.md)) |
@@ -72,10 +74,19 @@ can accidentally leak, a tenant's data — because no operator holds it.**
   random, restrictive OS temporary workspace outside the vault and remove it on all ordinary and
   exceptional exits. Older `_incoming` directories are removed when the app server starts without
   following a symlink.
+- **Timestamp tokens are encrypted while local, public when shared:** local sidecars conceal the
+  token, TSA name, and embedded generation time while the vault is locked. Their deterministic
+  hashed filenames still link repeated observations of the same capture id; ciphertext length
+  approximates token volume, and filesystem `mtime`/`ctime` reveal update timing to a storage
+  observer. Sidecars do not pad contents or hide filesystem metadata. AEAD does not establish
+  timestamp authenticity; packet recipients verify the token/imprint and an independently trusted
+  authority chain. Legacy token JSON is encrypted and durably verified before unlinking, but unlink
+  is not secure erasure of old filesystem blocks, snapshots, or backups.
 
 ## 5. Data-subject rights — how the design serves them
 
-Because the controller holds all the data locally and unencrypted only in memory:
+Because the controller holds all case contents locally and decrypts them only in memory (while
+reviewable policy in `config.toml` remains plaintext):
 
 - **Access & portability:** the user has the complete record on their own device and can
   export a self-contained, openly-verifiable packet at any time. The packet format and
@@ -97,6 +108,7 @@ frozen [audit baseline](audits/threat-model-baseline.md).
 | --- | --- | --- |
 | Home address / identity leaked through an export | Packet shared-media copies strip embedded metadata by default; optional originals and configured metadata handling are named in the packet disclosure | Retaining packet metadata, embedding originals, sync/organizer sharing, taking a screenshot, or forwarding an original can reveal location or identity |
 | Device seized | Vault encrypted at rest; passphrase rotation (a duress-safe open state is planned, not yet implemented) | A coerced passphrase or forensic imaging of an unlocked device defeats it |
+| Timestamp metadata exposed from local storage | Primary/additional/archive records are consolidated into DEK-encrypted sidecars with filename-bound AEAD; legacy plaintext is removed only after durable encrypted publication | Stable hashed filenames leak equality/linkability and permit guesses; ciphertext length approximates token volume; filesystem `mtime`/`ctime` reveal update timing; there is no padding or metadata hiding; an unlocked endpoint and exports expose token/TSA/time contents; unlinking legacy JSON is not secure erasure |
 | Temporary plaintext recovered from the endpoint | Random owner-only workspace outside the vault; generic names; partial-write and downstream-failure cleanup; legacy `_incoming` cleanup | Decoded bytes exist in memory and briefly in OS temp. `SIGKILL`/power loss can prevent cleanup, and unlink cannot defeat swap, snapshots, SSD remanence, privileged malware, or forensic recovery; use full-disk encryption on a trusted device |
 | Organizer re-identified from an exported record | Public packet custody drops the clear actor, salt, and per-entry signature but retains the salted actor commitment | Commitment correlation across packets or out-of-band knowledge can still re-identify; a breached vault exposes the clear actor and salt |
 | Network party (relay/TSA) sees something | Relay gets ciphertext + metadata only; TSA gets a hash only; self-host / peer-to-peer options | Relay connection **metadata** is observable; only peer-to-peer removes it |

@@ -175,21 +175,20 @@ class TestVaultCriticalPaths:
         assert make_vault("v-token").get_token("cap-none") is None
 
     def test_corrupt_token_records_raise(self, make_vault: Callable[..., Vault]) -> None:
-        vault = make_vault("v-corrupt")
-        token = TimestampToken(kind="dev", tsa_name="t", data=b"{}")
-        (vault.path / "tokens" / "cap-1.json").write_text("[]", encoding="utf-8")
+        primary = make_vault("v-corrupt-primary")
+        (primary.path / "tokens" / "cap-1.json").write_text("[]", encoding="utf-8")
         with pytest.raises(VaultError, match="corrupt token record"):
-            vault.get_token("cap-1")
-        for stem in ("cap-2.additional", "cap-3.archive"):
-            (vault.path / "tokens" / f"{stem}.json").write_text("{}", encoding="utf-8")
+            Vault.open(primary.path, "test-passphrase")
+
+        additional = make_vault("v-corrupt-additional")
+        (additional.path / "tokens" / "cap-2.additional.json").write_text("[{}]", encoding="utf-8")
         with pytest.raises(VaultError, match="corrupt additional-token record"):
-            vault.add_additional_token("cap-2", token)
-        with pytest.raises(VaultError, match="corrupt additional-token record"):
-            vault.get_additional_tokens("cap-2")
+            Vault.open(additional.path, "test-passphrase")
+
+        archive = make_vault("v-corrupt-archive")
+        (archive.path / "tokens" / "cap-3.archive.json").write_text("[{}]", encoding="utf-8")
         with pytest.raises(VaultError, match="corrupt archive-token record"):
-            vault.add_archive_token("cap-3", token)
-        with pytest.raises(VaultError, match="corrupt archive-token record"):
-            vault.get_archive_tokens("cap-3")
+            Vault.open(archive.path, "test-passphrase")
 
     def test_open_with_missing_blob_raises(
         self, make_vault: Callable[..., Vault], tmp_path: Path

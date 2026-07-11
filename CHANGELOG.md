@@ -137,6 +137,44 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   remnants fail closed before journal admission. Persistence remains a best-effort restart aid,
   not an fsync-backed delivery guarantee; abrupt failure can lose the newest append or leave a
   malformed record/temp, and unlink cleanup is not secure erasure.
+- **Timestamp-token sidecars no longer expose token/TSA/time metadata as plaintext at rest.**
+  Each capture's primary, additional, and archive tokens now share one canonical
+  ChaCha20-Poly1305 sidecar under the vault DEK, named by the SHA-256 of its capture id and bound
+  to that digest with domain-separated associated data. Writes are atomic, flushed, and `0600` on
+  POSIX; a pinned no-follow directory descriptor anchors bounded enumeration/read/write/rename/
+  unlink so traversal, directory swaps, symlinks, FIFOs, oversize input, filename swaps, and tamper
+  fail closed. Platforms without the required descriptor-relative operations reject whole-vault
+  create/open rather than making an unreopenable vault or using an unsafe fallback. A successful
+  unlock migrates legacy JSON by publishing and
+  verifying encrypted state before unlinking, and resumes safely after a crash between publication
+  or individual plaintext deletions, including one strictly validated cap-overlap entry during
+  migration. DEK rotation now validates and re-encrypts sidecars too; immediately before its first
+  publish attempt, cleanup becomes conservative so a post-syscall asynchronous exception preserves
+  the remaining new-key stages and wrapped new key for manual recovery. Before publication, every
+  intended root, original, token, and keyfile stage is registered, exclusively created no-follow at
+  `0600`, fully written and file-synced, and checked by device/inode/size/mtime/ctime; ordinary
+  failures remove only the exact app-created generation, while raced-in/replaced entries fail closed.
+  All stage directories are synced and the wrapped-key stage is generation-verified and pinned
+  before the first rename; data/original/token stages are then published and their directories
+  synced before the pinned wrapped key is committed last and the vault root synced. A raced
+  post-commit keyfile is atomically forward-repaired from the expected wrapped key before the
+  original error is reraised.
+  If the fixed keyfile stage is detached during partial publication, a random
+  `keyfile.json.recovery-<32hex>.new` is durably retained and reported for manual recovery without
+  overwriting the alien entry. Failed repair artifacts are named only after their bytes are
+  positively verified; otherwise the primary exception says no verified artifact was retained.
+  Retries fail closed on known root/original/keyfile or token stages and exact random forward-repair/
+  recovery names, without following or deleting regular files, symlinks, or FIFOs; the root scan is
+  capped at 256 entries. Secondary prepublication cleanup failures are attached to, rather than
+  replacing, the primary rotation error. Concurrent writers remain non-isolated. Rotation can
+  transiently add
+  one `.new` per sidecar (bounded doubling), and `SIGKILL` leftovers require manual recovery. Public
+  `TimestampToken`, sync, and packet formats are unchanged. Encryption supplies local
+  confidentiality/integrity—not TSA
+  authenticity—and stable hashed filenames remain linkable. Ciphertext length approximates token
+  volume and filesystem `mtime`/`ctime` expose update timing; there is no padding or metadata hiding.
+  `config.toml` authority/policy metadata stays plaintext, unlocked endpoints expose tokens, and
+  unlinking is not secure erasure.
 - **Browser uploads no longer create plaintext files inside the encrypted vault.** The
   app server now hands path-based capture tools a random file in a short-lived operating-system
   temporary workspace outside the vault, created with owner-only `0700`/`0600` modes on POSIX and
@@ -153,8 +191,9 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   finalization—prove that the next open either restores the complete old generation or keeps the
   complete committed one. Recovery bounds and validates the journal as a regular file and rejects
   symlink/FIFO backup inputs. Existing vault filenames and encryption format are unchanged. This
-  does not make key rotation, token sidecars, sealed-original creation, network filesystems,
-  unsupported directory `fsync`, or concurrent writers transactional.
+  does not include key rotation, per-capture token-sidecar replacement, sealed-original creation,
+  network filesystems, unsupported directory `fsync`, or concurrent writers in that five-blob
+  transaction.
 - **Scoped packet and organizer-share exports now fail closed instead of leaking the
   complete source custody chain.** Packet v3 issue/date selectors and sync v2 issue
   subsets previously filtered visible records while still serializing custody entries
