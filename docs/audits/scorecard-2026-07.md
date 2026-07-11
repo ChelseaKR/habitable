@@ -18,6 +18,14 @@ same checks `.github/workflows/scorecard.yml` runs weekly going forward).
 > bypass. Approval and code-owner counts remain zero under the explicit
 > solo-maintainer waiver in ADR 0006, so Branch-Protection will honestly remain
 > below maximal until a second maintainer can provide a real review.
+>
+> **Measured post-deployment result:** the Scorecard run on merged commit
+> `93b899e` ([Actions run 29170767352](https://github.com/ChelseaKR/habitable/actions/runs/29170767352))
+> raised Branch-Protection from **3/10 to 4/10**. Its prior “PRs are not required”
+> and “up-to-date branches disabled” warnings are gone. The remaining warnings
+> are stale-review dismissal, approvers, code-owner review, and last-push approval—
+> the independent-review controls deliberately waived by ADR 0006 while there is
+> only one active maintainer.
 
 This is the honest number for the state of `main` **before** this remediation
 pass's changes are committed and pushed — per P1-5's own instruction ("expect
@@ -55,10 +63,10 @@ is actually cut with a signed tag under the new guard), a drafted-but-unapplied
 branch ruleset (`.github/rulesets/`), job-level workflow permissions (should
 fix Token-Permissions), and a Scorecard workflow itself (feeds future runs).
 
-**Re-run after:** the next scheduled Scorecard run observes the reconciled
-main-branch ruleset, and again after the next release is cut with a signed tag.
-The live controls can improve detection of PR/current-check enforcement; an honest
-solo-maintainer project still cannot claim independent approval or code-owner review.
+**Re-run after:** a second maintainer makes real approval/code-owner/last-push
+review enforceable, and again after the next release is cut with a signed tag.
+Until those external conditions change, the residual Branch-Protection and
+Signed-Releases findings are expected rather than silently unremediated controls.
 
 ## Why record a "bad" number at all
 
