@@ -16,7 +16,8 @@ bd2e8596b0c2bfcedefd39a94fd9745e4bd66863:site/sample-packet/bundle.json:generic-
 # finding fingerprint; neither is a credential. Reviewed 2026-07-10.
 cf55f34c7ad4f29b097c90b7187b37f66d56b2f9:tests/golden/packet-v3/bundle.json:generic-api-key:1
 
-# Regenerated signed sample from PR #80. The three findings share this
-# commit/path/rule/line fingerprint because bundle.json is canonical one-line JSON;
-# each match is an RFC 3161 CMS SignedData token produced by the synthetic sample TSA.
-eb12dc66ffe15fb16b9d669cde7f6948fa57e75c:site/sample-packet/bundle.json:generic-api-key:1
+# PR #80 rebased history: both packet generations contain only synthetic RFC 3161
+# CMS SignedData tokens. The later commit upgrades the sample from packet v2 to v3;
+# neither finding is a credential. Reviewed 2026-07-10.
+8f831229472e3ab605c78f26daa417e12f4984e7:site/sample-packet/bundle.json:generic-api-key:1
+b1f6a922e793eb226f67a0e7e71a123c096bcc56:site/sample-packet/bundle.json:generic-api-key:1
