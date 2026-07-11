@@ -182,6 +182,33 @@ def test_source_fifo_is_rejected_without_reading_it(tmp_path: Path) -> None:
         bagit.create_bag(packet, tmp_path / "bag")
 
 
+def test_source_mutation_after_inventory_is_rejected(tmp_path: Path) -> None:
+    packet = _packet(tmp_path)
+    inventory = bagit._inventory(packet.resolve(), context="packet")
+    entry = next(item for item in inventory.files if item.relative.as_posix() == "bundle.json")
+    entry.source.write_bytes(entry.source.read_bytes() + b"\n")
+
+    with pytest.raises(bagit.BagItAdapterError, match="changed during packaging"):
+        bagit._copy_regular_file(entry, tmp_path / "copy", packet.resolve())
+
+
+def test_source_bundle_is_read_only_by_the_bounded_verifier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    packet = _packet(tmp_path)
+    source_bundle = (packet / "bundle.json").resolve()
+    original_read_bytes = Path.read_bytes
+
+    def guarded_read_bytes(path: Path) -> bytes:
+        if path.resolve() == source_bundle:
+            raise AssertionError("adapter pre-read source bundle outside the verifier")
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", guarded_read_bytes)
+    result = bagit.create_bag(packet, tmp_path / "bag")
+    assert result.validation.ok
+
+
 def test_validator_rejects_payload_symlink(tmp_path: Path) -> None:
     bag = bagit.create_bag(_packet(tmp_path), tmp_path / "bag").bag_dir
     payload = next(path for path in (bag / "data" / "packet").rglob("*") if path.is_file())

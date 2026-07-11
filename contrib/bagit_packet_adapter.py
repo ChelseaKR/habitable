@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import json
 import os
 import re
 import shutil
@@ -96,6 +95,8 @@ class _FileEntry:
     source: Path
     device: int
     inode: int
+    size: int
+    mtime_ns: int
 
 
 @dataclass(frozen=True)
@@ -114,7 +115,6 @@ def create_bag(packet_dir: Path | str, output_dir: Path | str) -> BagCreationRes
     source = _source_root(Path(packet_dir))
     output = Path(output_dir)
     inventory = _inventory(source, context="packet")
-    _preflight_packet_references(source)
     _verify_habitable_packet(source)
     _prepare_destination(source, output)
 
@@ -295,6 +295,8 @@ def _inventory(root: Path, *, context: str) -> _Inventory:
                         source=path,
                         device=metadata.st_dev,
                         inode=metadata.st_ino,
+                        size=metadata.st_size,
+                        mtime_ns=metadata.st_mtime_ns,
                     )
                 )
             else:
@@ -356,32 +358,6 @@ def _validate_component(component: str, *, context: str, path: str) -> None:
     stem = component.split(".", 1)[0].upper()
     if stem in _WINDOWS_RESERVED:
         raise BagItAdapterError(f"{context} path uses a reserved Windows name: {path!r}")
-
-
-def _preflight_packet_references(root: Path) -> None:
-    """Confine verifier-consumed filenames before handing it untrusted JSON."""
-    bundle_path = root / "bundle.json"
-    try:
-        bundle = json.loads(bundle_path.read_bytes())
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise BagItAdapterError(f"cannot safely parse packet bundle.json: {exc}") from exc
-    if not isinstance(bundle, dict):
-        raise BagItAdapterError("packet bundle.json must contain an object")
-    items = bundle.get("items")
-    if not isinstance(items, list):
-        return  # Habitable reports the malformed packet; no path is consumed here.
-    for index, item in enumerate(items):
-        if not isinstance(item, dict):
-            continue
-        for field in ("shared_name", "poster_name", "capture_id"):
-            value = item.get(field)
-            if not isinstance(value, str) or not value:
-                continue
-            _validate_relative_path(value, context=f"bundle item {index} {field}")
-            if "/" in value:
-                raise BagItAdapterError(
-                    f"bundle item {index} {field} must be one filename, not a path"
-                )
 
 
 def _verify_habitable_packet(root: Path) -> VerificationReport:
@@ -449,7 +425,7 @@ def _copy_regular_file(entry: _FileEntry, target: Path, source_root: Path) -> tu
         metadata = os.fstat(descriptor)
         if not stat.S_ISREG(metadata.st_mode):
             raise BagItAdapterError(f"packet file changed type: {entry.relative}")
-        if (metadata.st_dev, metadata.st_ino) != (entry.device, entry.inode):
+        if not _matches_inventory(entry, metadata):
             raise BagItAdapterError(f"packet file changed during packaging: {entry.relative}")
         resolved = entry.source.resolve(strict=True)
         if not _contains(source_root, resolved):
@@ -459,12 +435,24 @@ def _copy_regular_file(entry: _FileEntry, target: Path, source_root: Path) -> tu
                 digest.update(chunk)
                 destination.write(chunk)
                 size += len(chunk)
+        after = os.fstat(descriptor)
+        if not _matches_inventory(entry, after):
+            raise BagItAdapterError(f"packet file changed while packaging: {entry.relative}")
     finally:
         os.close(descriptor)
     copied_digest = _sha256_path(target)
     if copied_digest != digest.hexdigest():
         raise BagItAdapterError(f"copied payload digest changed: {entry.relative}")
     return copied_digest, size
+
+
+def _matches_inventory(entry: _FileEntry, metadata: os.stat_result) -> bool:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+    ) == (entry.device, entry.inode, entry.size, entry.mtime_ns)
 
 
 def _render_manifest(digests: dict[str, str]) -> bytes:

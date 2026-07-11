@@ -9,6 +9,12 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **Strict BagIt 1.0 packet-transfer adapter.** The Apache-2.0 reference CLI under
+  `contrib/` verifies and copies one exact Habitable packet into `data/packet/`,
+  emits deterministic SHA-256 payload and tag manifests, rejects unsafe or
+  non-portable filesystem paths, detects source mutation, and publishes a validated
+  bag atomically to a new destination. BagIt provides transfer fixity—not producer
+  authenticity, timestamp-authority trust, evidence readiness, or admissibility.
 - **Capability/claim ledger and documentation truth gate.** `docs/capabilities.md`
   separates shipped, partial, planned, and externally unvalidated claims and links each
   row to repository evidence plus its explicit gap. A standard-library Markdown-link

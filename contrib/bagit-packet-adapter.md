@@ -98,7 +98,10 @@ It rejects other checksum algorithms, `fetch.txt`, extra tag files, and payload 
 
 ## Filesystem safety and portability
 
-Before Habitable verification or copying, the adapter walks the packet without following links. It
+Before copying, the adapter walks the packet without following links. Habitable's verifier opens
+its fixed control files and bundle-named references through bounded, regular-file-only reads. The
+adapter then checks every source file's device, inode, size, and modification time before and after
+copying. It
 rejects:
 
 - symlinks and non-regular objects such as FIFOs, sockets, and devices;
@@ -118,8 +121,11 @@ payload/tag sets are compared to their manifests, and only then is the bag publi
   filesystem timestamps, or directory metadata. Empty directories are preserved by this directory
   adapter but are not checksummed by BagIt.
 - Publication and link checks assume the local filesystem is not being concurrently manipulated by
-  an active attacker. That is consistent with RFC 8493's active-attack limitation; use controlled
-  source/destination directories when creating a transfer.
+  an active attacker. Ordinary file mutation is detected, but a hostile process that can replace
+  parent directories or restore metadata can still race portable path-based checks. That is
+  consistent with RFC 8493's active-attack limitation; use controlled source/destination
+  directories when creating a transfer. Publication is atomically visible on the same filesystem,
+  but the adapter does not claim crash-durable persistence across hardware or filesystem failure.
 - A directory-form BagIt bag is not a ZIP or TAR archive. If another tool serializes it, validate
   the extracted bag before relying on the transfer and then run Habitable verification again.
 
