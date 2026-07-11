@@ -238,9 +238,13 @@ def main() -> int:
 
     report = verify_packet(_SAMPLE)
     pinned = verify_packet(_SAMPLE, trusted_certs=[_load_synthetic_cert(_SAMPLE)])
+    if not report.structurally_intact or report.status != "timestamp_authority_untrusted":
+        raise RuntimeError("published sample failed its default trust-boundary check")
+    if not pinned.evidence_ready:
+        raise RuntimeError("published sample failed its explicitly pinned synthetic check")
     print(
         f"wrote {_SAMPLE.relative_to(_ROOT)} (packet_version={PACKET_VERSION}); "
-        f"default: {report.summary()}; explicitly pinned synthetic demo: {pinned.summary()}"
+        "default and explicitly pinned synthetic trust checks passed"
     )
     return 0
 
