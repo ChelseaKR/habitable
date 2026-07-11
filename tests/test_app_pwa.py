@@ -46,6 +46,7 @@ def test_service_worker_never_caches_api() -> None:
         assert f'"{event}"' in sw or f"'{event}'" in sw, f"service worker missing {event} handler"
     assert "/api" in sw, "service worker must special-case /api (network-only)"
     assert "caches" in sw, "service worker should cache the static shell"
+    assert "habitable-shell-v4-auth" in sw, "auth shell changes must invalidate the old cache"
 
 
 def test_app_registers_service_worker() -> None:

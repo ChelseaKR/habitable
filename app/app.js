@@ -4,6 +4,7 @@
 
 (function () {
   var LANG_KEY = "habitable.lang";
+  var TOKEN_KEY = "habitable.token";
   var SUPPORTED = ["en", "es"];
   var DEFAULT_LANG = "en";
   // Right-to-left scripts. When one of these is active we flip the document
@@ -13,6 +14,7 @@
 
   var strings = {}; // active dictionary
   var lang = DEFAULT_LANG;
+  var sessionToken = ""; // per-session API auth token (FIX-03)
 
   // ---- i18n ----------------------------------------------------------------
 
@@ -293,14 +295,70 @@
 
   // ---- API -----------------------------------------------------------------
 
+  // The server prints an opaque URL whose fragment carries a per-process session token
+  // (e.g. .../#token=abc). Move it into memory + sessionStorage and scrub it from the
+  // address bar, so it is never sent to the server as a query or leaked via Referer.
+  // sessionStorage keeps reloads in this tab working without turning the credential
+  // into a persistent cross-session secret. Every /api/* call presents it as a header.
+  function captureToken() {
+    var hash = window.location.hash || "";
+    var match = /(?:^#|&)token=([^&]+)/.exec(hash);
+    if (match) {
+      try {
+        sessionToken = decodeURIComponent(match[1]);
+      } catch (e) {
+        // A malformed percent escape must not abort boot or preserve an older token.
+        sessionToken = "";
+      }
+      try {
+        if (sessionToken) {
+          window.sessionStorage.setItem(TOKEN_KEY, sessionToken);
+        } else {
+          window.sessionStorage.removeItem(TOKEN_KEY);
+        }
+      } catch (e) {
+        /* sessionStorage may be unavailable; the in-memory token still works */
+      }
+      if (window.history && window.history.replaceState) {
+        try {
+          window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        } catch (e) {
+          /* best-effort scrub; URL fragments are not sent in HTTP or Referer */
+        }
+      }
+    } else {
+      try {
+        sessionToken = window.sessionStorage.getItem(TOKEN_KEY) || "";
+      } catch (e) {
+        sessionToken = "";
+      }
+    }
+  }
+
+  function apiHeaders(extra) {
+    var headers = { Accept: "application/json" };
+    var key;
+    if (extra) {
+      for (key in extra) {
+        if (Object.prototype.hasOwnProperty.call(extra, key)) {
+          headers[key] = extra[key];
+        }
+      }
+    }
+    if (sessionToken) {
+      headers["X-Habitable-Token"] = sessionToken;
+    }
+    return headers;
+  }
+
   function apiGet(path) {
-    return fetch(path, { headers: { Accept: "application/json" } }).then(handleJson);
+    return fetch(path, { headers: apiHeaders() }).then(handleJson);
   }
 
   function apiPost(path, body) {
     return fetch(path, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: apiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(body || {})
     }).then(handleJson);
   }
@@ -1008,6 +1066,7 @@
 
   function init() {
     announcer = document.getElementById("announcer");
+    captureToken();
     wireLang();
     wireRefresh();
     wireResolve();

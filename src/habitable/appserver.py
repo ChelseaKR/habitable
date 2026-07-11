@@ -15,8 +15,10 @@ accessible shell over the same evidence guarantees as the CLI.
 from __future__ import annotations
 
 import base64
+import hmac
 import json
 import re
+import secrets
 import threading
 import time
 from collections.abc import Callable, Sequence
@@ -24,6 +26,7 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import cast
+from urllib.parse import urlsplit
 
 from .capture import capture, resolve_deferred
 from .disclosure import proof_statement
@@ -35,9 +38,14 @@ from .tsa import DevTSA, TimestampAuthority
 from .vault import Vault
 from .verify import VerificationReport, verify_packet
 
-__all__ = ["AppServer", "make_app_server"]
+__all__ = ["AppHTTPServer", "AppServer", "make_app_server"]
 
 _MAX_BODY = 64 * 1024 * 1024
+_CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; base-uri 'none'; connect-src 'self'; form-action 'self'; "
+    "frame-ancestors 'none'; img-src 'self'; manifest-src 'self'; media-src 'self'; "
+    "object-src 'none'; script-src 'self'; style-src 'self'; worker-src 'self'"
+)
 
 
 def _default_static_root() -> Path:
@@ -326,13 +334,14 @@ _POST_ROUTES: dict[str, Callable[[AppServer, dict[str, object]], dict[str, objec
 _TIMELINE_RE = re.compile(r"^/api/issues/([A-Za-z0-9_.-]+)/timeline$")
 
 
-class _AppHTTPServer(ThreadingHTTPServer):
-    """Loopback server that carries the shared AppServer for its handlers.
+class AppHTTPServer(ThreadingHTTPServer):
+    """Loopback server that carries the shared AppServer and its per-session token.
 
     Holding ``app`` on the server (rather than closing over it in a handler class
     defined inside ``make_app_server``) is what lets the handler live at module
-    scope. It is also the attachment point for the per-session auth token that the
-    app-server auth pass adds next.
+    scope. ``session_token`` authenticates every ``/api/*`` request so an unlocked
+    vault is not a read/write API open to anyone who can reach the host (FIX-03;
+    see docs/mobile.md). Read it back from ``make_app_server``'s return value.
     """
 
     def __init__(
@@ -341,19 +350,28 @@ class _AppHTTPServer(ThreadingHTTPServer):
         handler_class: type[BaseHTTPRequestHandler],
         *,
         app: AppServer,
+        session_token: str,
     ) -> None:
         self.app = app
+        self.session_token = session_token
         super().__init__(server_address, handler_class)
 
 
 class _AppRequestHandler(BaseHTTPRequestHandler):
     """JSON API plus the static app shell. Behavior mirrors the CLI core."""
 
+    server_version = "habitable"
+    sys_version = ""
+
+    @property
+    def _server(self) -> AppHTTPServer:
+        # socketserver sets ``self.server`` to the server instance that owns this
+        # handler; for this server that is always an AppHTTPServer.
+        return cast(AppHTTPServer, self.server)
+
     @property
     def _app(self) -> AppServer:
-        # socketserver sets ``self.server`` to the server instance that owns this
-        # handler; for this server that is always an _AppHTTPServer.
-        return cast(_AppHTTPServer, self.server).app
+        return self._server.app
 
     def log_message(self, _format: str, *_args: object) -> None:
         return
@@ -362,9 +380,16 @@ class _AppRequestHandler(BaseHTTPRequestHandler):
         self._status = 200
         start = time.monotonic()
         try:
-            if self.path == "/api/status":
-                app = self._app
-                self._guarded(lambda: app.status())
+            if not self._request_allowed():
+                return
+            if self.path.startswith("/api/"):
+                if not self._authorized():
+                    return
+                if self.path == "/api/status":
+                    app = self._app
+                    self._guarded(lambda: app.status())
+                    return
+                self._json(404, {"error": "not found"})
                 return
             self._serve_static(self.path)
         finally:
@@ -374,6 +399,10 @@ class _AppRequestHandler(BaseHTTPRequestHandler):
         self._status = 200
         start = time.monotonic()
         try:
+            if not self._request_allowed():
+                return
+            if not self._authorized():
+                return
             body = self._read_json()
             if body is None:
                 return
@@ -389,6 +418,72 @@ class _AppRequestHandler(BaseHTTPRequestHandler):
             self._guarded(lambda: route(app, body))
         finally:
             self._access_log("POST", start)
+
+    def do_OPTIONS(self) -> None:
+        """Refuse CORS preflights; the unlocked API is same-origin only."""
+        self._status = 200
+        start = time.monotonic()
+        try:
+            if not self._request_allowed():
+                return
+            self._json(405, {"error": "method not allowed"})
+        finally:
+            self._access_log("OPTIONS", start)
+
+    # --- auth -------------------------------------------------------------
+
+    def _request_allowed(self) -> bool:
+        """Reject DNS-rebinding hosts and browser requests from another origin.
+
+        Non-browser API clients may omit ``Origin``, but every request must carry
+        exactly one loopback ``Host`` header for this server's bound port. When a
+        browser supplies ``Origin``, it must exactly match that authority. No CORS
+        response headers are emitted, so cross-origin script access stays closed.
+        """
+        hosts = self.headers.get_all("Host", [])
+        if len(hosts) != 1:
+            self._json(403, {"error": "forbidden request origin"})
+            return False
+        authority = _host_authority(hosts[0])
+        bound_port = int(self._server.server_address[1])
+        if authority is None or not _is_loopback_host(authority[0]) or authority[1] != bound_port:
+            self._json(403, {"error": "forbidden request origin"})
+            return False
+
+        origins = self.headers.get_all("Origin", [])
+        if not origins:
+            return True
+        if len(origins) != 1 or _origin_authority(origins[0]) != authority:
+            self._json(403, {"error": "forbidden request origin"})
+            return False
+        return True
+
+    def _authorized(self) -> bool:
+        """Require the per-session token on API calls; 401 (constant-time) otherwise.
+
+        Accepts ``X-Habitable-Token: <token>`` or ``Authorization: Bearer <token>``.
+        The token travels in a header (never a query string) so it is not leaked via
+        request logs or the ``Referer`` header. The static shell is served without a
+        token so the app can load and read the token from the opaque URL fragment.
+        """
+        token_headers = self.headers.get_all("X-Habitable-Token", [])
+        auth_headers = self.headers.get_all("Authorization", [])
+        presented = ""
+        if len(token_headers) == 1 and not auth_headers:
+            presented = token_headers[0]
+        elif len(auth_headers) == 1 and not token_headers:
+            scheme, separator, candidate = auth_headers[0].partition(" ")
+            if separator and scheme.casefold() == "bearer":
+                presented = candidate
+        # Compare as bytes: ``hmac.compare_digest`` raises TypeError on non-ASCII
+        # *str* input, and header values are attacker-controlled (latin-1 decoded),
+        # so a str comparison would turn a garbage token into an unhandled
+        # exception in the handler thread instead of this clean 401.
+        expected = self._server.session_token.encode("utf-8")
+        if presented and hmac.compare_digest(presented.encode("utf-8"), expected):
+            return True
+        self._json(401, {"error": "unauthorized: missing or invalid session token"})
+        return False
 
     # --- helpers ----------------------------------------------------------
 
@@ -410,13 +505,21 @@ class _AppRequestHandler(BaseHTTPRequestHandler):
         except HabitableError as exc:
             self._json(400, {"error": str(exc)})
             return
-        except Exception as exc:  # defensive: never leak a traceback to the UI
-            self._json(500, {"error": f"internal error: {exc}"})
+        except Exception:  # defensive: never leak exception details to the UI
+            self._json(500, {"error": "internal error"})
             return
         self._json(200, payload)
 
     def _read_json(self) -> dict[str, object] | None:
-        length = int(self.headers.get("Content-Length", "0"))
+        lengths = self.headers.get_all("Content-Length", [])
+        if self.headers.get_all("Transfer-Encoding", []) or len(lengths) != 1:
+            self._json(400, {"error": "invalid request framing"})
+            return None
+        try:
+            length = int(lengths[0])
+        except ValueError:
+            self._json(400, {"error": "invalid request framing"})
+            return None
         if length <= 0 or length > _MAX_BODY:
             self._json(413, {"error": "bad or oversized body"})
             return None
@@ -446,6 +549,7 @@ class _AppRequestHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        self._send_security_headers()
         self.end_headers()
         self.wfile.write(body)
 
@@ -455,8 +559,17 @@ class _AppRequestHandler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self._send_security_headers()
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_security_headers(self) -> None:
+        self.send_header("Content-Security-Policy", _CONTENT_SECURITY_POLICY)
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
 
 
 def make_app_server(
@@ -467,8 +580,14 @@ def make_app_server(
     tsa: TimestampAuthority | None = None,
     extra_tsas: Sequence[TimestampAuthority] = (),
     static_root: Path | None = None,
-) -> ThreadingHTTPServer:
+) -> AppHTTPServer:
     """Build (but do not start) the loopback app server.
+
+    A fresh per-session bearer token is generated and required on every ``/api/*``
+    request. The static shell (HTML/CSS/JS) is served without
+    it so the app can load, then read the token from the opaque URL fragment and
+    present it as a header. Read it back from the returned server's
+    ``session_token``.
 
     ``extra_tsas`` are the case's redundant timestamp authorities (every
     authority beyond the primary, as ``cli._extra_tsas_for`` derives them from
@@ -487,6 +606,7 @@ def make_app_server(
     if enabled_from_env() and not is_configured():
         configure_logging()
 
+    session_token = secrets.token_urlsafe(32)
     app = AppServer(
         vault=vault,
         tsa=tsa,
@@ -494,12 +614,51 @@ def make_app_server(
         lock=threading.Lock(),
         extra_tsas=tuple(extra_tsas),
     )
-    return _AppHTTPServer((host, port), _AppRequestHandler, app=app)
+    return AppHTTPServer((host, port), _AppRequestHandler, app=app, session_token=session_token)
 
 
 def _is_loopback_host(host: str) -> bool:
     """Accept only the loopback forms this IPv4 HTTP server supports."""
     return host.casefold() in {"localhost", "127.0.0.1"}
+
+
+def _host_authority(value: str) -> tuple[str, int] | None:
+    """Parse an HTTP Host header into a normalized ``(host, port)`` pair."""
+    try:
+        parsed = urlsplit(f"//{value}")
+        port = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.hostname is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+    return parsed.hostname.casefold(), 80 if port is None else port
+
+
+def _origin_authority(value: str) -> tuple[str, int] | None:
+    """Parse a serialized browser Origin, accepting plain HTTP loopback only."""
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme.casefold() != "http"
+        or parsed.hostname is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+    return parsed.hostname.casefold(), 80 if port is None else port
 
 
 # --- request helpers ----------------------------------------------------------

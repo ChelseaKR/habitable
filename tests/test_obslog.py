@@ -343,12 +343,18 @@ def test_logs_never_leak_secrets_or_content(
 
 
 def _call(
-    url: str, method: str, path: str, body: dict[str, object] | None = None
+    url: str,
+    method: str,
+    path: str,
+    body: dict[str, object] | None = None,
+    *,
+    token: str = "",
 ) -> tuple[int, dict[str, object]]:
     data = json.dumps(body).encode() if body is not None else None
-    request = urllib.request.Request(
-        f"{url}{path}", data=data, method=method, headers={"Content-Type": "application/json"}
-    )
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["X-Habitable-Token"] = token
+    request = urllib.request.Request(f"{url}{path}", data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=5) as response:
             return response.status, json.loads(response.read())
@@ -363,6 +369,22 @@ def _wait_for_lines(buffer: io.StringIO, count: int, timeout: float = 3.0) -> li
     while time.monotonic() < deadline:
         lines = _lines(buffer)
         if len(lines) >= count:
+            return lines
+        time.sleep(0.02)
+    return _lines(buffer)
+
+
+def _wait_for_request_lines(buffer: io.StringIO, count: int, timeout: float = 3.0) -> list[str]:
+    """Wait for request records, not unrelated events emitted by a request.
+
+    A capture emits its own metadata event before the handler writes the access
+    record. Counting all log lines therefore races with the final request log.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        lines = _lines(buffer)
+        requests = [line for line in lines if json.loads(line).get("msg") == "request"]
+        if len(requests) >= count:
             return lines
         time.sleep(0.02)
     return _lines(buffer)
@@ -383,7 +405,8 @@ def test_appserver_logs_redacted_routes_without_bodies(
     thread.start()
     url = f"http://127.0.0.1:{port}"
     try:
-        _status, issue = _call(url, "POST", "/api/issues", {"category": "mold"})
+        token = server.session_token
+        _status, issue = _call(url, "POST", "/api/issues", {"category": "mold"}, token=token)
         issue_id = str(issue["issue_id"])
         # The issue id is a sentinel: it must never appear in a log line.
         photo = make_jpeg(name="SENTINEL-APP-FILE.jpg")
@@ -393,15 +416,17 @@ def test_appserver_logs_redacted_routes_without_bodies(
             "POST",
             f"/api/issues/{issue_id}/timeline",
             {"kind": "observed", "text": "SENTINEL-APP-TIMELINE"},
+            token=token,
         )
         _call(
             url,
             "POST",
             "/api/capture",
             {"issue_id": issue_id, "filename": "SENTINEL-APP-FILE.jpg", "media_b64": media_b64},
+            token=token,
         )
-        _call(url, "GET", "/api/status")
-        lines = _wait_for_lines(buffer, 4)
+        _call(url, "GET", "/api/status", token=token)
+        lines = _wait_for_request_lines(buffer, 4)
     finally:
         server.shutdown()
         server.server_close()
@@ -423,6 +448,7 @@ def test_appserver_logs_redacted_routes_without_bodies(
     # The capture pipeline's own metadata event rode the same enabled logger.
     assert any(r["msg"] == "capture" for r in records)
     text = "\n".join(lines)
+    assert token not in text  # the API bearer credential is never logged
     assert issue_id not in text  # no issue id
     assert "SENTINEL-APP-TIMELINE" not in text  # no request body
     assert "SENTINEL-APP-FILE" not in text  # no filename
