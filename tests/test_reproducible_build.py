@@ -39,6 +39,7 @@ def test_relay_reproducibility_gate_is_wired_to_merge_and_release() -> None:
     assert "SOURCE_DATE_EPOCH" in script
     assert "--no-cache" in script
     assert "--platform linux/amd64" in script
+    assert "type=docker" in script
     assert "rewrite-timestamp=true" in script
     assert "git archive --format=tar HEAD -- relay/Dockerfile src" in script
     assert 'cmp -s "$tmp/relay-1.tar" "$tmp/relay-2.tar"' in script

@@ -41,7 +41,7 @@ checks.
      tracked source, and verify the two builds are byte-identical**
      (`make repro` → `scripts/check_reproducible_build.py`) — a
      non-reproducible build fails the release rather than shipping;
-   - build the linux/amd64 relay twice without cache as OCI archives under the
+   - build the linux/amd64 relay twice without cache as Docker image archives under the
      tagged commit's fixed source epoch, rewrite layer timestamps, and require the
      complete archives to be byte-identical (`make relay-repro`); this claim is
      scoped to the pinned base, platform, Dockerfile, and BuildKit invocation,

@@ -10,7 +10,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 ### Added
 
 - **Byte-reproducible relay-image gate.** `make relay-repro` builds two no-cache
-  linux/amd64 OCI archives from the pinned relay base under the commit's fixed
+  linux/amd64 Docker image archives from the pinned relay base under the commit's fixed
   `SOURCE_DATE_EPOCH`, uses BuildKit timestamp rewriting, and compares the complete
   archives byte for byte. The container merge gate and tagged release workflow both
   block on it. The claim is deliberately scoped to the pinned platform and builder

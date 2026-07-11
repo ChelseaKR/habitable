@@ -86,7 +86,7 @@ build: ## Build the wheel + sdist
 repro: ## Verify a byte-identical rebuild of the wheel + sdist (builds twice, compares); writes dist/ on success
 	uv run python scripts/check_reproducible_build.py --out-dir dist
 
-relay-repro: ## Verify byte-identical no-cache relay OCI rebuilds
+relay-repro: ## Verify byte-identical no-cache relay image rebuilds
 	bash scripts/check_reproducible_relay_image.sh
 
 clean: ## Remove build/test artifacts
