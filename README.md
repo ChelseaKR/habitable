@@ -158,8 +158,10 @@ and a verifiable `bundle.json`.
    byte-for-byte for integrity. Any shared or exported copy strips location by default, and the user
    is shown exactly what a packet will disclose before it is produced. The tool never silently
    publishes a home's coordinates.
-5. **Retaliation is the threat model.** Defaults assume an adversary with resources and motive: data
-   at rest is encrypted; a duress-safe open state that hides case contents is *planned but not yet
+5. **Retaliation is the threat model.** Defaults assume an adversary with resources and motive:
+   persistent case data in the vault is encrypted; path-based media tools still require a brief
+   plaintext working copy in a restrictive OS temporary workspace outside the vault, and unlink is
+   not secure erasure. A duress-safe open state that hides case contents is *planned but not yet
    implemented* — today the only at-rest protection is vault encryption, and when built that state
    will be a mitigation with documented limits, not a guarantee against a coercing or forensic
    adversary — and the tool collects no analytics and phones no home. The union decides what to

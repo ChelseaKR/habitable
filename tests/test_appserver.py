@@ -7,19 +7,23 @@ from __future__ import annotations
 import base64
 import http.client
 import json
+import os
 import re
+import shutil
+import stat
 import threading
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import NamedTuple, cast
+from typing import NamedTuple, NoReturn, cast
 
 import pytest
 
+from habitable import appserver as appserver_module
 from habitable.appserver import _STATIC_ROOT, AppServer, _awaiting_only, make_app_server
 from habitable.capture import capture
-from habitable.errors import HabitableError
+from habitable.errors import CaptureError, HabitableError
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
 from habitable.verify import ItemVerdict, VerificationReport
@@ -114,6 +118,122 @@ def test_default_static_root_contains_complete_app() -> None:
         "icons/icon.svg",
     }
     assert {path for path in required if not (_STATIC_ROOT / path).is_file()} == set()
+
+
+def test_failed_browser_capture_uses_private_ephemeral_staging_outside_vault(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A downstream failure must not leave plaintext, names, or a temp directory behind."""
+    vault = make_vault()
+    issue_id = vault.document.add_issue(category="mold", issue_id="i1")
+    media = make_jpeg("tenant-home.JPG", with_location=True).read_bytes()
+    observed: dict[str, object] = {}
+
+    def fail_after_inspection(_vault: Vault, source: str | Path, **_kwargs: object) -> NoReturn:
+        staged = Path(source)
+        observed["path"] = staged
+        observed["bytes"] = staged.read_bytes()
+        observed["file_mode"] = stat.S_IMODE(staged.stat().st_mode)
+        observed["directory_mode"] = stat.S_IMODE(staged.parent.stat().st_mode)
+        raise CaptureError("synthetic downstream failure")
+
+    monkeypatch.setattr(appserver_module, "capture", fail_after_inspection)
+    app_server = AppServer(vault, local_tsa, tmp_path, threading.Lock())
+    with pytest.raises(CaptureError, match="synthetic downstream failure"):
+        app_server.capture(
+            {
+                "issue_id": issue_id,
+                "filename": "tenant-home.JPG",
+                "media_b64": base64.b64encode(media).decode("ascii"),
+            }
+        )
+
+    staged = cast(Path, observed["path"])
+    assert observed["bytes"] == media
+    assert not staged.resolve().is_relative_to(vault.path.resolve())
+    assert staged.name != "tenant-home.JPG"
+    assert staged.suffix == ".jpg"  # media-type inference is preserved
+    if os.name == "posix":
+        assert observed["file_mode"] == 0o600
+        assert observed["directory_mode"] == 0o700
+    assert not staged.exists()
+    assert not staged.parent.exists()
+    assert not (vault.path / "_incoming").exists()
+
+
+def test_browser_capture_preserves_media_type_and_private_source_name(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    vault = make_vault()
+    issue_id = vault.document.add_issue(category="mold", issue_id="i1")
+    media = make_jpeg("tenant-home.JPG").read_bytes()
+    app_server = AppServer(vault, local_tsa, tmp_path, threading.Lock())
+
+    result = app_server.capture(
+        {
+            "issue_id": issue_id,
+            "filename": "tenant-home.JPG",
+            "media_b64": base64.b64encode(media).decode("ascii"),
+        }
+    )
+
+    captured = next(
+        item for item in vault.document.captures() if item.capture_id == result["capture_id"]
+    )
+    assert captured.media_type == "image/jpeg"
+    custody = next(
+        entry
+        for entry in vault.custody.entries
+        if entry.action == "captured" and entry.item_id == captured.capture_id
+    )
+    assert custody.private_details["source"] == "tenant-home.JPG"
+    assert not (vault.path / "_incoming").exists()
+    for path in vault.path.rglob("*"):
+        if path.is_file():
+            assert media not in path.read_bytes()
+
+
+def test_app_start_removes_legacy_incoming_without_following_symlinks(
+    make_vault: Callable[..., Vault], tmp_path: Path
+) -> None:
+    vault = make_vault()
+    incoming = vault.path / "_incoming"
+    incoming.mkdir()
+    (incoming / "stale-upload.jpg").write_bytes(b"legacy plaintext")
+
+    AppServer(vault, None, tmp_path, threading.Lock())
+    assert not incoming.exists()
+
+    protected = tmp_path / "must-not-delete.jpg"
+    protected.write_bytes(b"outside target")
+    incoming.symlink_to(protected)
+    AppServer(vault, None, tmp_path, threading.Lock())
+    assert not incoming.exists()
+    assert protected.read_bytes() == b"outside target"
+
+
+def test_app_start_fails_closed_when_legacy_staging_cannot_be_removed(
+    make_vault: Callable[..., Vault], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = make_vault()
+    incoming = vault.path / "_incoming"
+    incoming.mkdir()
+    (incoming / "stale-upload.jpg").write_bytes(b"legacy plaintext")
+
+    def refuse_cleanup(_path: Path) -> NoReturn:
+        raise OSError("synthetic cleanup denial")
+
+    monkeypatch.setattr(shutil, "rmtree", refuse_cleanup)
+    with pytest.raises(HabitableError, match="could not remove the legacy plaintext"):
+        AppServer(vault, None, tmp_path, threading.Lock())
+    assert incoming.exists()
 
 
 def test_full_api_flow(app: App, make_jpeg: Callable[..., Path]) -> None:

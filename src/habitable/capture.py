@@ -73,6 +73,7 @@ def capture(
     extra_tsas: Sequence[TimestampAuthority] = (),
     media_type: str | None = None,
     transcript: str = "",
+    source_name: str | None = None,
 ) -> CaptureResult:
     """Capture a media file into the vault as an evidence-grade record.
 
@@ -88,7 +89,12 @@ def capture(
     of) a poster frame, and the mechanism EXP-07 adds so temporal evidence can
     meet the same accessibility bar as a photo's alt text. Optional but strongly
     recommended for any video/audio capture -- an empty transcript is recorded
-    and surfaced honestly (not hidden) in the packet, never silently dropped."""
+    and surfaced honestly (not hidden) in the packet, never silently dropped.
+
+    ``source_name`` preserves a browser-provided filename in encrypted, vault-only
+    custody metadata when the actual input path is a random private temporary file.
+    It never affects hashing, media-type inference, or exported custody data.
+    """
     src = Path(source)
     if not src.is_file():
         raise CaptureError(f"no such media file: {src}")
@@ -113,7 +119,9 @@ def capture(
         actor=actor_id,
         hlc=stamp.encode(),
         details={"media_type": resolved_media_type},
-        private_details={"source": src.name},  # tenant filename: vault-only, never exported
+        private_details={
+            "source": Path(source_name).name if source_name else src.name
+        },  # tenant filename: vault-only, never exported
         identity=vault.identity,
     )
 
