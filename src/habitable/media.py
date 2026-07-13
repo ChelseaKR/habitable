@@ -131,26 +131,33 @@ def make_shared_media_copy(source: Path, destination: Path, policy: SharingPolic
         )
     meta = probe_metadata(source)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    result = subprocess.run(
-        [
-            _FFMPEG,
-            "-y",
-            "-i",
-            str(source),
-            "-map_metadata",
-            "-1",
-            "-map_chapters",
-            "-1",
-            "-codec",
-            "copy",
-            str(destination),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=_SUBPROCESS_TIMEOUT,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [
+                _FFMPEG,
+                "-y",
+                "-i",
+                str(source),
+                "-map_metadata",
+                "-1",
+                "-map_chapters",
+                "-1",
+                "-codec",
+                "copy",
+                str(destination),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=_SUBPROCESS_TIMEOUT,
+            check=False,
+        )
+    except (subprocess.SubprocessError, OSError) as exc:
+        destination.unlink(missing_ok=True)
+        raise CaptureError(
+            f"ffmpeg could not strip metadata from {source.name}: {type(exc).__name__}"
+        ) from exc
     if result.returncode != 0 or not destination.exists():
+        destination.unlink(missing_ok=True)
         raise CaptureError(
             f"ffmpeg could not strip metadata from {source.name}: "
             f"{result.stderr.strip()[-500:] or 'unknown ffmpeg failure'}"

@@ -87,6 +87,13 @@ def test_combine_rejects_duplicate_and_mismatched_shares() -> None:
         combine_secret(bad)  # length mismatch
 
 
+@pytest.mark.parametrize("bad_x", [-1, 0, 256, True])
+def test_combine_rejects_out_of_field_x_coordinates(bad_x: int) -> None:
+    shares = split_secret(os.urandom(8), threshold=2, count=2)
+    with pytest.raises(CryptoError, match=r"1\.\.255"):
+        combine_secret([(bad_x, shares[0][1]), shares[1]])
+
+
 # --- end-to-end DEK custody ---------------------------------------------------
 
 

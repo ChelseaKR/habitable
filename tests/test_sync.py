@@ -7,6 +7,7 @@ from __future__ import annotations
 import base64
 import os
 import threading
+import urllib.request
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -244,6 +245,32 @@ def test_relay_client_raises_clear_error_when_token_rejected(
     client = RelayClient(url)
     with pytest.raises(SyncError, match="token"):
         client.post("room-claimed", b"mine")
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        (b"not-json", "invalid JSON"),
+        (b'{"messages":["***not-base64***"]}', "invalid base64"),
+        (b'{"messages":[42]}', "not base64 text"),
+    ],
+)
+def test_relay_client_rejects_malformed_fetch_responses(
+    monkeypatch: pytest.MonkeyPatch, body: bytes, message: str
+) -> None:
+    class Response:
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return body
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *_a, **_kw: Response())
+    with pytest.raises(SyncError, match=message):
+        RelayClient("https://relay.example").fetch("room")
 
 
 def test_localdir_mailbox_holds_only_ciphertext(

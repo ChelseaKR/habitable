@@ -249,7 +249,7 @@ def _packet_meta(bundle_bytes: bytes) -> dict[str, Any]:
     """Best-effort extraction of packet identity fields; never raises on odd shapes."""
     try:
         parsed = json.loads(bundle_bytes)
-    except json.JSONDecodeError, UnicodeDecodeError:
+    except (json.JSONDecodeError, UnicodeDecodeError):
         return {}
     if not isinstance(parsed, dict):
         return {}
@@ -330,7 +330,7 @@ def verify_receipt(
         try:
             public_raw = base64.b64decode(public_b64, validate=True)
             signature = base64.b64decode(signature_b64, validate=True)
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             public_raw = None
         else:
             signature_ok = _verify_ed25519(public_raw, recorded_digest.encode("ascii"), signature)

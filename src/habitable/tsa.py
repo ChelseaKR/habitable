@@ -449,23 +449,14 @@ def _verify_rfc3161_token(
     except Exception as exc:
         raise TimestampError(f"malformed RFC 3161 token: {exc}") from exc
 
-    imprint = tst_info["message_imprint"]
-    if imprint["hash_algorithm"]["algorithm"].native != _SHA256:
-        raise TimestampError("token imprint is not SHA-256")
-    if imprint["hashed_message"].native != bytes.fromhex(digest_hex):
-        raise TimestampError("token imprint does not match the content digest")
-
-    signer_info = signed_data["signer_infos"][0]
-    signer_cert = _find_signer_cert(signed_data, signer_info)
-    if signer_cert is None:
-        raise TimestampError("token does not contain its signing certificate")
-
-    _verify_signed_attrs(content_der, signer_info, signer_cert)
-    trusted = _verify_cert_chain(signer_cert, trusted_certs)
-
-    gen_time = tst_info["gen_time"].native
-    if not isinstance(gen_time, datetime):
-        raise TimestampError("token has no genTime")
+    try:
+        trusted, gen_time = _verify_rfc3161_fields(
+            signed_data, tst_info, content_der, digest_hex, trusted_certs
+        )
+    except TimestampError:
+        raise
+    except Exception as exc:
+        raise TimestampError(f"malformed RFC 3161 token: {exc}") from exc
     note = "" if trusted else "signature valid; signing certificate not chained to a trusted root"
     return TimestampInfo(
         kind=TokenKind.RFC3161.value,
@@ -475,6 +466,36 @@ def _verify_rfc3161_token(
         trusted_chain=trusted,
         note=note,
     )
+
+
+def _verify_rfc3161_fields(
+    signed_data: cms.SignedData,
+    tst_info: tsp.TSTInfo,
+    content_der: bytes,
+    digest_hex: str,
+    trusted_certs: list[crypto_x509.Certificate] | None,
+) -> tuple[bool, datetime]:
+    """Validate the hostile, nested fields inside an already-decoded token."""
+    imprint = tst_info["message_imprint"]
+    if imprint["hash_algorithm"]["algorithm"].native != _SHA256:
+        raise TimestampError("token imprint is not SHA-256")
+    if imprint["hashed_message"].native != bytes.fromhex(digest_hex):
+        raise TimestampError("token imprint does not match the content digest")
+
+    signer_infos = signed_data["signer_infos"]
+    if len(signer_infos) != 1:
+        raise TimestampError(f"token must contain exactly one signer (found {len(signer_infos)})")
+    signer_info = signer_infos[0]
+    signer_cert = _find_signer_cert(signed_data, signer_info)
+    if signer_cert is None:
+        raise TimestampError("token does not contain its signing certificate")
+
+    _verify_signed_attrs(content_der, signer_info, signer_cert)
+    trusted = _verify_cert_chain(signer_cert, trusted_certs)
+    gen_time = tst_info["gen_time"].native
+    if not isinstance(gen_time, datetime):
+        raise TimestampError("token has no genTime")
+    return trusted, gen_time
 
 
 def _find_signer_cert(

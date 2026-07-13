@@ -12,6 +12,7 @@ optional dependency, never bundled).
 from __future__ import annotations
 
 import json
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
@@ -181,6 +182,30 @@ def test_missing_ffmpeg_refuses_share_cleanly(
         make_shared_media_copy(src, tmp_path / "out.mp4", SharingPolicy())
     # And poster extraction degrades to False rather than raising.
     assert extract_poster_frame(src, tmp_path / "poster.jpg") is False
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [subprocess.TimeoutExpired("ffmpeg", 120), OSError("cannot execute ffmpeg")],
+)
+def test_ffmpeg_process_failure_refuses_share_cleanly(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    failure: BaseException,
+) -> None:
+    from habitable import media
+    from habitable.config import SharingPolicy
+    from habitable.errors import CaptureError
+
+    monkeypatch.setattr(media, "ffmpeg_available", lambda: True)
+    monkeypatch.setattr(subprocess, "run", lambda *_a, **_kw: (_ for _ in ()).throw(failure))
+    src = tmp_path / "x.mp4"
+    src.write_bytes(b"not-real-video")
+    destination = tmp_path / "out.mp4"
+
+    with pytest.raises(CaptureError, match="ffmpeg could not strip metadata"):
+        make_shared_media_copy(src, destination, SharingPolicy())
+    assert not destination.exists()
 
 
 def test_ffmpeg_available_is_boolean() -> None:
