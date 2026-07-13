@@ -138,10 +138,10 @@ def combine_secret(parts: Sequence[tuple[int, bytes]]) -> bytes:
     if len(parts) < 2:
         raise CryptoError("need at least two shares to reconstruct a secret")
     xs = [x for x, _ in parts]
+    if any(not isinstance(x, int) or isinstance(x, bool) or not 1 <= x <= _MAX_SHARES for x in xs):
+        raise CryptoError(f"share x-coordinates must be integers in 1..{_MAX_SHARES}")
     if len(set(xs)) != len(xs):
         raise CryptoError("duplicate share x-coordinates; each share must be distinct")
-    if any(x == 0 for x in xs):
-        raise CryptoError("invalid share x-coordinate 0")
     length = len(parts[0][1])
     if any(len(y) != length for _, y in parts):
         raise CryptoError("shares disagree on secret length; they are not from one bundle")
