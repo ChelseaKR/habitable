@@ -33,6 +33,7 @@ operator can infer about a sync — see its docstring and
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -778,15 +779,27 @@ class RelayClient:
         )
         try:
             with urllib.request.urlopen(request, timeout=self._timeout) as response:  # noqa: S310
-                payload = json.loads(response.read())
+                raw = response.read()
         except urllib.error.HTTPError as exc:
             exc.close()
             raise SyncError(f"relay fetch failed: HTTP {exc.code}") from exc
         except OSError as exc:
             raise SyncError(f"relay fetch failed: {exc}") from exc
+        try:
+            payload = json.loads(raw)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise SyncError("malformed relay response: invalid JSON") from exc
         if not isinstance(payload, dict) or not isinstance(payload.get("messages"), list):
             raise SyncError("malformed relay response")
-        return [base64.b64decode(item) for item in payload["messages"] if isinstance(item, str)]
+        messages: list[bytes] = []
+        for item in payload["messages"]:
+            if not isinstance(item, str):
+                raise SyncError("malformed relay response: message is not base64 text")
+            try:
+                messages.append(base64.b64decode(item, validate=True))
+            except (binascii.Error, ValueError) as exc:
+                raise SyncError("malformed relay response: invalid base64 message") from exc
+        return messages
 
 
 # --- metadata-resistant transport (EXP-12) ------------------------------------
