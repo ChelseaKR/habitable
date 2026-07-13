@@ -66,6 +66,16 @@ class TestRfc3161:
         with pytest.raises(TimestampError):
             verify_token(TimestampToken("rfc3161", "x", token.data[:-25]), DIGEST)
 
+    def test_missing_signer_is_reported_as_timestamp_error(
+        self, local_tsa: LocalRfc3161TSA
+    ) -> None:
+        token = local_tsa.stamp(DIGEST)
+        content_info = cms.ContentInfo.load(token.data)
+        content_info["content"]["signer_infos"] = cms.SignerInfos([])
+        malformed = TimestampToken("rfc3161", "x", content_info.dump(force=True))
+        with pytest.raises(TimestampError, match="exactly one signer"):
+            verify_token(malformed, DIGEST)
+
 
 def test_unknown_token_kind() -> None:
     with pytest.raises(TimestampError, match="unknown token kind"):
