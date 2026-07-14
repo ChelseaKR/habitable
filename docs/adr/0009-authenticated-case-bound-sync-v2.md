@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
-# ADR-0008: Require authenticated, case-bound pairing for sync protocol v2
+# ADR-0009: Require authenticated, case-bound pairing for sync protocol v2
 
 - **Status:** Accepted
 - **Date:** 2026-07-10

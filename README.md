@@ -474,11 +474,11 @@ with open gaps named rather than hidden.
 |---|---|---|---|
 | 1 | Quality & metrics | Applies (all repos) | `make verify` (coverage floor, complexity gate); [Definition of done](#definition-of-done) below |
 | 2 | Code quality | Applies (Python; TS/Node/frontend-toolchain controls are N/A — the PWA is no-build vanilla JS with no `package.json`) | `pyproject.toml` (ruff + mypy --strict config); `.pre-commit-config.yaml` |
-| 3 | Security & supply chain | Applies (ships code, releases, and a Dockerfile for the relay) | `SECURITY.md`; `.github/workflows/ci.yml` (gitleaks), `secret-scan-scheduled.yml` (TruffleHog), `codeql.yml`, `zizmor.yml`; `docs/audits/scorecard-2026-07.md` |
+| 3 | Security & Supply-Chain | Applies (ships code, releases, and a Dockerfile for the relay) | `SECURITY.md`; `.github/workflows/ci.yml` (gitleaks), `secret-scan-scheduled.yml` (TruffleHog), `codeql.yml`, `zizmor.yml`; `docs/audits/scorecard-2026-07.md` |
 | 4 | CI/CD | Applies (workflows under `.github/workflows/`) | This README's build/verify description; `.github/rulesets/` (active PR/current-check protection on `main` plus active `v*` release-tag protection; zero approvals is an explicit solo-maintainer waiver in ADR 0006) |
 | 5 | Release & versioning | Applies (tagged GitHub Releases) | `docs/releasing.md`; `ROADMAP.md` §Releases & versioning; **gap:** signed release tags not yet in place (tracked there) |
 | 6 | Accessibility | Applies (emits HTML: the PWA in `app/`, `packet.html`, the `site/` landing page) | [Accessibility and Section 508 conformance](#accessibility-and-section-508-conformance) below; `docs/accessibility/ACR.md`; **gap:** recorded human screen-reader pass still open, tracked as a v1.0 gate item in `ROADMAP.md` |
-| 7 | Observability | Applies (Tier A for the optional relay, Tier C for the CLI; no-telemetry principle drives the N/A rows) | `ROADMAP.md` §Observability |
+| 7 | Observability | Applies (Tier A for the optional relay, Tier C for the CLI; the no-telemetry principle drives excluded controls) | `ROADMAP.md` §Observability |
 | 8 | Internationalization | Applies (bilingual EN/ES civic surface) | `docs/I18N.md` ("i18n status: IN-SCOPE"); `docs/adr/0005-i18n-g12-cldr-na-by-design.md` |
 | 9 | AI evaluation | **N/A — no LLM/AI features** (verified: no LLM SDK in `[project].dependencies` or the dev group; no AI code paths) | — |
 | 10 | Documentation | Applies (all repos) | This README; `docs/` tree; `CHANGELOG.md` |

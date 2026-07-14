@@ -22,7 +22,6 @@ MANIFEST
 venv/
 env/
 ENV/
-.python-version
 
 # ---- Packaging / dependency managers ----
 # A committed lockfile gives reproducible installs; the cache is not committed.

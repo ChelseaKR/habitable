@@ -151,6 +151,7 @@ source = ["habitable"]
 # carry a stricter per-module 95% floor, enforced by the scoped
 # `coverage report --include=… --fail-under=95` step in `make cov` (and CI via
 # `make verify`); see CODE-QUALITY-STANDARD "per-module floors".
+fail_under = 85
 show_missing = true
 skip_covered = false
 exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
