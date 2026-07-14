@@ -143,6 +143,14 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **Canonical conformance metadata and ADR integrity.** The enforced 85% baseline is
+  now recorded in `pyproject.toml`, Python 3.14 is pinned for fresh clones, and the
+  README uses the canonical Security & Supply-Chain label. The ADR log gains its
+  portfolio 0000 governance record and authoring template; the later of two records
+  previously numbered 0008 (authenticated sync) is renumbered 0009 with its link
+  repaired, while the earlier timestamp trust/readiness decision retains 0008. The
+  EOF-normalization hook now excludes signature-bound golden/sample artifacts so a
+  routine pre-commit run cannot rewrite their exact bytes.
 - **Relay retained state and persistence startup are now resource-bounded.** The shared
   threaded store atomically caps live rooms (4,096), messages (50,000 aggregate / 10,000
   per room), ciphertext (512 MiB aggregate / 128 MiB per room), and ASCII base64url-style
