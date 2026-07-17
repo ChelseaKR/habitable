@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# CICD-§11h twin of a11y.yml. "axe-core WCAG scan (merge gate)" is a REQUIRED
+# status check; a docs-only PR skipped by a11y.yml's paths-ignore would
+# otherwise hang "Expected — waiting for status". This same-named, always-green
+# job reports the context instead. The `paths` list below must stay the exact
+# complement of a11y.yml's `paths-ignore` list. On a PR touching both docs and
+# code the real scan also runs and, finishing later, its result governs.
+name: a11y-docs-only
+
+on:
+  pull_request:
+    paths:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a11y-docs-only-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  axe:
+    name: axe-core WCAG scan (merge gate)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report success for a docs-only change
+        run: echo "Docs-only change — no UI surface affected; the axe-core scan is satisfied by the twin job (CICD-STANDARD §11h)."

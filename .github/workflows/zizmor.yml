@@ -18,6 +18,11 @@ on:
 permissions:
   contents: read
 
+# CICD-§11c: cancel superseded runs on the same ref.
+concurrency:
+  group: zizmor-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   zizmor:
     name: zizmor workflow security scan
