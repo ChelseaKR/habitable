@@ -9,6 +9,15 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **Evidence Atlas local-app overhaul.** The case workspace now joins captures and
+  timeline facts on an interactive, issue-filterable chronology with visible evidence
+  links, proof-state overlays, guided keyboard story navigation, collision-safe same-date
+  controls, a synchronized fact inspector, and an accessible table equivalent. The
+  redesigned record, readiness, and disclosure workspaces remain bilingual, responsive,
+  telemetry-free, and localhost-only; the loopback API exposes only the minimal hash,
+  timestamp, custody, and relationship projection the atlas needs—never media or token
+  bytes.
+
 - **Byte-reproducible relay-image gate.** `make relay-repro` builds two no-cache
   linux/amd64 OCI archives from the pinned relay base under the commit's fixed
   `SOURCE_DATE_EPOCH`, uses BuildKit timestamp rewriting, and compares the complete

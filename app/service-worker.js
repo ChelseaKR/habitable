@@ -4,7 +4,7 @@
 
 // Bump whenever an authenticated shell asset changes. Keeping the old cache name
 // would let a pre-auth app.js survive an upgrade and send tokenless API requests.
-var CACHE = "habitable-shell-v4-auth";
+var CACHE = "habitable-shell-v5-atlas";
 
 // Relative URLs so the worker matches however the shell is served.
 var SHELL = [

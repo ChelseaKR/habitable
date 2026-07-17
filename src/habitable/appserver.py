@@ -33,6 +33,7 @@ from urllib.parse import urlsplit
 from .capture import capture, resolve_deferred
 from .disclosure import proof_statement
 from .errors import HabitableError
+from .model import Capture
 from .obslog import configure_logging, enabled_from_env, is_configured, log_event
 from .packet import build_packet
 from .private_temp import private_temp_workspace
@@ -160,14 +161,11 @@ class AppServer:
             "severity": issue.severity,
             "description": issue.description,
             "captures": len(doc.captures(issue_id)),
-            "capture_items": [
-                {
-                    "capture_id": capture.capture_id,
-                    "captured_at": capture.captured_at,
-                    "media_type": capture.media_type,
-                }
-                for capture in doc.captures(issue_id)
-            ],
+            # The local app now renders an evidence atlas instead of flattening
+            # captures into a count.  These are still read-only facts from the
+            # already-unlocked, loopback-only vault; no media bytes or token bytes
+            # are returned and API responses remain network-only/no-cache.
+            "capture_items": [self._capture_item(capture) for capture in doc.captures(issue_id)],
             "timeline": [
                 {
                     "entry_id": entry.entry_id,
@@ -181,6 +179,10 @@ class AppServer:
                     "recorded_at": entry.recorded_at,
                     "source": entry.source,
                     "source_detail": entry.source_detail,
+                    "capture_ids": list(entry.capture_ids),
+                    "notice_entry_id": entry.notice_entry_id,
+                    "receipt_entry_id": entry.receipt_entry_id,
+                    "response_entry_id": entry.response_entry_id,
                 }
                 for entry in doc.timeline(issue_id)
             ],
@@ -194,6 +196,33 @@ class AppServer:
                 "minimal_count": strength.minimal_count,
                 "timeline_entries": strength.timeline_entries,
             },
+        }
+
+    def _capture_item(self, capture: Capture) -> dict[str, object]:
+        """Return the small, non-media projection used by the evidence atlas."""
+        # ``capture`` is kept local to this helper so the public endpoint does not
+        # accidentally grow into a media-serving API.  Attribute names come from
+        # the immutable ``model.Capture`` value read above.
+        capture_id = capture.capture_id
+        token = self.vault.get_token(capture_id)
+        authorities = {
+            candidate.tsa_name
+            for candidate in (
+                ([token] if token is not None else [])
+                + list(self.vault.get_additional_tokens(capture_id))
+            )
+        }
+        return {
+            "capture_id": capture_id,
+            "captured_at": capture.captured_at,
+            "media_type": capture.media_type,
+            "content_hash": capture.content_hash,
+            "transcript": capture.transcript,
+            "timestamped": token is not None,
+            "timestamp_authorities": len(authorities),
+            "custody_entries": sum(
+                1 for entry in self.vault.custody.entries if entry.item_id == capture_id
+            ),
         }
 
     def add_issue(self, body: dict[str, object]) -> dict[str, object]:
