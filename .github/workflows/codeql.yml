@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 name: codeql
 
+# CICD-§11e: PRs into main + the weekly schedule cover everything a push:main
+# trigger would — the PR run analyzes the change before merge, the schedule
+# keeps default-branch results fresh against new queries. No push trigger.
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
   schedule:
@@ -11,6 +12,12 @@ on:
 
 permissions:
   contents: read
+
+# CICD-§11c: a force-push to a PR branch supersedes the in-flight analysis;
+# cancel it rather than paying for both.
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   analyze:

@@ -1,10 +1,24 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 name: a11y
 
+# CICD-§11h: the axe gate installs Chromium and drives a browser — the most
+# expensive job on the PR path — and its inputs are the app templates and
+# site/**, never prose. Docs-only changes skip it; because the job is a
+# REQUIRED status check, a11y-docs-only.yml provides the same-named
+# always-green twin so docs-only PRs still report the context and stay
+# mergeable. Keep both paths-ignore lists and the twin's paths in lockstep.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
   workflow_dispatch:
 
 permissions:

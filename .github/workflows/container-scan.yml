@@ -8,9 +8,10 @@ name: container-scan
 # CVEs disclosed against an already-merged image). Threshold is CRITICAL,HIGH per
 # docs/standards/SECURITY-AND-SUPPLY-CHAIN-STANDARD.md §6.3.
 
+# CICD-§11e: the PR run gates the merge and the weekly schedule catches CVEs
+# disclosed after merge — a push:main run would rebuild and rescan the identical
+# image minutes after its PR run, so it carries no additional signal.
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
   schedule:
