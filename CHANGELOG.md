@@ -9,6 +9,24 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **Bounded public review hub.** `/review/` now routes tenant organizers, legal-aid
+  reviewers, accessibility testers, and security/verifier reviewers into four
+  fixed-time synthetic workflows with six concrete tasks and expected outputs. A
+  user-started 75-second walkthrough demonstrates the synthetic case, packet export,
+  and verifier limit; public technical feedback, private no-case-data organization
+  contact, and private vulnerability reporting remain separate. `/review/changes/`
+  opens a dated “what reviewers found / what changed” ledger without inventing
+  findings, and neither page accepts evidence uploads.
+
+- **Evidence Atlas local-app overhaul.** The case workspace now joins captures and
+  timeline facts on an interactive, issue-filterable chronology with visible evidence
+  links, proof-state overlays, guided keyboard story navigation, collision-safe same-date
+  controls, a synchronized fact inspector, and an accessible table equivalent. The
+  redesigned record, readiness, and disclosure workspaces remain bilingual, responsive,
+  telemetry-free, and localhost-only; the loopback API exposes only the minimal hash,
+  timestamp, custody, and relationship projection the atlas needs—never media or token
+  bytes.
+
 - **Byte-reproducible relay-image gate.** `make relay-repro` builds two no-cache
   linux/amd64 OCI archives from the pinned relay base under the commit's fixed
   `SOURCE_DATE_EPOCH`, uses BuildKit timestamp rewriting, and compares the complete
@@ -104,6 +122,13 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   direct fault classification, and repeated real TCP RSTs.
 
 ### Changed
+
+- **Distinctive tenant-evidence identity and custom domain.** The public site and
+  installable app now share a structural H-frame/evidence-seal mark, self-hosted civic
+  signage typography, a cool field-record palette, and a building-section case-spine
+  motif grounded in repair documentation rather than generic software cards. Canonical,
+  social, sitemap, and schema URLs now use `https://habitable.chelseakr.com/`; the public
+  site remains a static synthetic preview and still hosts no tenant case data.
 
 - **Enforced PR-only, current-check updates to `main`.** Live repository ruleset
   `18752848` now requires every update through a pull request, requires all merge
