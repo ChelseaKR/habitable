@@ -114,7 +114,7 @@ builds a packet (location stripped from the shared copies), and independently ve
 network and no real tenant data. From there: `uv run habitable --help`.
 
 **Just want to look?** There is deliberately no hosted app (it runs on `localhost` so your case never
-leaves the device), but a static **[landing page + live sample packet](https://chelseakr.github.io/habitable/)**
+leaves the device), but a static **[landing page + live sample packet](https://habitable.chelseakr.com/)**
 shows what it produces. A safe phone package is **not shipped yet**; see the honest
 [`docs/mobile.md`](docs/mobile.md) support boundary. To run the optional sync relay, see
 [`docs/relay-deploy.md`](docs/relay-deploy.md); to sync a case with no network at all — an
@@ -124,7 +124,7 @@ encrypted delta on a USB stick or SD card — see [`docs/sneakernet-sync.md`](do
 
 | The local app (English / Español) | An exported, verifiable packet |
 | --- | --- |
-| ![The habitable local web app showing case status, issues, and an add-issue form](site/img/app-en.png) | ![An accessible habitability evidence packet with an issue, a captured photo, and an evidence appendix table](site/img/packet.png) |
+| ![The habitable Evidence Atlas showing linked captures and timeline facts, case readiness, and recording tools](site/img/app-en.png) | ![An accessible habitability evidence packet with an issue, a captured photo, and an evidence appendix table](site/img/packet.png) |
 
 The app is bilingual (EN/ES) and has automated axe, keyboard, and reflow coverage; a human
 screen-reader pass remains open. Every export ships an axe-tested `packet.html`, a paginated PDF,
@@ -532,8 +532,12 @@ the funding paths, and one-click intake for each role:
   **[tenant-union / legal-aid pilot partner](docs/recruitment/role-pilot-partner.md)**
   (currently scoped to California).
 
-Offers go through the [reviewer intake form](https://github.com/ChelseaKR/habitable/issues/new?template=reviewer-intake.yml);
-**security vulnerabilities** go privately through [`SECURITY.md`](SECURITY.md), never a public issue.
+Start at the **[bounded review hub](https://habitable.chelseakr.com/review/)**: choose one
+fixed-time synthetic task, preview the 75-second case → export → verification flow, and read the
+public [findings / changes log](https://habitable.chelseakr.com/review/changes/). General technical
+feedback belongs in public Issues or Discussions; organization interest has a private no-case-data
+route on the hub. **No channel accepts evidence uploads. Security vulnerabilities** go privately
+through [`SECURITY.md`](SECURITY.md), never a public issue.
 
 ## Definition of done
 
