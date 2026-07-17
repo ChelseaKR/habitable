@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 from xml.etree import ElementTree
 
 _SITE = Path(__file__).resolve().parent.parent / "site"
-_CANONICAL = "https://chelseakr.github.io/habitable/"
+_CANONICAL = "https://habitable.chelseakr.com/"
 _TITLE = "Habitable Evidence — Offline Tenant Repair Documentation"
 _DESCRIPTION = (
     "Habitable Evidence helps tenants and unions document repairs, notices, photos, and "
