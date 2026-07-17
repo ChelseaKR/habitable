@@ -187,6 +187,8 @@ def test_sitemap_lists_the_canonical_indexable_pages() -> None:
         f"{_CANONICAL}legal-aid-reviewers/",
         f"{_CANONICAL}inspectors-code-enforcement/",
         f"{_CANONICAL}trust-limitations/",
+        f"{_CANONICAL}review/",
+        f"{_CANONICAL}review/changes/",
     ]
     assert [url.findtext("sm:loc", namespaces=namespace) for url in urls] == expected
 
