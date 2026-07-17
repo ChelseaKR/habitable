@@ -572,7 +572,7 @@ Traffic alone is not success. The north-star remains a safe, usable record that 
 
 ### Habitable
 
-- [Live landing page](https://chelseakr.github.io/habitable/)
+- [Live landing page](https://habitable.chelseakr.com/)
 - [Repository](https://github.com/ChelseaKR/habitable)
 - [Open pull requests](https://github.com/ChelseaKR/habitable/pulls)
 - [v0.2.0 release](https://github.com/ChelseaKR/habitable/releases/tag/v0.2.0)

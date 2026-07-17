@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Review questions and design critique (public)
+    url: https://github.com/ChelseaKR/habitable/discussions
+    about: Use only synthetic material. Never include tenant, client, case, evidence, or vulnerability information.
   - name: Report a security vulnerability (private)
     url: https://github.com/ChelseaKR/habitable/security/advisories/new
     about: Do not open a public issue for vulnerabilities. Use private reporting — see SECURITY.md.
