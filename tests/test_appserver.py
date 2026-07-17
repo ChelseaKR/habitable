@@ -277,10 +277,16 @@ def test_full_api_flow(app: App, make_jpeg: Callable[..., Path]) -> None:
     assert strength["item_count"] == 1
     assert strength["level"] == "developing"
     assert strength["timeline_entries"] == 1
+    capture_items = cast("list[dict[str, object]]", issues[0]["capture_items"])
+    assert capture_items[0]["capture_id"] == cap["capture_id"]
+    assert capture_items[0]["content_hash"] == cap["content_hash"]
+    assert capture_items[0]["timestamped"] is True
+    assert cast(int, capture_items[0]["custody_entries"]) >= 1
     timeline_entries = cast("list[dict[str, object]]", issues[0]["timeline"])
     assert timeline_entries[0]["event_type"] == "condition_observed"
     assert timeline_entries[0]["kind"] == "condition_observed"  # pre-v3 API compatibility
     assert timeline_entries[0]["occurred_at"] == "2026-01-03"
+    assert timeline_entries[0]["capture_ids"] == [cap["capture_id"]]
 
     status, export = _call(app, "POST", "/api/export", {})
     assert status == 200 and export["item_count"] == 1
