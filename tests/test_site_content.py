@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 import pytest
 
 _SITE = Path(__file__).resolve().parent.parent / "site"
-_BASE = "https://chelseakr.github.io/habitable/"
+_BASE = "https://habitable.chelseakr.com/"
 _PAGE_META = {
     "how-it-works": (
         "How Habitable Evidence Works | Offline Repair Records",

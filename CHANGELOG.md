@@ -114,6 +114,13 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Changed
 
+- **Distinctive tenant-evidence identity and custom domain.** The public site and
+  installable app now share a structural H-frame/evidence-seal mark, self-hosted civic
+  signage typography, a cool field-record palette, and a building-section case-spine
+  motif grounded in repair documentation rather than generic software cards. Canonical,
+  social, sitemap, and schema URLs now use `https://habitable.chelseakr.com/`; the public
+  site remains a static synthetic preview and still hosts no tenant case data.
+
 - **Enforced PR-only, current-check updates to `main`.** Live repository ruleset
   `18752848` now requires every update through a pull request, requires all merge
   gates to pass against current `main`, resolves review conversations, blocks

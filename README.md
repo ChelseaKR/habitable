@@ -114,7 +114,7 @@ builds a packet (location stripped from the shared copies), and independently ve
 network and no real tenant data. From there: `uv run habitable --help`.
 
 **Just want to look?** There is deliberately no hosted app (it runs on `localhost` so your case never
-leaves the device), but a static **[landing page + live sample packet](https://chelseakr.github.io/habitable/)**
+leaves the device), but a static **[landing page + live sample packet](https://habitable.chelseakr.com/)**
 shows what it produces. A safe phone package is **not shipped yet**; see the honest
 [`docs/mobile.md`](docs/mobile.md) support boundary. To run the optional sync relay, see
 [`docs/relay-deploy.md`](docs/relay-deploy.md); to sync a case with no network at all — an

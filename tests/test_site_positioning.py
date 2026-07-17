@@ -89,9 +89,7 @@ def _landing() -> _PositioningParser:
 
 def test_hero_uses_the_case_building_thesis_and_honest_alpha_boundary() -> None:
     parser = _landing()
-    assert parser.headings["h1"] == [
-        "Build a verifiable habitability case—not just a folder of photos."
-    ]
+    assert parser.headings["h1"] == ["A building problem leaves a trail. Keep the whole trail."]
 
     body = _normalize(parser.visible_parts)
     assert "Habitable Evidence" in body
