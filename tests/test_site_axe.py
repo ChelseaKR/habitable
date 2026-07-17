@@ -65,6 +65,8 @@ def test_landing_page_passes_axe() -> None:
         "legal-aid-reviewers/index.html",
         "inspectors-code-enforcement/index.html",
         "trust-limitations/index.html",
+        "review/index.html",
+        "review/changes/index.html",
     ],
 )
 def test_public_content_guides_pass_axe(relative_path: str) -> None:
