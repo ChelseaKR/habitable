@@ -14,3 +14,7 @@
 /src/habitable/verify.py  @ChelseaKR
 /src/habitable/crypto.py  @ChelseaKR
 /docs/threat-model.md     @ChelseaKR
+
+# The quality bar itself: changing the Definition of Done is a reviewed decision
+# (QUALITY-AND-METRICS-STANDARD §Definition of Done), not a drive-by edit.
+/DEFINITION_OF_DONE.md    @ChelseaKR
