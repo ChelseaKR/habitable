@@ -8,14 +8,12 @@ import re
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import cast
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 import pytest
 
 _SITE_ROOT = Path(__file__).resolve().parent.parent / "site"
-_REPO_ROOT = _SITE_ROOT.parent
 _LANDING = _SITE_ROOT / "index.html"
-_PILOT_URL = "https://github.com/ChelseaKR/habitable/issues/new?template=reviewer-intake.yml"
 
 
 def _normalize(parts: list[str]) -> str:
@@ -99,32 +97,22 @@ def test_hero_uses_the_case_building_thesis_and_honest_alpha_boundary() -> None:
     assert "court-ready" not in body.casefold()
 
 
-def test_primary_actions_route_to_pilot_sample_and_evidence_method() -> None:
+def test_primary_actions_route_to_review_sample_and_evidence_method() -> None:
     parser = _landing()
     by_id = {link["id"]: link for link in parser.links if link.get("id")}
 
-    assert by_id["pilot-cta"]["href"] == _PILOT_URL
-    pilot = urlparse(by_id["pilot-cta"]["href"])
-    assert pilot.scheme == "https"
-    assert pilot.netloc == "github.com"
-    assert parse_qs(pilot.query) == {"template": ["reviewer-intake.yml"]}
-    assert by_id["pilot-cta"]["text"] == "Offer a synthetic-data pilot"
+    assert by_id["pilot-cta"]["href"] == "review/"
+    assert by_id["pilot-cta"]["text"] == "Choose a bounded review"
 
     assert by_id["sample-cta"]["href"] == "sample-packet/packet.html"
     assert by_id["method-cta"]["href"] == "how-it-works/"
     assert by_id["method-cta"]["text"] == "Read how the evidence method works"
 
     body = _normalize(parser.visible_parts)
-    assert "The pilot link opens a public GitHub form" in body
-    assert "Never include tenant names, addresses, photos, evidence, or case details" in body
-    assert parser.form_count == 0, "the static site must not collect pilot or tenant data"
-
-    intake = (_REPO_ROOT / ".github" / "ISSUE_TEMPLATE" / "reviewer-intake.yml").read_text(
-        encoding="utf-8"
-    )
-    assert "Evaluate using synthetic `habitable demo` data only" in intake
-    assert "will not handle real tenant data" in intake
-    assert "not the place to submit findings" in intake.replace("**", "")
+    assert "separates public technical feedback from private organization contact" in body
+    assert "accepts no evidence uploads" in body
+    assert "supplied synthetic case" in body
+    assert parser.form_count == 0, "the static site must not collect review or tenant data"
 
 
 def test_each_audience_has_an_explicit_route() -> None:
@@ -139,6 +127,8 @@ def test_each_audience_has_an_explicit_route() -> None:
         "Plan a bounded union evaluation",
         "Follow the legal-aid review guide",
         "Follow the inspector review guide",
+        "Choose one bounded review task",
+        "Read what reviewers found and what changed",
         "Read the open trust gates",
         "Browse the source",
     }

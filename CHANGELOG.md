@@ -9,6 +9,15 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **Bounded public review hub.** `/review/` now routes tenant organizers, legal-aid
+  reviewers, accessibility testers, and security/verifier reviewers into four
+  fixed-time synthetic workflows with six concrete tasks and expected outputs. A
+  user-started 75-second walkthrough demonstrates the synthetic case, packet export,
+  and verifier limit; public technical feedback, private no-case-data organization
+  contact, and private vulnerability reporting remain separate. `/review/changes/`
+  opens a dated “what reviewers found / what changed” ledger without inventing
+  findings, and neither page accepts evidence uploads.
+
 - **Evidence Atlas local-app overhaul.** The case workspace now joins captures and
   timeline facts on an interactive, issue-filterable chronology with visible evidence
   links, proof-state overlays, guided keyboard story navigation, collision-safe same-date

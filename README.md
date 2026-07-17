@@ -532,8 +532,12 @@ the funding paths, and one-click intake for each role:
   **[tenant-union / legal-aid pilot partner](docs/recruitment/role-pilot-partner.md)**
   (currently scoped to California).
 
-Offers go through the [reviewer intake form](https://github.com/ChelseaKR/habitable/issues/new?template=reviewer-intake.yml);
-**security vulnerabilities** go privately through [`SECURITY.md`](SECURITY.md), never a public issue.
+Start at the **[bounded review hub](https://habitable.chelseakr.com/review/)**: choose one
+fixed-time synthetic task, preview the 75-second case → export → verification flow, and read the
+public [findings / changes log](https://habitable.chelseakr.com/review/changes/). General technical
+feedback belongs in public Issues or Discussions; organization interest has a private no-case-data
+route on the hub. **No channel accepts evidence uploads. Security vulnerabilities** go privately
+through [`SECURITY.md`](SECURITY.md), never a public issue.
 
 ## Definition of done
 
