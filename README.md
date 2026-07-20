@@ -44,6 +44,29 @@ auditability, accessibility, and saying plainly what the tool does not do.
 
 ---
 
+## Quickstart
+
+Requires [uv](https://docs.astral.sh/uv/); the right Python (3.14) is fetched automatically.
+
+```console
+$ uv sync                 # create the env and install habitable + dev tools
+$ uv run habitable demo   # capture → seal+hash → RFC 3161 → packet → verify, on synthetic data, offline
+$ make verify             # the full gate: ruff + mypy --strict + pytest (property-based + tamper-detection)
+```
+
+`habitable demo` fabricates a couple of photos with embedded location, captures them as evidence,
+builds a packet (location stripped from the shared copies), and independently verifies it — with no
+network and no real tenant data. From there: `uv run habitable --help`.
+
+**Just want to look?** There is deliberately no hosted app (it runs on `localhost` so your case never
+leaves the device), but a static **[landing page + live sample packet](https://habitable.chelseakr.com/)**
+shows what it produces. A safe phone package is **not shipped yet**; see the honest
+[`docs/mobile.md`](docs/mobile.md) support boundary. To run the optional sync relay, see
+[`docs/relay-deploy.md`](docs/relay-deploy.md); to sync a case with no network at all — an
+encrypted delta on a USB stick or SD card — see [`docs/sneakernet-sync.md`](docs/sneakernet-sync.md).
+
+---
+
 ## What it does
 
 - **Captures** a habitability issue as a structured record: photos and short video, a condition note,
@@ -98,27 +121,6 @@ Development timestamps are never evidence-ready. Technical readiness does not de
 or any legal outcome.
 
 ---
-
-## Try it
-
-Requires [uv](https://docs.astral.sh/uv/); the right Python (3.14) is fetched automatically.
-
-```console
-$ uv sync                 # create the env and install habitable + dev tools
-$ uv run habitable demo   # capture → seal+hash → RFC 3161 → packet → verify, on synthetic data, offline
-$ make verify             # the full gate: ruff + mypy --strict + pytest (property-based + tamper-detection)
-```
-
-`habitable demo` fabricates a couple of photos with embedded location, captures them as evidence,
-builds a packet (location stripped from the shared copies), and independently verifies it — with no
-network and no real tenant data. From there: `uv run habitable --help`.
-
-**Just want to look?** There is deliberately no hosted app (it runs on `localhost` so your case never
-leaves the device), but a static **[landing page + live sample packet](https://habitable.chelseakr.com/)**
-shows what it produces. A safe phone package is **not shipped yet**; see the honest
-[`docs/mobile.md`](docs/mobile.md) support boundary. To run the optional sync relay, see
-[`docs/relay-deploy.md`](docs/relay-deploy.md); to sync a case with no network at all — an
-encrypted delta on a USB stick or SD card — see [`docs/sneakernet-sync.md`](docs/sneakernet-sync.md).
 
 ## Screenshots
 
