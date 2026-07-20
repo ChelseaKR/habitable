@@ -472,7 +472,7 @@ with open gaps named rather than hidden.
 
 | # | Standard | Applies? | Where it's tracked |
 |---|---|---|---|
-| 1 | Quality & metrics | Applies (all repos) | `make verify` (coverage floor, complexity gate); [Definition of done](#definition-of-done) below |
+| 1 | Quality & metrics | Applies (all repos) | `make verify` (coverage floor, complexity gate); [Definition of done](#definition-of-done) below; the gate-by-gate contract is [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md) |
 | 2 | Code quality | Applies (Python; TS/Node/frontend-toolchain controls are N/A — the PWA is no-build vanilla JS with no `package.json`) | `pyproject.toml` (ruff + mypy --strict config); `.pre-commit-config.yaml` |
 | 3 | Security & Supply-Chain | Applies (ships code, releases, and a Dockerfile for the relay) | `SECURITY.md`; `.github/workflows/ci.yml` (gitleaks), `secret-scan-scheduled.yml` (TruffleHog), `codeql.yml`, `zizmor.yml`; `docs/audits/scorecard-2026-07.md` |
 | 4 | CI/CD | Applies (workflows under `.github/workflows/`) | This README's build/verify description; `.github/rulesets/` (active PR/current-check protection on `main` plus active `v*` release-tag protection; zero approvals is an explicit solo-maintainer waiver in ADR 0006) |
@@ -547,3 +547,7 @@ the case end to end encrypted with no server; the union exports a
 paginated packet with an evidence appendix for unit 4B; and a recipient runs `habitable verify` to confirm
 every item is intact against its sealed original and timestamp token — with no personal data on any server
 and every CI gate, including the accessibility gate, green.
+
+The tier-by-tier contract behind that sentence — every AUTO gate, the human review
+attestations, and the release gate — is [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md)
+at the repo root.
