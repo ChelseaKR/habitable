@@ -482,7 +482,7 @@ with open gaps named rather than hidden.
 | 8 | Internationalization | Applies (bilingual EN/ES civic surface) | `docs/I18N.md` ("i18n status: IN-SCOPE"); `docs/adr/0005-i18n-g12-cldr-na-by-design.md` |
 | 9 | AI evaluation | **N/A — no LLM/AI features** (verified: no LLM SDK in `[project].dependencies` or the dev group; no AI code paths) | — |
 | 10 | Documentation | Applies (all repos) | This README; `docs/` tree; `CHANGELOG.md` |
-| 11 | Responsible-tech framework | Applies (all repos) | `docs/audits/`, `docs/privacy.md`, `docs/threat-model.md`; **gap:** the A–F applicability matrix this table itself represents was only added 2026-07-05 and a standalone `docs/RESPONSIBLE-TECH-AUDITS.md` is still open |
+| 11 | Responsible-tech framework | Applies (all repos) | [`docs/RESPONSIBLE-TECH-AUDITS.md`](docs/RESPONSIBLE-TECH-AUDITS.md) (A–F applicability declaration, ASVS 5.0 self-assessment, secret-management and VEX posture, audit index); `docs/audits/`, `docs/privacy.md`, `docs/threat-model.md` |
 
 Every "gap" above is also named in this repo's dated remediation record
 (`habitable-REMEDIATION.md` from the 2026-07-05 conformance audit); formal
