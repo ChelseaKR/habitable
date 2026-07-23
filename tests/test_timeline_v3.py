@@ -77,7 +77,7 @@ def test_case_schema_v1_reads_forward_but_future_state_fails_closed(
     migrated = CaseDocument.from_state(state, HybridLogicalClock("migration-test"))
     entry = migrated.timeline()[0]
     assert entry.schema_version == 1 and entry.source == "unspecified"
-    assert migrated.to_state()["schema_version"] == 2
+    assert migrated.to_state()["schema_version"] == 3
 
     state["schema_version"] = 999
     with pytest.raises(HabitableError, match="newer than supported"):
@@ -164,7 +164,7 @@ def test_packet_v3_links_and_custody_verify_and_render_deterministically(
     result = build_packet(vault, out, generated_at="2026-01-06T00:00:00Z")
     bundle = json.loads(result.bundle_path.read_text(encoding="utf-8"))
 
-    assert bundle["packet_version"] == PACKET_VERSION == 3
+    assert bundle["packet_version"] == PACKET_VERSION == 4
     by_id = {entry["entry_id"]: entry for entry in bundle["timeline"]}
     event = by_id[summary]
     assert "kind" not in event and "hlc" not in event  # do not reuse packet-v2 meanings

@@ -51,7 +51,7 @@ from .canonical import JSONValue, canonical_json, sha256_bytes
 from .crypto import Identity, PublicIdentity, open_sealed, seal_to, verify
 from .errors import SyncError
 from .evidence import CustodyAction, CustodyLog
-from .model import verify_state_provenance
+from .model import CaseDocument, verify_state_provenance
 from .obslog import log_event
 from .tsa import TimestampToken, verify_archive_chain, verify_token
 from .vault import Vault
@@ -159,20 +159,29 @@ def export_message(
     have: list[JSONValue] = []
     captures: list[JSONValue] = []
     carries_original = False
-    for capture in vault.document.captures():
-        have.append({"capture_id": capture.capture_id, "content_hash": capture.content_hash})
-        primary = vault.get_token(capture.capture_id)
-        additional = vault.get_additional_tokens(capture.capture_id)
-        archives = vault.get_archive_tokens(capture.capture_id)
+    evidence_records = [
+        (capture.capture_id, capture.content_hash, capture.media_type, "capture")
+        for capture in vault.document.captures()
+    ]
+    evidence_records.extend(
+        (artifact.artifact_id, artifact.content_hash, artifact.media_type, "artifact")
+        for artifact in vault.document.artifacts()
+    )
+    for record_id, content_hash, media_type, record_kind in evidence_records:
+        have.append({"capture_id": record_id, "content_hash": content_hash})
+        primary = vault.get_token(record_id)
+        additional = vault.get_additional_tokens(record_id)
+        archives = vault.get_archive_tokens(record_id)
         raw = None
-        if capture.capture_id not in known:
-            raw = vault.read_original(capture.capture_id, capture.content_hash)
+        if record_id not in known:
+            raw = vault.read_original(record_id, content_hash)
             carries_original = True
         captures.append(
             {
-                "capture_id": capture.capture_id,
-                "content_hash": capture.content_hash,
-                "media_type": capture.media_type,
+                "capture_id": record_id,
+                "content_hash": content_hash,
+                "media_type": media_type,
+                "record_kind": record_kind,
                 "original_b64": (
                     base64.b64encode(raw).decode("ascii") if raw is not None else None
                 ),
@@ -366,6 +375,7 @@ def _validate_message(
     if len(message_id) != 64 or any(ch not in "0123456789abcdef" for ch in message_id):
         raise SyncError("sync message id is malformed")
     proof = _validate_custody_proof(inner.get("custody_proof"))
+    _validate_extended_state(vault, state)
     captures = _validate_captures(vault, inner, proof)
     receipts = _validate_receipts(vault, sender, inner.get("receipts"))
     return _ValidatedMessage(
@@ -404,6 +414,14 @@ def _check_field_provenance(vault: Vault, state: Mapping[str, JSONValue]) -> Non
             raise SyncError(
                 "field provenance signature is invalid for " + ", ".join(sorted(failed))
             )
+
+
+def _validate_extended_state(vault: Vault, state: Mapping[str, JSONValue]) -> None:
+    """Parse and validate additive case-schema records before merging them."""
+    try:
+        CaseDocument.from_state(state, vault.document.clock)
+    except Exception as exc:
+        raise SyncError("sync state contains invalid artifact or relationship records") from exc
 
 
 def _unsigned_register_targets(state: Mapping[str, JSONValue]) -> list[str]:
@@ -680,6 +698,9 @@ def _validate_receipt(
 
 def _confirmed_have(vault: Vault, inner: Mapping[str, JSONValue]) -> list[str]:
     local = {capture.capture_id: capture.content_hash for capture in vault.document.captures()}
+    local.update(
+        {artifact.artifact_id: artifact.content_hash for artifact in vault.document.artifacts()}
+    )
     raw = inner.get("have")
     if not isinstance(raw, list):
         raise SyncError("sync have manifest must be an array")

@@ -36,13 +36,14 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from .evidence import CustodyLog
-from .model import Capture
+from .model import Artifact, Capture
 from .vault import Vault
 
 __all__ = [
     "IssueStrength",
     "ItemStrength",
     "RecordStrengthLevel",
+    "assess_artifact",
     "assess_capture",
     "assess_case",
     "assess_issue",
@@ -140,6 +141,21 @@ def assess_capture(vault: Vault, capture: Capture) -> ItemStrength:
     )
 
 
+def assess_artifact(vault: Vault, artifact: Artifact) -> ItemStrength:
+    """The same local record-strength projection for a sealed artifact."""
+    has_timestamp = vault.get_token(artifact.artifact_id) is not None
+    authority_count = _authority_count(vault, artifact.artifact_id)
+    return ItemStrength(
+        capture_id=artifact.artifact_id,
+        issue_id=artifact.issue_id,
+        has_timestamp=has_timestamp,
+        authority_count=authority_count,
+        custody_entries=_custody_entries_for(vault.custody, artifact.artifact_id),
+        corroborating_timeline_entries=len(vault.document.timeline(artifact.issue_id)),
+        level=_level_for(has_timestamp=has_timestamp, authority_count=authority_count),
+    )
+
+
 def assess_issue(vault: Vault, issue_id: str) -> IssueStrength:
     """The record-strength assessment for an issue, aggregated over its items.
 
@@ -150,6 +166,7 @@ def assess_issue(vault: Vault, issue_id: str) -> IssueStrength:
     with no captures yet is ``MINIMAL`` — there is nothing to corroborate.
     """
     items = [assess_capture(vault, c) for c in vault.document.captures(issue_id)]
+    items.extend(assess_artifact(vault, item) for item in vault.document.artifacts(issue_id))
     strong = sum(1 for i in items if i.level is RecordStrengthLevel.STRONG)
     developing = sum(1 for i in items if i.level is RecordStrengthLevel.DEVELOPING)
     minimal = sum(1 for i in items if i.level is RecordStrengthLevel.MINIMAL)

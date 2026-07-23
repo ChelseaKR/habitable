@@ -34,10 +34,18 @@ from .crypto import Identity
 from .crypto import verify as verify_signature
 from .errors import HabitableError
 from .timeline import EVENT_TYPES, SOURCES, normalize_occurred_at, recorded_at_from_hlc
+from .usecases import (
+    ARTIFACT_TYPES,
+    RELATIONSHIP_ENDPOINT_KINDS,
+    RELATIONSHIP_TYPES,
+    get_profile,
+)
 
 __all__ = [
+    "Artifact",
     "Capture",
     "CaseDocument",
+    "EvidenceRelationship",
     "FieldProvenance",
     "GrowLog",
     "Issue",
@@ -47,8 +55,10 @@ __all__ = [
     "verify_state_provenance",
 ]
 
-CASE_SCHEMA_VERSION = 2
+CASE_SCHEMA_VERSION = 3
 TIMELINE_SCHEMA_VERSION = 2
+ARTIFACT_SCHEMA_VERSION = 1
+RELATIONSHIP_SCHEMA_VERSION = 1
 
 # The per-case id salt lives in the document meta under this key, so it merges and
 # syncs to peers exactly like ``unit`` (an LWWRegister). It is the secret that turns a
@@ -311,6 +321,75 @@ class Capture:
     accessible fallback for temporal evidence, analogous to a photo's alt text."""
 
 
+@dataclass(frozen=True, slots=True)
+class Artifact:
+    """A sealed document-like corroborating record."""
+
+    artifact_id: str
+    issue_id: str
+    artifact_type: str
+    title: str
+    source: str
+    issuer: str
+    occurred_at: str
+    recorded_at: str
+    content_hash: str
+    media_type: str
+    sealed_name: str
+    accessible_description: str
+    hlc: str
+    schema_version: int = ARTIFACT_SCHEMA_VERSION
+
+    def semantic_payload(self) -> dict[str, JSONValue]:
+        return {
+            "artifact_schema": self.schema_version,
+            "artifact_id": self.artifact_id,
+            "issue_id": self.issue_id,
+            "artifact_type": self.artifact_type,
+            "title": self.title,
+            "source": self.source,
+            "issuer": self.issuer,
+            "occurred_at": self.occurred_at,
+            "recorded_at": self.recorded_at,
+            "content_hash": self.content_hash,
+            "media_type": self.media_type,
+            "accessible_description": self.accessible_description,
+        }
+
+    def commitment(self) -> str:
+        return hashlib.sha256(canonical_json(self.semantic_payload())).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceRelationship:
+    """One immutable, typed link between two evidence records."""
+
+    relationship_id: str
+    issue_id: str
+    relationship_type: str
+    source_id: str
+    target_id: str
+    assertion: str
+    recorded_at: str
+    hlc: str
+    schema_version: int = RELATIONSHIP_SCHEMA_VERSION
+
+    def semantic_payload(self) -> dict[str, JSONValue]:
+        return {
+            "relationship_schema": self.schema_version,
+            "relationship_id": self.relationship_id,
+            "issue_id": self.issue_id,
+            "relationship_type": self.relationship_type,
+            "source_id": self.source_id,
+            "target_id": self.target_id,
+            "assertion": self.assertion,
+            "recorded_at": self.recorded_at,
+        }
+
+    def commitment(self) -> str:
+        return hashlib.sha256(canonical_json(self.semantic_payload())).hexdigest()
+
+
 _ISSUE_FIELDS = ("category", "room", "title", "status", "severity", "description")
 
 
@@ -318,6 +397,7 @@ class CaseDocument:
     """A single case as a mergeable CRDT document."""
 
     __slots__ = (
+        "_artifacts",
         "_captures",
         "_case_id",
         "_clock",
@@ -325,6 +405,7 @@ class CaseDocument:
         "_issue_fields",
         "_issues",
         "_meta",
+        "_relationships",
         "_timeline",
     )
 
@@ -339,6 +420,8 @@ class CaseDocument:
         self._issue_fields: dict[str, dict[str, LWWRegister]] = {}
         self._timeline = GrowLog.empty()
         self._captures = GrowLog.empty()
+        self._artifacts = GrowLog.empty()
+        self._relationships = GrowLog.empty()
 
     @property
     def case_id(self) -> str:
@@ -406,6 +489,18 @@ class CaseDocument:
         if register is None or not isinstance(register.value, str):
             return default
         return register.value
+
+    def set_use_case_profile(self, profile_id: str) -> None:
+        """Select one reviewed built-in presentation/workflow profile."""
+        get_profile(profile_id)
+        self.set_meta("use_case_profile", profile_id)
+
+    def use_case_profile(self) -> str:
+        """Return the selected profile id, or an empty string for generic cases."""
+        profile_id = self.get_meta("use_case_profile")
+        if profile_id:
+            get_profile(profile_id)
+        return profile_id
 
     # --- opaque identifiers ---------------------------------------------------
 
@@ -631,6 +726,133 @@ class CaseDocument:
         )
         return resolved_id
 
+    def add_artifact(
+        self,
+        *,
+        issue_id: str,
+        artifact_type: str,
+        title: str,
+        source: str,
+        issuer: str,
+        occurred_at: str,
+        content_hash: str,
+        media_type: str,
+        sealed_name: str,
+        accessible_description: str = "",
+        artifact_id: str | None = None,
+    ) -> str:
+        """Append a first-class document-like evidence artifact."""
+        if issue_id not in self._issues.elements():
+            raise HabitableError(f"unknown issue: {issue_id!r}")
+        if artifact_type not in ARTIFACT_TYPES:
+            raise HabitableError(f"unknown artifact type: {artifact_type!r}")
+        if not title.strip():
+            raise HabitableError("artifact title is required")
+        if not source.strip():
+            raise HabitableError("artifact source assertion is required")
+        if len(issuer) > 500 or len(accessible_description) > 10_000:
+            raise HabitableError("artifact text field is too long")
+        stamp = self._clock.now()
+        resolved_id = artifact_id or self.opaque_id("art", stamp.encode())
+        self._artifacts = self._artifacts.add(
+            resolved_id,
+            {
+                "artifact_schema": ARTIFACT_SCHEMA_VERSION,
+                "issue_id": issue_id,
+                "artifact_type": artifact_type,
+                "title": title.strip(),
+                "source": source.strip(),
+                "issuer": issuer.strip(),
+                "occurred_at": normalize_occurred_at(occurred_at),
+                "recorded_at": recorded_at_from_hlc(stamp.encode()),
+                "content_hash": content_hash,
+                "media_type": media_type,
+                "sealed_name": sealed_name,
+                "accessible_description": accessible_description.strip(),
+                "hlc": stamp.encode(),
+            },
+        )
+        return resolved_id
+
+    def add_relationship(
+        self,
+        *,
+        issue_id: str,
+        relationship_type: str,
+        source_id: str,
+        target_id: str,
+        assertion: str = "",
+    ) -> str:
+        """Append a typed relationship after validating both endpoints."""
+        if issue_id not in self._issues.elements():
+            raise HabitableError(f"unknown issue: {issue_id!r}")
+        if relationship_type not in RELATIONSHIP_TYPES:
+            raise HabitableError(f"unknown relationship type: {relationship_type!r}")
+        if source_id == target_id:
+            raise HabitableError("a relationship cannot point to the same record")
+        endpoints = self._evidence_endpoints()
+        source = endpoints.get(source_id)
+        target = endpoints.get(target_id)
+        if source is None:
+            raise HabitableError(f"unknown relationship source: {source_id!r}")
+        if target is None:
+            raise HabitableError(f"unknown relationship target: {target_id!r}")
+        if source[0] != issue_id or target[0] != issue_id:
+            raise HabitableError("relationship endpoints must belong to the selected issue")
+        if (source[1], target[1]) not in RELATIONSHIP_ENDPOINT_KINDS[relationship_type]:
+            raise HabitableError(f"{relationship_type} cannot connect {source[1]} to {target[1]}")
+        if self._would_create_relationship_cycle(relationship_type, source_id, target_id):
+            raise HabitableError(f"{relationship_type} would create a relationship cycle")
+        stamp = self._clock.now()
+        relationship_id = self.opaque_id("rel", stamp.encode())
+        self._relationships = self._relationships.add(
+            relationship_id,
+            {
+                "relationship_schema": RELATIONSHIP_SCHEMA_VERSION,
+                "issue_id": issue_id,
+                "relationship_type": relationship_type,
+                "source_id": source_id,
+                "target_id": target_id,
+                "assertion": assertion.strip(),
+                "recorded_at": recorded_at_from_hlc(stamp.encode()),
+                "hlc": stamp.encode(),
+            },
+        )
+        return relationship_id
+
+    def _evidence_endpoints(self) -> dict[str, tuple[str, str]]:
+        endpoints = {
+            capture.capture_id: (capture.issue_id, "capture") for capture in self.captures()
+        }
+        endpoints.update(
+            {artifact.artifact_id: (artifact.issue_id, "artifact") for artifact in self.artifacts()}
+        )
+        endpoints.update(
+            {entry.entry_id: (entry.issue_id, "timeline") for entry in self.timeline()}
+        )
+        endpoints.update({issue.issue_id: (issue.issue_id, "issue") for issue in self.issues()})
+        return endpoints
+
+    def _would_create_relationship_cycle(
+        self, relationship_type: str, source_id: str, target_id: str
+    ) -> bool:
+        graph: dict[str, set[str]] = {}
+        for relationship in self.relationships():
+            if relationship.relationship_type == relationship_type:
+                graph.setdefault(relationship.source_id, set()).add(relationship.target_id)
+        graph.setdefault(source_id, set()).add(target_id)
+        pending = [target_id]
+        visited: set[str] = set()
+        while pending:
+            node = pending.pop()
+            if node == source_id:
+                return True
+            if node in visited:
+                continue
+            visited.add(node)
+            pending.extend(graph.get(node, ()))
+        return False
+
     # --- read model -----------------------------------------------------------
 
     def issues(self) -> list[Issue]:
@@ -727,6 +949,70 @@ class CaseDocument:
         out.sort(key=lambda c: c.hlc)
         return out
 
+    def artifacts(self, issue_id: str | None = None) -> list[Artifact]:
+        out: list[Artifact] = []
+        for artifact_id, payload in self._artifacts.entries.items():
+            if not isinstance(payload, dict):
+                continue
+            artifact = Artifact(
+                artifact_id=artifact_id,
+                issue_id=str(payload.get("issue_id", "")),
+                artifact_type=str(payload.get("artifact_type", "")),
+                title=str(payload.get("title", "")),
+                source=str(payload.get("source", "")),
+                issuer=str(payload.get("issuer", "")),
+                occurred_at=str(payload.get("occurred_at", "")),
+                recorded_at=str(payload.get("recorded_at", "")),
+                content_hash=str(payload.get("content_hash", "")),
+                media_type=str(payload.get("media_type", "")),
+                sealed_name=str(payload.get("sealed_name", "")),
+                accessible_description=str(payload.get("accessible_description", "")),
+                hlc=str(payload.get("hlc", "")),
+            )
+            if issue_id is None or artifact.issue_id == issue_id:
+                out.append(artifact)
+        out.sort(key=lambda item: item.hlc)
+        return out
+
+    def relationships(self, issue_id: str | None = None) -> list[EvidenceRelationship]:
+        out: list[EvidenceRelationship] = []
+        for relationship_id, payload in self._relationships.entries.items():
+            if not isinstance(payload, dict):
+                continue
+            relationship = EvidenceRelationship(
+                relationship_id=relationship_id,
+                issue_id=str(payload.get("issue_id", "")),
+                relationship_type=str(payload.get("relationship_type", "")),
+                source_id=str(payload.get("source_id", "")),
+                target_id=str(payload.get("target_id", "")),
+                assertion=str(payload.get("assertion", "")),
+                recorded_at=str(payload.get("recorded_at", "")),
+                hlc=str(payload.get("hlc", "")),
+            )
+            if issue_id is None or relationship.issue_id == issue_id:
+                out.append(relationship)
+        out.sort(key=lambda item: item.hlc)
+        return out
+
+    def validate_extended_records(self) -> None:
+        """Validate profile, artifact, and relationship semantics without mutation."""
+        profile_id = self.get_meta("use_case_profile")
+        if profile_id:
+            get_profile(profile_id)
+        issues = {issue.issue_id for issue in self.issues()}
+        for artifact in self.artifacts():
+            _validate_artifact(artifact, issues)
+
+        endpoints = self._evidence_endpoints()
+        graphs: dict[str, dict[str, set[str]]] = {}
+        for relationship in self.relationships():
+            _validate_relationship(relationship, endpoints)
+            graph = graphs.setdefault(relationship.relationship_type, {})
+            graph.setdefault(relationship.source_id, set()).add(relationship.target_id)
+        for relationship_type, graph in graphs.items():
+            if _graph_has_cycle(graph):
+                raise HabitableError(f"{relationship_type} relationship graph contains a cycle")
+
     # --- merge + serialization ------------------------------------------------
 
     def merge(self, state: Mapping[str, JSONValue]) -> None:
@@ -741,6 +1027,8 @@ class CaseDocument:
                 local[name] = local[name].merge(register) if name in local else register
         self._timeline = self._timeline.merge(other._timeline)
         self._captures = self._captures.merge(other._captures)
+        self._artifacts = self._artifacts.merge(other._artifacts)
+        self._relationships = self._relationships.merge(other._relationships)
         self._advance_clock_past(other)
 
     def to_state(self) -> dict[str, JSONValue]:
@@ -755,6 +1043,8 @@ class CaseDocument:
             },
             "timeline": self._timeline.to_json(),
             "captures": self._captures.to_json(),
+            "artifacts": self._artifacts.to_json(),
+            "relationships": self._relationships.to_json(),
         }
 
     def subset_state(
@@ -793,6 +1083,20 @@ class CaseDocument:
             for capture_id, payload in self._captures.entries.items()
             if isinstance(payload, dict) and str(payload.get("issue_id", "")) in selected
         }
+        artifacts = {
+            artifact_id: payload
+            for artifact_id, payload in self._artifacts.entries.items()
+            if isinstance(payload, dict) and str(payload.get("issue_id", "")) in selected
+        }
+        selected_endpoint_ids = set(timeline) | set(captures) | set(artifacts) | selected
+        relationships = {
+            relationship_id: payload
+            for relationship_id, payload in self._relationships.entries.items()
+            if isinstance(payload, dict)
+            and str(payload.get("issue_id", "")) in selected
+            and str(payload.get("source_id", "")) in selected_endpoint_ids
+            and str(payload.get("target_id", "")) in selected_endpoint_ids
+        }
         return {
             "schema_version": CASE_SCHEMA_VERSION,
             "case_id": self._case_id,
@@ -801,6 +1105,8 @@ class CaseDocument:
             "issue_fields": cast(JSONValue, issue_fields),
             "timeline": dict(timeline),
             "captures": dict(captures),
+            "artifacts": dict(artifacts),
+            "relationships": dict(relationships),
         }
 
     @classmethod
@@ -833,6 +1139,13 @@ class CaseDocument:
         }
         doc._timeline = GrowLog.from_json(_as_dict(state, "timeline"))
         doc._captures = GrowLog.from_json(_as_dict(state, "captures"))
+        artifacts = state.get("artifacts", {})
+        relationships = state.get("relationships", {})
+        if not isinstance(artifacts, dict) or not isinstance(relationships, dict):
+            raise HabitableError("case artifact and relationship logs must be objects")
+        doc._artifacts = GrowLog.from_json(artifacts)
+        doc._relationships = GrowLog.from_json(relationships)
+        doc.validate_extended_records()
         return doc
 
     def catch_up_clock(self) -> None:
@@ -851,7 +1164,12 @@ class CaseDocument:
         for registers in other._issue_fields.values():
             for register in registers.values():
                 max_ts = _max_ts(max_ts, register.ts)
-        for payload in (*other._timeline.entries.values(), *other._captures.entries.values()):
+        for payload in (
+            *other._timeline.entries.values(),
+            *other._captures.entries.values(),
+            *other._artifacts.entries.values(),
+            *other._relationships.entries.values(),
+        ):
             if isinstance(payload, dict) and isinstance(payload.get("hlc"), str):
                 max_ts = _max_ts(max_ts, str(payload["hlc"]))
         if max_ts is not None:
@@ -893,6 +1211,63 @@ def _check_provenance(
     register = LWWRegister.from_json(raw)
     if register.actor == actor and not register.verify(case_id, target, public_key):
         failures.append(target)
+
+
+def _graph_has_cycle(graph: Mapping[str, set[str]]) -> bool:
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(node: str) -> bool:
+        if node in visiting:
+            return True
+        if node in visited:
+            return False
+        visiting.add(node)
+        if any(visit(target) for target in graph.get(node, ())):
+            return True
+        visiting.remove(node)
+        visited.add(node)
+        return False
+
+    return any(visit(node) for node in graph)
+
+
+def _validate_artifact(artifact: Artifact, issues: set[str]) -> None:
+    if artifact.schema_version != ARTIFACT_SCHEMA_VERSION:
+        raise HabitableError("unsupported artifact schema")
+    if artifact.issue_id not in issues:
+        raise HabitableError(f"artifact {artifact.artifact_id!r} has an unknown issue")
+    if artifact.artifact_type not in ARTIFACT_TYPES:
+        raise HabitableError(f"unknown artifact type: {artifact.artifact_type!r}")
+    if not artifact.title or not artifact.source:
+        raise HabitableError(f"artifact {artifact.artifact_id!r} is missing required text")
+    invalid_hash = len(artifact.content_hash) != 64 or any(
+        ch not in "0123456789abcdef" for ch in artifact.content_hash
+    )
+    if invalid_hash or not artifact.media_type:
+        raise HabitableError(f"artifact {artifact.artifact_id!r} has invalid content facts")
+
+
+def _validate_relationship(
+    relationship: EvidenceRelationship,
+    endpoints: Mapping[str, tuple[str, str]],
+) -> None:
+    if relationship.schema_version != RELATIONSHIP_SCHEMA_VERSION:
+        raise HabitableError("unsupported relationship schema")
+    if relationship.relationship_type not in RELATIONSHIP_TYPES:
+        raise HabitableError(f"unknown relationship type: {relationship.relationship_type!r}")
+    if relationship.source_id == relationship.target_id:
+        raise HabitableError("a relationship cannot point to the same record")
+    source = endpoints.get(relationship.source_id)
+    target = endpoints.get(relationship.target_id)
+    if source is None or target is None:
+        raise HabitableError(
+            f"relationship {relationship.relationship_id!r} has an unknown endpoint"
+        )
+    if source[0] != relationship.issue_id or target[0] != relationship.issue_id:
+        raise HabitableError("relationship endpoints must belong to its issue")
+    if (source[1], target[1]) not in RELATIONSHIP_ENDPOINT_KINDS[relationship.relationship_type]:
+        raise HabitableError(f"{relationship.relationship_type} has an invalid endpoint pair")
 
 
 # --- helpers ------------------------------------------------------------------

@@ -1,6 +1,13 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Research-Backed Roadmap
 
+> **Historical prioritization snapshot.** This file preserves the 2026-06-30
+> research synthesis and its then-current status annotations. Many code items
+> subsequently shipped. Use the
+> [2026-07-22 roadmap-drain register](roadmap-drain-2026-07-22.md) and
+> [capability ledger](capabilities.md) for current execution truth; use this file
+> for the evidence and hypotheses that motivated the work.
+
 > **Framing.** This roadmap is derived from two inputs: the **synthetic persona panel**
 > in [`USER-RESEARCH.md`](USER-RESEARCH.md) (clearly labelled synthetic — *not* real
 > interviews and *not* evidence of demand), and **external, citable research** on

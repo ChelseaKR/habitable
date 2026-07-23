@@ -23,6 +23,8 @@ from pathlib import Path
 from cryptography import x509
 
 from . import __version__, campaign
+from .artifact import add_relationship, capture_artifact
+from .capsule import build_capsule, import_capsule, verify_capsule
 from .capture import capture, resolve_deferred, retimestamp_all
 from .commons import DEFAULT_K, build_commons, summarize_case
 from .config import TSAConfig
@@ -33,6 +35,7 @@ from .letter import LetterOptions, build_letter, render_letter_html
 from .obslog import configure_logging, enabled_from_env, log_event
 from .packet import build_packet
 from .pairing import accept_pairing_material, create_pairing_material
+from .patterns import build_no_heat_weekly_summary
 from .share import decode_share, encode_share, export_share, import_share
 from .strength import assess_issue
 from .sync import (
@@ -46,6 +49,7 @@ from .sync import (
 )
 from .timeline import EVENT_TYPES, SOURCES
 from .tsa import DevTSA, Rfc3161HttpTSA, TimestampAuthority
+from .usecases import ARTIFACT_TYPES, RELATIONSHIP_TYPES, get_profile, list_profiles
 from .vault import Vault, human_bytes
 from .verify import verify_packet
 
@@ -156,6 +160,40 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_capture.set_defaults(func=_cmd_capture)
 
+    p_artifact = sub.add_parser(
+        "artifact", help="capture a document or corroborating record as evidence"
+    )
+    add_vault(p_artifact)
+    p_artifact.add_argument("file", type=Path)
+    p_artifact.add_argument("--issue", required=True)
+    p_artifact.add_argument("--type", required=True, choices=sorted(ARTIFACT_TYPES))
+    p_artifact.add_argument("--title", required=True)
+    p_artifact.add_argument("--source", required=True, help="neutral source assertion")
+    p_artifact.add_argument("--issuer", default="", help="asserted issuer label")
+    p_artifact.add_argument("--occurred-at", required=True)
+    p_artifact.add_argument("--description", default="", help="accessible description")
+    p_artifact.add_argument("--dev-tsa", action="store_true", help="use the offline dev TSA")
+    p_artifact.add_argument("--no-timestamp", action="store_true", help="defer timestamping")
+    p_artifact.set_defaults(func=_cmd_artifact)
+
+    p_relate = sub.add_parser("relate", help="add a typed relationship between evidence records")
+    add_vault(p_relate)
+    p_relate.add_argument("--issue", required=True)
+    p_relate.add_argument("--type", required=True, choices=sorted(RELATIONSHIP_TYPES))
+    p_relate.add_argument("--source", required=True, dest="source_id")
+    p_relate.add_argument("--target", required=True, dest="target_id")
+    p_relate.add_argument("--assertion", default="")
+    p_relate.set_defaults(func=_cmd_relate)
+
+    p_profile = sub.add_parser("profile", help="list or select a versioned evidence workflow")
+    profile_sub = p_profile.add_subparsers(dest="profile_action")
+    p_profile_list = profile_sub.add_parser("list", help="list built-in workflow profiles")
+    p_profile_list.set_defaults(func=_cmd_profile_list)
+    p_profile_set = profile_sub.add_parser("set", help="select a workflow for one case")
+    add_vault(p_profile_set)
+    p_profile_set.add_argument("profile_id", choices=[item.profile_id for item in list_profiles()])
+    p_profile_set.set_defaults(func=_cmd_profile_set)
+
     p_tl = sub.add_parser("timeline", help="add a sourced, dated timeline event")
     add_vault(p_tl)
     p_tl.add_argument("--issue", required=True)
@@ -225,6 +263,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--inspector-view",
         action="store_true",
         help="also write inspector.html organized by room → condition → timeline",
+    )
+    p_export.add_argument(
+        "--handoff-profile",
+        choices=[item.profile_id for item in list_profiles()],
+        help="also render a signed recipient handoff manifest for this workflow",
     )
     p_export.set_defaults(func=_cmd_export)
 
@@ -527,6 +570,49 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_commons.set_defaults(func=_cmd_commons)
 
+    p_pattern = sub.add_parser(
+        "pattern",
+        help="opt-in fixed-question no-heat weekly summary (local, threshold-suppressed)",
+    )
+    p_pattern.add_argument(
+        "--vault",
+        dest="vaults",
+        required=True,
+        action="append",
+        type=Path,
+        metavar="VAULT",
+    )
+    p_pattern.add_argument("--out", required=True, type=Path)
+    p_pattern.add_argument("--k", type=int, default=DEFAULT_K)
+    p_pattern.add_argument("--passphrase")
+    p_pattern.add_argument(
+        "--confirm-consent",
+        required=True,
+        action="store_true",
+        help="confirm every included household consented to this specific export",
+    )
+    p_pattern.set_defaults(func=_cmd_pattern)
+
+    p_capsule = sub.add_parser(
+        "capsule", help="export, verify, or import a partner evidence capsule"
+    )
+    capsule_sub = p_capsule.add_subparsers(dest="capsule_action")
+    p_capsule_export = capsule_sub.add_parser("export")
+    add_vault(p_capsule_export)
+    p_capsule_export.add_argument("--record", required=True)
+    p_capsule_export.add_argument("--out", required=True, type=Path)
+    p_capsule_export.add_argument("--no-original", action="store_true")
+    p_capsule_export.set_defaults(func=_cmd_capsule_export)
+    p_capsule_verify = capsule_sub.add_parser("verify")
+    p_capsule_verify.add_argument("capsule", type=Path)
+    p_capsule_verify.set_defaults(func=_cmd_capsule_verify)
+    p_capsule_import = capsule_sub.add_parser("import")
+    add_vault(p_capsule_import)
+    p_capsule_import.add_argument("capsule", type=Path)
+    p_capsule_import.add_argument("--issue", required=True)
+    p_capsule_import.add_argument("--title", default="Partner evidence capsule")
+    p_capsule_import.set_defaults(func=_cmd_capsule_import)
+
     p_demo = sub.add_parser("demo", help="walk a synthetic case end to end (no real data)")
     p_demo.set_defaults(func=_cmd_demo)
 
@@ -635,6 +721,60 @@ def _cmd_capture(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_artifact(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    tsa = None if args.no_timestamp else _tsa_for(vault, dev=args.dev_tsa)
+    result = capture_artifact(
+        vault,
+        args.file,
+        issue_id=args.issue,
+        artifact_type=args.type,
+        title=args.title,
+        source_assertion=args.source,
+        issuer=args.issuer,
+        occurred_at=args.occurred_at,
+        accessible_description=args.description,
+        tsa=tsa,
+        extra_tsas=() if args.no_timestamp else _extra_tsas_for(vault, dev=args.dev_tsa),
+    )
+    state = "timestamped" if result.timestamped else "awaiting timestamp"
+    print(f"habitable: captured artifact {result.artifact_id} ({args.type})")
+    print(f"           content hash {result.content_hash[:16]}… · {state}")
+    return 0
+
+
+def _cmd_relate(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    relationship_id = add_relationship(
+        vault,
+        issue_id=args.issue,
+        relationship_type=args.type,
+        source_id=args.source_id,
+        target_id=args.target_id,
+        assertion=args.assertion,
+    )
+    print(f"habitable: added relationship {relationship_id} ({args.type})")
+    return 0
+
+
+def _cmd_profile_list(_args: argparse.Namespace) -> int:
+    for profile in list_profiles():
+        gate = "external review required" if profile.external_review_required else "implemented"
+        print(f"{profile.profile_id}\tv{profile.version}\t{gate}\t{profile.name_en}")
+    return 0
+
+
+def _cmd_profile_set(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    profile = get_profile(args.profile_id)
+    vault.document.set_use_case_profile(profile.profile_id)
+    vault.save()
+    print(f"habitable: selected workflow {profile.profile_id} v{profile.version}")
+    if profile.external_review_required:
+        print("           external domain/accessibility review is still required before pilot use")
+    return 0
+
+
 def _cmd_timeline(args: argparse.Namespace) -> int:
     vault = _open(args)
     if args.event_type is None:
@@ -694,6 +834,8 @@ def _cmd_status(args: argparse.Namespace) -> int:
     unit = vault.document.get_meta("unit") or vault.document.case_id
     issues = vault.document.issues()
     captures = vault.document.captures()
+    artifacts = vault.document.artifacts()
+    relationships = vault.document.relationships()
     timeline = vault.document.timeline()
     summary = cli_text(
         "status_summary",
@@ -704,6 +846,11 @@ def _cmd_status(args: argparse.Namespace) -> int:
         timeline=len(timeline),
     )
     print(f"habitable: {summary}")
+    profile_id = vault.document.use_case_profile() or "generic"
+    print(
+        f"  workflow: {profile_id} · {len(artifacts)} artifact(s) · "
+        f"{len(relationships)} relationship(s)"
+    )
     any_issues = False
     for issue in issues:
         any_issues = True
@@ -799,6 +946,7 @@ def _cmd_export(args: argparse.Namespace) -> int:
         include_originals=args.include_originals,
         make_pdf=not args.no_pdf,
         inspector_view=args.inspector_view,
+        handoff_profile=args.handoff_profile,
     )
     locale = resolve_locale(vault.config.language)
     unit = vault.document.get_meta("unit") or vault.document.case_id
@@ -841,6 +989,8 @@ def _cmd_export(args: argparse.Namespace) -> int:
     print(f"           packet written to {result.out_dir}")
     if result.inspector_path is not None:
         print(f"           inspector view written to {result.inspector_path.name}")
+    for handoff_path in result.handoff_paths:
+        print(f"           handoff view written to {handoff_path.name}")
     return 0
 
 
@@ -1264,6 +1414,61 @@ def _cmd_commons(args: argparse.Namespace) -> int:
         "           nothing was transmitted; publishing this file is a separate, "
         "deliberate act you control."
     )
+    return 0
+
+
+def _cmd_pattern(args: argparse.Namespace) -> int:
+    cases = []
+    for vault_path in args.vaults:
+        vault = Vault.open(vault_path, _passphrase(args))
+        case_id = vault.document.case_id
+        consent_token = hashlib.sha256(
+            f"pattern-consent::{case_id}::{args.out}".encode()
+        ).hexdigest()
+        building_label = vault.document.get_meta("building") or case_id
+        cases.append((vault.document, building_label, consent_token))
+    summary = build_no_heat_weekly_summary(cases, k=args.k)
+    payload = summary.to_json()
+    args.out.write_text(
+        json.dumps(payload, indent=2, sort_keys=False, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    aggregate = payload["aggregate"]
+    raw_cells = aggregate.get("cells") if isinstance(aggregate, dict) else None
+    cells = raw_cells if isinstance(raw_cells, list) else []
+    print(
+        f"habitable: wrote consented fixed-question summary to {args.out} "
+        f"(k={args.k}, {len(cells)} published cell(s))"
+    )
+    print("           nothing was transmitted; repeated releases require differencing review.")
+    return 0
+
+
+def _cmd_capsule_export(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    build_capsule(vault, args.record, args.out, include_original=not args.no_original)
+    print(f"habitable: wrote signed partner capsule to {args.out}")
+    print("           producer integrity is signed; source and issuer labels remain assertions.")
+    return 0
+
+
+def _cmd_capsule_verify(args: argparse.Namespace) -> int:
+    verdict = verify_capsule(args.capsule)
+    state = "intact" if verdict.ok else "NOT INTACT"
+    print(
+        f"habitable: capsule {state} · record {verdict.record_id} · "
+        f"producer {verdict.producer_fingerprint}"
+    )
+    for problem in verdict.problems:
+        print(f"  · {problem}", file=sys.stderr)
+    return 0 if verdict.ok else 1
+
+
+def _cmd_capsule_import(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    result = import_capsule(vault, args.capsule, issue_id=args.issue, title=args.title)
+    print(f"habitable: imported verified capsule as artifact {result.artifact_id}")
+    print("           the signed capsule is preserved; embedded claims were not re-authored.")
     return 0
 
 

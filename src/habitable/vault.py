@@ -631,12 +631,12 @@ class Vault:
             self._assert_no_stale_root_rotation_stages(keyfile_dest)
             try:
                 originals_dir = self.path / _ORIGINALS
-                for cap in self.document.captures():
-                    sealed = originals_dir / cap.sealed_name
-                    if not cap.sealed_name or not sealed.exists():
+                for item_id, content_hash, sealed_name in self._sealed_original_records():
+                    sealed = originals_dir / sealed_name
+                    if not sealed_name or not sealed.exists():
                         continue
-                    raw = self.read_original(cap.capture_id, cap.content_hash)
-                    aad = f"original:{cap.capture_id}:{cap.content_hash}".encode()
+                    raw = self.read_original(item_id, content_hash)
+                    aad = f"original:{item_id}:{content_hash}".encode()
                     dest = sealed.with_name(sealed.name + ".new")
                     ciphertext = new_dek.encrypt(raw, aad=aad)
                     stage = _PathRotationStage(sealed, dest)
@@ -718,9 +718,9 @@ class Vault:
 
     def _assert_no_stale_root_rotation_stages(self, keyfile_dest: Path) -> None:
         staged_paths = [self.path / f"{name}.new" for name, _plaintext in self._blob_plaintexts()]
-        for capture in self.document.captures():
-            if capture.sealed_name:
-                sealed = self.path / _ORIGINALS / capture.sealed_name
+        for _item_id, _content_hash, sealed_name in self._sealed_original_records():
+            if sealed_name:
+                sealed = self.path / _ORIGINALS / sealed_name
                 staged_paths.append(sealed.with_name(sealed.name + ".new"))
         staged_paths.append(keyfile_dest)
         stale = next((path for path in staged_paths if _path_entry_exists(path)), None)
@@ -730,6 +730,17 @@ class Vault:
             raise VaultError(
                 f"stale DEK-rotation staging file requires manual recovery: {stale.name}"
             )
+
+    def _sealed_original_records(self) -> list[tuple[str, str, str]]:
+        records = [
+            (capture.capture_id, capture.content_hash, capture.sealed_name)
+            for capture in self.document.captures()
+        ]
+        records.extend(
+            (artifact.artifact_id, artifact.content_hash, artifact.sealed_name)
+            for artifact in self.document.artifacts()
+        )
+        return records
 
     def _stage_rotated_token_sidecars(
         self,

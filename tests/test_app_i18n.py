@@ -58,12 +58,23 @@ def test_awaiting_timestamp_copy_is_reassuring() -> None:
     assert any(
         word in en["status_awaiting_help"].lower() for word in ("sealed", "safe", "protected")
     )
-    assert "Resolve awaiting timestamps" in en["capture_awaiting_reassure"]
+    assert "Add missing timestamp tokens" in en["capture_awaiting_reassure"]
     # Spanish reassurance is genuinely translated and names the safe state + next step.
     assert any(
         word in es["status_awaiting_help"].lower() for word in ("sellad", "salvo", "protegid")
     )
-    assert "Resolver marcas de tiempo pendientes" in es["capture_awaiting_reassure"]
+    assert "Agregar sellos de tiempo faltantes" in es["capture_awaiting_reassure"]
+
+
+def test_missing_timestamp_action_copy_is_plain_and_consistent() -> None:
+    """R-41: use an action instead of "resolve" jargon and one Spanish term."""
+    en, es = _load(_EN), _load(_ES)
+    for key in ("resolve_deferred", "resolve_help", "msg_resolved"):
+        assert "resolve" not in en[key].casefold()
+        assert "resolver" not in es[key].casefold()
+        assert "marca de tiempo" not in es[key].casefold()
+    assert "missing timestamp" in en["resolve_deferred"].casefold()
+    assert "sellos de tiempo faltantes" in es["resolve_deferred"].casefold()
 
 
 def test_spanish_is_actually_translated() -> None:

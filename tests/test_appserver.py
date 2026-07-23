@@ -200,6 +200,46 @@ def test_browser_capture_preserves_media_type_and_private_source_name(
             assert media not in path.read_bytes()
 
 
+def test_app_workflow_api_adds_profile_artifact_and_relationship(
+    make_vault: Callable[..., Vault],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    vault = make_vault()
+    issue_id = vault.document.add_issue(category="mold", issue_id="i1")
+    app_server = AppServer(vault, local_tsa, tmp_path, threading.Lock())
+
+    selected = app_server.set_profile({"profile_id": "repair_delivery"})
+    artifact = app_server.add_artifact(
+        {
+            "issue_id": issue_id,
+            "filename": "request.txt",
+            "media_b64": base64.b64encode(b"Synthetic repair request.").decode("ascii"),
+            "artifact_type": "repair_request",
+            "title": "Repair request",
+            "source": "tenant copy",
+            "occurred_at": "2026-01-03",
+        }
+    )
+    relationship = app_server.add_relationship(
+        {
+            "issue_id": issue_id,
+            "relationship_type": "documents_condition",
+            "source_id": artifact["artifact_id"],
+            "target_id": issue_id,
+        }
+    )
+    status = app_server.status()
+
+    assert selected["external_review_required"] is False
+    assert relationship["relationship_id"]
+    assert status["profile"] == "repair_delivery"
+    assert status["artifact_count"] == 1
+    assert status["relationship_count"] == 1
+    issue = cast(list[dict[str, object]], status["issues"])[0]
+    assert cast(list[dict[str, object]], issue["artifacts"])[0]["artifact_type"] == "repair_request"
+
+
 def test_app_start_removes_legacy_incoming_without_following_symlinks(
     make_vault: Callable[..., Vault], tmp_path: Path
 ) -> None:
