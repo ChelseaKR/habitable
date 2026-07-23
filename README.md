@@ -294,8 +294,8 @@ review and pilot must determine whether the packet contains what a court or insp
 **Confidentiality** and **securability** — end-to-end encryption at rest and in sync; the relay and the
 timestamp authority see ciphertext or a bare hash, never contents; no analytics, no telemetry.
 **Integrity** (supply chain) — pinned, hashed dependencies; Sigstore-signed build-provenance
-attestations per release (signed release **tags** are in progress — see `docs/releasing.md`);
-GitHub Actions pinned to commit SHAs.
+attestations per release; signed release **tags** verified against the committed maintainer
+public key; GitHub Actions pinned to commit SHAs.
 **Vulnerability** management — pip-audit, gitleaks, and CodeQL in CI; a published threat model and
 SECURITY policy with a disclosure path. **Accountability** — append-only custody logs and committed
 `docs/audits/` record who did what to the data, while no outside party can read the data itself.
@@ -476,7 +476,7 @@ with open gaps named rather than hidden.
 | 2 | Code quality | Applies (Python; TS/Node/frontend-toolchain controls are N/A — the PWA is no-build vanilla JS with no `package.json`) | `pyproject.toml` (ruff + mypy --strict config); `.pre-commit-config.yaml` |
 | 3 | Security & Supply-Chain | Applies (ships code, releases, and a Dockerfile for the relay) | `SECURITY.md`; `.github/workflows/ci.yml` (gitleaks), `secret-scan-scheduled.yml` (TruffleHog), `codeql.yml`, `zizmor.yml`; `docs/audits/scorecard-2026-07.md` |
 | 4 | CI/CD | Applies (workflows under `.github/workflows/`) | This README's build/verify description; `.github/rulesets/` (active PR/current-check protection on `main` plus active `v*` release-tag protection; zero approvals is an explicit solo-maintainer waiver in ADR 0006) |
-| 5 | Release & versioning | Applies (tagged GitHub Releases) | `docs/releasing.md`; `ROADMAP.md` §Releases & versioning; **gap:** signed release tags not yet in place (tracked there) |
+| 5 | Release & versioning | Applies (tagged GitHub Releases) | `docs/releasing.md`; `ROADMAP.md` §Releases & versioning; signed-tag protection and CI verification are active; PyPI Trusted Publishing still requires the documented registry/environment setup |
 | 6 | Accessibility | Applies (emits HTML: the PWA in `app/`, `packet.html`, the `site/` landing page) | [Accessibility and Section 508 conformance](#accessibility-and-section-508-conformance) below; `docs/accessibility/ACR.md`; **gap:** recorded human screen-reader pass still open, tracked as a v1.0 gate item in `ROADMAP.md` |
 | 7 | Observability | Applies (Tier A for the optional relay, Tier C for the CLI; the no-telemetry principle drives excluded controls) | `ROADMAP.md` §Observability |
 | 8 | Internationalization | Applies (bilingual EN/ES civic surface) | `docs/I18N.md` ("i18n status: IN-SCOPE"); `docs/adr/0005-i18n-g12-cldr-na-by-design.md` |
@@ -497,8 +497,8 @@ statement), CODE_OF_CONDUCT, CONTRIBUTING, SECURITY with a coordinated-disclosur
 covering the packet format and verification protocol, ADRs, a committed `docs/threat-model.md`, and
 committed `docs/audits/`. Conventional commits; GitHub Actions pinned to commit SHAs with
 build-provenance attestations and an SBOM per release; Dependabot. **Signed release tags**
-are not yet in place (tracked: `docs/releasing.md` §One-time setup, ROADMAP's v1.0 gate) —
-said plainly rather than claimed early.
+are protected by the active `v*` ruleset and verified against the committed maintainer
+public key before any release build begins.
 
 **Why AGPL-3.0.** This tool guards people under threat of retaliation, and the credible promise is that
 no operator can quietly read or weaken the data. AGPL closes the hosted-service loophole: anyone who runs

@@ -7,6 +7,8 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-07-23
+
 ### Added
 
 - **Roadmap drain and novel-use-case implementation plan.** A dated execution
@@ -547,5 +549,7 @@ installable PWA covers mobile today) remain — see the ACR and the build plan.
   with property-based and tamper-detection tests (`make verify` green, ~85%
   coverage); SHA-pinned GitHub Actions, CodeQL, Dependabot, `pip-audit`.
 
-[Unreleased]: https://github.com/ChelseaKR/habitable/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ChelseaKR/habitable/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/ChelseaKR/habitable/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/ChelseaKR/habitable/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ChelseaKR/habitable/releases/tag/v0.1.0
