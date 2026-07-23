@@ -70,7 +70,7 @@ auditability, accessibility, and saying plainly what the tool does not do.
 - **Exports a court/inspector-organized review bundle.** One command assembles a paginated PDF,
   accessible HTML rendering, and structured `bundle.json` for a whole unit: a cover
   sheet, chronological evidence timeline, per-issue detail, and a chain-of-custody/integrity
-  summary. Issue/date-scoped packet exports currently fail closed because packet v3 can carry only
+  summary. Issue/date-scoped packet exports currently fail closed because packet v4 can carry only
   the complete custody chain. Technical integrity is independently checkable; legal, court, and
   inspector usefulness remain externally unvalidated.
 - **Shares with an organizer, end to end.** A tenant can hand a full case, optionally with the

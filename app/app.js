@@ -841,7 +841,7 @@
 
     setText("rail-stamp", fm("rail_awaiting", { count: deferred }));
     var ring = document.getElementById("readiness-ring");
-    var total = status.capture_count || 0;
+    var total = status.evidence_count || status.capture_count || 0;
     var timestamped = status.timestamped || 0;
     if (ring) { ring.style.setProperty("--coverage", (total ? timestamped / total * 360 : 0) + "deg"); }
     setText("readiness-value", formatNumber(timestamped) + "/" + formatNumber(total));
@@ -852,6 +852,7 @@
 
     renderIssues(status.issues || []);
     populateIssueSelects(status.issues || []);
+    populateProfiles(status.profiles || [], status.profile || "");
     populateTimelineLinks(status.issues || []);
     populateAtlasFilter(status.issues || []);
     renderAtlas(status);
@@ -925,11 +926,24 @@
     var counts = document.createElement("ul");
     counts.className = "issue-counts";
     var captureCount = (typeof issue.captures === "number") ? issue.captures : 0;
+    var artifactCount = (issue.artifacts || []).length;
     var timelineCount = (issue.timeline || []).length;
     counts.appendChild(badge(fm("issue_captures_count", { count: captureCount })));
+    counts.appendChild(badge(fm("issue_artifacts_count", { count: artifactCount })));
     counts.appendChild(badge(fm("issue_timeline_count", { count: timelineCount })));
     if (issue.record_strength) { counts.appendChild(strengthBadge(issue.record_strength)); }
     li.appendChild(counts);
+
+    if (artifactCount) {
+      var artifacts = document.createElement("ul");
+      artifacts.className = "timeline-list";
+      for (var a = 0; a < issue.artifacts.length; a++) {
+        var artifactItem = document.createElement("li");
+        artifactItem.textContent = issue.artifacts[a].title + " · " + issue.artifacts[a].artifact_id;
+        artifacts.appendChild(artifactItem);
+      }
+      li.appendChild(artifacts);
+    }
 
     return li;
   }
@@ -965,6 +979,8 @@
   function populateIssueSelects(issues) {
     var selects = [
       { el: document.getElementById("cap-issue"), allowEmpty: false },
+      { el: document.getElementById("art-issue"), allowEmpty: false },
+      { el: document.getElementById("rel-issue"), allowEmpty: false },
       { el: document.getElementById("tl-issue"), allowEmpty: false },
       { el: document.getElementById("ex-issue"), allowEmpty: true, wholeCaseOnly: true }
     ];
@@ -997,6 +1013,33 @@
       if (prev) {
         sel.value = prev;
       }
+    }
+  }
+
+  function populateProfiles(profiles, selectedProfile) {
+    var selects = [document.getElementById("profile-select"), document.getElementById("ex-profile")];
+    for (var s = 0; s < selects.length; s++) {
+      var select = selects[s];
+      if (!select) { continue; }
+      var prior = select.value;
+      select.textContent = "";
+      if (select.id === "ex-profile") {
+        var generic = document.createElement("option");
+        generic.value = "";
+        generic.textContent = t("profile_generic");
+        select.appendChild(generic);
+      }
+      for (var i = 0; i < profiles.length; i++) {
+        var option = document.createElement("option");
+        option.value = profiles[i].profile_id;
+        var names = profiles[i].name || {};
+        option.textContent = names[lang] || names.en || profiles[i].profile_id;
+        if (profiles[i].external_review_required) {
+          option.textContent += " — " + t("profile_external_review");
+        }
+        select.appendChild(option);
+      }
+      select.value = prior || selectedProfile || "";
     }
   }
 
@@ -1270,6 +1313,92 @@
     });
   }
 
+  function wireArtifact() {
+    var form = document.getElementById("artifact-form");
+    if (!form) { return; }
+    var date = document.getElementById("art-date");
+    if (!date.value) { date.value = new Date().toISOString().slice(0, 10); }
+    form.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var issue = document.getElementById("art-issue");
+      var fileInput = document.getElementById("art-file");
+      var title = document.getElementById("art-title");
+      var source = document.getElementById("art-source");
+      if (!issue.value || !fileInput.files || !fileInput.files.length ||
+          !title.value.trim() || !source.value.trim() || !date.value) {
+        announce(t("error_artifact_required"), "error");
+        return;
+      }
+      var file = fileInput.files[0];
+      var btn = form.querySelector('button[type="submit"]');
+      withBusy(btn, function () {
+        return readFileAsBase64(file).then(function (b64) {
+          return apiPost("/api/artifacts", {
+            issue_id: issue.value,
+            filename: file.name || "document.bin",
+            media_b64: b64,
+            artifact_type: document.getElementById("art-type").value,
+            title: title.value.trim(),
+            source: source.value.trim(),
+            issuer: document.getElementById("art-issuer").value.trim(),
+            occurred_at: date.value
+          });
+        });
+      }).then(function () {
+        form.reset();
+        date.value = new Date().toISOString().slice(0, 10);
+        announce(t("msg_artifact_added"), "ok");
+        signalSuccess();
+        return refreshStatus();
+      }, announceError);
+    });
+  }
+
+  function wireRelationship() {
+    var form = document.getElementById("relationship-form");
+    if (!form) { return; }
+    form.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var body = {
+        issue_id: document.getElementById("rel-issue").value,
+        relationship_type: document.getElementById("rel-type").value,
+        source_id: document.getElementById("rel-source").value.trim(),
+        target_id: document.getElementById("rel-target").value.trim(),
+        assertion: document.getElementById("rel-assertion").value.trim()
+      };
+      if (!body.issue_id || !body.source_id || !body.target_id) {
+        announce(t("error_relationship_required"), "error");
+        return;
+      }
+      var btn = form.querySelector('button[type="submit"]');
+      withBusy(btn, function () { return apiPost("/api/relationships", body); })
+        .then(function () {
+          form.reset();
+          announce(t("msg_relationship_added"), "ok");
+          return refreshStatus();
+        }, announceError);
+    });
+  }
+
+  function wireProfile() {
+    var form = document.getElementById("profile-form");
+    if (!form) { return; }
+    form.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var select = document.getElementById("profile-select");
+      var btn = form.querySelector('button[type="submit"]');
+      withBusy(btn, function () {
+        return apiPost("/api/profile", { profile_id: select.value });
+      }).then(function (res) {
+        announce(
+          res.external_review_required ? t("msg_profile_review_required") : t("msg_profile_selected"),
+          "ok"
+        );
+        return refreshStatus();
+      }, announceError);
+    });
+  }
+
   function wireExport() {
     var form = document.getElementById("export-form");
     if (!form) { return; }
@@ -1281,7 +1410,8 @@
       withBusy(btn, function () {
         return apiPost("/api/export", {
           issue_id: issueSel.value || undefined,
-          include_originals: originals
+          include_originals: originals,
+          handoff_profile: document.getElementById("ex-profile").value || undefined
         });
       }).then(function (res) {
         renderExportResult(res);
@@ -1567,6 +1697,9 @@
     wireAddIssue();
     wireCapture();
     wireTimeline();
+    wireArtifact();
+    wireRelationship();
+    wireProfile();
     wireExport();
 
     setLanguage(detectInitialLang())

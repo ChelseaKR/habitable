@@ -500,6 +500,28 @@ def _issue_section(
                 out.append(_sensor_figure(item, trust))
             else:
                 out.extend(_evidence_figure(item, trust))
+    relationships = [
+        relationship
+        for relationship in _list(bundle, "relationships")
+        if isinstance(relationship, dict) and _s(relationship, "issue_id") == issue_id
+    ]
+    if relationships:
+        out.append("<h3>Evidence relationships</h3>")
+        out.append(
+            '<table><thead><tr><th scope="col">Relationship</th>'
+            '<th scope="col">Source record</th><th scope="col">Target record</th>'
+            '<th scope="col">Assertion</th></tr></thead><tbody>'
+        )
+        for relationship in relationships:
+            out.append(
+                "<tr>"
+                f"<td>{escape(_s(relationship, 'relationship_type').replace('_', ' '))}</td>"
+                f"<td><code>{escape(_s(relationship, 'source_id'))}</code></td>"
+                f"<td><code>{escape(_s(relationship, 'target_id'))}</code></td>"
+                f"<td>{escape(_s(relationship, 'assertion') or '—')}</td>"
+                "</tr>"
+            )
+        out.append("</tbody></table>")
     out.append("</section>")
     return out
 
@@ -520,9 +542,27 @@ def _evidence_figure(item: Mapping[str, JSONValue], trust: PacketTrustText) -> l
     captured_at = _s(item, "captured_at")
     is_video = media_type.startswith("video/")
     is_audio = media_type.startswith("audio/")
+    is_artifact = _s(item, "record_kind") == "artifact"
 
     out = ["<figure>"]
-    if is_video or is_audio:
+    if is_artifact and not media_type.startswith("image/"):
+        artifact = _map(item, "artifact")
+        out.append(
+            f"<p><strong>{escape(_s(artifact, 'title') or 'Supporting document')}</strong> · "
+            f"{escape(_s(artifact, 'artifact_type').replace('_', ' '))}</p>"
+        )
+        out.append(
+            f'<p class="meta">Source assertion: {escape(_s(artifact, "source") or "—")} · '
+            f"Issuer assertion: {escape(_s(artifact, 'issuer') or '—')}</p>"
+        )
+        if transcript:
+            out.append(f"<p>{escape(transcript)}</p>")
+        if shared:
+            out.append(
+                f'<p><a href="media/{escape(shared)}">Download supporting document '
+                "(verify its hash against bundle.json before opening)</a></p>"
+            )
+    elif is_video or is_audio:
         kind = "video" if is_video else "audio"
         if poster:
             alt = (

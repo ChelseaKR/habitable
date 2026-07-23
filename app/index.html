@@ -301,6 +301,117 @@
 
             <details class="action-panel" open>
               <summary><span class="action-number" aria-hidden="true">03</span>
+                <span data-i18n="artifact_heading">Add a supporting document</span></summary>
+              <form id="artifact-form" novalidate>
+                <fieldset>
+                  <legend data-i18n="artifact_legend">Document details</legend>
+                  <div class="field">
+                    <label for="art-issue" data-i18n="field_issue">Issue</label>
+                    <select id="art-issue" required aria-required="true"></select>
+                  </div>
+                  <div class="field">
+                    <label for="art-file" data-i18n="field_document">Document</label>
+                    <input type="file" id="art-file" accept=".pdf,.txt,.md,.html,.eml,.json,.csv,image/*"
+                           required aria-required="true" />
+                  </div>
+                  <div class="field">
+                    <label for="art-type" data-i18n="field_artifact_type">Document type</label>
+                    <select id="art-type" required>
+                      <option value="repair_request" data-i18n="artifact_repair_request">Repair request</option>
+                      <option value="delivery_receipt" data-i18n="artifact_delivery_receipt">Delivery receipt</option>
+                      <option value="landlord_response" data-i18n="artifact_landlord_response">Landlord response</option>
+                      <option value="inspection_report" data-i18n="artifact_inspection_report">Inspection report</option>
+                      <option value="utility_notice" data-i18n="artifact_utility_notice">Utility notice</option>
+                      <option value="accommodation_request" data-i18n="artifact_accommodation_request">Accommodation request</option>
+                      <option value="supporting_letter" data-i18n="artifact_supporting_letter">Supporting letter</option>
+                      <option value="clinician_letter" data-i18n="artifact_clinician_letter">Clinician letter</option>
+                      <option value="expense_receipt" data-i18n="artifact_expense_receipt">Expense receipt</option>
+                      <option value="relocation_record" data-i18n="artifact_relocation_record">Relocation record</option>
+                      <option value="partner_export" data-i18n="artifact_partner_export">Partner export</option>
+                      <option value="other_document" data-i18n="artifact_other_document">Other document</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label for="art-title" data-i18n="field_title">Title</label>
+                    <input id="art-title" required aria-required="true" />
+                  </div>
+                  <div class="field">
+                    <label for="art-source" data-i18n="field_artifact_source">How did you get this copy?</label>
+                    <input id="art-source" required aria-required="true" />
+                  </div>
+                  <div class="field">
+                    <label for="art-issuer" data-i18n="field_issuer">Asserted issuer (optional)</label>
+                    <input id="art-issuer" />
+                  </div>
+                  <div class="field">
+                    <label for="art-date" data-i18n="field_occurred_at">Date it happened</label>
+                    <input type="date" id="art-date" required aria-required="true" />
+                  </div>
+                </fieldset>
+                <button type="submit" class="btn btn-primary" data-i18n="artifact_submit">Seal document</button>
+              </form>
+            </details>
+
+            <details class="action-panel">
+              <summary><span class="action-number" aria-hidden="true">04</span>
+                <span data-i18n="relationship_heading">Connect evidence records</span></summary>
+              <form id="relationship-form" novalidate>
+                <fieldset>
+                  <legend data-i18n="relationship_legend">Typed relationship</legend>
+                  <div class="field">
+                    <label for="rel-issue" data-i18n="field_issue">Issue</label>
+                    <select id="rel-issue" required></select>
+                  </div>
+                  <div class="field">
+                    <label for="rel-type" data-i18n="field_relationship_type">Relationship</label>
+                    <select id="rel-type" required>
+                      <option value="documents_condition">documents condition</option>
+                      <option value="sent_via">sent via</option>
+                      <option value="delivery_receipt_for">delivery receipt for</option>
+                      <option value="response_to">response to</option>
+                      <option value="before_of">before</option>
+                      <option value="after_of">after</option>
+                      <option value="inspection_finding_for">inspection finding for</option>
+                      <option value="repair_claim_for">repair claim for</option>
+                      <option value="expense_caused_by">expense caused by (asserted)</option>
+                      <option value="supports">supports</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label for="rel-source" data-i18n="field_source_id">Source record ID</label>
+                    <input id="rel-source" required aria-required="true" class="mono" />
+                  </div>
+                  <div class="field">
+                    <label for="rel-target" data-i18n="field_target_id">Target record ID</label>
+                    <input id="rel-target" required aria-required="true" class="mono" />
+                  </div>
+                  <div class="field">
+                    <label for="rel-assertion" data-i18n="field_assertion">Neutral note (optional)</label>
+                    <input id="rel-assertion" />
+                  </div>
+                </fieldset>
+                <button type="submit" class="btn btn-primary" data-i18n="relationship_submit">Add relationship</button>
+              </form>
+            </details>
+
+            <details class="action-panel">
+              <summary><span class="action-number" aria-hidden="true">05</span>
+                <span data-i18n="profile_heading">Choose a workflow</span></summary>
+              <form id="profile-form" novalidate>
+                <fieldset>
+                  <legend data-i18n="profile_legend">Evidence workflow</legend>
+                  <div class="field">
+                    <label for="profile-select" data-i18n="field_profile">Workflow</label>
+                    <select id="profile-select" required></select>
+                  </div>
+                  <p id="profile-review" class="muted" data-i18n="profile_review_help">Some workflows require external review before pilot use.</p>
+                </fieldset>
+                <button type="submit" class="btn btn-primary" data-i18n="profile_submit">Select workflow</button>
+              </form>
+            </details>
+
+            <details class="action-panel" open>
+              <summary><span class="action-number" aria-hidden="true">06</span>
                 <span data-i18n="add_issue_heading">Add an issue</span></summary>
               <form id="add-issue-form" novalidate>
                 <fieldset>
@@ -423,6 +534,10 @@
                   <input type="checkbox" id="ex-originals" name="include_originals"
                          aria-describedby="ex-originals-help" />
                   <label for="ex-originals" data-i18n="field_include_originals">Include the sealed original photos</label>
+                </div>
+                <div class="field">
+                  <label for="ex-profile" data-i18n="field_handoff_profile">Handoff view</label>
+                  <select id="ex-profile"></select>
                 </div>
                 <p class="muted field-help" id="ex-originals-help"
                    data-i18n="field_include_originals_help">Originals can hold location and other hidden details.</p>

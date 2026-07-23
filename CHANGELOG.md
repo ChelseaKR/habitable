@@ -9,6 +9,28 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **Roadmap drain and novel-use-case implementation plan.** A dated execution
+  register reconciles the strategic/research roadmaps, current-main tests, and
+  live GitHub queue into shipped, externally blocked, and protocol/research-
+  blocked outcomes with named triggers and completion artifacts. A companion
+  Now/Next/Later plan scores ten application-fit use cases and specifies the
+  shared profile, artifact, relationship, handoff, aggregation, migration,
+  accessibility, privacy, and verification work needed to build them without
+  broadening into a cloud evidence platform.
+
+- **Profile-driven evidence workflows / packet v4.** Ten housing-specific
+  workflows now share versioned bilingual profiles, sealed/timestamped document
+  artifacts, explicit custody-bound evidence relationships, accessible signed
+  handoff manifests, encrypted peer-sync support, standalone v4 verification,
+  CLI and localhost-app creation paths, a fixed consented/no-heat weekly
+  aggregate with household suppression, and a signed partner evidence capsule
+  adapter. Review-dependent inspector, accommodation, public-housing, health,
+  building-pattern, and partner workflows remain visibly marked
+  `external_review_required`; implementation is not represented as domain
+  approval. Packet v1–v3 golden compatibility remains executable. See
+  [`docs/migrations/packet-v4-workflows.md`](docs/migrations/packet-v4-workflows.md)
+  and [`docs/adr/0010-profile-driven-evidence-workflows.md`](docs/adr/0010-profile-driven-evidence-workflows.md).
+
 - **Bounded public review hub.** `/review/` now routes tenant organizers, legal-aid
   reviewers, accessibility testers, and security/verifier reviewers into four
   fixed-time synthetic workflows with six concrete tasks and expected outputs. A
@@ -122,6 +144,11 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   direct fault classification, and repeated real TCP RSTs.
 
 ### Changed
+
+- The local app's last jargon-heavy timestamp recovery action now says “Add
+  missing timestamp tokens” / “Agregar sellos de tiempo faltantes”; English uses
+  an action-first result and Spanish consistently uses *sello de tiempo*. EN/ES
+  parity and a dedicated terminology regression test guard the wording.
 
 - **Distinctive tenant-evidence identity and custom domain.** The public site and
   installable app now share a structural H-frame/evidence-seal mark, self-hosted civic

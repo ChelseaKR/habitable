@@ -57,6 +57,8 @@ class CustodyAction(StrEnum):
     COPIED_FOR_SHARING = "copied_for_sharing"
     INCLUDED_IN_PACKET = "included_in_packet"
     NOTE_ADDED = "note_added"
+    ARTIFACT_ADDED = "artifact_added"
+    RELATIONSHIP_ADDED = "relationship_added"
 
 
 # --- content fixity -----------------------------------------------------------

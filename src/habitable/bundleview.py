@@ -148,7 +148,7 @@ def chronology(bundle: Mapping[str, JSONValue]) -> tuple[ChronologyEntry, ...]:
         if not isinstance(raw, dict):
             continue
         issue_id = _s(raw, "issue_id")
-        if version == 3:
+        if version >= 3:
             occurred_at = _s(raw, "occurred_at")
             recorded_at = _s(raw, "recorded_at")
             entries.append(
@@ -196,18 +196,32 @@ def chronology(bundle: Mapping[str, JSONValue]) -> tuple[ChronologyEntry, ...]:
         )
         content_hash = _s(raw, "content_hash")
         detail = f"hash {content_hash[:16]}… · {stamp}"
+        artifact = _map(raw, "artifact")
+        is_artifact = _s(raw, "record_kind") == "artifact"
         entries.append(
             ChronologyEntry(
                 when=_s(raw, "captured_at"),
-                when_label="Capturado" if spanish else "Captured",
-                kind="photo",
-                label="foto" if spanish else "photo",
+                when_label=(
+                    ("Documento" if spanish else "Document")
+                    if is_artifact
+                    else ("Capturado" if spanish else "Captured")
+                ),
+                kind="artifact" if is_artifact else "photo",
+                label=(
+                    _s(artifact, "artifact_type").replace("_", " ")
+                    if is_artifact
+                    else ("foto" if spanish else "photo")
+                ),
                 issue_id=issue_id,
                 issue_title=titles.get(issue_id, issue_id),
                 text=(
-                    f"Evidencia capturada para {titles.get(issue_id, issue_id)}"
-                    if spanish
-                    else f"Evidence captured for {titles.get(issue_id, issue_id)}"
+                    _s(artifact, "title")
+                    if is_artifact
+                    else (
+                        f"Evidencia capturada para {titles.get(issue_id, issue_id)}"
+                        if spanish
+                        else f"Evidence captured for {titles.get(issue_id, issue_id)}"
+                    )
                 ),
                 detail=detail,
             )
