@@ -60,20 +60,23 @@ checks.
      also attaches PEP 740 provenance to those PyPI artifacts. No build tool or
      source checkout runs in the OIDC-enabled publish job.
 
-### One-time setup: signing release tags
+### Release-tag signing
 
 The release workflow verifies tag signatures against `.github/allowed_signers`
-using git's SSH signing format. Until a maintainer completes this setup, the tag
-guard fails closed (intentional — an unsigned tag must never publish):
+using git's SSH signing format. The committed ED25519 public key has fingerprint
+`SHA256:Kz1JPRtDNVmRa1tD/buR0/iOGDSwEa4P4iu3DN+bElk`; its private key remains
+maintainer-held. An unsigned tag or a tag signed by any other key fails before
+the build begins.
+
+Configure the local checkout to use the matching maintainer-held key:
 
 ```console
-$ ssh-keygen -t ed25519 -C "release-signing@habitable" -f ~/.ssh/habitable-release
 $ git config gpg.format ssh
-$ git config user.signingkey ~/.ssh/habitable-release.pub
+$ git config user.signingkey ~/.ssh/github-release-signing.pub
 ```
 
-Then add the matching **public** key as a line in `.github/allowed_signers`
-(format documented in that file) and commit it — public keys are not secret.
+Key rotation requires a reviewed update to `.github/allowed_signers` before a
+tag is created; never weaken or skip the signature guard to recover a release.
 
 ### One-time PyPI setup (before the first tag)
 
