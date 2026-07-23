@@ -87,7 +87,7 @@ def _landing() -> _PositioningParser:
 
 def test_hero_uses_the_case_building_thesis_and_honest_alpha_boundary() -> None:
     parser = _landing()
-    assert parser.headings["h1"] == ["A building problem leaves a trail. Keep the whole trail."]
+    assert parser.headings["h1"] == ["Keep the repair history together."]
 
     body = _normalize(parser.visible_parts)
     assert "Habitable Evidence" in body
@@ -102,7 +102,7 @@ def test_primary_actions_route_to_review_sample_and_evidence_method() -> None:
     by_id = {link["id"]: link for link in parser.links if link.get("id")}
 
     assert by_id["pilot-cta"]["href"] == "review/"
-    assert by_id["pilot-cta"]["text"] == "Choose a bounded review"
+    assert by_id["pilot-cta"]["text"] == "Inspect a synthetic case"
 
     assert by_id["sample-cta"]["href"] == "sample-packet/packet.html"
     assert by_id["method-cta"]["href"] == "how-it-works/"

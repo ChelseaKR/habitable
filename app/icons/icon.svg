@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title description">
   <title id="title">habitable</title>
   <desc id="description">An H-shaped building frame crossed by an evidence seal.</desc>
-  <rect width="512" height="512" fill="#071d26"/>
-  <path d="M112 88V424M400 88V424M112 256H400" fill="none" stroke="#f4faf7" stroke-width="42"/>
-  <path d="M112 128H400M112 384H400" fill="none" stroke="#47666c" stroke-width="12"/>
-  <circle cx="256" cy="256" r="72" fill="#f4c844" stroke="#071d26" stroke-width="18"/>
-  <circle cx="256" cy="256" r="22" fill="#c84b31"/>
-  <path d="M256 184V140M328 256H372M256 328V372M184 256H140" stroke="#f4c844" stroke-width="12"/>
+  <rect width="512" height="512" fill="#fbfcfa"/>
+  <path d="M112 88V424M400 88V424M112 256H400" fill="none" stroke="#1d2a2e" stroke-width="42"/>
+  <path d="M112 128H400M112 384H400" fill="none" stroke="#c4ccc8" stroke-width="12"/>
+  <circle cx="256" cy="256" r="72" fill="#dce8ef" stroke="#245b84" stroke-width="18"/>
+  <circle cx="256" cy="256" r="22" fill="#b24736"/>
+  <path d="M256 184V140M328 256H372M256 328V372M184 256H140" stroke="#245b84" stroke-width="12"/>
 </svg>
