@@ -4,7 +4,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#245b84" />
+    <meta name="theme-color" content="#123d62" />
     <title>Habitable Evidence — Offline Tenant Repair Documentation</title>
     <meta
       name="description"
@@ -19,42 +19,30 @@
     <meta property="og:locale" content="en_US" />
     <meta property="og:site_name" content="Habitable Evidence" />
     <meta property="og:url" content="https://habitable.chelseakr.com/" />
-    <meta
-      property="og:title"
-      content="Habitable Evidence — Offline Tenant Repair Documentation"
-    />
+    <meta property="og:title" content="Habitable Evidence — Offline Tenant Repair Documentation" />
     <meta
       property="og:description"
       content="Habitable Evidence helps tenants and unions document repairs, notices, photos, and timelines offline—then share a packet anyone can verify."
     />
-    <meta
-      property="og:image"
-      content="https://habitable.chelseakr.com/img/app-en.png"
-    />
+    <meta property="og:image" content="https://habitable.chelseakr.com/img/app-en.png" />
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="2200" />
     <meta property="og:image:height" content="3000" />
     <meta
       property="og:image:alt"
-      content="The Habitable unit evidence record joining captures and timeline facts for a synthetic repair case."
+      content="The Habitable repair trail for a synthetic Unit 4B condition."
     />
 
     <meta name="twitter:card" content="summary" />
-    <meta
-      name="twitter:title"
-      content="Habitable Evidence — Offline Tenant Repair Documentation"
-    />
+    <meta name="twitter:title" content="Habitable Evidence — Offline Tenant Repair Documentation" />
     <meta
       name="twitter:description"
       content="Habitable Evidence helps tenants and unions document repairs, notices, photos, and timelines offline—then share a packet anyone can verify."
     />
-    <meta
-      name="twitter:image"
-      content="https://habitable.chelseakr.com/img/app-en.png"
-    />
+    <meta name="twitter:image" content="https://habitable.chelseakr.com/img/app-en.png" />
     <meta
       name="twitter:image:alt"
-      content="The Habitable unit evidence record joining captures and timeline facts for a synthetic repair case."
+      content="The Habitable repair trail for a synthetic Unit 4B condition."
     />
 
     <script type="application/ld+json">
@@ -93,9 +81,7 @@
             "inLanguage": "en",
             "isPartOf": { "@id": "https://habitable.chelseakr.com/#website" },
             "about": { "@id": "https://habitable.chelseakr.com/#software" },
-            "primaryImageOfPage": {
-              "@id": "https://habitable.chelseakr.com/#primaryimage"
-            }
+            "primaryImageOfPage": { "@id": "https://habitable.chelseakr.com/#primaryimage" }
           },
           {
             "@type": "SoftwareApplication",
@@ -131,249 +117,330 @@
         ]
       }
     </script>
-    <link rel="stylesheet" href="home.css?v=record-ledger" />
+    <link rel="stylesheet" href="home.css?v=repair-trail" />
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
-    <header class="hero">
-      <div class="brand">
-        <a class="brand-link" href="./" aria-label="Habitable Evidence home">
-          <img src="img/icon.svg" alt="" width="48" height="48" />
-          <strong>habitable</strong>
-        </a>
-        <nav class="hero-nav" aria-label="Primary">
-          <a href="how-it-works/">Method</a>
-          <a href="tenant-unions/">For unions</a>
-          <a href="review/">Review</a>
-          <a href="trust-limitations/">Trust record</a>
-        </nav>
-        <span class="brand-note">Tenant evidence system / alpha</span>
-      </div>
-      <div class="hero-grid">
-        <div>
-          <p class="eyebrow">Tenant-owned repair record / stored on this device</p>
-          <h1>Keep the repair history together.</h1>
-          <p class="tagline">
-            Keep the condition, notice, response, recurrence, and custody record together—offline.
-            Share a deliberate copy whose technical integrity a recipient can check.
-          </p>
-          <div class="cta">
-            <a id="pilot-cta" class="btn btn-primary"
-              href="review/">Inspect a synthetic case</a>
-            <a id="sample-cta" class="btn btn-secondary" href="sample-packet/packet.html">Inspect the sample packet</a>
-            <a id="method-cta" class="text-link"
-              href="how-it-works/">Read how the evidence method works</a>
-          </div>
-          <p class="privacy-note">
-            The review hub separates public technical feedback from private organization contact.
-            It accepts no evidence uploads; every evaluation starts with the supplied synthetic case.
-          </p>
-          <p class="alpha">
-            <strong>Alpha boundary:</strong> Habitable is built and test-gated on synthetic data,
-            but it is not independently audited or proven in court. Do not rely on it for a real
-            legal matter yet.
-          </p>
-        </div>
-        <div class="case-file" role="note" aria-labelledby="status-h">
-          <p class="record-id">Synthetic record / unit 4B</p>
-          <h2 id="status-h">A repair history with a chain of custody.</h2>
-          <div class="building-section" aria-label="Synthetic case chronology">
-            <div class="floor"><span>02 Jan</span><strong>Condition photographed</strong><i aria-hidden="true"></i></div>
-            <div class="floor"><span>03 Jan</span><strong>Repair notice sent</strong><i aria-hidden="true"></i></div>
-            <div class="floor"><span>03 Jan</span><strong>Delivery confirmed</strong><i aria-hidden="true"></i></div>
-            <div class="floor floor-active"><span>18 Jan</span><strong>Condition recorded again</strong><i aria-hidden="true"></i></div>
-          </div>
-          <dl>
-            <dt>Case data hosted here</dt><dd>None</dd>
-            <dt>Evaluation data</dt><dd>Synthetic only</dd>
-            <dt>Court validation</dt><dd>Not completed</dd>
-            <dt>Independent audit</dt><dd class="status-open">Still open</dd>
-          </dl>
-        </div>
-      </div>
+
+    <header class="site-top">
+      <a class="site-wordmark" href="./" aria-label="Habitable Evidence home">
+        <img src="img/icon.svg" alt="" width="36" height="36" />
+        <strong>habitable</strong>
+      </a>
+      <nav aria-label="Primary">
+        <a href="how-it-works/">How it works</a>
+        <a href="tenant-unions/">For tenant unions</a>
+        <a href="review/">Review the alpha</a>
+        <a href="trust-limitations/">Current limits</a>
+      </nav>
+      <span class="alpha-chip">Alpha · synthetic evaluation only</span>
     </header>
 
     <main id="main">
-      <section aria-labelledby="what-h">
-        <p class="section-kicker">The workflow</p>
-        <h2 id="what-h">One record, from first condition to recipient review</h2>
-        <p class="lede">
-          Habitable Evidence is a local, encrypted case record for tenants and tenant unions. It
-          keeps the condition, the notice trail, and the technical integrity record together—then
-          lets the union decide what leaves the device.
-        </p>
-        <ol class="flow">
-          <li><strong>Document</strong>Record conditions, dates, repair requests, responses, and recurrence in one timeline.</li>
-          <li><strong>Preserve</strong>Seal originals, hash each item, attach timestamp tokens when available, and record custody.</li>
-          <li><strong>Share deliberately</strong>Review disclosure, export a court-organized packet, and give recipients an independent check.</li>
-        </ol>
-      </section>
-
-      <section aria-labelledby="audience-h">
-        <p class="section-kicker">Routes by role</p>
-        <h2 id="audience-h">Start where your responsibility begins</h2>
-        <div class="audience-grid">
-          <article class="route">
-            <h3>Tenant unions</h3>
-            <p>Test whether the capture, notice timeline, organizer review, and packet workflow fit your practice—using synthetic cases first.</p>
-            <ul>
-              <li><a href="tenant-unions/">Plan a bounded union evaluation</a></li>
-              <li><a href="templates/tenant-union-building-condition-survey/">Download a privacy-conscious building survey</a></li>
-              <li><a href="review/#organizer-track">Run the 45-minute organizer review</a></li>
-            </ul>
-          </article>
-          <article class="route">
-            <h3>Legal aid, attorneys, and inspectors</h3>
-            <p>Inspect packet readability, verification claims, and evidentiary limits against the rules and practice of your own forum.</p>
-            <ul>
-              <li><a href="legal-aid-reviewers/">Follow the legal-aid review guide</a></li>
-              <li><a href="inspectors-code-enforcement/">Follow the inspector review guide</a></li>
-              <li><a href="guides/housing-inspection-records/">Preserve complaint and inspection records</a></li>
-            </ul>
-          </article>
-          <article class="route">
-            <h3>Reviewers and contributors</h3>
-            <p>Help close a named gate: security, cryptography, accessibility, threat modeling, legal framing, packaging, or documentation.</p>
-            <ul>
-              <li><a href="review/">Choose one bounded review task</a></li>
-              <li><a href="review/changes/">Read what reviewers found and what changed</a></li>
-              <li><a href="trust-limitations/">Read the open trust gates</a></li>
-              <li><a href="https://github.com/ChelseaKR/habitable">Browse the source</a></li>
-            </ul>
-          </article>
-        </div>
-      </section>
-
-      <section aria-labelledby="trust-h">
-        <p class="section-kicker">Trust before adoption</p>
-        <h2 id="trust-h">What works today—and what still has to be earned</h2>
-        <div class="trust-grid">
-          <article class="trust-card">
-            <h3>Implemented and test-gated</h3>
-            <ul class="checks">
-              <li>Local encrypted storage with no hosted account or central case database.</li>
-              <li>Sealed originals, SHA-256 hashes, RFC 3161 timestamp support, and custody checks.</li>
-              <li>Accessible HTML, print-oriented PDF, and signed bundle exports with an independent verifier.</li>
-              <li>English and Spanish app interfaces with automated accessibility gates.</li>
-            </ul>
-          </article>
-          <article class="trust-card open">
-            <h3>Open before real reliance</h3>
-            <ul>
-              <li>An independent security and cryptography audit.</li>
-              <li>Housing-law review of the legal framing and packet workflow.</li>
-              <li>A real tenant-union or legal-aid pilot with documented outcomes.</li>
-              <li>A recorded human NVDA and VoiceOver pass, plus signed native distribution.</li>
-            </ul>
-          </article>
-        </div>
-        <p class="limit">
-          <strong>Evidence boundary:</strong> Integrity checks can show that bytes and records have
-          not changed after sealing. They cannot prove what a photo depicts, who created it, or
-          whether a particular court or agency will admit it. Habitable produces a verifiable,
-          court-organized alpha packet—not a promise of a court outcome.
-        </p>
-      </section>
-
-      <section aria-labelledby="see-h">
-        <p class="section-kicker">Synthetic walkthrough</p>
-        <h2 id="see-h">Inspect the app and packet before installing</h2>
-        <div class="shots">
-          <figure>
-            <img src="img/app-en.png" width="2200" height="3000" loading="lazy" decoding="async"
-              alt="The habitable unit evidence record: linked captures and timeline facts for unit 4B,
-              above issue, recording, readiness, and export workspaces." />
-            <figcaption>The local app (English) — runs on your device, not a server.</figcaption>
-          </figure>
-          <figure>
-            <img src="img/app-es.png" width="2200" height="3000" loading="lazy" decoding="async"
-              alt="The same unit evidence record shown in Spanish, with all labels and buttons translated."
-            />
-            <figcaption>Bilingual: the full interface in Español.</figcaption>
-          </figure>
-        </div>
-        <figure>
-          <img src="img/packet.png" width="2448" height="3038" loading="lazy" decoding="async"
-            alt="A habitability evidence packet rendered as an accessible web page: title, generated
-            date and counts, an issue with its timeline and a captured photo, and an evidence
-            appendix table of content hashes and timestamp status." />
-          <figcaption>
-            An exported packet built from synthetic data. Open the
-            <a href="sample-packet/packet.html">sample packet</a> — it is the actual accessible
-            HTML export, alongside its <a href="sample-packet/bundle.json">bundle.json</a>,
-            <a href="sample-packet/bundle.sig.json">producer signature</a>, and
-            <a href="sample-packet/packet.pdf">PDF</a>. Its timestamp authority is a bundled,
-            self-signed synthetic test certificate—not an independently trusted authority. It is a
-            preview, not evidence for a real matter.
-          </figcaption>
-        </figure>
-      </section>
-
-      <section aria-labelledby="try-h">
-        <p class="section-kicker">Run it locally</p>
-        <h2 id="try-h">Evaluate the alpha without tenant data</h2>
-        <p>Requires <a href="https://docs.astral.sh/uv/">uv</a>; the right Python (3.14) is fetched for you.</p>
-        <pre><code>git clone https://github.com/ChelseaKR/habitable &amp;&amp; cd habitable
-uv sync
-uv run habitable demo     # capture → seal+hash → RFC 3161 → packet → verify, offline
-uv run habitable app      # the accessible local web app (English / Español)</code></pre>
-        <p>
-          There is deliberately <strong>no hosted app</strong>: habitable runs on
-          <code>localhost</code>. Use <code>habitable demo</code> and synthetic records for evaluation;
-          this page and the sample packet are static previews of what the tool produces.
-        </p>
-      </section>
-
-      <section aria-labelledby="learn-h">
-        <p class="section-kicker">Technical record</p>
-        <h2 id="learn-h">Audit the claims, not the marketing</h2>
-        <ul class="technical-links">
-          <li><a href="review/">Review dispatch: four roles and six fixed-time tasks</a></li>
-          <li><a href="https://github.com/ChelseaKR/habitable#readme">Project README</a></li>
-          <li><a href="documentation-checklist/">Safe repair documentation checklist</a></li>
-          <li><a href="guides/preserve-maintenance-request-records/">Preserve a maintenance request and portal history</a></li>
-          <li><a href="https://github.com/ChelseaKR/habitable/blob/main/docs/threat-model.md">Threat model</a>
-            and <a href="https://github.com/ChelseaKR/habitable/blob/main/docs/evidence-method.md">evidence method</a></li>
-          <li><a href="https://github.com/ChelseaKR/habitable/blob/main/docs/setup-guide.md">Set up your union in an afternoon</a></li>
-          <li><a href="https://github.com/ChelseaKR/habitable/blob/main/docs/accessibility/ACR.md">Accessibility Conformance Report</a></li>
-        </ul>
-      </section>
-
-      <section class="safety" aria-labelledby="safety-h">
-        <div class="safety-copy">
-          <p class="section-kicker">Current housing problem</p>
-          <h2 id="safety-h">Get help from a tenant resource—not this alpha.</h2>
-          <p>
-            Habitable is not legal advice, an emergency service, or a place to post evidence. Do
-            not put tenant names, addresses, photos, or case details in GitHub issues.
+      <section class="opening" aria-labelledby="landing-h">
+        <div class="opening-copy">
+          <p class="plain-label">A tenant-held repair record</p>
+          <h1 id="landing-h">Your landlord has the work orders. Keep your own.</h1>
+          <p class="opening-lede">
+            A photo is only the first entry. Keep the condition, repair request, proof it
+            arrived, response, repair visit, and what happened afterward in one record
+            stored on your device.
+          </p>
+          <div class="opening-actions">
+            <a id="pilot-cta" href="review/">Walk the Unit 4B sample</a>
+            <a id="sample-cta" href="sample-packet/packet.html">Open the packet it produced</a>
+            <a id="method-cta" href="how-it-works/">Check the evidence method</a>
+          </div>
+          <p class="alpha-boundary">
+            <strong>Current boundary:</strong> Habitable Evidence is not independently
+            audited or proven in court. Do not rely on it for a real legal matter yet.
           </p>
         </div>
-        <ul class="resource-list">
-          <li>
-            <a href="https://www.usa.gov/tenant-rights">USAGov tenant-rights directory</a>
-            <span>A national starting point for state agencies and affordable legal help.</span>
-          </li>
-          <li>
-            <a href="https://oag.ca.gov/tenants">California Attorney General tenant resources</a>
-            <span>State guidance on housing conditions, retaliation, notices, and getting legal help.</span>
-          </li>
-          <li>
-            <a href="https://selfhelp.courts.ca.gov/get-free-or-low-cost-legal-help">California Courts free and low-cost legal help</a>
-            <span>Court self-help centers, legal-aid programs, and lawyer-referral resources.</span>
-          </li>
-        </ul>
-        <p class="urgent">
-          Eviction and safety deadlines can move quickly. Contact local legal aid, court self-help,
-          code enforcement, a health department, or emergency services as the situation requires.
+
+        <article class="sample-case" aria-labelledby="sample-case-h">
+          <header class="case-order">
+            <div>
+              <span>Tenant copy</span>
+              <strong>Unit 4B · Bathroom</strong>
+            </div>
+            <p>Sample case · synthetic data</p>
+          </header>
+          <div class="case-question">
+            <div>
+              <span>Condition</span>
+              <h2 id="sample-case-h">Black mold on bathroom ceiling</h2>
+            </div>
+            <p><strong>4</strong> recorded events</p>
+          </div>
+          <div class="trail-key">
+            <span>Reported</span><span>Repair trail</span><span>Added to record</span>
+          </div>
+          <p class="clock-note">The left date is when the tenant says it happened.
+            The right date is when the entry joined this record.</p>
+
+          <details class="sample-event condition-event" open>
+            <summary>
+              <time datetime="2026-01-02" data-clock="Reported"
+                    aria-label="Reported 2 January 2026">02 Jan</time>
+              <i aria-hidden="true"></i>
+              <span><strong>Condition photographed</strong><small>Dark spotting above
+                the shower</small></span>
+              <time datetime="2026-01-04" data-clock="Added to record"
+                    aria-label="Added to record 4 January 2026">04 Jan</time>
+            </summary>
+            <div class="event-fold">
+              <div class="report-copy">
+                <div class="photo-specimen" role="img"
+                     aria-label="Synthetic schematic of dark ceiling spotting">
+                  <span>IMG_0042 · synthetic</span>
+                </div>
+                <dl>
+                  <div><dt>What was reported</dt><dd>Spots were visible above the
+                    shower on 2 January.</dd></div>
+                </dl>
+              </div>
+              <div class="proof-copy">
+                <dl>
+                  <div><dt>What can be checked</dt><dd>The file joined the record on
+                    4 January. Original sealed; content fingerprint recorded.</dd></div>
+                </dl>
+              </div>
+            </div>
+          </details>
+
+          <details class="sample-event notice-event">
+            <summary>
+              <time datetime="2026-01-03" data-clock="Reported"
+                    aria-label="Reported 3 January 2026">03 Jan</time>
+              <i aria-hidden="true"></i>
+              <span><strong>Repair request saved</strong><small>Email copy attached to
+                the condition</small></span>
+              <time datetime="2026-01-03" data-clock="Added to record"
+                    aria-label="Added to record 3 January 2026">03 Jan</time>
+            </summary>
+            <div class="event-fold text-fold">
+              <div class="report-copy">
+                <p>“Dark spotting is spreading above the bathroom shower. Please
+                  inspect and repair.”</p>
+                <dl><div><dt>What was reported</dt><dd>The tenant says this request was
+                  sent on 3 January.</dd></div></dl>
+              </div>
+              <div class="proof-copy">
+                <dl><div><dt>What can be checked</dt><dd>The saved message bytes and
+                  their later handling.</dd></div></dl>
+              </div>
+            </div>
+          </details>
+
+          <details class="sample-event delivery-event">
+            <summary>
+              <time datetime="2026-01-03" data-clock="Reported"
+                    aria-label="Reported 3 January 2026">03 Jan</time>
+              <i aria-hidden="true"></i>
+              <span><strong>Delivery confirmation attached</strong><small>Email receipt
+                linked to the request</small></span>
+              <time datetime="2026-01-04" data-clock="Added to record"
+                    aria-label="Added to record 4 January 2026">04 Jan</time>
+            </summary>
+            <div class="event-fold receipt-fold">
+              <div class="report-copy">
+                <p><b>Delivered</b><span>03 Jan · 9:42 AM</span></p>
+                <dl><div><dt>What was reported</dt><dd>The receipt is described as
+                  confirmation of delivery.</dd></div></dl>
+              </div>
+              <div class="proof-copy">
+                <dl><div><dt>What can be checked</dt><dd>The receipt joined the record
+                  on 4 January, sealed and linked to the saved request.</dd></div></dl>
+              </div>
+            </div>
+          </details>
+
+          <details class="sample-event recurrence-event">
+            <summary>
+              <time datetime="2026-01-18" data-clock="Reported"
+                    aria-label="Reported 18 January 2026">18 Jan</time>
+              <i aria-hidden="true"></i>
+              <span><strong>Condition documented again</strong><small>Dark spotting
+                still visible</small></span>
+              <time datetime="2026-01-19" data-clock="Added to record"
+                    aria-label="Added to record 19 January 2026">19 Jan</time>
+            </summary>
+            <div class="event-fold">
+              <div class="report-copy">
+                <div class="photo-specimen later" role="img"
+                     aria-label="Synthetic follow-up schematic with wider dark ceiling spotting">
+                  <span>IMG_0061 · synthetic</span>
+                </div>
+                <dl><div><dt>What was reported</dt><dd>The condition remained visible
+                  after notice.</dd></div></dl>
+              </div>
+              <div class="proof-copy">
+                <dl><div><dt>What can be checked</dt><dd>The follow-up file joined the
+                  record on 19 January, separately sealed and linked.</dd></div></dl>
+              </div>
+            </div>
+          </details>
+
+          <p class="missing-step"><span aria-hidden="true">!</span>
+            No response or repair visit is recorded in this sample trail.</p>
+        </article>
+      </section>
+
+      <section class="copy-boundary" aria-labelledby="copies-h">
+        <div class="copy-explanation">
+          <p class="plain-label">Sharing is a separate action</p>
+          <h2 id="copies-h">One record. Two deliberately different copies.</h2>
+          <p>
+            Habitable keeps the complete tenant-held record on the device. Creating a
+            review copy is a separate step with its own contents and disclosures.
+          </p>
+        </div>
+        <div class="copy-set">
+          <article class="tenant-copy">
+            <span>Canary · tenant copy</span>
+            <h3>Kept here</h3>
+            <ul>
+              <li>Sealed originals</li>
+              <li>Original photo metadata</li>
+              <li>Complete local custody details</li>
+            </ul>
+          </article>
+          <article class="review-copy">
+            <span>Pink · review copy</span>
+            <h3>Leaves only when created</h3>
+            <ul>
+              <li>Whole-unit record in the current alpha</li>
+              <li>Photo metadata removed by default</li>
+              <li>Bundle a recipient can verify independently</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="claim-record" aria-labelledby="limits-h">
+        <header>
+          <p class="plain-label">Current limits</p>
+          <h2 id="limits-h">The project’s claims have a status, too.</h2>
+        </header>
+        <div class="claim-table" role="table" aria-label="Current project claims and gaps">
+          <div role="row" class="claim-head">
+            <span role="columnheader">Claim</span>
+            <span role="columnheader">Current evidence</span>
+            <span role="columnheader">Status</span>
+          </div>
+          <div role="row">
+            <span role="cell">The app detects changes to sealed files and custody records.</span>
+            <span role="cell">Automated fixity, custody, packet, and verifier tests.</span>
+            <strong role="cell" class="status-built">Implemented and test-gated</strong>
+          </div>
+          <div role="row">
+            <span role="cell">The security and cryptography have been independently reviewed.</span>
+            <span role="cell">An independent security and cryptography audit.</span>
+            <strong role="cell" class="status-open">Not completed</strong>
+          </div>
+          <div role="row">
+            <span role="cell">The packet workflow fits housing-law practice.</span>
+            <span role="cell">Housing-law review of the legal framing and packet workflow.</span>
+            <strong role="cell" class="status-open">Not completed</strong>
+          </div>
+          <div role="row">
+            <span role="cell">The workflow works for tenant organizations.</span>
+            <span role="cell">A real tenant-union or legal-aid pilot with documented outcomes.</span>
+            <strong role="cell" class="status-open">Not completed</strong>
+          </div>
+          <div role="row">
+            <span role="cell">The interface works with major screen readers.</span>
+            <span role="cell">A recorded human NVDA and VoiceOver pass, plus signed native distribution.</span>
+            <strong role="cell" class="status-open">Still open</strong>
+          </div>
+        </div>
+        <p class="evidence-boundary">
+          Integrity checks cannot prove what a photo depicts, who created it, or whether
+          a particular court or agency will admit it. Habitable produces a verifiable,
+          court-organized alpha packet—not a promise about a legal outcome.
         </p>
+      </section>
+
+      <section class="working-routes" aria-labelledby="routes-h">
+        <header>
+          <p class="plain-label">Ways to inspect the work</p>
+          <h2 id="routes-h">Start with the artifact you need.</h2>
+        </header>
+        <div class="route-list">
+          <article>
+            <h3>Tenant unions</h3>
+            <p>Evaluate the intake and repair-trail workflow with synthetic records.</p>
+            <p><a href="tenant-unions/">Plan a bounded union evaluation</a> ·
+              <a href="templates/tenant-union-building-condition-survey/">Download the building condition survey</a></p>
+          </article>
+          <article>
+            <h3>Legal aid, attorneys, and inspectors</h3>
+            <p>Cold-read the packet and find each condition, notice, receipt, and follow-up.</p>
+            <p><a href="legal-aid-reviewers/">Follow the legal-aid review guide</a> ·
+              <a href="inspectors-code-enforcement/">Follow the inspector review guide</a></p>
+          </article>
+          <article>
+            <h3>Field documentation</h3>
+            <p>Use concrete preservation guides before a portal, phone, or record changes.</p>
+            <p><a href="documentation-checklist/">Open the safe documentation checklist</a> ·
+              <a href="guides/preserve-maintenance-request-records/">Preserve a maintenance request</a> ·
+              <a href="guides/housing-inspection-records/">Preserve inspection records</a></p>
+          </article>
+          <article>
+            <h3>Reviewers and contributors</h3>
+            <p>Take one bounded review task and leave tenant data out of public channels.</p>
+            <p><a href="review/">Choose one bounded review task</a> ·
+              <a href="review/changes/">Read what reviewers found and what changed</a> ·
+              <a href="trust-limitations/">Read the open trust gates</a> ·
+              <a href="https://github.com/ChelseaKR/habitable">Browse the source</a></p>
+          </article>
+        </div>
+      </section>
+
+      <section class="evaluation-note" aria-labelledby="evaluation-h">
+        <h2 id="evaluation-h">Evaluate the supplied case—not a tenant’s case.</h2>
+        <p>
+          The review hub separates public technical feedback from private organization
+          contact. It accepts no evidence uploads; every evaluation starts with the
+          supplied synthetic case.
+        </p>
+        <p><a href="how-it-works/">Follow one condition through the evidence method</a>.</p>
+      </section>
+
+      <details class="local-install">
+        <summary>Run the alpha locally</summary>
+        <div>
+          <p>There is no hosted case app. The local interface requires uv and Python (3.14).</p>
+          <pre><code>git clone https://github.com/ChelseaKR/habitable
+cd habitable
+uv sync
+uv run habitable demo
+uv run habitable app</code></pre>
+          <p>AGPL-3.0; the standalone verifier also carries Apache-2.0 permission.</p>
+        </div>
+      </details>
+
+      <section class="safety" aria-labelledby="safety-h">
+        <div>
+          <h2 id="safety-h">For a current housing problem, use a tenant resource.</h2>
+          <p>
+            Habitable is not legal advice, an emergency service, or a place to post
+            evidence. Do not put tenant names, addresses, photos, or case details in
+            GitHub issues.
+          </p>
+        </div>
+        <ul>
+          <li><a href="https://www.usa.gov/tenant-rights">USAGov tenant-rights directory</a></li>
+          <li><a href="https://oag.ca.gov/tenants">California Attorney General tenant resources</a></li>
+          <li><a href="https://selfhelp.courts.ca.gov/get-free-or-low-cost-legal-help">California Courts free and low-cost legal help</a></li>
+        </ul>
       </section>
     </main>
 
     <footer>
       <p>
-        Habitable Evidence — an independent, personal open-source alpha by Chelsea Kelly-Reif.
-        AGPL-3.0 (the standalone verifier also under Apache-2.0). Not legal advice. Do not submit
-        tenant data.
+        Habitable Evidence is an independent open-source alpha by Chelsea Kelly-Reif.
+        AGPL-3.0. Do not submit tenant data.
       </p>
     </footer>
   </body>

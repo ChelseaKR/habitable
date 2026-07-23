@@ -85,9 +85,9 @@ def _landing() -> _PositioningParser:
     return parser
 
 
-def test_hero_uses_the_case_building_thesis_and_honest_alpha_boundary() -> None:
+def test_opening_uses_the_tenant_copy_thesis_and_honest_alpha_boundary() -> None:
     parser = _landing()
-    assert parser.headings["h1"] == ["Keep the repair history together."]
+    assert parser.headings["h1"] == ["Your landlord has the work orders. Keep your own."]
 
     body = _normalize(parser.visible_parts)
     assert "Habitable Evidence" in body
@@ -102,11 +102,11 @@ def test_primary_actions_route_to_review_sample_and_evidence_method() -> None:
     by_id = {link["id"]: link for link in parser.links if link.get("id")}
 
     assert by_id["pilot-cta"]["href"] == "review/"
-    assert by_id["pilot-cta"]["text"] == "Inspect a synthetic case"
+    assert by_id["pilot-cta"]["text"] == "Walk the Unit 4B sample"
 
     assert by_id["sample-cta"]["href"] == "sample-packet/packet.html"
     assert by_id["method-cta"]["href"] == "how-it-works/"
-    assert by_id["method-cta"]["text"] == "Read how the evidence method works"
+    assert by_id["method-cta"]["text"] == "Check the evidence method"
 
     body = _normalize(parser.visible_parts)
     assert "separates public technical feedback from private organization contact" in body

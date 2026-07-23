@@ -4,7 +4,7 @@
 
 // Bump whenever an authenticated shell asset changes. Keeping the old cache name
 // would let a pre-auth app.js survive an upgrade and send tokenless API requests.
-var CACHE = "habitable-shell-v7-record-ledger";
+var CACHE = "habitable-shell-v9-repair-trail";
 
 // Relative URLs so the worker matches however the shell is served.
 var SHELL = [
@@ -15,6 +15,8 @@ var SHELL = [
   "i18n/en.json",
   "i18n/es.json",
   "manifest.webmanifest",
+  "fonts/BarlowCondensed-SemiBold.ttf",
+  "fonts/BarlowCondensed-ExtraBold.ttf",
   "icons/icon.svg",
   "icons/icon-192.png",
   "icons/icon-512.png",

@@ -213,7 +213,7 @@ def test_robots_allows_the_pages_base_path_and_advertises_sitemap() -> None:
     }
 
 
-def test_landing_images_reserve_layout_space_and_defer_screenshots() -> None:
+def test_landing_images_reserve_layout_space_without_a_screenshot_gallery() -> None:
     parser = _landing()
     assert parser.images
     for image in parser.images:
@@ -225,7 +225,8 @@ def test_landing_images_reserve_layout_space_and_defer_screenshots() -> None:
         assert (_SITE / parsed.path).is_file(), f"missing image: {source}"
 
     screenshots = [image for image in parser.images if image["src"].endswith(".png")]
-    assert len(screenshots) == 3
-    for image in screenshots:
-        assert image["loading"] == "lazy"
-        assert image["decoding"] == "async"
+    assert screenshots == []
+
+    html = (_SITE / "index.html").read_text(encoding="utf-8")
+    assert html.count('class="sample-event ') == 4
+    assert html.count("<details") >= 4

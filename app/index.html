@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#245b84" />
+    <meta name="theme-color" content="#123d62" />
     <meta name="description" data-i18n="meta_description"
           content="Local-first tenant habitability-evidence tool." />
     <title data-i18n="app_title">habitable</title>
@@ -19,146 +19,131 @@
   <body>
     <a class="skip-link" href="#main" data-i18n="skip_to_main">Skip to main content</a>
 
-    <header class="site-header">
+    <header class="case-header">
       <a class="brand" href="#atlas" aria-label="habitable">
-        <img class="brand-mark" src="icons/icon.svg" alt="" width="34" height="34" />
+        <img class="brand-mark" src="icons/icon.svg" alt="" width="32" height="32" />
         <span class="brand-name" data-i18n="app_name">habitable</span>
       </a>
-      <div class="header-case" aria-live="polite">
-        <span class="header-case-label" data-i18n="workspace_unit">Current unit</span>
+      <p class="unit-stamp">
+        <span data-i18n="workspace_unit">Current unit</span>
         <strong id="header-unit">—</strong>
-      </div>
+      </p>
+      <p class="local-state" data-i18n="rail_private">Saved on this device</p>
       <nav class="lang-nav" data-i18n-aria="lang_nav_label" aria-label="Language">
-        <span class="lang-label" id="lang-label" data-i18n="language">Language</span>
+        <span class="sr-only" id="lang-label" data-i18n="language">Language</span>
         <div class="lang-buttons" role="group" aria-labelledby="lang-label">
           <button type="button" id="lang-en" class="lang-btn" data-lang="en"
-                  aria-pressed="true">English</button>
+                  aria-pressed="true">EN</button>
           <button type="button" id="lang-es" class="lang-btn" data-lang="es"
-                  aria-pressed="false">Español</button>
+                  aria-pressed="false">ES</button>
         </div>
       </nav>
     </header>
 
-    <div class="alpha-banner" role="region" data-i18n-aria="alpha_label"
+    <div class="alpha-strip" role="region" data-i18n-aria="alpha_label"
          aria-label="Alpha software warning">
       <strong data-i18n="alpha_tag">Alpha</strong>
       <span data-i18n="alpha_warning">Alpha software — do not rely on this for real
         legal matters yet.</span>
     </div>
 
-    <div class="app-shell">
-      <aside class="workspace-rail" aria-label="Workspace navigation">
-        <nav class="workspace-nav" data-i18n-aria="workspace_nav_label"
-             aria-label="Workspace">
-          <a href="#atlas"><span class="nav-mark" aria-hidden="true">◉</span>
-            <span data-i18n="nav_atlas">Case record</span></a>
-          <a href="#record"><span class="nav-mark" aria-hidden="true">＋</span>
-            <span data-i18n="nav_record">Add evidence</span></a>
-          <a href="#coordinate"><span class="nav-mark" aria-hidden="true">⇄</span>
-            <span data-i18n="nav_coordinate">Check integrity</span></a>
-          <a href="#share"><span class="nav-mark" aria-hidden="true">↗</span>
-            <span data-i18n="nav_share">Make a review copy</span></a>
-        </nav>
-        <div class="rail-state" aria-labelledby="rail-state-h">
-          <p id="rail-state-h" class="rail-label" data-i18n="rail_record_state">Record state</p>
-          <p id="rail-custody" class="rail-value" data-i18n="status_loading">Loading…</p>
-          <p id="rail-stamp" class="rail-note">—</p>
+    <main id="main" class="case-work">
+      <aside class="condition-drawer" aria-labelledby="issues-h">
+        <div class="drawer-heading">
+          <p data-i18n="issues_kicker">Rooms + conditions</p>
+          <h1 id="issues-h"><span data-i18n="status_unit">Unit</span>
+            <span id="masthead-unit">—</span></h1>
         </div>
-        <p class="rail-private" data-i18n="rail_private">Encrypted here. No account. No telemetry.</p>
+
+        <p id="issues-empty" class="empty-note" hidden data-i18n="issues_empty_next">No
+          conditions yet. Add the first condition to begin.</p>
+        <ul id="issues-list" class="issues-list"></ul>
+        <button type="button" class="new-condition" data-open-dialog="issue-dialog">
+          <span aria-hidden="true">＋</span>
+          <span data-i18n="add_issue_heading">Add a condition</span>
+        </button>
+
+        <div class="drawer-state" aria-labelledby="rail-state-h">
+          <p id="rail-state-h" data-i18n="rail_record_state">Record state</p>
+          <strong id="rail-custody" data-i18n="status_loading">Loading…</strong>
+          <span id="rail-stamp">—</span>
+        </div>
       </aside>
 
-      <main id="main">
-        <header class="case-masthead">
-          <div>
-            <p class="eyebrow"><span data-i18n="case_file">Case file</span>
-              <span aria-hidden="true"> / </span><span id="masthead-unit">—</span></p>
-            <h1 data-i18n="atlas_title">Unit evidence record</h1>
-            <p class="lede" data-i18n="atlas_lede">Follow each condition, notice, response,
-              and supporting item in the order recorded.</p>
-          </div>
-          <a class="btn btn-primary masthead-action" href="#capture-form"
-             data-i18n="quick_capture">Capture evidence</a>
-        </header>
-
+      <div class="repair-desk">
         <div id="announcer" class="announcer" role="status" aria-live="polite"
              aria-atomic="true"></div>
 
-        <section id="atlas" class="workspace-section atlas-section" aria-labelledby="atlas-h">
-          <div class="section-heading">
-            <div>
-              <p class="section-kicker" data-i18n="atlas_kicker">Case chronology</p>
-              <h2 id="atlas-h" data-i18n="atlas_heading">What happened, in the order recorded</h2>
-            </div>
-            <button type="button" id="refresh-btn" class="btn btn-quiet"
+        <header class="trail-header">
+          <div class="trail-title">
+            <p id="trail-room" data-i18n="current_condition">Current condition</p>
+            <h2 id="atlas-h" data-i18n="atlas_heading">Repair trail</h2>
+            <p id="trail-condition" data-i18n="atlas_empty">Add a condition to begin its
+              repair trail.</p>
+          </div>
+          <div class="condition-picker">
+            <label for="atlas-filter-issue" data-i18n="atlas_filter_issue">Condition</label>
+            <select id="atlas-filter-issue"></select>
+            <button type="button" id="refresh-btn" class="text-button"
                     data-i18n="refresh">Refresh</button>
           </div>
+        </header>
 
-          <div class="atlas-controls" aria-label="Atlas controls"
-               data-i18n-aria="atlas_controls_label">
-            <div class="field field-compact">
-              <label for="atlas-filter-issue" data-i18n="atlas_filter_issue">Show issue</label>
-              <select id="atlas-filter-issue"><option value="" data-i18n="issue_all">All issues</option></select>
-            </div>
-            <div class="field field-compact atlas-zoom-field">
-              <label for="atlas-zoom"><span data-i18n="atlas_density">Spacing</span>
-                <output id="atlas-zoom-value" for="atlas-zoom">100%</output></label>
-              <input id="atlas-zoom" type="range" min="70" max="180" value="100" step="10" />
-            </div>
-            <div class="field-check atlas-check">
-              <input type="checkbox" id="atlas-show-links" checked />
-              <label for="atlas-show-links" data-i18n="atlas_show_links">Show evidence links</label>
-            </div>
-            <div class="field-check atlas-check">
-              <input type="checkbox" id="atlas-show-proof" />
-              <label for="atlas-show-proof" data-i18n="atlas_show_proof">Show proof state</label>
-            </div>
-            <button type="button" id="atlas-fit" class="btn btn-quiet"
-                    data-i18n="atlas_fit">Fit all</button>
-            <button type="button" id="atlas-story" class="btn btn-quiet"
-                    data-i18n="atlas_story">Start story</button>
+        <div id="record" class="entry-dock" role="toolbar"
+             data-i18n-aria="entry_actions_label" aria-label="Add to this repair trail">
+          <button type="button" data-open-dialog="capture-dialog">
+            <span class="action-glyph" aria-hidden="true">▣</span>
+            <span data-i18n="capture_heading">Photo</span>
+          </button>
+          <button type="button" data-open-dialog="timeline-dialog">
+            <span class="action-glyph" aria-hidden="true">＋</span>
+            <span data-i18n="timeline_heading">What happened</span>
+          </button>
+          <button type="button" data-open-dialog="artifact-dialog">
+            <span class="action-glyph" aria-hidden="true">▤</span>
+            <span data-i18n="artifact_heading">Document</span>
+          </button>
+        </div>
+
+        <section id="atlas" class="trail" aria-labelledby="atlas-h">
+          <div class="dual-clock-key">
+            <span data-i18n="reported_date_label">Reported</span>
+            <span data-i18n="secured_date_label">Secured</span>
           </div>
+          <div id="atlas-plot" class="trail-log" role="group"
+               aria-labelledby="atlas-h atlas-summary">
+            <p id="atlas-empty" class="trail-empty" data-i18n="atlas_empty">Add a
+              condition, photo, or update to begin the repair trail.</p>
+            <div id="atlas-nodes" class="atlas-nodes"></div>
+          </div>
+          <p id="atlas-summary" class="sr-only" data-i18n="atlas_summary_empty">No events yet.</p>
 
-          <div class="atlas-workspace">
-            <div class="atlas-plot-wrap">
-              <div id="atlas-plot" class="atlas-plot" role="group"
-                   aria-labelledby="atlas-h atlas-summary">
-                <p id="atlas-empty" class="atlas-empty" data-i18n="atlas_empty">Add an issue,
-                  a photo, or a timeline entry to begin the record.</p>
-                <svg id="atlas-svg" class="atlas-svg" aria-hidden="true"></svg>
-                <div id="atlas-lanes" class="atlas-lanes"></div>
-                <div id="atlas-nodes" class="atlas-nodes"></div>
+          <details id="atlas-inspector" class="evidence-fold">
+            <summary data-i18n="inspector_kicker">Check this entry</summary>
+            <div class="fold-grid">
+              <div class="fold-report">
+                <span class="fold-label" data-i18n="reported_layer_label">What was reported</span>
+                <h3 id="inspector-h" data-i18n="inspector_empty_heading">Choose an entry</h3>
+                <p id="inspector-report" class="muted"
+                   data-i18n="inspector_empty_body">Its reported date, source, links,
+                  and technical handling will appear here.</p>
               </div>
-              <p id="atlas-summary" class="sr-only" data-i18n="atlas_summary_empty">No events yet.</p>
-              <div class="atlas-legend" aria-label="Evidence legend"
-                   data-i18n-aria="atlas_legend_label">
-                <span><i class="legend-mark mark-capture" aria-hidden="true"></i>
-                  <span data-i18n="legend_capture">Capture</span></span>
-                <span><i class="legend-mark mark-event" aria-hidden="true"></i>
-                  <span data-i18n="legend_event">Timeline entry</span></span>
-                <span><i class="legend-mark mark-awaiting" aria-hidden="true"></i>
-                  <span data-i18n="legend_awaiting">Waiting for timestamp</span></span>
+              <div id="inspector-content" class="fold-proof">
+                <span class="fold-label" data-i18n="secured_layer_label">What can be checked</span>
               </div>
             </div>
-
-            <section id="atlas-inspector" class="atlas-inspector" aria-labelledby="inspector-h">
-              <p class="section-kicker" data-i18n="inspector_kicker">Selected point</p>
-              <h3 id="inspector-h" data-i18n="inspector_empty_heading">Choose a point in the record</h3>
-              <div id="inspector-content">
-                <p class="muted" data-i18n="inspector_empty_body">Its date, source, links,
-                  and proof state will appear here.</p>
-              </div>
-            </section>
-          </div>
+          </details>
 
           <details class="accessible-record">
-            <summary data-i18n="atlas_read_as_list">Read this record as a list</summary>
+            <summary data-i18n="atlas_read_as_list">Open the compact record table</summary>
             <div class="table-wrap">
               <table>
                 <thead><tr>
-                  <th scope="col" data-i18n="atlas_col_date">Date</th>
-                  <th scope="col" data-i18n="atlas_col_issue">Issue</th>
-                  <th scope="col" data-i18n="atlas_col_event">Event</th>
+                  <th scope="col" data-i18n="reported_date_label">Reported</th>
+                  <th scope="col" data-i18n="atlas_col_issue">Condition</th>
+                  <th scope="col" data-i18n="atlas_col_event">What happened</th>
                   <th scope="col" data-i18n="atlas_col_source">Source</th>
+                  <th scope="col" data-i18n="secured_date_label">Secured</th>
                 </tr></thead>
                 <tbody id="atlas-table-body"></tbody>
               </table>
@@ -166,392 +151,407 @@
           </details>
         </section>
 
-        <section class="workspace-section" aria-labelledby="issues-h">
-          <div class="section-heading">
-            <div>
-              <p class="section-kicker" data-i18n="issues_kicker">Rooms + conditions</p>
-              <h2 id="issues-h" data-i18n="issues_heading">Issues</h2>
-            </div>
+        <section class="next-step" aria-labelledby="next-step-h">
+          <div>
+            <h2 id="next-step-h" data-i18n="next_heading">What happened next?</h2>
+            <p data-i18n="next_intro">Add the next fact to this condition. A missing
+              step stays visibly missing.</p>
           </div>
-          <p id="issues-empty" class="muted" hidden data-i18n="issues_empty_next">No issues
-            yet — start by adding one below in 'Add an issue'.</p>
-          <p class="muted strength-caveat" data-i18n="strength_caveat">Record strength reflects what's in
-            this record — timestamps, custody, corroborating timeline — not a legal
-            judgment, and not admissibility.</p>
-          <ul id="issues-list" class="issues-list"></ul>
-        </section>
-
-        <section id="record" class="workspace-section" aria-labelledby="record-h">
-          <div class="section-heading">
-            <div>
-              <p class="section-kicker" data-i18n="record_kicker">Add one fact at a time</p>
-              <h2 id="record-h" data-i18n="record_heading">Add to this record</h2>
-            </div>
-          </div>
-          <p class="section-intro" data-i18n="record_intro">Each action becomes part of the
-            same case story. You can close the app after a capture is saved.</p>
-
-          <div class="record-workbench">
-            <details class="action-panel" open>
-              <summary><span class="action-number" aria-hidden="true">01</span>
-                <span data-i18n="capture_heading">Capture evidence</span></summary>
-              <form id="capture-form" novalidate>
-                <fieldset>
-                  <legend data-i18n="capture_legend">Photo and details</legend>
-                  <div class="field">
-                    <label for="cap-issue" data-i18n="field_issue">Issue</label>
-                    <select id="cap-issue" name="issue_id" required aria-required="true"></select>
-                  </div>
-                  <div class="field">
-                    <label for="cap-file" data-i18n="field_photo">Photo</label>
-                    <input type="file" id="cap-file" name="file" accept="image/*"
-                           capture="environment" required aria-required="true" />
-                  </div>
-                  <div class="field-check">
-                    <input type="checkbox" id="cap-devtsa" name="dev_tsa"
-                           aria-describedby="cap-devtsa-help" />
-                    <label for="cap-devtsa" data-i18n="field_dev_tsa">Use a practice
-                      timestamp (offline testing)</label>
-                  </div>
-                  <p class="muted field-help" id="cap-devtsa-help"
-                     data-i18n="field_dev_tsa_help">For trying out the app without internet.
-                    A practice timestamp is not trusted.</p>
-                </fieldset>
-                <button type="submit" class="btn btn-primary" data-i18n="capture_submit">Capture evidence</button>
-              </form>
-            </details>
-
-            <details class="action-panel" open>
-              <summary><span class="action-number" aria-hidden="true">02</span>
-                <span data-i18n="timeline_heading">Add a timeline entry</span></summary>
-              <form id="timeline-form" novalidate>
-                <fieldset>
-                  <legend data-i18n="timeline_legend">Timeline entry</legend>
-                  <div class="field">
-                    <label for="tl-issue" data-i18n="field_issue">Issue</label>
-                    <select id="tl-issue" name="issue_id" required aria-required="true"></select>
-                  </div>
-                  <div class="field">
-                    <label for="tl-type" data-i18n="field_event_type">What happened</label>
-                    <select id="tl-type" name="event_type" required aria-required="true">
-                      <option value="condition_observed" data-i18n="event_condition_observed">Condition observed</option>
-                      <option value="notice_sent" data-i18n="event_notice_sent">Repair notice sent</option>
-                      <option value="delivery_confirmed" data-i18n="event_delivery_confirmed">Delivery confirmed</option>
-                      <option value="response_received" data-i18n="event_response_received">Response received</option>
-                      <option value="inspection" data-i18n="event_inspection">Inspection</option>
-                      <option value="repair" data-i18n="event_repair">Repair or attempted repair</option>
-                      <option value="recurrence" data-i18n="event_recurrence">Condition happened again</option>
-                      <option value="impact" data-i18n="event_impact">Impact recorded</option>
-                      <option value="other" data-i18n="event_other">Other</option>
-                    </select>
-                  </div>
-                  <div class="field" id="tl-other-field" hidden>
-                    <label for="tl-other" data-i18n="field_other_label">Name the other event</label>
-                    <input type="text" id="tl-other" name="other_label" autocomplete="off" />
-                  </div>
-                  <div class="field">
-                    <label for="tl-occurred" data-i18n="field_occurred_at">Date it happened</label>
-                    <input type="date" id="tl-occurred" name="occurred_at" required
-                           aria-required="true" aria-describedby="tl-time-help" />
-                    <p class="muted field-help" id="tl-time-help"
-                       data-i18n="field_occurred_at_help">This is the date you report. The app separately records when you added this entry.</p>
-                  </div>
-                  <div class="field">
-                    <label for="tl-source" data-i18n="field_source">How do you know?</label>
-                    <select id="tl-source" name="source" required aria-required="true">
-                      <option value="firsthand" data-i18n="source_firsthand">Firsthand observation</option>
-                      <option value="message" data-i18n="source_message">Message or conversation</option>
-                      <option value="document" data-i18n="source_document">Document or receipt</option>
-                      <option value="official_record" data-i18n="source_official_record">Inspector or official record</option>
-                      <option value="other" data-i18n="source_other">Other source</option>
-                    </select>
-                  </div>
-                  <div class="field" id="tl-source-other-field" hidden>
-                    <label for="tl-source-other" data-i18n="field_source_detail">Name the other source</label>
-                    <input type="text" id="tl-source-other" name="source_detail" autocomplete="off" />
-                  </div>
-                  <div class="field">
-                    <label for="tl-text" data-i18n="field_text">Neutral factual note</label>
-                    <textarea id="tl-text" name="text" rows="3" required aria-required="true"></textarea>
-                  </div>
-                  <details class="link-evidence">
-                    <summary data-i18n="timeline_links_heading">Link related evidence (optional)</summary>
-                    <p class="muted field-help" data-i18n="timeline_links_help">Links keep the condition, notice, delivery, and response together.</p>
-                    <div class="field">
-                      <label for="tl-captures" data-i18n="field_link_captures">Related captures</label>
-                      <select id="tl-captures" name="capture_ids" multiple></select>
-                    </div>
-                    <div class="field">
-                      <label for="tl-notice" data-i18n="field_link_notice">Related repair notice</label>
-                      <select id="tl-notice" name="notice_entry_id"></select>
-                    </div>
-                    <div class="field">
-                      <label for="tl-receipt" data-i18n="field_link_receipt">Related delivery confirmation</label>
-                      <select id="tl-receipt" name="receipt_entry_id"></select>
-                    </div>
-                    <div class="field">
-                      <label for="tl-response" data-i18n="field_link_response">Related response</label>
-                      <select id="tl-response" name="response_entry_id"></select>
-                    </div>
-                  </details>
-                </fieldset>
-                <button type="submit" class="btn btn-primary" data-i18n="timeline_submit">Add entry</button>
-              </form>
-            </details>
-
-            <details class="action-panel" open>
-              <summary><span class="action-number" aria-hidden="true">03</span>
-                <span data-i18n="artifact_heading">Add a supporting document</span></summary>
-              <form id="artifact-form" novalidate>
-                <fieldset>
-                  <legend data-i18n="artifact_legend">Document details</legend>
-                  <div class="field">
-                    <label for="art-issue" data-i18n="field_issue">Issue</label>
-                    <select id="art-issue" required aria-required="true"></select>
-                  </div>
-                  <div class="field">
-                    <label for="art-file" data-i18n="field_document">Document</label>
-                    <input type="file" id="art-file" accept=".pdf,.txt,.md,.html,.eml,.json,.csv,image/*"
-                           required aria-required="true" />
-                  </div>
-                  <div class="field">
-                    <label for="art-type" data-i18n="field_artifact_type">Document type</label>
-                    <select id="art-type" required>
-                      <option value="repair_request" data-i18n="artifact_repair_request">Repair request</option>
-                      <option value="delivery_receipt" data-i18n="artifact_delivery_receipt">Delivery receipt</option>
-                      <option value="landlord_response" data-i18n="artifact_landlord_response">Landlord response</option>
-                      <option value="inspection_report" data-i18n="artifact_inspection_report">Inspection report</option>
-                      <option value="utility_notice" data-i18n="artifact_utility_notice">Utility notice</option>
-                      <option value="accommodation_request" data-i18n="artifact_accommodation_request">Accommodation request</option>
-                      <option value="supporting_letter" data-i18n="artifact_supporting_letter">Supporting letter</option>
-                      <option value="clinician_letter" data-i18n="artifact_clinician_letter">Clinician letter</option>
-                      <option value="expense_receipt" data-i18n="artifact_expense_receipt">Expense receipt</option>
-                      <option value="relocation_record" data-i18n="artifact_relocation_record">Relocation record</option>
-                      <option value="partner_export" data-i18n="artifact_partner_export">Partner export</option>
-                      <option value="other_document" data-i18n="artifact_other_document">Other document</option>
-                    </select>
-                  </div>
-                  <div class="field">
-                    <label for="art-title" data-i18n="field_title">Title</label>
-                    <input id="art-title" required aria-required="true" />
-                  </div>
-                  <div class="field">
-                    <label for="art-source" data-i18n="field_artifact_source">How did you get this copy?</label>
-                    <input id="art-source" required aria-required="true" />
-                  </div>
-                  <div class="field">
-                    <label for="art-issuer" data-i18n="field_issuer">Asserted issuer (optional)</label>
-                    <input id="art-issuer" />
-                  </div>
-                  <div class="field">
-                    <label for="art-date" data-i18n="field_occurred_at">Date it happened</label>
-                    <input type="date" id="art-date" required aria-required="true" />
-                  </div>
-                </fieldset>
-                <button type="submit" class="btn btn-primary" data-i18n="artifact_submit">Seal document</button>
-              </form>
-            </details>
-
-            <details class="action-panel">
-              <summary><span class="action-number" aria-hidden="true">04</span>
-                <span data-i18n="relationship_heading">Connect evidence records</span></summary>
-              <form id="relationship-form" novalidate>
-                <fieldset>
-                  <legend data-i18n="relationship_legend">Typed relationship</legend>
-                  <div class="field">
-                    <label for="rel-issue" data-i18n="field_issue">Issue</label>
-                    <select id="rel-issue" required></select>
-                  </div>
-                  <div class="field">
-                    <label for="rel-type" data-i18n="field_relationship_type">Relationship</label>
-                    <select id="rel-type" required>
-                      <option value="documents_condition">documents condition</option>
-                      <option value="sent_via">sent via</option>
-                      <option value="delivery_receipt_for">delivery receipt for</option>
-                      <option value="response_to">response to</option>
-                      <option value="before_of">before</option>
-                      <option value="after_of">after</option>
-                      <option value="inspection_finding_for">inspection finding for</option>
-                      <option value="repair_claim_for">repair claim for</option>
-                      <option value="expense_caused_by">expense caused by (asserted)</option>
-                      <option value="supports">supports</option>
-                    </select>
-                  </div>
-                  <div class="field">
-                    <label for="rel-source" data-i18n="field_source_id">Source record ID</label>
-                    <input id="rel-source" required aria-required="true" class="mono" />
-                  </div>
-                  <div class="field">
-                    <label for="rel-target" data-i18n="field_target_id">Target record ID</label>
-                    <input id="rel-target" required aria-required="true" class="mono" />
-                  </div>
-                  <div class="field">
-                    <label for="rel-assertion" data-i18n="field_assertion">Neutral note (optional)</label>
-                    <input id="rel-assertion" />
-                  </div>
-                </fieldset>
-                <button type="submit" class="btn btn-primary" data-i18n="relationship_submit">Add relationship</button>
-              </form>
-            </details>
-
-            <details class="action-panel">
-              <summary><span class="action-number" aria-hidden="true">05</span>
-                <span data-i18n="profile_heading">Choose a workflow</span></summary>
-              <form id="profile-form" novalidate>
-                <fieldset>
-                  <legend data-i18n="profile_legend">Evidence workflow</legend>
-                  <div class="field">
-                    <label for="profile-select" data-i18n="field_profile">Workflow</label>
-                    <select id="profile-select" required></select>
-                  </div>
-                  <p id="profile-review" class="muted" data-i18n="profile_review_help">Some workflows require external review before pilot use.</p>
-                </fieldset>
-                <button type="submit" class="btn btn-primary" data-i18n="profile_submit">Select workflow</button>
-              </form>
-            </details>
-
-            <details class="action-panel" open>
-              <summary><span class="action-number" aria-hidden="true">06</span>
-                <span data-i18n="add_issue_heading">Add an issue</span></summary>
-              <form id="add-issue-form" novalidate>
-                <fieldset>
-                  <legend data-i18n="add_issue_legend">New issue details</legend>
-                  <div class="field">
-                    <label for="ai-category" data-i18n="field_category">Category</label>
-                    <input type="text" id="ai-category" name="category" required
-                           aria-required="true" autocomplete="off" />
-                  </div>
-                  <div class="field">
-                    <label for="ai-room" data-i18n="field_room">Room</label>
-                    <input type="text" id="ai-room" name="room" autocomplete="off" />
-                  </div>
-                  <div class="field">
-                    <label for="ai-title" data-i18n="field_title">Title</label>
-                    <input type="text" id="ai-title" name="title" autocomplete="off" />
-                  </div>
-                  <div class="field">
-                    <label for="ai-severity" data-i18n="field_severity">Severity</label>
-                    <select id="ai-severity" name="severity">
-                      <option value="" data-i18n="severity_unset">Not set</option>
-                      <option value="low" data-i18n="severity_low">Low</option>
-                      <option value="medium" data-i18n="severity_medium">Medium</option>
-                      <option value="high" data-i18n="severity_high">High</option>
-                      <option value="urgent" data-i18n="severity_urgent">Urgent</option>
-                    </select>
-                  </div>
-                  <div class="field">
-                    <label for="ai-description" data-i18n="field_description">Description</label>
-                    <textarea id="ai-description" name="description" rows="3"></textarea>
-                  </div>
-                </fieldset>
-                <button type="submit" class="btn btn-primary" data-i18n="add_issue_submit">Add issue</button>
-              </form>
-            </details>
+          <div class="next-actions">
+            <button type="button" data-timeline-type="notice_sent"
+                    data-i18n="event_notice_sent">Repair request sent</button>
+            <button type="button" data-timeline-type="delivery_confirmed"
+                    data-i18n="event_delivery_confirmed">Delivery confirmed</button>
+            <button type="button" data-timeline-type="response_received"
+                    data-i18n="event_response_received">Response received</button>
+            <button type="button" data-timeline-type="repair"
+                    data-i18n="event_repair">Repair or attempted repair</button>
+            <button type="button" data-timeline-type="recurrence"
+                    data-i18n="event_recurrence">Condition happened again</button>
           </div>
         </section>
 
-        <section id="coordinate" class="workspace-section coordinate-section" aria-labelledby="status-h">
-          <div class="section-heading">
+        <section id="coordinate" class="prepare-copy" aria-labelledby="status-h">
+          <header>
             <div>
-              <p class="section-kicker" data-i18n="coordinate_kicker">Integrity and storage</p>
-              <h2 id="status-h" data-i18n="status_heading">Check the record before sharing</h2>
+              <p class="copy-label" data-i18n="coordinate_kicker">Before sharing</p>
+              <h2 id="status-h" data-i18n="status_heading">Prepare a copy</h2>
             </div>
+            <a href="#share" class="prepare-link" data-i18n="export_heading">Choose what
+              leaves this device</a>
+          </header>
+
+          <div class="plain-checks">
+            <p>
+              <span data-i18n="status_custody">Chain of custody</span>
+              <strong id="st-custody">—</strong>
+            </p>
+            <p>
+              <span data-i18n="status_awaiting">Waiting for a timestamp token</span>
+              <strong id="st-awaiting" aria-describedby="st-awaiting-help">—</strong>
+            </p>
+            <p>
+              <span data-i18n="status_captures">Photos</span>
+              <strong id="st-captures">—</strong>
+            </p>
           </div>
-          <div class="coordinate-layout">
-            <div class="readiness-panel">
-              <div id="readiness-ring" class="readiness-ring" aria-hidden="true"><span id="readiness-value">0/0</span></div>
-              <div>
-                <p class="readiness-label" data-i18n="readiness_heading">Documentation coverage</p>
-                <p id="readiness-copy" class="muted" data-i18n="readiness_empty">Add a capture to begin documenting this case.</p>
-              </div>
-            </div>
-            <dl class="status-grid" id="status-grid">
-              <div class="status-item">
-                <dt data-i18n="status_unit">Unit</dt><dd id="st-unit" data-i18n="status_loading">Loading…</dd>
-              </div>
-              <div class="status-item">
-                <dt data-i18n="status_fingerprint">Device fingerprint</dt><dd id="st-fingerprint" class="mono" data-i18n="status_loading">Loading…</dd>
-              </div>
-              <div class="status-item">
-                <dt data-i18n="status_issues">Issues</dt><dd id="st-issues">—</dd>
-              </div>
-              <div class="status-item">
-                <dt data-i18n="status_captures">Captures</dt><dd id="st-captures">—</dd>
-              </div>
-              <div class="status-item">
-                <dt data-i18n="status_timestamped">Timestamp token attached</dt><dd id="st-timestamped">—</dd>
-              </div>
-              <div class="status-item">
-                <dt data-i18n="status_awaiting">Waiting for a timestamp token</dt><dd id="st-awaiting" aria-describedby="st-awaiting-help">—</dd>
-              </div>
-              <div class="status-item status-item-wide">
-                <dt data-i18n="status_custody">Chain of custody</dt><dd id="st-custody">—</dd>
-              </div>
-              <div class="status-item status-item-wide">
-                <dt data-i18n="status_storage">Storage</dt><dd id="st-storage">—</dd>
-              </div>
-              <div class="status-item status-item-wide">
-                <dt data-i18n="status_network">Network</dt><dd id="st-network">—</dd>
-              </div>
+          <p class="status-help" id="st-awaiting-help"
+             data-i18n="status_awaiting_help">Photos are sealed locally while an independent
+            timestamp is pending.</p>
+          <div class="resolve-row">
+            <button type="button" id="resolve-btn" class="text-button"
+                    aria-describedby="resolve-help" data-i18n="resolve_deferred">Fetch missing
+              timestamps</button>
+            <p id="resolve-help" data-i18n="resolve_help">Only a file fingerprint is sent
+              to the timestamp service.</p>
+          </div>
+
+          <details class="technical-record">
+            <summary data-i18n="technical_details">Technical record details</summary>
+            <p id="readiness-copy" class="muted" data-i18n="readiness_empty">Add a photo
+              to begin documenting this case.</p>
+            <span id="readiness-ring" class="sr-only" aria-hidden="true"><span
+              id="readiness-value">0/0</span></span>
+            <dl id="status-grid">
+              <div><dt data-i18n="status_unit">Unit</dt><dd id="st-unit"
+                data-i18n="status_loading">Loading…</dd></div>
+              <div><dt data-i18n="status_fingerprint">Device fingerprint</dt>
+                <dd id="st-fingerprint" class="mono" data-i18n="status_loading">Loading…</dd></div>
+              <div><dt data-i18n="status_issues">Conditions</dt><dd id="st-issues">—</dd></div>
+              <div><dt data-i18n="status_timestamped">Timestamp attached</dt>
+                <dd id="st-timestamped">—</dd></div>
+              <div><dt data-i18n="status_storage">Storage</dt><dd id="st-storage">—</dd></div>
+              <div><dt data-i18n="status_network">Network</dt><dd id="st-network">—</dd></div>
             </dl>
-          </div>
-          <div class="storage-track" aria-hidden="true"><span id="storage-sealed"></span><span id="storage-shared"></span></div>
-          <p class="status-help" id="st-awaiting-help" data-i18n="status_awaiting_help">Your photo is already sealed and safe on this device.</p>
-          <p class="muted" id="storage-note" data-i18n="storage_doubling_note">Sealed originals are kept twice by design.</p>
-          <div class="card-actions">
-            <button type="button" id="resolve-btn" class="btn btn-quiet"
-                    aria-describedby="resolve-help" data-i18n="resolve_deferred">Resolve awaiting timestamps</button>
-            <p class="muted" id="resolve-help" data-i18n="resolve_help">Fetch timestamp tokens for items captured offline.</p>
-          </div>
-        </section>
+            <div class="storage-track" aria-hidden="true"><span id="storage-sealed"></span><span
+              id="storage-shared"></span></div>
+            <p class="muted" id="storage-note"
+               data-i18n="storage_doubling_note">Sealed originals are kept twice by design.</p>
+          </details>
 
-        <section id="share" class="workspace-section share-section" aria-labelledby="export-h">
-          <div class="section-heading">
-            <div>
-              <p class="section-kicker" data-i18n="share_kicker">Controlled disclosure</p>
-              <h2 id="export-h" data-i18n="export_heading">Make a review copy</h2>
-            </div>
-          </div>
-          <div class="share-layout">
-            <div class="share-scope">
-              <p class="share-statement" data-i18n="share_statement">Review the whole-unit record before creating a copy for someone else.</p>
-              <ul class="share-facts">
-                <li data-i18n="share_fact_local">The export is created on this device.</li>
-                <li data-i18n="share_fact_metadata">Shared copies remove photo metadata by default.</li>
-                <li data-i18n="share_fact_scope">The current packet includes the whole unit.</li>
+          <section id="share" class="copy-envelope" aria-labelledby="export-h">
+            <div class="kept-side">
+              <p class="copy-label" data-i18n="copy_kept_label">Tenant copy</p>
+              <h3 data-i18n="copy_kept_heading">Kept on this device</h3>
+              <ul>
+                <li data-i18n="copy_kept_originals">Sealed original files</li>
+                <li data-i18n="copy_kept_metadata">Original photo metadata</li>
+                <li data-i18n="copy_kept_custody">The complete local custody record</li>
               </ul>
             </div>
-            <form id="export-form" novalidate>
+            <div class="leaving-side">
+              <p class="copy-label" data-i18n="share_kicker">Review copy</p>
+              <h3 id="export-h" data-i18n="export_heading">Choose what leaves this device</h3>
+              <form id="export-form" novalidate>
+                <fieldset>
+                  <legend data-i18n="export_legend">Copy options</legend>
+                  <div class="field">
+                    <label for="ex-issue" data-i18n="field_issue_optional">Scope (whole unit only)</label>
+                    <select id="ex-issue" name="issue_id" aria-describedby="ex-scope-help"></select>
+                    <p class="field-help" id="ex-scope-help"
+                       data-i18n="export_scope_help">Issue-scoped exports are temporarily blocked.</p>
+                  </div>
+                  <div class="field-check">
+                    <input type="checkbox" id="ex-originals" name="include_originals"
+                           aria-describedby="ex-originals-help" />
+                    <label for="ex-originals" data-i18n="field_include_originals">Include sealed
+                      original photos</label>
+                  </div>
+                  <div class="field">
+                    <label for="ex-profile" data-i18n="field_handoff_profile">View for the recipient</label>
+                    <select id="ex-profile"></select>
+                  </div>
+                  <p class="field-help" id="ex-originals-help"
+                     data-i18n="field_include_originals_help">Originals can hold location and
+                    other hidden details.</p>
+                </fieldset>
+                <button type="submit" class="make-copy" data-i18n="export_submit">Create review copy</button>
+              </form>
+              <div id="export-result" class="result" hidden></div>
+            </div>
+          </section>
+        </section>
+
+        <details class="advanced-tools">
+          <summary data-i18n="advanced_tools">Organizer and advanced record tools</summary>
+          <div class="advanced-grid">
+            <form id="relationship-form" novalidate>
               <fieldset>
-                <legend data-i18n="export_legend">Export options</legend>
+                <legend data-i18n="relationship_heading">Connect records manually</legend>
                 <div class="field">
-                  <label for="ex-issue" data-i18n="field_issue_optional">Scope (whole unit only)</label>
-                  <select id="ex-issue" name="issue_id" aria-describedby="ex-scope-help"></select>
-                  <p class="muted field-help" id="ex-scope-help"
-                     data-i18n="export_scope_help">Issue-scoped exports are temporarily blocked.</p>
-                </div>
-                <div class="field-check">
-                  <input type="checkbox" id="ex-originals" name="include_originals"
-                         aria-describedby="ex-originals-help" />
-                  <label for="ex-originals" data-i18n="field_include_originals">Include the sealed original photos</label>
+                  <label for="rel-issue" data-i18n="field_issue">Condition</label>
+                  <select id="rel-issue" required></select>
                 </div>
                 <div class="field">
-                  <label for="ex-profile" data-i18n="field_handoff_profile">Handoff view</label>
-                  <select id="ex-profile"></select>
+                  <label for="rel-type" data-i18n="field_relationship_type">Relationship</label>
+                  <select id="rel-type" required>
+                    <option value="documents_condition">documents condition</option>
+                    <option value="sent_via">sent via</option>
+                    <option value="delivery_receipt_for">delivery receipt for</option>
+                    <option value="response_to">response to</option>
+                    <option value="before_of">before</option>
+                    <option value="after_of">after</option>
+                    <option value="inspection_finding_for">inspection finding for</option>
+                    <option value="repair_claim_for">repair claim for</option>
+                    <option value="expense_caused_by">expense caused by (asserted)</option>
+                    <option value="supports">supports</option>
+                  </select>
                 </div>
-                <p class="muted field-help" id="ex-originals-help"
-                   data-i18n="field_include_originals_help">Originals can hold location and other hidden details.</p>
+                <div class="field">
+                  <label for="rel-source" data-i18n="field_source_id">Source record ID</label>
+                  <input id="rel-source" required aria-required="true" class="mono" />
+                </div>
+                <div class="field">
+                  <label for="rel-target" data-i18n="field_target_id">Target record ID</label>
+                  <input id="rel-target" required aria-required="true" class="mono" />
+                </div>
+                <div class="field">
+                  <label for="rel-assertion" data-i18n="field_assertion">Neutral note (optional)</label>
+                  <input id="rel-assertion" />
+                </div>
               </fieldset>
-              <button type="submit" class="btn btn-primary" data-i18n="export_submit">Export packet</button>
+              <button type="submit" class="text-button" data-i18n="relationship_submit">Add relationship</button>
+            </form>
+
+            <form id="profile-form" novalidate>
+              <fieldset>
+                <legend data-i18n="profile_heading">Recipient workflow</legend>
+                <div class="field">
+                  <label for="profile-select" data-i18n="field_profile">Workflow</label>
+                  <select id="profile-select" required></select>
+                </div>
+                <p id="profile-review" class="field-help"
+                   data-i18n="profile_review_help">Some workflows require external review before
+                  pilot use.</p>
+              </fieldset>
+              <button type="submit" class="text-button"
+                      data-i18n="profile_submit">Select workflow</button>
             </form>
           </div>
-          <div id="export-result" class="result" hidden></div>
-        </section>
-      </main>
-    </div>
+        </details>
+      </div>
+    </main>
+
+    <dialog id="capture-dialog" class="entry-dialog" aria-labelledby="capture-dialog-h">
+      <div class="dialog-bar">
+        <h2 id="capture-dialog-h" data-i18n="capture_heading">Photo</h2>
+        <button type="button" class="dialog-close" data-close-dialog
+                data-i18n-aria="close_dialog" aria-label="Close">×</button>
+      </div>
+      <form id="capture-form" novalidate>
+        <fieldset>
+          <legend data-i18n="capture_legend">Photo and details</legend>
+          <div class="field">
+            <label for="cap-issue" data-i18n="field_issue">Condition</label>
+            <select id="cap-issue" name="issue_id" required aria-required="true"></select>
+          </div>
+          <div class="field">
+            <label for="cap-file" data-i18n="field_photo">Photo</label>
+            <input type="file" id="cap-file" name="file" accept="image/*"
+                   capture="environment" required aria-required="true" />
+          </div>
+          <div class="field-check practice-control">
+            <input type="checkbox" id="cap-devtsa" name="dev_tsa"
+                   aria-describedby="cap-devtsa-help" />
+            <label for="cap-devtsa" data-i18n="field_dev_tsa">Use a practice timestamp
+              (offline testing)</label>
+          </div>
+          <p class="field-help" id="cap-devtsa-help"
+             data-i18n="field_dev_tsa_help">For trying out the app without internet. A
+            practice timestamp is not trusted.</p>
+        </fieldset>
+        <button type="submit" class="dialog-submit"
+                data-i18n="capture_submit">Save photo to this condition</button>
+      </form>
+    </dialog>
+
+    <dialog id="timeline-dialog" class="entry-dialog" aria-labelledby="timeline-dialog-h">
+      <div class="dialog-bar">
+        <h2 id="timeline-dialog-h" data-i18n="timeline_heading">What happened</h2>
+        <button type="button" class="dialog-close" data-close-dialog
+                data-i18n-aria="close_dialog" aria-label="Close">×</button>
+      </div>
+      <form id="timeline-form" novalidate>
+        <fieldset>
+          <legend data-i18n="timeline_legend">Update details</legend>
+          <div class="field">
+            <label for="tl-issue" data-i18n="field_issue">Condition</label>
+            <select id="tl-issue" name="issue_id" required aria-required="true"></select>
+          </div>
+          <div class="field">
+            <label for="tl-type" data-i18n="field_event_type">What happened</label>
+            <select id="tl-type" name="event_type" required aria-required="true">
+              <option value="condition_observed" data-i18n="event_condition_observed">Condition observed</option>
+              <option value="notice_sent" data-i18n="event_notice_sent">Repair notice sent</option>
+              <option value="delivery_confirmed" data-i18n="event_delivery_confirmed">Delivery confirmed</option>
+              <option value="response_received" data-i18n="event_response_received">Response received</option>
+              <option value="inspection" data-i18n="event_inspection">Inspection</option>
+              <option value="repair" data-i18n="event_repair">Repair or attempted repair</option>
+              <option value="recurrence" data-i18n="event_recurrence">Condition happened again</option>
+              <option value="impact" data-i18n="event_impact">Impact recorded</option>
+              <option value="other" data-i18n="event_other">Other</option>
+            </select>
+          </div>
+          <div class="field" id="tl-other-field" hidden>
+            <label for="tl-other" data-i18n="field_other_label">Name the other event</label>
+            <input type="text" id="tl-other" name="other_label" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="tl-occurred" data-i18n="field_occurred_at">Date it happened</label>
+            <input type="date" id="tl-occurred" name="occurred_at" required
+                   aria-required="true" aria-describedby="tl-time-help" />
+            <p class="field-help" id="tl-time-help"
+               data-i18n="field_occurred_at_help">This is the date you report. The app
+              separately records when you added this entry.</p>
+          </div>
+          <div class="field">
+            <label for="tl-source" data-i18n="field_source">How do you know?</label>
+            <select id="tl-source" name="source" required aria-required="true">
+              <option value="firsthand" data-i18n="source_firsthand">Firsthand observation</option>
+              <option value="message" data-i18n="source_message">Message or conversation</option>
+              <option value="document" data-i18n="source_document">Document or receipt</option>
+              <option value="official_record" data-i18n="source_official_record">Inspector or official record</option>
+              <option value="other" data-i18n="source_other">Other source</option>
+            </select>
+          </div>
+          <div class="field" id="tl-source-other-field" hidden>
+            <label for="tl-source-other" data-i18n="field_source_detail">Name the other source</label>
+            <input type="text" id="tl-source-other" name="source_detail" autocomplete="off" />
+          </div>
+          <div class="field field-wide">
+            <label for="tl-text" data-i18n="field_text">Neutral factual note</label>
+            <textarea id="tl-text" name="text" rows="3" required aria-required="true"></textarea>
+          </div>
+          <details class="link-evidence field-wide">
+            <summary data-i18n="timeline_links_heading">Link related evidence (optional)</summary>
+            <p class="field-help" data-i18n="timeline_links_help">Links keep the condition,
+              notice, delivery, and response together.</p>
+            <div class="field">
+              <label for="tl-captures" data-i18n="field_link_captures">Related photos</label>
+              <select id="tl-captures" name="capture_ids" multiple></select>
+            </div>
+            <div class="field">
+              <label for="tl-notice" data-i18n="field_link_notice">Related repair notice</label>
+              <select id="tl-notice" name="notice_entry_id"></select>
+            </div>
+            <div class="field">
+              <label for="tl-receipt" data-i18n="field_link_receipt">Related delivery confirmation</label>
+              <select id="tl-receipt" name="receipt_entry_id"></select>
+            </div>
+            <div class="field">
+              <label for="tl-response" data-i18n="field_link_response">Related response</label>
+              <select id="tl-response" name="response_entry_id"></select>
+            </div>
+          </details>
+        </fieldset>
+        <button type="submit" class="dialog-submit" data-i18n="timeline_submit">Add to
+          repair trail</button>
+      </form>
+    </dialog>
+
+    <dialog id="artifact-dialog" class="entry-dialog" aria-labelledby="artifact-dialog-h">
+      <div class="dialog-bar">
+        <h2 id="artifact-dialog-h" data-i18n="artifact_heading">Document</h2>
+        <button type="button" class="dialog-close" data-close-dialog
+                data-i18n-aria="close_dialog" aria-label="Close">×</button>
+      </div>
+      <form id="artifact-form" novalidate>
+        <fieldset>
+          <legend data-i18n="artifact_legend">Document details</legend>
+          <div class="field">
+            <label for="art-issue" data-i18n="field_issue">Condition</label>
+            <select id="art-issue" required aria-required="true"></select>
+          </div>
+          <div class="field">
+            <label for="art-file" data-i18n="field_document">Document</label>
+            <input type="file" id="art-file" accept=".pdf,.txt,.md,.html,.eml,.json,.csv,image/*"
+                   required aria-required="true" />
+          </div>
+          <div class="field">
+            <label for="art-type" data-i18n="field_artifact_type">Document type</label>
+            <select id="art-type" required>
+              <option value="repair_request" data-i18n="artifact_repair_request">Repair request</option>
+              <option value="delivery_receipt" data-i18n="artifact_delivery_receipt">Delivery receipt</option>
+              <option value="landlord_response" data-i18n="artifact_landlord_response">Landlord response</option>
+              <option value="inspection_report" data-i18n="artifact_inspection_report">Inspection report</option>
+              <option value="utility_notice" data-i18n="artifact_utility_notice">Utility notice</option>
+              <option value="accommodation_request" data-i18n="artifact_accommodation_request">Accommodation request</option>
+              <option value="supporting_letter" data-i18n="artifact_supporting_letter">Supporting letter</option>
+              <option value="clinician_letter" data-i18n="artifact_clinician_letter">Clinician letter</option>
+              <option value="expense_receipt" data-i18n="artifact_expense_receipt">Expense receipt</option>
+              <option value="relocation_record" data-i18n="artifact_relocation_record">Relocation record</option>
+              <option value="partner_export" data-i18n="artifact_partner_export">Partner export</option>
+              <option value="other_document" data-i18n="artifact_other_document">Other document</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="art-title" data-i18n="field_title">Title</label>
+            <input id="art-title" required aria-required="true" />
+          </div>
+          <div class="field">
+            <label for="art-source" data-i18n="field_artifact_source">How did you get this copy?</label>
+            <input id="art-source" required aria-required="true" />
+          </div>
+          <div class="field">
+            <label for="art-issuer" data-i18n="field_issuer">Asserted issuer (optional)</label>
+            <input id="art-issuer" />
+          </div>
+          <div class="field">
+            <label for="art-date" data-i18n="field_occurred_at">Date it happened</label>
+            <input type="date" id="art-date" required aria-required="true" />
+          </div>
+        </fieldset>
+        <button type="submit" class="dialog-submit"
+                data-i18n="artifact_submit">Save document to this condition</button>
+      </form>
+    </dialog>
+
+    <dialog id="issue-dialog" class="entry-dialog" aria-labelledby="issue-dialog-h">
+      <div class="dialog-bar">
+        <h2 id="issue-dialog-h" data-i18n="add_issue_heading">Add a condition</h2>
+        <button type="button" class="dialog-close" data-close-dialog
+                data-i18n-aria="close_dialog" aria-label="Close">×</button>
+      </div>
+      <form id="add-issue-form" novalidate>
+        <fieldset>
+          <legend data-i18n="add_issue_legend">What needs repair?</legend>
+          <div class="field">
+            <label for="ai-room" data-i18n="field_room">Room</label>
+            <input type="text" id="ai-room" name="room" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="ai-category" data-i18n="field_category">Condition</label>
+            <input type="text" id="ai-category" name="category" required
+                   aria-required="true" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="ai-title" data-i18n="field_title">Short name</label>
+            <input type="text" id="ai-title" name="title" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="ai-severity" data-i18n="field_severity">Urgency</label>
+            <select id="ai-severity" name="severity">
+              <option value="" data-i18n="severity_unset">Not set</option>
+              <option value="low" data-i18n="severity_low">Low</option>
+              <option value="medium" data-i18n="severity_medium">Medium</option>
+              <option value="high" data-i18n="severity_high">High</option>
+              <option value="urgent" data-i18n="severity_urgent">Urgent</option>
+            </select>
+          </div>
+          <div class="field field-wide">
+            <label for="ai-description" data-i18n="field_description">What can you observe?</label>
+            <textarea id="ai-description" name="description" rows="3"></textarea>
+          </div>
+        </fieldset>
+        <button type="submit" class="dialog-submit"
+                data-i18n="add_issue_submit">Start this repair trail</button>
+      </form>
+    </dialog>
 
     <footer class="site-footer">
-      <p data-i18n="footer_note">habitable runs entirely on this device. Nothing leaves your computer.</p>
+      <p data-i18n="footer_note">Photos and case details stay on this device. If you
+        request a timestamp, only the file fingerprint is sent. Nothing is shared until
+        you create a copy.</p>
     </footer>
 
     <script src="app.js"></script>

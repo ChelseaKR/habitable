@@ -514,203 +514,172 @@
     return points.filter(function (point) { return !issueId || point.issueId === issueId; });
   }
 
-  function svgElement(name, attrs) {
-    var el = document.createElementNS("http://www.w3.org/2000/svg", name);
-    for (var key in attrs) {
-      if (Object.prototype.hasOwnProperty.call(attrs, key)) {
-        el.setAttribute(key, attrs[key]);
-      }
-    }
-    return el;
+  function trailEventClass(point) {
+    if (point.eventType === "notice_sent") { return "event-notice"; }
+    if (point.eventType === "delivery_confirmed") { return "event-delivery"; }
+    if (point.eventType === "repair") { return "event-repair"; }
+    if (point.eventType === "recurrence") { return "event-recurrence"; }
+    return point.kind === "capture" ? "event-capture" : "event-update";
   }
 
-  function renderAtlas(status) { // noqa: C901 — coordinated visual has one render pass
-    var plot = document.getElementById("atlas-plot");
+  function appendTrailTableRow(table, point) {
+    var tr = document.createElement("tr");
+    var reportedCell = document.createElement("td");
+    reportedCell.textContent = atlasDate(point.date);
+    var issueCell = document.createElement("td");
+    issueCell.textContent = point.issueLabel;
+    var eventCell = document.createElement("td");
+    var selectButton = document.createElement("button");
+    selectButton.type = "button";
+    selectButton.className = "table-select";
+    selectButton.setAttribute("data-point-id", point.id);
+    selectButton.textContent = point.label + (point.text ? ": " + point.text : "");
+    selectButton.addEventListener("click", function () {
+      selectAtlasPoint(this.getAttribute("data-point-id") || "");
+    });
+    eventCell.appendChild(selectButton);
+    var sourceCell = document.createElement("td");
+    sourceCell.textContent = sourceLabel(point.source);
+    var securedCell = document.createElement("td");
+    securedCell.textContent = atlasDate(point.recordedAt || point.date);
+    tr.appendChild(reportedCell);
+    tr.appendChild(issueCell);
+    tr.appendChild(eventCell);
+    tr.appendChild(sourceCell);
+    tr.appendChild(securedCell);
+    table.appendChild(tr);
+  }
+
+  function resetAtlasInspector() {
+    var inspector = document.getElementById("atlas-inspector");
+    var heading = document.getElementById("inspector-h");
+    var report = document.getElementById("inspector-report");
+    var content = document.getElementById("inspector-content");
+    if (heading) { heading.textContent = t("inspector_empty_heading"); }
+    if (report) { report.textContent = t("inspector_empty_body"); }
+    if (content) {
+      content.textContent = "";
+      var label = document.createElement("span");
+      label.className = "fold-label";
+      label.textContent = t("secured_layer_label");
+      content.appendChild(label);
+    }
+    if (inspector) { inspector.open = false; }
+  }
+
+  function renderAtlas(status) {
     var nodes = document.getElementById("atlas-nodes");
-    var lanesBox = document.getElementById("atlas-lanes");
-    var svg = document.getElementById("atlas-svg");
     var empty = document.getElementById("atlas-empty");
     var summary = document.getElementById("atlas-summary");
     var table = document.getElementById("atlas-table-body");
-    if (!plot || !nodes || !lanesBox || !svg || !table) { return; }
+    if (!nodes || !table) { return; }
 
     currentAtlasPoints = buildAtlasPoints(status);
     var points = visibleAtlasPoints(currentAtlasPoints);
-    var density = Number((document.getElementById("atlas-zoom") || {}).value || 100);
-    var laneGap = Math.round(76 * density / 100);
-    var laneIds = [];
-    for (var i = 0; i < points.length; i++) {
-      if (laneIds.indexOf(points[i].issueId) === -1) { laneIds.push(points[i].issueId); }
+    var filter = document.getElementById("atlas-filter-issue");
+    var issues = status.issues || [];
+    var activeIssue = null;
+    for (var issueIndex = 0; issueIndex < issues.length; issueIndex++) {
+      if (!activeIssue || (filter && issues[issueIndex].issue_id === filter.value)) {
+        activeIssue = issues[issueIndex];
+      }
+      if (filter && issues[issueIndex].issue_id === filter.value) { break; }
     }
-    var height = Math.max(250, 74 + laneIds.length * laneGap);
-    plot.style.setProperty("--atlas-height", height + "px");
+    setText("trail-room", activeIssue && activeIssue.room
+      ? activeIssue.room
+      : t("current_condition"));
+    setText("trail-condition", activeIssue
+      ? issueLabel(activeIssue)
+      : t("atlas_empty"));
+
     nodes.textContent = "";
-    lanesBox.textContent = "";
-    svg.textContent = "";
     table.textContent = "";
     if (empty) { empty.hidden = points.length > 0; }
     if (summary) {
-      summary.textContent = points.length ? fm("atlas_summary", { count: points.length }) : t("atlas_summary_empty");
+      summary.textContent = points.length
+        ? fm("atlas_summary", { count: points.length })
+        : t("atlas_summary_empty");
+    }
+    if (!points.length) {
+      selectedPointId = "";
+      resetAtlasInspector();
+      return;
     }
 
-    var width = Math.max(plot.clientWidth || 0, 560);
-    var labelWidth = 150;
-    var endPad = 36;
-    var usable = Math.max(80, width - labelWidth - endPad);
-    var minTime = points.length ? points[0].time : 0;
-    var maxTime = points.length ? points[points.length - 1].time : 1;
-    if (minTime === maxTime) { maxTime = minTime + 1; }
-    svg.setAttribute("viewBox", "0 0 " + width + " " + height);
-    svg.setAttribute("preserveAspectRatio", "none");
-    var positionById = {};
+    var selectionVisible = points.some(function (point) {
+      return point.id === selectedPointId;
+    });
+    if (!selectionVisible) { selectedPointId = points[points.length - 1].id; }
     var selectedLinks = [];
-    for (var selectedIndex = 0; selectedIndex < currentAtlasPoints.length; selectedIndex++) {
-      if (currentAtlasPoints[selectedIndex].id === selectedPointId) {
-        selectedLinks = currentAtlasPoints[selectedIndex].links;
+    for (var selectedIndex = 0; selectedIndex < points.length; selectedIndex++) {
+      if (points[selectedIndex].id === selectedPointId) {
+        selectedLinks = points[selectedIndex].links;
         break;
-      }
-    }
-
-    for (var lane = 0; lane < laneIds.length; lane++) {
-      var issueId = laneIds[lane];
-      var lanePoint = points.filter(function (point) { return point.issueId === issueId; })[0];
-      var y = 55 + lane * laneGap;
-      var laneLabel = document.createElement("span");
-      laneLabel.className = "atlas-lane-label";
-      laneLabel.style.top = y + "px";
-      laneLabel.textContent = (lanePoint.room ? lanePoint.room + " · " : "") + lanePoint.issueLabel;
-      lanesBox.appendChild(laneLabel);
-      svg.appendChild(svgElement("line", {
-        x1: String(labelWidth), y1: String(y), x2: String(width - endPad), y2: String(y), "class": "axis-line"
-      }));
-    }
-
-    for (var tick = 0; tick <= 4; tick++) {
-      var tickX = labelWidth + usable * tick / 4;
-      svg.appendChild(svgElement("line", {
-        x1: String(tickX), y1: "18", x2: String(tickX), y2: String(height - 22), "class": "time-tick"
-      }));
-    }
-
-    // Several facts can share the same reported date. Keep their chronology intact,
-    // but fan coincident controls just enough that every point remains clickable and
-    // its label can be read. The table below preserves the exact dates without any
-    // visual offset.
-    for (var positionLane = 0; positionLane < laneIds.length; positionLane++) {
-      var lanePoints = points.filter(function (candidate) {
-        return candidate.issueId === laneIds[positionLane];
-      });
-      var previousX = null;
-      var previousRawX = null;
-      var previousTier = 0;
-      for (var positionIndex = 0; positionIndex < lanePoints.length; positionIndex++) {
-        var positionedPoint = lanePoints[positionIndex];
-        var positionNormalized = (positionedPoint.time - minTime) / (maxTime - minTime);
-        var rawX = labelWidth + positionNormalized * usable;
-        var collisionX = previousX === null ? rawX : Math.max(rawX, previousX + 46);
-        var tier = previousRawX !== null && rawX - previousRawX < 130
-          ? (previousTier + 1) % 3
-          : 0;
-        positionById[positionedPoint.id] = {
-          x: collisionX,
-          y: 55 + positionLane * laneGap,
-          labelOffset: tier * 20
-        };
-        previousX = collisionX;
-        previousRawX = rawX;
-        previousTier = tier;
-      }
-      if (lanePoints.length) {
-        var lastPosition = positionById[lanePoints[lanePoints.length - 1].id];
-        var overflow = Math.max(0, lastPosition.x - (width - endPad));
-        if (overflow) {
-          for (var shift = 0; shift < lanePoints.length; shift++) {
-            positionById[lanePoints[shift].id].x -= overflow;
-          }
-        }
       }
     }
 
     for (var p = 0; p < points.length; p++) {
       var point = points[p];
-      var position = positionById[point.id];
-      var pointX = position.x;
-      var pointY = position.y;
-
       var button = document.createElement("button");
       button.type = "button";
-      button.className = "atlas-node " + (point.kind === "capture" ? "node-capture" : "node-event");
-      if (point.kind === "capture" && !point.timestamped) { button.classList.add("node-awaiting"); }
-      if (point.eventType === "recurrence") { button.classList.add("node-recurrence"); }
+      button.className = "atlas-node " + trailEventClass(point);
+      if (point.kind === "capture" && !point.timestamped) {
+        button.classList.add("node-awaiting");
+      }
       if (point.id === selectedPointId) { button.classList.add("node-selected"); }
       if (selectedLinks.indexOf(point.id) !== -1) { button.classList.add("node-linked"); }
-      button.style.insetInlineStart = pointX + "px";
-      button.style.top = pointY + "px";
       button.setAttribute("data-point-id", point.id);
-      button.setAttribute("aria-label", point.label + ", " + point.issueLabel + ", " + atlasDate(point.date));
-      var proofRing = document.createElement("span");
-      proofRing.className = "proof-ring";
-      proofRing.setAttribute("aria-hidden", "true");
-      button.appendChild(proofRing);
-      var nodeLabel = document.createElement("span");
-      nodeLabel.className = "atlas-node-label";
-      nodeLabel.style.setProperty("--label-offset", position.labelOffset + "px");
-      nodeLabel.textContent = point.label;
-      button.appendChild(nodeLabel);
+      button.setAttribute(
+        "aria-label",
+        point.label + ", " + point.issueLabel + ", " +
+        t("reported_date_label") + " " + atlasDate(point.date) + ", " +
+        t("secured_date_label") + " " + atlasDate(point.recordedAt || point.date)
+      );
+
+      var reported = document.createElement("span");
+      reported.className = "trail-reported";
+      reported.setAttribute("data-clock-label", t("reported_date_label"));
+      reported.textContent = atlasDate(point.date);
+      button.appendChild(reported);
+
+      var mark = document.createElement("span");
+      mark.className = "trail-mark";
+      mark.setAttribute("aria-hidden", "true");
+      mark.appendChild(document.createElement("i"));
+      button.appendChild(mark);
+
+      var copy = document.createElement("span");
+      copy.className = "trail-copy";
+      var label = document.createElement("strong");
+      label.textContent = point.label;
+      copy.appendChild(label);
+      if (point.text) {
+        var note = document.createElement("span");
+        note.textContent = point.text;
+        copy.appendChild(note);
+      }
+      var proof = document.createElement("span");
+      proof.className = "trail-proof";
+      proof.textContent = point.kind === "capture"
+        ? (point.timestamped ? t("proof_timestamped") : t("proof_awaiting"))
+        : t("proof_timeline_bound");
+      copy.appendChild(proof);
+      button.appendChild(copy);
+
+      var secured = document.createElement("span");
+      secured.className = "trail-secured";
+      secured.setAttribute("data-clock-label", t("secured_date_label"));
+      secured.textContent = atlasDate(point.recordedAt || point.date);
+      button.appendChild(secured);
+
       button.addEventListener("click", function () {
         selectAtlasPoint(this.getAttribute("data-point-id") || "");
       });
       nodes.appendChild(button);
+      appendTrailTableRow(table, point);
     }
 
-    var showLinks = !!((document.getElementById("atlas-show-links") || {}).checked);
-    if (showLinks) {
-      var drawn = {};
-      for (var q = 0; q < points.length; q++) {
-        for (var link = 0; link < points[q].links.length; link++) {
-          var otherId = points[q].links[link];
-          var from = positionById[points[q].id];
-          var to = positionById[otherId];
-          var pair = [points[q].id, otherId].sort().join("|");
-          if (!from || !to || drawn[pair]) { continue; }
-          drawn[pair] = true;
-          var mid = (from.x + to.x) / 2;
-          var path = svgElement("path", {
-            d: "M " + from.x + " " + from.y + " C " + mid + " " + from.y + ", " + mid + " " + to.y + ", " + to.x + " " + to.y,
-            "class": "link-line" + (selectedPointId && points[q].id !== selectedPointId && otherId !== selectedPointId ? " is-muted" : "")
-          });
-          svg.appendChild(path);
-        }
-      }
-    }
-
-    for (var row = 0; row < points.length; row++) {
-      var tr = document.createElement("tr");
-      var dateCell = document.createElement("td");
-      dateCell.textContent = atlasDate(points[row].date);
-      var issueCell = document.createElement("td");
-      issueCell.textContent = points[row].issueLabel;
-      var eventCell = document.createElement("td");
-      var selectButton = document.createElement("button");
-      selectButton.type = "button";
-      selectButton.className = "table-select";
-      selectButton.setAttribute("data-point-id", points[row].id);
-      selectButton.textContent = points[row].label + (points[row].text ? ": " + points[row].text : "");
-      selectButton.addEventListener("click", function () {
-        selectAtlasPoint(this.getAttribute("data-point-id") || "");
-      });
-      eventCell.appendChild(selectButton);
-      var sourceCell = document.createElement("td");
-      sourceCell.textContent = sourceLabel(points[row].source);
-      tr.appendChild(dateCell);
-      tr.appendChild(issueCell);
-      tr.appendChild(eventCell);
-      tr.appendChild(sourceCell);
-      table.appendChild(tr);
-    }
-
-    plot.classList.toggle("proof-visible", !!((document.getElementById("atlas-show-proof") || {}).checked));
-    if (selectedPointId) { renderAtlasInspector(selectedPointId); }
+    renderAtlasInspector(selectedPointId);
   }
 
   function appendDefinition(list, label, value, className) {
@@ -730,15 +699,16 @@
     }
     if (!point) { return; }
     var heading = document.getElementById("inspector-h");
+    var report = document.getElementById("inspector-report");
     var content = document.getElementById("inspector-content");
-    if (!heading || !content) { return; }
+    if (!heading || !report || !content) { return; }
     heading.textContent = point.label;
+    report.textContent = point.text || "—";
     content.textContent = "";
-    if (point.text) {
-      var note = document.createElement("p");
-      note.textContent = point.text;
-      content.appendChild(note);
-    }
+    var checkLabel = document.createElement("span");
+    checkLabel.className = "fold-label";
+    checkLabel.textContent = t("secured_layer_label");
+    content.appendChild(checkLabel);
     var dl = document.createElement("dl");
     appendDefinition(dl, t("inspector_label_issue"), point.issueLabel);
     appendDefinition(dl, t("inspector_label_date"), atlasDate(point.date));
@@ -774,7 +744,8 @@
       if (id === pointId) { selected = nodes[n]; }
     }
     renderAtlasInspector(pointId);
-    if (lastStatus) { renderAtlas(lastStatus); }
+    var inspector = document.getElementById("atlas-inspector");
+    if (inspector) { inspector.open = true; }
     return selected;
   }
 
@@ -850,11 +821,11 @@
       total ? fm("readiness_progress", { timestamped: timestamped, total: total }) : t("readiness_empty")
     );
 
+    populateAtlasFilter(status.issues || []);
     renderIssues(status.issues || []);
     populateIssueSelects(status.issues || []);
     populateProfiles(status.profiles || [], status.profile || "");
     populateTimelineLinks(status.issues || []);
-    populateAtlasFilter(status.issues || []);
     renderAtlas(status);
   }
 
@@ -863,17 +834,29 @@
     if (!select) { return; }
     var previous = select.value;
     select.textContent = "";
-    var all = document.createElement("option");
-    all.value = "";
-    all.textContent = t("issue_all");
-    select.appendChild(all);
+    if (!issues.length) {
+      var empty = document.createElement("option");
+      empty.value = "";
+      empty.textContent = t("issue_none_available");
+      empty.disabled = true;
+      empty.selected = true;
+      select.appendChild(empty);
+      return;
+    }
     for (var i = 0; i < issues.length; i++) {
       var option = document.createElement("option");
       option.value = issues[i].issue_id;
       option.textContent = issueLabel(issues[i]);
       select.appendChild(option);
     }
-    select.value = previous;
+    var previousStillExists = false;
+    for (var j = 0; j < issues.length; j++) {
+      if (issues[j].issue_id === previous) {
+        previousStillExists = true;
+        break;
+      }
+    }
+    select.value = previousStillExists ? previous : (issues.length ? issues[0].issue_id : "");
   }
 
   function renderIssues(issues) {
@@ -900,51 +883,56 @@
   function issueItem(issue, index) {
     var li = document.createElement("li");
     li.className = "issue";
+    var select = document.createElement("button");
+    select.type = "button";
+    select.className = "issue-select";
+    select.setAttribute("data-issue-id", issue.issue_id);
+    var filter = document.getElementById("atlas-filter-issue");
+    var isSelected = filter
+      ? filter.value === issue.issue_id
+      : index === 0;
+    select.setAttribute("aria-pressed", isSelected ? "true" : "false");
 
-    var titleWrap = document.createElement("div");
-    titleWrap.className = "issue-title-wrap";
-    var issueIndex = document.createElement("span");
-    issueIndex.className = "issue-index";
-    issueIndex.setAttribute("aria-hidden", "true");
-    issueIndex.textContent = String(index + 1).padStart(2, "0");
-    var h3 = document.createElement("h3");
-    h3.textContent = issueLabel(issue);
-    titleWrap.appendChild(issueIndex);
-    titleWrap.appendChild(h3);
-    li.appendChild(titleWrap);
+    var name = document.createElement("span");
+    var room = document.createElement("span");
+    room.className = "issue-room";
+    room.textContent = issue.room || t("issue_label_room");
+    var strong = document.createElement("strong");
+    strong.textContent = issueLabel(issue);
+    name.appendChild(room);
+    name.appendChild(strong);
+    select.appendChild(name);
 
-    var meta = document.createElement("p");
-    meta.className = "issue-meta";
-    var parts = [];
-    if (issue.category) { parts.push(t("issue_label_category") + ": " + issue.category); }
-    if (issue.room) { parts.push(t("issue_label_room") + ": " + issue.room); }
-    if (issue.status) { parts.push(t("issue_label_status") + ": " + issue.status); }
-    if (issue.severity) { parts.push(t("issue_label_severity") + ": " + issue.severity); }
-    meta.textContent = parts.join(" · ");
-    li.appendChild(meta);
+    var total = (typeof issue.captures === "number" ? issue.captures : 0) +
+      (issue.artifacts || []).length + (issue.timeline || []).length;
+    var count = document.createElement("span");
+    count.className = "issue-count";
+    count.textContent = formatNumber(total);
+    select.appendChild(count);
 
-    var counts = document.createElement("ul");
-    counts.className = "issue-counts";
-    var captureCount = (typeof issue.captures === "number") ? issue.captures : 0;
-    var artifactCount = (issue.artifacts || []).length;
-    var timelineCount = (issue.timeline || []).length;
-    counts.appendChild(badge(fm("issue_captures_count", { count: captureCount })));
-    counts.appendChild(badge(fm("issue_artifacts_count", { count: artifactCount })));
-    counts.appendChild(badge(fm("issue_timeline_count", { count: timelineCount })));
-    if (issue.record_strength) { counts.appendChild(strengthBadge(issue.record_strength)); }
-    li.appendChild(counts);
+    var latest = document.createElement("span");
+    latest.className = "issue-state";
+    var timeline = issue.timeline || [];
+    latest.textContent = timeline.length
+      ? eventLabel(timeline[timeline.length - 1])
+      : t("atlas_summary_empty");
+    select.appendChild(latest);
 
-    if (artifactCount) {
-      var artifacts = document.createElement("ul");
-      artifacts.className = "timeline-list";
-      for (var a = 0; a < issue.artifacts.length; a++) {
-        var artifactItem = document.createElement("li");
-        artifactItem.textContent = issue.artifacts[a].title + " · " + issue.artifacts[a].artifact_id;
-        artifacts.appendChild(artifactItem);
+    select.addEventListener("click", function () {
+      var issueId = this.getAttribute("data-issue-id") || "";
+      var issueFilter = document.getElementById("atlas-filter-issue");
+      if (issueFilter) { issueFilter.value = issueId; }
+      selectedPointId = "";
+      var buttons = document.querySelectorAll(".issue-select");
+      for (var b = 0; b < buttons.length; b++) {
+        buttons[b].setAttribute(
+          "aria-pressed",
+          buttons[b].getAttribute("data-issue-id") === issueId ? "true" : "false"
+        );
       }
-      li.appendChild(artifacts);
-    }
-
+      if (lastStatus) { renderAtlas(lastStatus); }
+    });
+    li.appendChild(select);
     return li;
   }
 
@@ -1175,7 +1163,10 @@
       }).then(function () {
         form.reset();
         announce(t("msg_issue_added"), "ok");
-        return refreshStatus();
+        return refreshStatus().then(function (status) {
+          closeOwningDialog(form);
+          return status;
+        });
       }, announceError);
     });
   }
@@ -1225,7 +1216,10 @@
         }
         announce(message, "ok");
         signalSuccess();
-        return refreshStatus();
+        return refreshStatus().then(function (status) {
+          closeOwningDialog(form);
+          return status;
+        });
       }, announceError);
     });
   }
@@ -1308,7 +1302,10 @@
         occurred.value = local.toISOString().slice(0, 10);
         updateConditionalFields();
         announce(t("msg_timeline_added"), "ok");
-        return refreshStatus();
+        return refreshStatus().then(function (status) {
+          closeOwningDialog(form);
+          return status;
+        });
       }, announceError);
     });
   }
@@ -1349,7 +1346,10 @@
         date.value = new Date().toISOString().slice(0, 10);
         announce(t("msg_artifact_added"), "ok");
         signalSuccess();
-        return refreshStatus();
+        return refreshStatus().then(function (status) {
+          closeOwningDialog(form);
+          return status;
+        });
       }, announceError);
     });
   }
@@ -1567,6 +1567,68 @@
     return p;
   }
 
+  function activeIssueId() {
+    var filter = document.getElementById("atlas-filter-issue");
+    return filter ? filter.value : "";
+  }
+
+  function openEntryDialog(dialogId) {
+    var dialog = document.getElementById(dialogId);
+    if (!dialog) { return; }
+    var issueId = activeIssueId();
+    var issueFields = ["cap-issue", "tl-issue", "art-issue", "rel-issue"];
+    for (var i = 0; i < issueFields.length; i++) {
+      var field = document.getElementById(issueFields[i]);
+      if (field && issueId) { field.value = issueId; }
+    }
+    if (dialogId === "timeline-dialog") {
+      populateTimelineLinks((lastStatus && lastStatus.issues) || []);
+    }
+    if (typeof dialog.showModal === "function") {
+      dialog.showModal();
+    } else {
+      dialog.setAttribute("open", "");
+    }
+    var first = dialog.querySelector("select, input, textarea, button");
+    if (first) { first.focus(); }
+  }
+
+  function closeOwningDialog(element) {
+    var dialog = element && element.closest ? element.closest("dialog") : null;
+    if (!dialog) { return; }
+    if (typeof dialog.close === "function") {
+      dialog.close();
+    } else {
+      dialog.removeAttribute("open");
+    }
+  }
+
+  function wireEntryDialogs() {
+    var openers = document.querySelectorAll("[data-open-dialog]");
+    for (var i = 0; i < openers.length; i++) {
+      openers[i].addEventListener("click", function () {
+        openEntryDialog(this.getAttribute("data-open-dialog") || "");
+      });
+    }
+    var closers = document.querySelectorAll("[data-close-dialog]");
+    for (var c = 0; c < closers.length; c++) {
+      closers[c].addEventListener("click", function () {
+        closeOwningDialog(this);
+      });
+    }
+    var nextSteps = document.querySelectorAll("[data-timeline-type]");
+    for (var n = 0; n < nextSteps.length; n++) {
+      nextSteps[n].addEventListener("click", function () {
+        var type = document.getElementById("tl-type");
+        if (type) {
+          type.value = this.getAttribute("data-timeline-type") || "";
+          type.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        openEntryDialog("timeline-dialog");
+      });
+    }
+  }
+
   function wireAtlas() {
     var filter = document.getElementById("atlas-filter-issue");
     var zoom = document.getElementById("atlas-zoom");
@@ -1582,6 +1644,8 @@
     if (filter) {
       filter.addEventListener("change", function () {
         storyIndex = -1;
+        selectedPointId = "";
+        if (lastStatus) { renderIssues(lastStatus.issues || []); }
         rerender();
       });
     }
@@ -1691,6 +1755,7 @@
     announcer = document.getElementById("announcer");
     captureToken();
     wireLang();
+    wireEntryDialogs();
     wireAtlas();
     wireRefresh();
     wireResolve();
