@@ -29,9 +29,14 @@ checks.
    ```console
    $ git tag -s vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z
    ```
-4. The **`release` workflow** (`.github/workflows/release.yml`) first runs two
-   guards, *before* building anything: the requested tag is resolved, required to
-   be an ancestor of the fetched default branch, and checked out by exact commit;
+4. Dispatch the release workflow from trusted `main`, naming that existing tag:
+   ```console
+   $ gh workflow run release.yml --ref main -f tag=vX.Y.Z
+   ```
+5. The **`release` workflow** (`.github/workflows/release.yml`) first runs a
+   read-only verification/build job. Before building anything, the workflow proves
+   it was dispatched from current `main`; the requested tag is resolved, required
+   to be an ancestor of that branch, and checked out by exact commit;
    the tag must have a valid signature per
    `.github/allowed_signers`, and its version at that commit must match
    `pyproject.toml`. It then re-runs `make verify` at that exact tagged commit — a
@@ -49,9 +54,12 @@ checks.
      cannot perturb the image;
    - install the wheel into a clean environment and serve the packaged local app;
    - generate a runtime **SBOM** (CycloneDX) into `dist/sbom.cdx.json`;
-   - produce a **signed build-provenance attestation** for the artifacts
-     (`actions/attest-build-provenance`, Sigstore);
-   - create/update the GitHub release and upload `dist/*`;
+   - transfer only those verified assets to a checkout-free publication job;
+   - re-read the live Git tag object through the GitHub API and require it to
+     match the exact annotated-tag object verified by the read-only job;
+   - produce a **signed build-provenance attestation** for the downloaded exact
+     artifacts (`actions/attest-build-provenance`, Sigstore), then create/update
+     the GitHub release and upload `dist/*`;
    - transfer those exact wheel/sdist bytes as a short-lived workflow artifact to
      a separate `pypi-publish` job (scoped to `contents: read` plus
      `id-token: write`), which validates the distribution set and **publishes the
@@ -133,10 +141,11 @@ golden-packet corpus and the version-contract test (see
 [`evidence-method.md`](evidence-method.md) and `tests/test_golden.py`), not by
 prose.
 
-The GitHub release and PyPI now receive the exact wheel/sdist pair emitted by the
-successful `make repro` run. The build job smoke-tests and attaches Sigstore build
-provenance to that pair, then hands the same bytes to the isolated OIDC publish job;
-PyPI adds its PEP 740 attestations during upload. A manual workflow rerun also
-checks out the requested tag commit explicitly, so the default branch cannot be
-published under an older tag, and the tag commit must already belong to the fetched
-default-branch history.
+The GitHub release and PyPI receive the exact wheel/sdist pair emitted by the
+successful `make repro` run. The read-only job verifies and smoke-tests that pair.
+A separate checkout-free job rechecks the live annotated-tag object, attaches
+Sigstore build provenance, and publishes the GitHub release; only after that
+succeeds may the isolated OIDC job publish the same bytes to PyPI, which adds its
+PEP 740 attestations. Dispatch is always from trusted `main`, so the default
+branch cannot be published under an older tag, and the tag commit must already
+belong to current default-branch history.
