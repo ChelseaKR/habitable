@@ -114,8 +114,8 @@ builds a packet (location stripped from the shared copies), and independently ve
 network and no real tenant data. From there: `uv run habitable --help`.
 
 **Just want to look?** There is deliberately no hosted app (it runs on `localhost` so your case never
-leaves the device), but a static **[landing page + live sample packet](https://habitable.chelseakr.com/)**
-shows what it produces. A safe phone package is **not shipped yet**; see the honest
+leaves the device), but the static **[Unit 4B Repair Trail and live sample packet](https://habitable.chelseakr.com/)**
+show the workflow and what it produces using synthetic data. A safe phone package is **not shipped yet**; see the honest
 [`docs/mobile.md`](docs/mobile.md) support boundary. To run the optional sync relay, see
 [`docs/relay-deploy.md`](docs/relay-deploy.md); to sync a case with no network at all — an
 encrypted delta on a USB stick or SD card — see [`docs/sneakernet-sync.md`](docs/sneakernet-sync.md).
@@ -430,10 +430,11 @@ to also makes the packets and the app usable to the legal-aid workers and inspec
 
 ## Build plan
 
-Phases 1–3 are **implemented** at the library + CLI level and covered by tests; Phase 4 (the
-installable end-user app and localization) is the remaining work. For the strategic, multi-year
-view beyond these phases — assurance, accessibility, platform, governance, and the v1.0 gate —
-see **[`ROADMAP.md`](ROADMAP.md)**.
+All four phases have implemented code and automated coverage. The remaining work
+is concentrated in independent human/domain validation, PDF/UA, and signed native
+packaging—not another unbuilt application phase. For the strategic, multi-year view
+beyond these phases—assurance, accessibility, platform, governance, and the v1.0
+gate—see **[`ROADMAP.md`](ROADMAP.md)**.
 
 - **Phase 1 — capture and evidence core.** ✅ Media capture, content hashing, sealed originals, the
   append-only custody log, and explicit EXIF handling. Local encrypted storage. Definition of done: an
@@ -444,9 +445,12 @@ see **[`ROADMAP.md`](ROADMAP.md)**.
 - **Phase 3 — local-first sync.** ✅ The CRDT case model, end-to-end-encrypted peer-to-peer sync, the
   optional ciphertext-only relay, and encrypted backup with key rotation. Concurrent-offline-edit
   convergence tested (property-based).
-- **Phase 4 — app accessibility automation and generalization.** Partially done: a bilingual (EN/ES)
-  web app (`habitable app`) gated by **axe-core** scans plus structural + i18n-parity
-  tests (✅); an **installable PWA** with PNG/maskable icons, Apple touch icon, and an offline service
+- **Phase 4 — app accessibility automation and generalization.** Implemented with
+  external validation and packaging gaps: a bilingual (EN/ES) condition-first
+  **Repair Trail** (`habitable app`) with separate Reported/Secured dates, evidence
+  folds, entry dialogs, follow-up actions, and an explicit copy boundary, gated by
+  **axe-core** scans plus structural, keyboard, reflow, and i18n-parity tests (✅);
+  an **installable PWA** with PNG/maskable icons, Apple touch icon, and an offline service
   worker (✅, see `docs/mobile.md`); an **accessible `packet.html`** rendering that passes the same axe
   gate, alongside a PDF that declares its language and carries a navigable outline (✅); configurable
   packet templates (✅), the threat-model doc (✅), the setup guide (✅), and a documented manual

@@ -127,7 +127,7 @@ Add signed relationship records rather than inferring meaning from dates:
 - `expense_caused_by`.
 
 Relationships carry no legal conclusion. The verifier checks endpoint existence,
-allowed type pairs, scope membership, and semantic commitment. The Evidence Atlas
+allowed type pairs, scope membership, and semantic commitment. The Repair Trail
 renders them with an accessible table equivalent.
 
 Acceptance:

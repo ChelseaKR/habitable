@@ -124,7 +124,7 @@ program (~3 weeks) with funding — the money *can* go toward an audit, but it
 
 - [ ] Apply via the **Secure Open Source Fund** page: `github.com/open-source/github-secure-open-source-fund` `[RE-VERIFY URL + that a cohort is open]`
 - [ ] Prepare the three deliverables: a **written application** about the OSS work, an **interview**, and a **45-second video pitch** `[RE-VERIFY format]`
-- [ ] **Lead with the security-maturity signals** — these are real and already in-repo: `make verify` (ruff + `mypy --strict` + pytest at ~85% coverage), **CodeQL**, **pip-audit**, **Dependabot**, **SHA-pinned CI**, **signed-provenance + SBOM releases**
+- [ ] **Lead with the security-maturity signals** — these are real and already in-repo: `make verify` (ruff + `mypy --strict` + pytest with enforced application and protected-core coverage floors), **CodeQL**, **pip-audit**, **Dependabot**, **SHA-pinned CI**, **signed-provenance + SBOM releases**
 - [ ] Frame a **clear security-improvement outcome:** "fund and complete an external crypto/security review so the alpha caveat can be removed"
 - [ ] Note: a next cohort was mentioned around **September** `[RE-VERIFY 2026 cohort dates]`
 
@@ -262,7 +262,8 @@ We treat our own assurance as **committed artifacts**, mirroring how the tool tr
 photo's hash and timestamp:
 - **`make verify`** reproduces the full merge gate: **ruff**, **`mypy --strict`**, and
   **pytest** with property-based convergence tests and tamper-detection tests against
-  clean, altered, and chain-broken fixtures, at **~85% coverage** (see the
+  clean, altered, and chain-broken fixtures, with enforced application and
+  protected-core coverage floors (see the
   [`Makefile`](../../Makefile)).
 - **CodeQL**, **pip-audit**, and **Dependabot** run in CI; CI actions are **SHA-pinned**;
   releases ship **signed provenance + an SBOM** (`.github/workflows/`).

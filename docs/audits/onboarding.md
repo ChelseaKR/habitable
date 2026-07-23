@@ -36,7 +36,7 @@ uv sync --all-extras                 # creates the env, installs deps from uv.lo
 uv run habitable --version           # confirms the toolchain (Python 3.14)
 
 # The full quality gate — what every merge and release must pass.
-make verify                          # ruff format+check, mypy --strict, pytest (~85% cov)
+make verify                          # ruff format+check, mypy --strict, pytest + enforced coverage floors
 ```
 
 Optional deeper checks:

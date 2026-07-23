@@ -11,7 +11,9 @@
 > **Historical baseline.** This report records the first-pass state and decisions as of its
 > research date. Later PRs corrected several findings and changed the open-PR/mainline state; a
 > dated sweep addendum records those approvals, deferrals, remediations, and residual risks rather
-> than silently rewriting this snapshot.
+> than silently rewriting this snapshot. For current product claims, use the
+> [`capability ledger`](../capabilities.md); for the completed implementation
+> reconciliation, use the [`2026-07-22 roadmap drain`](../roadmap-drain-2026-07-22.md).
 
 ## Executive verdict
 
