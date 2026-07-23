@@ -1,10 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title description">
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title description">
   <title id="title">habitable</title>
-  <desc id="description">An H-shaped building frame crossed by an evidence seal.</desc>
-  <rect width="512" height="512" fill="#fbfcfa"/>
-  <path d="M112 88V424M400 88V424M112 256H400" fill="none" stroke="#1d2a2e" stroke-width="42"/>
-  <path d="M112 128H400M112 384H400" fill="none" stroke="#c4ccc8" stroke-width="12"/>
-  <circle cx="256" cy="256" r="72" fill="#dce8ef" stroke="#245b84" stroke-width="18"/>
-  <circle cx="256" cy="256" r="22" fill="#b24736"/>
-  <path d="M256 184V140M328 256H372M256 328V372M184 256H140" stroke="#245b84" stroke-width="12"/>
+  <desc id="description">A tenant copy and review copy joined by a repair trail.</desc>
+  <rect width="512" height="512" fill="#123d62"/>
+  <path d="M66 72h272v330H66z" fill="#ffd95f"/>
+  <path d="M174 116h272v330H174z" fill="#f3c2cf"/>
+  <path d="M174 116h164v286H174z" fill="#fff"/>
+  <path d="M242 164v190" fill="none" stroke="#123d62" stroke-width="18"/>
+  <path d="M218 178h48v48h-48z" fill="#fff" stroke="#176aa7" stroke-width="16"/>
+  <circle cx="242" cy="268" r="24" fill="#fff" stroke="#8053a1" stroke-width="16"/>
+  <path d="M218 314h48v48h-48z" fill="#f8dddd" stroke="#962f32" stroke-width="16"/>
+  <path d="M294 176h104M294 208h72M294 260h104M294 292h84M294 344h104" stroke="#123d62" stroke-width="14"/>
 </svg>

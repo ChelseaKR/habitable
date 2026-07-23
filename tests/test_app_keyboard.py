@@ -39,9 +39,7 @@ _EXPECTED = {
     "lang-es",
     "refresh-btn",
     "resolve-btn",
-    "ai-category",
-    "cap-file",
-    "tl-type",
+    "atlas-filter-issue",
     "ex-issue",
 }
 
@@ -92,6 +90,52 @@ def test_keyboard_navigation_has_skip_link_and_no_trap(served_app: str) -> None:
     assert not missing, f"controls not keyboard-reachable: {sorted(missing)}"
     # No trap: focus cycles (the skip link is reached again rather than being stuck).
     assert sequence[1:].count(".skip-link") >= 1, "focus did not cycle — possible keyboard trap"
+
+
+@pytest.mark.a11y
+@pytest.mark.parametrize(
+    ("opener_selector", "dialog_selector", "representative_control"),
+    [
+        ('[data-open-dialog="issue-dialog"]', "#issue-dialog", "ai-category"),
+        ('[data-open-dialog="capture-dialog"]', "#capture-dialog", "cap-file"),
+        ('[data-open-dialog="timeline-dialog"]', "#timeline-dialog", "tl-type"),
+        ('[data-open-dialog="artifact-dialog"]', "#artifact-dialog", "art-file"),
+    ],
+)
+def test_entry_dialogs_are_keyboard_reachable_and_return_focus(
+    served_app: str,
+    opener_selector: str,
+    dialog_selector: str,
+    representative_control: str,
+) -> None:
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except PlaywrightError as exc:
+            pytest.skip(f"Chromium not available: {exc}")
+        try:
+            page = browser.new_page()
+            page.goto(served_app, wait_until="networkidle")
+            opener = page.locator(opener_selector).first
+            opener.focus()
+            page.keyboard.press("Enter")
+            dialog = page.locator(dialog_selector)
+            assert dialog.evaluate("(element) => element.open")
+
+            reached: list[str | None] = []
+            for _ in range(30):
+                active = page.evaluate(_ACTIVE)
+                reached.append(active)
+                if active == representative_control:
+                    break
+                page.keyboard.press("Tab")
+            assert representative_control in reached
+
+            page.keyboard.press("Escape")
+            assert not dialog.evaluate("(element) => element.open")
+            assert opener.evaluate("(element) => element === document.activeElement")
+        finally:
+            browser.close()
 
 
 @pytest.mark.a11y
