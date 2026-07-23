@@ -1,6 +1,11 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Roadmap drain and execution register — 2026-07-22
 
+> **Historical execution snapshot.** Commit, issue, pull-request, and queue
+> statements below describe the 2026-07-22 drain. Use
+> [`capabilities.md`](capabilities.md) for current claims and
+> [`ROADMAP.md`](../ROADMAP.md) for the maintained roadmap.
+
 This register reconciles the strategic [`ROADMAP.md`](../ROADMAP.md), the dated
 [`RESEARCH-ROADMAP.md`](RESEARCH-ROADMAP.md), the capability ledger, current
 tests, and the live GitHub queue. It is the execution snapshot for the

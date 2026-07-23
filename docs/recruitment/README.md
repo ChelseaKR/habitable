@@ -6,7 +6,8 @@
 > Chelsea Kelly-Reif, with **no external funding** and a **bus factor of one**. The
 > machinery — the evidence spine, encryption, peer-to-peer sync, the standalone
 > verifier, and a bilingual (EN/ES) web app with automated accessibility checks — is built and tested
-> (`make verify` green, ~85% coverage). What it does not yet have is **outside eyes.**
+> (`make verify` green with enforced application and protected-core coverage
+> floors). What it does not yet have is **outside eyes.**
 > Until it does, **do not rely on habitable for a real legal matter.**
 
 ## Why this needs outside eyes

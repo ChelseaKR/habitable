@@ -2,18 +2,20 @@
 
 Based on the **Voluntary Product Accessibility Template (VPAT) version 2.5 (Rev 508)**.
 
-> **Update (2026-07-09): the local web app is built and has automated accessibility gates.**
+> **Update (2026-07-23): the local web app is built and has automated accessibility gates.**
 > `habitable app` ships with semantic landmarks, a skip link, a single `h1`,
-> programmatically labelled controls (the resolve action uses `aria-describedby`),
-> `lang`/`title`/viewport, an `aria-live` status region, visible focus, no positive
-> `tabindex`, and mechanical English/Spanish catalog parity. These are enforced in CI with:
-> structural tests (`tests/test_app_accessibility.py`, `tests/test_app_i18n.py`), **a
+> programmatically labelled controls, native entry dialogs, Reported/Secured date
+> labels, word-labelled proof and copy states, `lang`/`title`/viewport, an
+> `aria-live` status region, visible focus, no positive `tabindex`, and mechanical
+> English/Spanish catalog parity. These are enforced in CI with: structural tests
+> (`tests/test_app_accessibility.py`, `tests/test_app_i18n.py`), **a
 > real `axe-core` scan** of the running app in **both languages** (blocking on any
 > moderate/serious/critical violation, `tests/test_app_axe.py`), and **keyboard +
-> reflow tests** that verify the skip link is first in tab order, every major control
-> is reachable without a trap, and the layout reflows at 320px with no horizontal
-> scrolling (`tests/test_app_keyboard.py`; WCAG 2.1.1, 2.4.3, 1.4.10). All run in the
-> `a11y` workflow and the app currently reports **zero** axe violations. The remaining
+> reflow tests** that verify the skip link is first in tab order, entry dialogs
+> retain focus while open and return it to their opener, every major control is
+> reachable without an unintended trap, and the layout reflows at 320px with no
+> horizontal scrolling (`tests/test_app_keyboard.py`; WCAG 2.1.1, 2.4.3, 1.4.10).
+> All run in the `a11y` workflow and the app currently reports **zero** axe violations. The remaining
 > evidence required before any conformance *claim* includes the documented human
 > keyboard, zoom/reflow, language, and **screen-reader (NVDA/VoiceOver) pass**, per
 > [`manual-testing.md`](manual-testing.md); none has been recorded yet. Automated
@@ -40,11 +42,11 @@ Based on the **Voluntary Product Accessibility Template (VPAT) version 2.5 (Rev 
 
 ## Name of Product / Version
 
-**habitable** — version **0.2.0** (alpha / working reference implementation).
+**habitable** — version **0.3.0** (alpha / working reference implementation).
 
 ## Report Date
 
-2026-07-09
+2026-07-23
 
 ## Product Description
 
@@ -65,9 +67,11 @@ court, inspector, or accessibility fitness claim has been externally validated.
 This is an implemented but **alpha and externally unvalidated** project. The local web app exists;
 there is no signed native app-store package. To avoid overclaiming:
 
-- Criteria that depend on the application (the capture flow, timeline, review list, sync UI, settings,
-  and the desktop/PWA client) remain **"Not Evaluated"** where a human AT or usability judgment is
-  required. Automated checks are cited as evidence but are not statements of full conformance.
+- Criteria that depend on the application (the condition selector, Repair Trail,
+  entry dialogs, evidence folds, follow-up actions, copy boundary, sync/settings,
+  and the desktop/PWA client) remain **"Not Evaluated"** where a human AT or
+  usability judgment is required. Automated checks are cited as evidence but are
+  not statements of full conformance.
 - Criteria that the **packet PDF renderer** touches *are* assessed against current behavior, because
   that component exists (`src/habitable/pdf.py`). Those rows describe what the code does today,
   including its known gaps.
@@ -80,9 +84,10 @@ there is no signed native app-store package. To avoid overclaiming:
   **real, selectable/searchable text** (not rasterized text); and renders the evidence appendix as a
   text table. It does **not** yet emit a fully tagged **PDF/UA** structure tree (headings, table
   header associations, reading order, figure alternate text); that work is tracked.
-- **Automated app testing** includes axe in EN/ES plus keyboard-order and 320 px reflow checks. No
-  recorded human NVDA/VoiceOver pass, human Spanish review, or complete manual WCAG walkthrough has
-  been performed. Those evaluations remain release gates (see *Roadmap*).
+- **Automated app testing** includes axe in EN/ES plus keyboard order, dialog
+  focus-return, and 320 px reflow checks. No recorded human NVDA/VoiceOver pass,
+  human Spanish review, or complete manual WCAG walkthrough has been performed.
+  Those evaluations remain release gates (see *Roadmap*).
 
 ---
 
@@ -137,7 +142,7 @@ packet PDF's current behavior where the PDF is relevant.
 | --- | --- | --- |
 | **302.1 Without Vision** | Not Evaluated (app); Partially Supports (PDF) | **App:** semantic/axe automation exists; real NVDA/VoiceOver completion is untested. **PDF current:** text is selectable and the document language is set, but the PDF is **not PDF/UA-tagged**, so reading order, heading structure, and table associations are not programmatically guaranteed. |
 | **302.2 With Limited Vision** | Not Evaluated (app); Partially Supports (PDF) | **App:** 320 px reflow is automated; human zoom/magnification review remains open. **PDF current:** text zooms without rasterization, but the fixed page layout does not reflow and tagging is incomplete. |
-| **302.3 Without Perception of Color** | Not Evaluated (app); Supports (PDF) | **App:** text equivalents are structurally tested; human review remains open. **PDF current:** evidence status is rendered as words in captions and the appendix table, not by color alone. |
+| **302.3 Without Perception of Color** | Not Evaluated (app); Supports (PDF) | **App:** proof state and the tenant-copy/review-copy boundary have word labels in addition to color, and text equivalents are structurally tested; human review remains open. **PDF current:** evidence status is rendered as words in captions and the appendix table, not by color alone. |
 | **302.4 Without Hearing** | Not Applicable (PDF); Not Evaluated (app) | The packet PDF has no audio. The app supports text transcripts for captured audio/video, but a human evaluation has not been completed. |
 | **302.5 With Limited Hearing** | Not Applicable (PDF); Not Evaluated (app) | Same as 302.4 — no audio is required to operate the product or read a packet. |
 | **302.6 Without Speech** | Not Applicable | The product requires no speech input. |
@@ -173,15 +178,15 @@ emitted. That gap is tracked work and affects several rows below.
 | **1.3.5 Identify Input Purpose** (AA) | Not Evaluated (app) | App target: programmatic input-purpose identification on relevant fields. N/A to the PDF (no inputs). |
 | **1.4.1 Use of Color** (A) | Not Evaluated (app); Supports (PDF) | **PDF current:** no information is conveyed by color alone; evidence status is words. |
 | **1.4.2 Audio Control** (A) | Not Applicable | No auto-playing audio. |
-| **2.1.1 Keyboard** (A) | Not Evaluated (app) | App target: all functionality keyboard-operable; manual NVDA/VoiceOver and keyboard-only review at the release gate. N/A to the static PDF. |
-| **2.1.2 No Keyboard Trap** (A) | Not Evaluated (app) | App target. N/A to the PDF. |
+| **2.1.1 Keyboard** (A) | Not Evaluated (app) | Automated coverage reaches the primary controls and entry dialogs; manual NVDA/VoiceOver and keyboard-only review remains a release gate. N/A to the static PDF. |
+| **2.1.2 No Keyboard Trap** (A) | Not Evaluated (app) | Automated tests confirm entry-dialog focus containment, Escape dismissal, and focus return to the opener; human review for unintended traps remains open. N/A to the PDF. |
 | **2.1.4 Character Key Shortcuts** (A) | Not Evaluated (app) | App target. N/A to the PDF. |
 | **2.2.1 Timing Adjustable** (A) | Not Evaluated (app); Supports (PDF) | App target: time limits avoidable so a tenant documenting under stress is not rushed. **PDF current:** static document imposes no time limit. |
 | **2.2.2 Pause, Stop, Hide** (A) | Not Applicable (PDF); Not Evaluated (app) | No moving/auto-updating content in the PDF. App target where applicable. |
 | **2.3.1 Three Flashes or Below Threshold** (A) | Not Applicable (PDF); Not Evaluated (app) | No flashing content in the PDF. |
-| **2.4.1 Bypass Blocks** (A) | Not Evaluated (app) | App target: skip mechanisms/landmarks. N/A to the PDF. |
+| **2.4.1 Bypass Blocks** (A) | Not Evaluated (app) | The app's skip link and landmarks have automated structural and keyboard coverage; human AT review remains open. N/A to the PDF. |
 | **2.4.2 Page Titled** (A) | Not Evaluated (app); Supports (PDF) | **PDF current:** the document title metadata is set (e.g. "habitability evidence packet — unit 4B"), so assistive tech announces a meaningful title. |
-| **2.4.3 Focus Order** (A) | Not Evaluated (app) | App target. N/A to the static PDF. |
+| **2.4.3 Focus Order** (A) | Not Evaluated (app) | Automated tests cover primary-control order and dialog focus return; human AT review of the complete Repair Trail remains open. N/A to the static PDF. |
 | **2.4.4 Link Purpose (In Context)** (A) | Not Evaluated (app) | App target. The PDF has no hyperlinks. |
 | **2.5.1 Pointer Gestures** (A) | Not Evaluated (app) | App target: no reliance on multipoint/path-based gestures; capture works without precise pointer control. N/A to the PDF. |
 | **2.5.2 Pointer Cancellation** (A) | Not Evaluated (app) | App target. N/A to the PDF. |
@@ -218,10 +223,10 @@ emitted. That gap is tracked work and affects several rows below.
 | **3.2.4 Consistent Identification** (AA) | Not Evaluated (app); Supports (PDF) | **PDF current:** status terms are used consistently across captions and the appendix. |
 | **3.2.6 Consistent Help** (AA, 2.2) | Not Evaluated (app) | New in WCAG 2.2. App target: consistent help/contact placement. N/A to the PDF. |
 | **3.3.3 Error Suggestion** (AA) | Not Evaluated (app) | App target. N/A to the PDF (no input). |
-| **3.3.4 Error Prevention (Legal, Financial, Data)** (AA) | Not Evaluated (app) | App target: confirmation before sharing/exporting (the README's "show exactly what a packet will disclose"). N/A to the static PDF. |
+| **3.3.4 Error Prevention (Legal, Financial, Data)** (AA) | Not Evaluated (app) | The interface separates Prepare a copy from Create review copy, states that preparation does not send data, and warns that current review copies cover the whole unit; human comprehension testing remains open. N/A to the static PDF. |
 | **3.3.7 Redundant Entry** (AA, 2.2) | Not Evaluated (app) | New in WCAG 2.2. App target. N/A to the PDF. |
 | **3.3.8 Accessible Authentication (Minimum)** (AA, 2.2) | Not Evaluated (app) | New in WCAG 2.2. App target: no cognitive-function test required for authentication; note the product has no central account by design. N/A to the PDF. |
-| **4.1.3 Status Messages** (AA) | Not Evaluated (app); Not Applicable (PDF) | App target: evidence-status changes announced to assistive tech via live regions. Static PDF has no status messages. |
+| **4.1.3 Status Messages** (AA) | Not Evaluated (app); Not Applicable (PDF) | The app has a polite live region for action results and errors; real screen-reader timing and comprehension remain untested. Static PDF has no status messages. |
 
 ---
 

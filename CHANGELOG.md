@@ -7,6 +7,18 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+### Changed
+
+- Rebuilt the local app, public Unit 4B example, and review surfaces around the
+  condition-first **Repair Trail**. The interface now keeps Reported and Secured
+  dates distinct, separates tenant statements from checkable proof, moves entry
+  creation into focused dialogs, and makes the tenant-copy/review-copy boundary
+  explicit in words as well as color.
+- Refreshed screenshots, support-page descriptions, setup guidance, accessibility
+  test protocols, and the capability ledger to match the Repair Trail workflow.
+  Dated research and execution documents now identify themselves as historical
+  snapshots and defer current claims to the capability ledger.
+
 ## [0.3.0] — 2026-07-23
 
 ### Added

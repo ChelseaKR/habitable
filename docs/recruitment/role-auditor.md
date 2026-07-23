@@ -25,7 +25,8 @@ or ever committed.** Evaluation is via `habitable demo` only.
 ## 1. Why this needs an external eye
 
 We have done what a careful solo maintainer can do — a frozen threat model, a maintainer
-re-review, a self-review, property-based and tamper-detection tests at ~86% coverage, and a
+re-review, a self-review, enforced application and protected-core coverage floors, and
+property-based and tamper-detection tests, plus a
 standalone verifier — but **no third-party security audit has been performed**, and a
 self-review is not a substitute for one. The whole point of the alpha caveat is that an
 independent reviewer has not yet confirmed the claims. This role removes that gap.
@@ -118,7 +119,7 @@ The audit target, in priority order:
   [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md), [`docs/evidence-method.md`](../evidence-method.md),
   [`docs/key-management.md`](../key-management.md), [`docs/privacy.md`](../privacy.md).
 - **A reproducible target.** `uv` pins Python 3.14; `make verify` runs ruff, `mypy --strict`,
-  and pytest (~86% coverage, including property-based convergence tests and tamper-detection
+  and pytest with enforced coverage floors, including property-based convergence and tamper-detection
   tests against clean, altered, and chain-broken fixtures). `make integration` exercises real
   public RFC 3161 authorities (DigiCert, FreeTSA).
 - **The standalone verifier** as a bounded, independently-licensed (Apache-2.0) artifact —
@@ -192,7 +193,7 @@ items we could not fully verify are marked.
   financial support + a ~3-week security education/mentorship program; funds can go toward an
   audit, plus tooling and Azure credits. *How it would work for us:* habitable already shows
   the security-maturity signals GitHub favors (CodeQL, pip-audit, Dependabot, SHA-pinned CI,
-  signed-provenance + SBOM releases, ~86% coverage, a `make verify` gate); the narrative is "get
+  signed-provenance + SBOM releases, enforced coverage floors, a `make verify` gate); the narrative is "get
   to an external crypto/security review and remove the alpha caveat." Apply via the fund page
   with a written application, an interview, and a 45-second video pitch. **[Uncertain]** This is
   primarily a maintainer security-uplift program with funding, **not** a pure pay-a-third-party-
@@ -277,7 +278,8 @@ These are the firms to put on an RFP shortlist if a grant, sponsor, or donor mat
 >
 > I have tried to make this cheap to pick up: a **frozen, hash-pinned threat-model baseline**
 > with an explicit residual-risk list to confirm or refute, a one-command setup, a `make verify`
-> gate (ruff, mypy --strict, pytest ~86% cov), and **synthetic-data-only** evaluation via
+> gate (ruff, mypy --strict, pytest with enforced coverage floors), and
+> **synthetic-data-only** evaluation via
 > `habitable demo` — no real tenant data, ever. The reviewer onboarding is at
 > docs/audits/onboarding.md and the baseline at docs/audits/threat-model-baseline.md.
 >
@@ -313,7 +315,8 @@ These are the firms to put on an RFP shortlist if a grant, sponsor, or donor mat
 > a reviewer onboarding doc (docs/audits/onboarding.md), the full threat model
 > (docs/threat-model.md), and **synthetic-data-only** evaluation via `habitable demo`. Quality
 > signals already in place: CodeQL, pip-audit, Dependabot, SHA-pinned CI, signed-provenance + SBOM
-> releases, and a `make verify` gate (ruff, mypy --strict, pytest ~86% coverage).
+> releases, and a `make verify` gate (ruff, mypy --strict, pytest with enforced
+> coverage floors).
 >
 > The alpha "do not rely on this yet" caveat is **gated on exactly this review**. Could habitable
 > be considered for a [Security Lab audit / facilitated engagement], or could you point me to the
