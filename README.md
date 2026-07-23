@@ -124,7 +124,7 @@ encrypted delta on a USB stick or SD card — see [`docs/sneakernet-sync.md`](do
 
 | The local app (English / Español) | An exported, verifiable packet |
 | --- | --- |
-| ![The habitable Evidence Atlas showing linked captures and timeline facts, case readiness, and recording tools](site/img/app-en.png) | ![An accessible habitability evidence packet with an issue, a captured photo, and an evidence appendix table](site/img/packet.png) |
+| ![The habitable unit evidence record showing chronology, integrity checks, and recording tools](site/img/app-en.png) | ![An accessible habitability evidence packet with an issue, a captured photo, and an evidence appendix table](site/img/packet.png) |
 
 The app is bilingual (EN/ES) and has automated axe, keyboard, and reflow coverage; a human
 screen-reader pass remains open. Every export ships an axe-tested `packet.html`, a paginated PDF,

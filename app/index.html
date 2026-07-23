@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#071d26" />
+    <meta name="theme-color" content="#245b84" />
     <meta name="description" data-i18n="meta_description"
           content="Local-first tenant habitability-evidence tool." />
     <title data-i18n="app_title">habitable</title>
@@ -51,13 +51,13 @@
         <nav class="workspace-nav" data-i18n-aria="workspace_nav_label"
              aria-label="Workspace">
           <a href="#atlas"><span class="nav-mark" aria-hidden="true">◉</span>
-            <span data-i18n="nav_atlas">Evidence atlas</span></a>
+            <span data-i18n="nav_atlas">Case record</span></a>
           <a href="#record"><span class="nav-mark" aria-hidden="true">＋</span>
-            <span data-i18n="nav_record">Record</span></a>
+            <span data-i18n="nav_record">Add evidence</span></a>
           <a href="#coordinate"><span class="nav-mark" aria-hidden="true">⇄</span>
-            <span data-i18n="nav_coordinate">Coordinate</span></a>
+            <span data-i18n="nav_coordinate">Check integrity</span></a>
           <a href="#share"><span class="nav-mark" aria-hidden="true">↗</span>
-            <span data-i18n="nav_share">Verify &amp; share</span></a>
+            <span data-i18n="nav_share">Make a review copy</span></a>
         </nav>
         <div class="rail-state" aria-labelledby="rail-state-h">
           <p id="rail-state-h" class="rail-label" data-i18n="rail_record_state">Record state</p>
@@ -72,9 +72,9 @@
           <div>
             <p class="eyebrow"><span data-i18n="case_file">Case file</span>
               <span aria-hidden="true"> / </span><span id="masthead-unit">—</span></p>
-            <h1 data-i18n="atlas_title">Evidence atlas</h1>
-            <p class="lede" data-i18n="atlas_lede">See what happened, what supports it,
-              and what still needs attention.</p>
+            <h1 data-i18n="atlas_title">Unit evidence record</h1>
+            <p class="lede" data-i18n="atlas_lede">Follow each condition, notice, response,
+              and supporting item in the order recorded.</p>
           </div>
           <a class="btn btn-primary masthead-action" href="#capture-form"
              data-i18n="quick_capture">Capture evidence</a>
@@ -86,8 +86,8 @@
         <section id="atlas" class="workspace-section atlas-section" aria-labelledby="atlas-h">
           <div class="section-heading">
             <div>
-              <p class="section-kicker" data-i18n="atlas_kicker">Chronology + relationships</p>
-              <h2 id="atlas-h" data-i18n="atlas_heading">The record, on one line of time</h2>
+              <p class="section-kicker" data-i18n="atlas_kicker">Case chronology</p>
+              <h2 id="atlas-h" data-i18n="atlas_heading">What happened, in the order recorded</h2>
             </div>
             <button type="button" id="refresh-btn" class="btn btn-quiet"
                     data-i18n="refresh">Refresh</button>
@@ -184,8 +184,8 @@
         <section id="record" class="workspace-section" aria-labelledby="record-h">
           <div class="section-heading">
             <div>
-              <p class="section-kicker" data-i18n="record_kicker">Add to the case</p>
-              <h2 id="record-h" data-i18n="record_heading">Record what happened</h2>
+              <p class="section-kicker" data-i18n="record_kicker">Add one fact at a time</p>
+              <h2 id="record-h" data-i18n="record_heading">Add to this record</h2>
             </div>
           </div>
           <p class="section-intro" data-i18n="record_intro">Each action becomes part of the
@@ -453,8 +453,8 @@
         <section id="coordinate" class="workspace-section coordinate-section" aria-labelledby="status-h">
           <div class="section-heading">
             <div>
-              <p class="section-kicker" data-i18n="coordinate_kicker">Health + readiness</p>
-              <h2 id="status-h" data-i18n="status_heading">Case status</h2>
+              <p class="section-kicker" data-i18n="coordinate_kicker">Integrity and storage</p>
+              <h2 id="status-h" data-i18n="status_heading">Check the record before sharing</h2>
             </div>
           </div>
           <div class="coordinate-layout">
@@ -508,8 +508,8 @@
         <section id="share" class="workspace-section share-section" aria-labelledby="export-h">
           <div class="section-heading">
             <div>
-              <p class="section-kicker" data-i18n="share_kicker">Deliberate disclosure</p>
-              <h2 id="export-h" data-i18n="export_heading">Export packet</h2>
+              <p class="section-kicker" data-i18n="share_kicker">Controlled disclosure</p>
+              <h2 id="export-h" data-i18n="export_heading">Make a review copy</h2>
             </div>
           </div>
           <div class="share-layout">

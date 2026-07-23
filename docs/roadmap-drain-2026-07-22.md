@@ -47,7 +47,7 @@ work:
 | Evidence strength | **Shipped with limits** | On-device factor report; no truth, admissibility, or win prediction |
 | Portability and interoperability | **Shipped baseline** | Versioned schema, embedding guide, Apache-licensed kernel, strict BagIt adapter, legal-aid receipt example |
 | Aggregate organizing commons | **Shipped as opt-in local export** | On-device k-anonymous aggregate with explicit contribution and suppression rules |
-| App status, storage, and evidence atlas | **Shipped** | EN/ES local app, interactive chronology, proof overlays, storage/network status, automated accessibility gates |
+| App status, storage, and case chronology | **Shipped** | EN/ES local app, interactive chronology, proof overlays, storage/network status, automated accessibility gates |
 | Plain-language action wording | **Shipped in this drain** | The last `resolve_*` implementation jargon became “Add missing timestamp tokens” / “Agregar sellos de tiempo faltantes,” with parity guards |
 | Data-flow transparency | **Shipped** | Local data-flow X-ray and executable no-plaintext-to-relay proof |
 | Contributor onboarding | **Shipped technically** | Bootstrap, devcontainer, architecture walkthrough, good-first-issue set; sustained outside contribution remains an outcome |
