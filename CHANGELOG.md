@@ -9,6 +9,13 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Changed
 
+- Moved the five-minute synthetic quickstart into the README’s visitor-facing
+  opening so the first useful command is visible without traversing product
+  internals.
+- Split releases into a read-only trusted-main verification/build job, a
+  checkout-free GitHub publication job that rechecks the exact annotated-tag
+  object, and the existing isolated PyPI Trusted Publishing job. Releases are
+  now explicitly dispatched from `main` for an existing signed stable tag.
 - Rebuilt the local app, public Unit 4B example, and review surfaces around the
   condition-first **Repair Trail**. The interface now keeps Reported and Secured
   dates distinct, separates tenant statements from checkable proof, moves entry
