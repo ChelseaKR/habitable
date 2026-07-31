@@ -26,7 +26,7 @@ def _workflow_sections() -> tuple[str, str]:
 def test_release_checks_out_exact_tag_before_version_check_and_build() -> None:
     release, _pypi = _workflow_sections()
     resolve = release.index('git rev-parse --verify --end-of-options "${TAG}^{commit}"')
-    ancestry = release.index('git merge-base --is-ancestor "$TAG_COMMIT" "$DEFAULT_REF"')
+    ancestry = release.index('git merge-base --is-ancestor "$TAG_COMMIT" origin/main')
     checkout = release.index('git checkout --detach "$TAG_COMMIT"')
     head_guard = release.index('"$(git rev-parse HEAD)" != "$TAG_COMMIT"')
     version_guard = release.index('TAG_VERSION="${TAG#v}"')
@@ -34,13 +34,32 @@ def test_release_checks_out_exact_tag_before_version_check_and_build() -> None:
     assert resolve < ancestry < checkout < head_guard < version_guard < build
 
 
-def test_release_tag_must_belong_to_fetched_default_branch_history() -> None:
+def test_release_is_dispatched_from_current_trusted_main() -> None:
     release, _pypi = _workflow_sections()
+    assert "push:\n    tags:" not in release
+    assert "workflow_dispatch:" in release
+    assert "ref: main" in release
     assert "fetch-depth: 0" in release
-    assert "DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}" in release
-    assert 'DEFAULT_REF="refs/remotes/origin/$DEFAULT_BRANCH"' in release
-    assert 'git show-ref --verify --quiet "$DEFAULT_REF"' in release
-    assert 'git merge-base --is-ancestor "$TAG_COMMIT" "$DEFAULT_REF"' in release
+    assert 'test "${GITHUB_REF}" = refs/heads/main' in release
+    assert 'test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"' in release
+    assert 'test "$(git rev-parse origin/main)" = "${GITHUB_SHA}"' in release
+    assert 'git merge-base --is-ancestor "$TAG_COMMIT" origin/main' in release
+
+
+def test_publication_rechecks_tag_without_checking_out_repository_code() -> None:
+    release, pypi = _workflow_sections()
+    verify, separator, publish = release.partition("  publish-release:\n")
+    assert separator, "release workflow must retain a separate GitHub publish job"
+    assert "contents: read" in verify
+    assert "git verify-tag" in verify
+    assert "tag_object_sha=" in verify
+    assert "contents: write" in publish
+    assert "git/ref/tags/${TAG}" in publish
+    assert "--jq .object.sha" in publish
+    assert 'test "${LIVE_TAG_OBJECT}" = "${TAG_OBJECT_SHA}"' in publish
+    assert "gh release create" in publish
+    assert "actions/checkout@" not in publish
+    assert "needs: [verify-build, publish-release]" in pypi
 
 
 def test_pypi_job_only_publishes_artifacts_from_release_job() -> None:

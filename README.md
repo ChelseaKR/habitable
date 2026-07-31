@@ -28,6 +28,27 @@ government system and not built for a government customer.
 See the current **[capability and claim ledger](docs/capabilities.md)** for the evidence behind each
 shipped, partial, planned, or externally unvalidated claim.
 
+## Try it
+
+Requires [uv](https://docs.astral.sh/uv/); the right Python (3.14) is fetched automatically.
+
+```console
+$ uv sync                 # create the env and install habitable + dev tools
+$ uv run habitable demo   # capture → seal+hash → RFC 3161 → packet → verify, on synthetic data, offline
+$ make verify             # the full gate: ruff + mypy --strict + pytest (property-based + tamper-detection)
+```
+
+`habitable demo` fabricates a couple of photos with embedded location, captures them as evidence,
+builds a packet (location stripped from the shared copies), and independently verifies it — with no
+network and no real tenant data. From there: `uv run habitable --help`.
+
+**Just want to look?** There is deliberately no hosted app (it runs on `localhost` so your case never
+leaves the device), but the static **[Unit 4B Repair Trail and live sample packet](https://habitable.chelseakr.com/)**
+show the workflow and what it produces using synthetic data. A safe phone package is **not shipped yet**; see the honest
+[`docs/mobile.md`](docs/mobile.md) support boundary. To run the optional sync relay, see
+[`docs/relay-deploy.md`](docs/relay-deploy.md); to sync a case with no network at all — an
+encrypted delta on a USB stick or SD card — see [`docs/sneakernet-sync.md`](docs/sneakernet-sync.md).
+
 **Supported versions:** pre-1.0, only the **latest release** is supported (see `SECURITY.md`).
 
 **Why this domain.** A tenant withholding rent or fighting an eviction over a broken heater needs
@@ -96,29 +117,6 @@ third party can re-check. Without `--trusted-cert`, token imprint/signature and 
 are reported separately, but the command exits non-zero and does not call the packet evidence-ready.
 Development timestamps are never evidence-ready. Technical readiness does not decide admissibility
 or any legal outcome.
-
----
-
-## Try it
-
-Requires [uv](https://docs.astral.sh/uv/); the right Python (3.14) is fetched automatically.
-
-```console
-$ uv sync                 # create the env and install habitable + dev tools
-$ uv run habitable demo   # capture → seal+hash → RFC 3161 → packet → verify, on synthetic data, offline
-$ make verify             # the full gate: ruff + mypy --strict + pytest (property-based + tamper-detection)
-```
-
-`habitable demo` fabricates a couple of photos with embedded location, captures them as evidence,
-builds a packet (location stripped from the shared copies), and independently verifies it — with no
-network and no real tenant data. From there: `uv run habitable --help`.
-
-**Just want to look?** There is deliberately no hosted app (it runs on `localhost` so your case never
-leaves the device), but the static **[Unit 4B Repair Trail and live sample packet](https://habitable.chelseakr.com/)**
-show the workflow and what it produces using synthetic data. A safe phone package is **not shipped yet**; see the honest
-[`docs/mobile.md`](docs/mobile.md) support boundary. To run the optional sync relay, see
-[`docs/relay-deploy.md`](docs/relay-deploy.md); to sync a case with no network at all — an
-encrypted delta on a USB stick or SD card — see [`docs/sneakernet-sync.md`](docs/sneakernet-sync.md).
 
 ## Screenshots
 
