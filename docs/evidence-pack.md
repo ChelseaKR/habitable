@@ -56,10 +56,11 @@ not a blanket exemption.
 - PyPI Trusted Publishing is wired through OIDC, but registry-side setup and an
   actual successful publish must be verified externally; repository configuration
   is not proof of publication.
-- Signed-tag enforcement is fail-closed but not operational: the placeholder
-  [allowed-signers file](../.github/allowed_signers) contains no maintainer key.
-- Reproducible wheel/sdist verification is being reviewed in PR #85; the relay
-  container does not yet have an equivalent byte-identical rebuild check.
+- Signed-tag enforcement is operational and fail-closed: the
+  [allowed-signers file](../.github/allowed_signers) contains the maintainer's
+  dedicated public release key, while the private key remains maintainer-held.
+- Wheel/sdist and pinned linux/amd64 relay-image rebuilds are both checked for
+  byte identity before release publication.
 
 ## 4. Open trust gates a grant could fund
 

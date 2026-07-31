@@ -19,15 +19,24 @@ versions, and findings in `docs/audits/`.
 
 ## Manual passes (the part a human must do)
 
-Start the app with `uv run habitable app --vault <vault>` and test the full flow:
-add an issue → capture a photo → add a timeline entry → resolve timestamps →
-export and read the result.
+Start the app with `uv run habitable app --vault <vault>` and test the full
+condition-first flow:
+
+1. choose or add a condition under **Rooms + conditions**;
+2. add a **Photo**, **What happened** entry, and **Document**;
+3. compare the entry's **Reported** and **Secured** dates;
+4. expand **Check this entry** and follow **What happened next?**;
+5. resolve any waiting timestamp tokens; and
+6. use **Prepare a copy**, create the review copy, and read `packet.html`.
 
 ### 1. Keyboard only (no mouse)
 - Tab/Shift-Tab reach every control in a sensible order; focus is always visible.
 - The **skip link** appears on first Tab and jumps to `<main>`.
 - All buttons/forms operate with Enter/Space; selects with arrow keys.
-- No keyboard trap; the language toggle is reachable and operable.
+- The Photo, What happened, and Document dialogs trap focus while open; Escape
+  closes them and returns focus to the button that opened them.
+- No unintended keyboard trap; the condition selector, evidence folds, follow-up
+  actions, copy controls, and language toggle are reachable and operable.
 
 ### 2. Screen readers
 Run at least one Windows and one Apple/Linux reader:
@@ -35,8 +44,14 @@ Run at least one Windows and one Apple/Linux reader:
   **Orca + Firefox** (Linux) as available.
 - Each landmark (banner, the labelled alpha-warning region, main, contentinfo)
   is announced; headings form a coherent outline.
-- Every field's label and required state is announced; the resolve button
-  announces its help text (`aria-describedby`).
+- Every field's label and required state is announced. Dialog names, descriptions,
+  validation errors, and the control that receives focus on open are understandable.
+- Each repair-trail entry announces its condition, entry type, **Reported** date,
+  **Secured** date, and timestamp status. On narrow screens, the per-row date
+  labels remain available to assistive technology.
+- **What was reported** and **What can be checked** remain distinct when read
+  linearly. Tenant statements, review-copy content, and proof state are announced
+  in words; pink/canary color is never the only distinction.
 - Results and errors spoken via the polite live region after each action.
 - Switching to Español updates the page language so the reader switches voice.
 
@@ -45,12 +60,15 @@ Run at least one Windows and one Apple/Linux reader:
   or function, no horizontal scrolling of text.
 - Verify text contrast ≥ 4.5:1 against the shipped palette (a tool such as the
   browser's contrast checker); confirm status is conveyed in **words**, not
-  color alone.
+  color alone, including the tenant-copy and review-copy boundary.
 - Test with `prefers-reduced-motion` enabled.
 
 ### 4. Cognitive / stress
 - Confirm there are no time limits and no surprise data loss; the alpha warning
   is always present; actions are reversible or clearly explained.
+- Confirm the interface does not imply that a tenant-reported date is device-
+  verified, that a secured date proves when an event occurred, or that preparing
+  a copy sends anything off the device.
 
 ## Exported packet
 

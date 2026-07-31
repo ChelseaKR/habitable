@@ -25,6 +25,7 @@ An ordinary publication failure restores the previous complete directory.
 ├── media/                 # policy-processed shared copies (referenced by items[].shared_name)
 ├── originals/             # OPTIONAL sealed originals (present only with --include-originals)
 ├── packet.html            # accessible human-readable rendering (the conformant view)
+├── handoff-<profile>.html # OPTIONAL recipient view over the same signed facts
 └── packet.pdf             # paginated print rendering (optional)
 ```
 
@@ -50,7 +51,7 @@ re-serialize `bundle.json` before checking the signature.
 | `packet_version` | int | Format version. Verifier accepts `1..SUPPORTED_PACKET_VERSION`; newer is rejected, not mis-verified. |
 | `case_id` | string | Case identifier. |
 | `unit` | string | Unit label; may be empty. |
-| `scope` | object | `{type: "issue"\|"unit", issue_id, since, statement, exclusions}` — the versioned/historical shape describing what a packet covers. New packet-v3 construction currently permits only `type: "unit"` with no `since`; issue/date requests fail before output because the v3 custody proof is complete-case. The other field values remain in the schema so previously emitted packets keep verifying, not as a claim that new scoped exports are safe. See [`legal/minimal-disclosure.md`](./legal/minimal-disclosure.md). |
+| `scope` | object | `{type: "issue"\|"unit", issue_id, since, statement, exclusions}` — the versioned/historical shape describing what a packet covers. New packet-v4 construction currently permits only `type: "unit"` with no `since`; issue/date requests fail before output because the custody proof is complete-case. |
 | `generated_at` | string | ISO 8601 UTC, e.g. `2026-01-02T00:00:00Z`. |
 | `producer_fingerprint` | string | Producing device fingerprint (`xxxx-xxxx-xxxx-xxxx`). |
 | `hash_algorithm` | string | Always `"sha256"`. |
@@ -59,9 +60,12 @@ re-serialize `bundle.json` before checking the signature.
 | `issues` | array | Issues in the declared scope; currently all issues in the unit. |
 | `timeline` | array | Versioned timeline events in the declared scope; currently the whole unit (see below). |
 | `items` | array | The media items — the evidentiary core (see below). |
+| `relationships` | array | Packet-v4 typed, custody-bound links between evidence records. |
+| `use_case_profile` | object \| null | Packet-v4 versioned presentation workflow and signed review state. |
+| `handoff_views` | array | Packet-v4 presentation-only manifests; `bundle.json` remains the source of truth. |
 | `custody_proof` | object | Identity-stripped chain-of-custody proof (see below). |
 | `disclosures` | array | Human-readable notes of what the packet reveals (shared-copy metadata handling, custody identities not exported, originals embedded). Also rendered, localized, in `packet.html`/`packet.pdf`. |
-| `appendix` | object | `{item_count, timestamped_count, includes_originals, timeline_count, custody_bound_timeline_count}` in v3; the timeline counts are absent in older packets. `timestamped_count` means a token record is attached; it does not assert token validity or authority trust. |
+| `appendix` | object | V4 adds `artifact_count` and `relationship_count` to the v3 counts. `timestamped_count` means a token record is attached; it does not assert token validity or authority trust. |
 
 ### Opaque identifiers (packet_version ≥ 2)
 
@@ -106,6 +110,7 @@ at the original occurrence or recording time.
 
 | Field | Type | Notes |
 | --- | --- | --- |
+| `record_kind` | `capture` \| `artifact` | Packet v4 identifies the semantic record while retaining the generic item verification path. |
 | `capture_id` | string | Stable id; also the filename under `originals/` when embedded. |
 | `issue_id` | string | The issue this item documents. |
 | `content_hash` | hex SHA-256 | Of the **sealed original**. The RFC 3161 token is taken over this. |
@@ -119,6 +124,26 @@ at the original occurrence or recording time.
 | `archive_timestamps` | array | Archive (re-)timestamps chaining back to the primary token. |
 | `additional_timestamps` | array | Optional redundant tokens naming other authorities over the same `content_hash` (not a chain). Token presence and authority names are untrusted metadata until the verifier validates each token against recipient-selected roots. Absent in single-authority packets. |
 | `sensor` | object \| null | Present (non-null) only for **instrument data-file** captures (EXP-09, e.g. a temperature-logger or moisture-meter CSV): the readings interpreted from the sealed original for accessible chart + table rendering. `null`/absent for photos and video. The CSV bytes themselves stay the hash-anchored evidence under `content_hash`. |
+
+For an artifact item, `artifact` carries schema version 1, id, issue, reviewed
+artifact type, neutral title, source/issuer assertions, occurrence/recording
+dates, original content hash, MIME type, and accessible description. Its sibling
+`integrity` block contains the semantic commitment and custody binding stage.
+Non-image documents are offered as downloads in HTML; they are not executed or
+embedded, and may retain document metadata.
+
+### `relationships[]` and workflow presentation (packet_version 4)
+
+Each relationship names its issue, type, source and target ids, neutral
+assertion, recorded time, opaque order token, and integrity block. The verifier
+requires both endpoints, same-issue membership, allowed temporal-comparison
+pairs, an acyclic per-type graph, the semantic commitment, and matching custody.
+
+Profiles are presentation policy, not legal logic. The signed profile includes
+its id/version, bilingual name and summary, allowed vocabulary, handoff section
+order, disclosures, and review state. A handoff manifest contains only pointers
+and counts derived from the signed bundle, is marked `presentation_only`, and
+cannot remove bundle disclosures or change a verifier verdict.
 
 A **timestamp token** is `{kind: "rfc3161"|"dev", tsa_name, token_b64}` where `token_b64` is base64
 of the DER token (`rfc3161`) or a canonical-JSON token (`dev`, non-production/offline only).
@@ -144,7 +169,7 @@ Each exported entry is:
 with `entry_hash = SHA-256(canonical_json({seq, action, item_id, hlc, actor_commitment,
 details(sorted), prev_hash}))` and `prev_hash` linking to the prior `entry_hash` (genesis = 64
 zeros). `action` is one of `captured, imported, fixity_checked, timestamped, viewed,
-copied_for_sharing, included_in_packet, note_added`. The clear actor, the per-entry salt, the
+copied_for_sharing, included_in_packet, note_added, artifact_added, relationship_added`. The clear actor, the per-entry salt, the
 Ed25519 signature, and any identity/PII `private_details` are **vault-only** and never appear here —
 so a recipient confirms the chain is intact but cannot learn the actors. See
 [`crypto-spec.md`](crypto-spec.md) §6.2.

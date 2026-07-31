@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chelseakr.github.io/habitable/schema/packet-bundle-v3.schema.json",
-  "title": "habitable evidence packet — bundle.json (v1–v3)",
-  "description": "The machine-readable contract for bundle.json through packet_version 3. Version 3 adds sourced, occurrence-dated, custody-bound timeline events without changing the historical meanings of v1/v2 kind or hlc. The signed sibling file bundle.sig.json is described by $defs/signature.",
+  "$id": "https://chelseakr.github.io/habitable/schema/packet-bundle-v4.schema.json",
+  "title": "habitable evidence packet — bundle.json (v1–v4)",
+  "description": "The machine-readable contract for bundle.json through packet_version 4. Version 4 adds custody-bound artifacts, typed evidence relationships, versioned workflow profiles, and signed presentation-only handoff manifests. The signed sibling file bundle.sig.json is described by $defs/signature.",
   "type": "object",
   "required": [
     "packet_version",
@@ -19,7 +19,7 @@
     "packet_version": {
       "type": "integer",
       "minimum": 1,
-      "maximum": 3,
+      "maximum": 4,
       "description": "Packet format version. A verifier accepts 1..SUPPORTED_PACKET_VERSION and rejects newer-than-supported packets rather than mis-verifying."
     },
     "case_id": { "type": "string" },
@@ -63,6 +63,14 @@
     "issues": { "type": "array", "items": { "$ref": "#/$defs/issue" } },
     "timeline": { "type": "array", "items": { "$ref": "#/$defs/timelineEntry" } },
     "items": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+    "relationships": { "type": "array", "items": { "$ref": "#/$defs/relationship" } },
+    "use_case_profile": {
+      "oneOf": [{ "$ref": "#/$defs/useCaseProfile" }, { "type": "null" }]
+    },
+    "handoff_views": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/handoffManifest" }
+    },
     "custody_proof": { "$ref": "#/$defs/custodyProof" },
     "disclosures": {
       "type": "array",
@@ -77,14 +85,16 @@
         "timestamped_count": { "type": "integer", "minimum": 0 },
         "includes_originals": { "type": "boolean" },
         "timeline_count": { "type": "integer", "minimum": 0 },
-        "custody_bound_timeline_count": { "type": "integer", "minimum": 0 }
+        "custody_bound_timeline_count": { "type": "integer", "minimum": 0 },
+        "artifact_count": { "type": "integer", "minimum": 0 },
+        "relationship_count": { "type": "integer", "minimum": 0 }
       },
       "additionalProperties": true
     }
   },
   "allOf": [
     {
-      "if": { "properties": { "packet_version": { "const": 3 } } },
+      "if": { "properties": { "packet_version": { "minimum": 3 } } },
       "then": {
         "properties": {
           "timeline": { "type": "array", "items": { "$ref": "#/$defs/timelineEntryV3" } }
@@ -193,6 +203,7 @@
       "type": "object",
       "required": ["capture_id", "content_hash", "media_type", "captured_at", "shared_name", "shared_hash", "has_original", "archive_timestamps"],
       "properties": {
+        "record_kind": { "type": "string", "enum": ["capture", "artifact"] },
         "capture_id": { "type": "string" },
         "issue_id": { "type": "string" },
         "content_hash": { "$ref": "#/$defs/hexSha256", "description": "SHA-256 of the sealed original; the value the RFC 3161 token is taken over." },
@@ -222,7 +233,82 @@
         "sensor": {
           "oneOf": [{ "$ref": "#/$defs/sensorSeries" }, { "type": "null" }],
           "description": "Present (non-null) only for instrument data-file captures (EXP-09, e.g. a temperature-logger or moisture-meter CSV). The readings interpreted from the sealed original for accessible chart+table rendering; the CSV bytes themselves remain the hash-anchored evidence under content_hash. null (or absent) for photo/video captures."
-        }
+        },
+        "artifact": { "$ref": "#/$defs/artifact" },
+        "integrity": { "$ref": "#/$defs/workflowIntegrity" }
+      },
+      "additionalProperties": true
+    },
+    "artifact": {
+      "type": "object",
+      "required": ["artifact_schema", "artifact_id", "issue_id", "artifact_type", "title", "source", "issuer", "occurred_at", "recorded_at", "content_hash", "media_type", "accessible_description"],
+      "properties": {
+        "artifact_schema": { "type": "integer", "const": 1 },
+        "artifact_id": { "type": "string" },
+        "issue_id": { "type": "string" },
+        "artifact_type": { "type": "string", "enum": ["repair_request", "delivery_receipt", "landlord_response", "inspection_report", "utility_notice", "accommodation_request", "supporting_letter", "clinician_letter", "expense_receipt", "relocation_record", "partner_export", "other_document"] },
+        "title": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "issuer": { "type": "string" },
+        "occurred_at": { "type": "string" },
+        "recorded_at": { "type": "string" },
+        "content_hash": { "$ref": "#/$defs/hexSha256" },
+        "media_type": { "type": "string", "minLength": 1 },
+        "accessible_description": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "relationship": {
+      "type": "object",
+      "required": ["relationship_schema", "relationship_id", "issue_id", "relationship_type", "source_id", "target_id", "assertion", "recorded_at", "order_token", "integrity"],
+      "properties": {
+        "relationship_schema": { "type": "integer", "const": 1 },
+        "relationship_id": { "type": "string" },
+        "issue_id": { "type": "string" },
+        "relationship_type": { "type": "string", "enum": ["documents_condition", "sent_via", "delivery_receipt_for", "response_to", "before_of", "after_of", "inspection_finding_for", "repair_claim_for", "expense_caused_by", "supports"] },
+        "source_id": { "type": "string" },
+        "target_id": { "type": "string" },
+        "assertion": { "type": "string" },
+        "recorded_at": { "type": "string" },
+        "order_token": { "type": "string" },
+        "integrity": { "$ref": "#/$defs/workflowIntegrity" }
+      },
+      "additionalProperties": false
+    },
+    "workflowIntegrity": {
+      "type": "object",
+      "required": ["algorithm", "commitment", "custody_action", "binding_stage"],
+      "properties": {
+        "algorithm": { "type": "string", "const": "sha256" },
+        "commitment": { "$ref": "#/$defs/hexSha256" },
+        "custody_action": { "type": "string", "enum": ["artifact_added", "relationship_added"] },
+        "binding_stage": { "type": "string", "enum": ["recorded", "semantic_binding", "import_binding"] }
+      },
+      "additionalProperties": false
+    },
+    "useCaseProfile": {
+      "type": "object",
+      "required": ["profile_schema", "profile_id", "version", "name", "summary", "artifact_types", "relationship_types", "handoff_sections", "disclosures", "review_state", "external_review_required"],
+      "properties": {
+        "profile_schema": { "type": "integer", "const": 1 },
+        "profile_id": { "type": "string" },
+        "version": { "type": "integer", "minimum": 1 },
+        "review_state": { "type": "string", "enum": ["maintainer_reviewed", "external_review_required"] },
+        "external_review_required": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "handoffManifest": {
+      "type": "object",
+      "required": ["handoff_manifest_version", "profile_id", "profile", "scope", "sections", "counts", "disclosures", "source_of_truth", "presentation_only"],
+      "properties": {
+        "handoff_manifest_version": { "type": "integer", "const": 1 },
+        "profile_id": { "type": "string" },
+        "profile": { "$ref": "#/$defs/useCaseProfile" },
+        "sections": { "type": "array" },
+        "disclosures": { "type": "array", "items": { "type": "string" } },
+        "source_of_truth": { "type": "string", "const": "bundle.json" },
+        "presentation_only": { "type": "boolean", "const": true }
       },
       "additionalProperties": true
     },

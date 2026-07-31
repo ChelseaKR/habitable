@@ -231,21 +231,28 @@ def retimestamp_all(
     """
     actor = vault.identity.public().fingerprint
     count = 0
-    for capture_record in vault.document.captures():
-        latest = vault.latest_token(capture_record.capture_id)
+    records = [
+        (capture_record.capture_id, capture_record.content_hash)
+        for capture_record in vault.document.captures()
+    ]
+    records.extend(
+        (artifact.artifact_id, artifact.content_hash) for artifact in vault.document.artifacts()
+    )
+    for record_id, _content_hash in records:
+        latest = vault.latest_token(record_id)
         if latest is None:
             continue  # nothing to archive (still awaiting its first timestamp)
         archive = retimestamp(latest, tsa)
-        vault.add_archive_token(capture_record.capture_id, archive)
+        vault.add_archive_token(record_id, archive)
         vault.custody.append(
             CustodyAction.TIMESTAMPED,
-            capture_record.capture_id,
+            record_id,
             actor=actor,
             hlc=vault.document.clock.now().encode(),
             details={"kind": "archive", "tsa": archive.tsa_name},
             identity=vault.identity,
         )
-        _archive_against_extras(vault, capture_record.capture_id, archive, actor, extra_tsas)
+        _archive_against_extras(vault, record_id, archive, actor, extra_tsas)
         count += 1
     vault.save()
     log_event("retimestamp", archived=count)

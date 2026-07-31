@@ -71,8 +71,21 @@ online, run `habitable resolve --vault ./case-4B` to add the waiting tokens.
 Recipients must still verify each token against an authority certificate they trust.
 
 Prefer a screen? Run the local app (accessible, English/Español) and use a laptop
-or desktop browser on the same machine. The alpha has no supported phone package;
-do not expose this unlocked server over a LAN (see [`docs/mobile.md`](mobile.md)):
+or desktop browser on the same machine. In the app:
+
+1. choose or add a condition under **Rooms + conditions**;
+2. add a **Photo**, **What happened** entry, or **Document**;
+3. compare **Reported** (the date someone says it happened) with **Secured** (when
+   Habitable added the record);
+4. open **Check this entry** to see what is asserted and what can be checked;
+5. use **What happened next?** to add notice, response, repair, or recurrence; and
+6. choose **Prepare a copy** only when you are ready to review what would leave
+   the device.
+
+The CLI keeps the established `issue`, `capture`, and `timeline` command names;
+the app groups those records into a condition-first **Repair Trail**. The alpha
+has no supported phone package; do not expose this unlocked server over a LAN
+(see [`docs/mobile.md`](mobile.md)):
 
 ```console
 $ uv run habitable app --vault ./case-4B

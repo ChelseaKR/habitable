@@ -34,6 +34,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import date
 from typing import Literal
 
 from .errors import HabitableError
@@ -63,7 +64,7 @@ MIN_K = 3
 #: A conservative default anonymity threshold when the caller does not choose one.
 DEFAULT_K = 5
 
-Period = Literal["month", "quarter"]
+Period = Literal["week", "month", "quarter"]
 
 _UNKNOWN_PERIOD = "unknown"
 
@@ -175,6 +176,13 @@ def _period_bucket(captured_at: str, granularity: Period) -> str:
     month_num = int(month)
     if not 1 <= month_num <= 12:
         return _UNKNOWN_PERIOD
+    if granularity == "week":
+        try:
+            parsed = date.fromisoformat(captured_at[:10])
+        except ValueError:
+            return _UNKNOWN_PERIOD
+        iso_year, iso_week, _ = parsed.isocalendar()
+        return f"{iso_year}-W{iso_week:02d}"
     if granularity == "quarter":
         quarter = (month_num - 1) // 3 + 1
         return f"{year}-Q{quarter}"

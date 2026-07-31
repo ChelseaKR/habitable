@@ -11,6 +11,22 @@ It is a working document, not a promise. Dates are horizons for a small voluntee
 effort and will move; the *ordering* and the *exit criteria* matter more than the
 calendar. Decisions of consequence are recorded as ADRs in `docs/adr/`.
 
+> **Execution snapshot (2026-07-22).** The dated
+> [roadmap-drain register](docs/roadmap-drain-2026-07-22.md) reconciles every open
+> item against current-main code/tests and the live GitHub queue. No
+> agent-executable feature issue remains open. The work still listed below is
+> either an explicit protocol/research gate or an external outcome that requires
+> reviewers, partners, maintainers, hardware, funding, or distribution
+> credentials. The next bounded opportunity portfolio is in the
+> [novel-use-case implementation plan](docs/novel-use-cases-plan.md).
+
+> **Implementation update (2026-07-23).** The shared profile, artifact,
+> relationship, handoff, local-pattern, and partner-capsule primitives from that
+> plan are implemented as case schema v3 / packet v4 and exposed through the CLI
+> and localhost app. The profiles that depend on legal, medical, inspector,
+> accessibility, housing-authority, or adopter review remain explicitly
+> `external_review_required`; those human gates are not treated as completed.
+
 > **Alpha caveat.** Until the v1.0 gate below is met, do not rely on habitable for
 > real legal matters. See *Honest limits* in the [README](README.md).
 
@@ -69,9 +85,11 @@ violating one is the wrong item.
 - A release is tagged, has a `CHANGELOG.md` entry, and passes the full gate (`make verify`
   + the `a11y` browser gate + CodeQL). Actions are SHA-pinned and dependencies locked;
   release artifacts carry a build **provenance attestation** and an SBOM since v0.2.0
-  (see `.github/workflows/release.yml`). **Signed release tags** (not yet in place) remain
-  planned (see workstream A) — provenance attestation proves *how* an artifact was built,
-  not that the tag pointing at it was signed by the maintainer.
+  (see `.github/workflows/release.yml`). **Signed release tags are now enforced**
+  by the active protected-tag ruleset and the release workflow's signature,
+  version, and reviewed-mainline guards (see workstream A). Provenance
+  attestation proves *how* an artifact was built; the signed tag separately binds
+  the maintainer-approved release identity.
 
 ## The v1.0 gate (when "alpha" comes off)
 
@@ -88,10 +106,10 @@ true and documented before the "alpha — do not rely on this" caveat is removed
 - [ ] The **threat model independently reviewed** and its residual risks re-confirmed
       (workstream D), including a lawyer's read of the "not legal advice / no admissibility
       guarantee" framing.
-- [ ] **Signed release tags + build provenance** in place (workstream A). Build
-      provenance attestation and an SBOM ship since v0.2.0; **tag signing** (and a
-      release-job guard that rejects an unsigned or version-mismatched tag) is the
-      remaining piece.
+- [x] **Signed release tags + build provenance** in place (workstream A). Build
+      provenance attestation and an SBOM ship since v0.2.0; the active `v*`
+      ruleset requires signed tags and the release job rejects an unsigned,
+      version-mismatched, off-mainline, or wrong-commit tag.
 - [ ] Recovery, key-rotation, and multi-device flows documented and tested for a
       non-technical organizer (workstream C).
 
@@ -143,9 +161,11 @@ Packet-integrity claims live here; this work gets the most scrutiny.
   target runs in every merge gate with no accept-on-tamper and no crash. OSS-Fuzz
   integration remains a separate ecosystem/discoverability improvement, not missing
   in-repo adversarial coverage.
-- **Signed releases + build provenance (SLSA).** *Objective:* a downloader can verify a
-  release was built from this source. *Exit:* tagged releases ship signatures + provenance
-  attestations, documented in `docs/`.
+- *Shipped:* **Signed releases + build provenance (SLSA).** Tagged releases must
+  resolve to reviewed `main` history, carry an allowed SSH signature, match the
+  package version, and publish the exact reproducibility-checked artifacts with
+  SBOM and Sigstore provenance. The active protected-tag ruleset prevents `v*`
+  tag update/deletion and requires signatures; see `docs/releasing.md`.
 - *Shipped:* **Reproducible wheel and relay-image builds.** *Objective:* the same source yields
   the same artifacts. `make repro` / `scripts/check_reproducible_build.py` builds the wheel
   and sdist twice from independent clean source copies with a normalized
@@ -202,9 +222,10 @@ Packet-integrity claims live here; this work gets the most scrutiny.
   kept at full strength and key parity held (`tests/test_app_i18n.py`,
   `scripts/check_i18n_parity.py`). The dated review record — target, method, every term
   changed, and what remains for a native-speaker / stressed-user pass — is at
-  `docs/audits/plain-language-review.md`. *Remaining (documented there):* a native-speaker ES
-  review, a measured readability score, a cognitive walk-through, and finishing the
-  `resolve_*` terminology fix alongside its guard test.
+  `docs/audits/plain-language-review.md`. The final action-first
+  `resolve_*`/Spanish timestamp-term cleanup and guard shipped in the 2026-07-22
+  roadmap drain. *Remaining (documented there):* a native-speaker ES review, a
+  measured readability score, and a cognitive walk-through.
 - *Shipped:* **Low-end-device performance budget.** A documented latency budget for the
   local path — per-operation targets for content hashing, seal/store, custody append,
   CRDT merge, and packet assembly — tied to a reference low-end device modeled as ~10×
@@ -235,20 +256,29 @@ Packet-integrity claims live here; this work gets the most scrutiny.
   reviewed cross-build. The product build remains not shipped; this closes only the research spike.
 - **Desktop packaging.** *Objective:* a one-click desktop app for organizers. *Exit:* a
   packaged build (e.g. Briefcase/Tauri) that launches the app with no terminal.
-- **Multi-device & key lifecycle UX.** *Objective:* a non-technical organizer can add a
-  device, back up, rotate, and recover keys safely. *Exit:* tested flows + docs; recovery
-  with a lost passphrase is impossible *by design* and clearly communicated.
-- **Merge/conflict surfacing.** *Objective:* make CRDT convergence legible (who changed
-  what, when) without exposing it as data loss. *Exit:* a review view in the app.
-- **Metadata-resistant sync (relay).** *Objective:* shrink what even a relay can observe
-  (who syncs with whom, when, sizes). *Exit:* an evaluated option (padding, batching, or an
-  onion/transport layer) with the residual exposure documented in the threat model.
+- *Partial:* **Multi-device & key lifecycle UX.** Authenticated case-bound
+  pairing, passphrase hardening, DEK rotation, recovery blobs, M-of-N social
+  recovery, CLI round trips, and organizer documentation ship. *Remaining exit:*
+  non-technical organizers complete add-device, backup, rotate, lose-device, and
+  restore drills; recovery limits remain clearly communicated.
+- *Partial:* **Merge/conflict surfacing.** Authenticated per-field provenance and
+  a CLI view identify the winning current value's device and time. A complete
+  edit/conflict history is not shipped because the state-based CRDT does not
+  retain overwritten values; it needs a versioned append-only change-log design
+  and organizer validation before an app review view can claim completeness.
+- *Shipped, opt-in:* **Metadata-resistant sync (relay).** `PaddingTransport`
+  buckets sizes and posts fixed real-plus-decoy batches, hiding exact size and
+  real-message count within a batch. The threat model and observability matrix
+  disclose residual timing, IP, room-activity, and cross-sender-mixing exposure;
+  those cannot be described as hidden.
 - **Jurisdiction template library.** *Objective:* packets that match local expectations
   without touching the verification protocol. *Exit:* a community-contributable set of
   presentation-only templates (the config surface exists; this grows it).
-- **Data portability / interop.** *Objective:* a union can take its data and a legal-aid
-  tool can ingest a packet. *Exit:* documented portable formats; the structured bundle is
-  already plain, verifiable data.
+- *Shipped baseline:* **Data portability / interop.** The versioned JSON Schema,
+  embedding cookbook, Apache-licensed evidence kernel and golden corpus, strict
+  BagIt transfer adapter, and signed-receipt reference importer document and test
+  portable handoff. A production case-management connector remains adopter-owned,
+  not an implied integration.
 
 ### D. Governance, community, partnerships & sustainability
 

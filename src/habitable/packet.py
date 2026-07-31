@@ -34,15 +34,17 @@ from .disclosure import ScopeStatement, proof_statement, scope_statement
 from .errors import PacketError
 from .evidence import CustodyAction, CustodyLog
 from .exif import make_shared_copy
+from .handoff import build_handoff_manifest, render_handoff_html
 from .media import extract_poster_frame, make_shared_media_copy
-from .model import Capture, Issue, TimelineEntry
+from .model import Artifact, Capture, EvidenceRelationship, Issue, TimelineEntry
 from .private_temp import PrivateTempWorkspace, private_temp_workspace
 from .sensor import parse_sensor_csv
+from .usecases import get_profile
 from .vault import Vault
 
 __all__ = ["PACKET_VERSION", "PacketResult", "build_packet"]
 
-PACKET_VERSION = 3
+PACKET_VERSION = 4
 _BUNDLE = "bundle.json"
 _SIGNATURE = "bundle.sig.json"
 _MEDIA = "media"
@@ -50,6 +52,7 @@ _ORIGINALS = "originals"
 _PDF = "packet.pdf"
 _HTML = "packet.html"
 _INSPECTOR = "inspector.html"
+_HANDOFF_PREFIX = "handoff-"
 
 _EXT_BY_TYPE = {
     "image/jpeg": ".jpg",
@@ -72,6 +75,15 @@ _DATA_EXT_BY_TYPE = {
     "text/csv": ".csv",
 }
 
+_DOCUMENT_EXT_BY_TYPE = {
+    "application/pdf": ".pdf",
+    "text/plain": ".txt",
+    "text/markdown": ".md",
+    "text/html": ".html",
+    "message/rfc822": ".eml",
+    "application/json": ".json",
+}
+
 
 @dataclass(frozen=True, slots=True)
 class PacketResult:
@@ -86,6 +98,7 @@ class PacketResult:
     timestamped_count: int
     includes_originals: bool
     disclosures: tuple[str, ...] = field(default_factory=tuple)
+    handoff_paths: tuple[Path, ...] = field(default_factory=tuple)
 
 
 def build_packet(
@@ -97,6 +110,7 @@ def build_packet(
     include_originals: bool = False,
     make_pdf: bool = True,
     inspector_view: bool = False,
+    handoff_profile: str | None = None,
     generated_at: str | None = None,
     policy: SharingPolicy | None = None,
 ) -> PacketResult:
@@ -113,7 +127,7 @@ def build_packet(
     """
     if issue_id is not None or since is not None:
         raise PacketError(
-            "scoped packet exports are temporarily blocked: packet v3 carries the complete "
+            "scoped packet exports are temporarily blocked: packet v4 carries the complete "
             "custody chain, which can reveal identifiers outside an issue or date scope; "
             "export the whole unit until a versioned scoped custody-view format is available"
         )
@@ -121,7 +135,7 @@ def build_packet(
     sharing = policy or vault.config.sharing
     if sharing.export_custody_identities:
         raise PacketError(
-            "custody identity export is not supported: packet v3 public custody proofs are "
+            "custody identity export is not supported: packet v4 public custody proofs are "
             "always identity-stripped; set sharing.export_custody_identities to false"
         )
 
@@ -143,6 +157,7 @@ def build_packet(
             include_originals=include_originals,
             make_pdf=make_pdf,
             inspector_view=inspector_view,
+            handoff_profile=handoff_profile,
             generated_at=generated_at,
             policy=sharing,
         )
@@ -169,10 +184,11 @@ def build_packet(
         timestamped_count=staged.timestamped_count,
         includes_originals=staged.includes_originals,
         disclosures=staged.disclosures,
+        handoff_paths=tuple(out_dir / path.name for path in staged.handoff_paths),
     )
 
 
-def _build_packet_in_dir(
+def _build_packet_in_dir(  # noqa: C901 -- packet staging keeps one rollback boundary
     vault: Vault,
     out_dir: Path,
     *,
@@ -182,6 +198,7 @@ def _build_packet_in_dir(
     include_originals: bool,
     make_pdf: bool,
     inspector_view: bool,
+    handoff_profile: str | None,
     generated_at: str | None,
     policy: SharingPolicy | None,
 ) -> PacketResult:
@@ -194,11 +211,11 @@ def _build_packet_in_dir(
     if include_originals:
         originals_dir.mkdir(exist_ok=True)
 
-    # Packet v3 requires every timeline assertion to be bound into custody.  New
-    # entries are bound when recorded; legacy case entries receive an explicitly
-    # labelled migration/backfill binding here (never a false claim of original-time
-    # protection).
+    # Packet v4 requires every timeline assertion and workflow record to be bound
+    # into custody. New records are bound when written; legacy/imported records
+    # receive an explicitly labelled backfill binding here.
     vault.ensure_timeline_custody(persist=False)
+    _ensure_extended_custody(vault)
 
     actor = vault.identity.public().fingerprint
     selected_issues = _select_issues(vault, issue_id)
@@ -215,6 +232,22 @@ def _build_packet_in_dir(
             item = _build_item(
                 vault,
                 capture,
+                sharing,
+                media_dir,
+                originals_dir,
+                workspace,
+                include_originals=include_originals,
+                actor=actor,
+            )
+            items.append(item)
+            if item.get("timestamp") is not None:
+                timestamped += 1
+        for artifact in vault.document.artifacts():
+            if artifact.issue_id not in issue_ids:
+                continue
+            item = _build_artifact_item(
+                vault,
+                artifact,
                 sharing,
                 media_dir,
                 originals_dir,
@@ -260,6 +293,13 @@ def _build_packet_in_dir(
         total=len(items),
     )
     timeline_entries = _timeline(vault, issue_ids)
+    relationships = [
+        relationship
+        for relationship in vault.document.relationships()
+        if relationship.issue_id in issue_ids
+    ]
+    selected_profile_id = handoff_profile or vault.document.use_case_profile()
+    selected_profile = get_profile(selected_profile_id) if selected_profile_id else None
     bundle: dict[str, JSONValue] = {
         "packet_version": PACKET_VERSION,
         "case_id": vault.document.case_id,
@@ -284,6 +324,13 @@ def _build_packet_in_dir(
             JSONValue, [_timeline_json(vault, entry, opaque_hlc) for entry in timeline_entries]
         ),
         "items": cast(JSONValue, items),
+        "relationships": cast(
+            JSONValue,
+            [_relationship_json(vault, relationship, opaque_hlc) for relationship in relationships],
+        ),
+        "use_case_profile": (
+            cast(JSONValue, selected_profile.to_json()) if selected_profile is not None else None
+        ),
         "custody_proof": vault.custody.integrity_proof(hlc_map=opaque_hlc),
         "appendix": {
             "item_count": len(items),
@@ -291,9 +338,17 @@ def _build_packet_in_dir(
             "includes_originals": include_originals,
             "timeline_count": len(timeline_entries),
             "custody_bound_timeline_count": len(timeline_entries),
+            "artifact_count": sum(1 for item in items if item.get("record_kind") == "artifact"),
+            "relationship_count": len(relationships),
         },
         "disclosures": cast(JSONValue, list(disclosures)),
     }
+    if selected_profile is not None:
+        bundle["handoff_views"] = cast(
+            JSONValue, [build_handoff_manifest(bundle, selected_profile)]
+        )
+    else:
+        bundle["handoff_views"] = []
     bundle_bytes = canonical_json(bundle)
     bundle_path = out_dir / _BUNDLE
     bundle_path.write_bytes(bundle_bytes)
@@ -312,6 +367,18 @@ def _build_packet_in_dir(
         inspector_path = out_dir / _INSPECTOR
         htmlpacket.render_inspector_html(bundle, media_dir, inspector_path)
 
+    handoff_paths: tuple[Path, ...] = ()
+    if selected_profile is not None:
+        handoff_path = out_dir / f"{_HANDOFF_PREFIX}{selected_profile.profile_id}.html"
+        manifests = bundle.get("handoff_views")
+        if isinstance(manifests, list) and manifests and isinstance(manifests[0], dict):
+            render_handoff_html(
+                manifests[0],
+                handoff_path,
+                language=vault.config.language,
+            )
+            handoff_paths = (handoff_path,)
+
     pdf_path: Path | None = None
     if make_pdf:
         from . import pdf as pdf_module
@@ -329,6 +396,7 @@ def _build_packet_in_dir(
         timestamped_count=timestamped,
         includes_originals=include_originals,
         disclosures=disclosures,
+        handoff_paths=handoff_paths,
     )
 
 
@@ -461,6 +529,7 @@ def _build_item(
     archives = vault.get_archive_tokens(capture_id)
     additional = vault.get_additional_tokens(capture_id)
     return {
+        "record_kind": "capture",
         "capture_id": capture_id,
         "issue_id": issue_id,
         "content_hash": content_hash,
@@ -478,6 +547,177 @@ def _build_item(
         "additional_timestamps": cast(JSONValue, [a.to_dict() for a in additional]),
         "sensor": sensor,
     }
+
+
+def _build_artifact_item(
+    vault: Vault,
+    artifact: Artifact,
+    sharing: SharingPolicy,
+    media_dir: Path,
+    originals_dir: Path,
+    workspace: PrivateTempWorkspace,
+    *,
+    include_originals: bool,
+    actor: str,
+) -> dict[str, JSONValue]:
+    """Build a packet item for a sealed document-like artifact."""
+    original_bytes = vault.read_original(artifact.artifact_id, artifact.content_hash)
+    image_ext = _EXT_BY_TYPE.get(artifact.media_type, "")
+    document_ext = _DOCUMENT_EXT_BY_TYPE.get(artifact.media_type, "")
+    data_ext = _DATA_EXT_BY_TYPE.get(artifact.media_type, "")
+    shared_ext = image_ext or document_ext or data_ext or ".bin"
+    shared_name = f"{artifact.artifact_id}{shared_ext}"
+
+    if artifact.media_type.startswith("image/") and image_ext:
+        source = workspace.write_bytes(original_bytes, suffix=image_ext)
+        try:
+            report = make_shared_copy(source, media_dir / shared_name, sharing)
+        finally:
+            source.unlink(missing_ok=True)
+        stripped = ", ".join(report.removed) or "none"
+    else:
+        (media_dir / shared_name).write_bytes(original_bytes)
+        stripped = (
+            "not applicable (data file; no embedded location metadata)"
+            if data_ext
+            else "not sanitized (document may contain embedded metadata)"
+        )
+
+    shared_hash = sha256_file(media_dir / shared_name)
+    vault.custody.append(
+        CustodyAction.COPIED_FOR_SHARING,
+        artifact.artifact_id,
+        actor=actor,
+        hlc=vault.document.clock.now().encode(),
+        details={
+            "content_hash": artifact.content_hash,
+            "shared_hash": shared_hash,
+            "stripped": stripped,
+        },
+        identity=vault.identity,
+    )
+    if include_originals:
+        (originals_dir / artifact.artifact_id).write_bytes(original_bytes)
+
+    token = vault.get_token(artifact.artifact_id)
+    return {
+        "record_kind": "artifact",
+        "capture_id": artifact.artifact_id,
+        "issue_id": artifact.issue_id,
+        "content_hash": artifact.content_hash,
+        "media_type": artifact.media_type,
+        "captured_at": artifact.occurred_at,
+        "shared_name": shared_name,
+        "shared_hash": shared_hash,
+        "stripped": stripped,
+        "poster_name": "",
+        "poster_hash": "",
+        "transcript": artifact.accessible_description,
+        "has_original": include_originals,
+        "timestamp": cast(JSONValue, token.to_dict()) if token is not None else None,
+        "archive_timestamps": cast(
+            JSONValue,
+            [token.to_dict() for token in vault.get_archive_tokens(artifact.artifact_id)],
+        ),
+        "additional_timestamps": cast(
+            JSONValue,
+            [token.to_dict() for token in vault.get_additional_tokens(artifact.artifact_id)],
+        ),
+        "sensor": None,
+        "artifact": cast(JSONValue, artifact.semantic_payload()),
+        "integrity": {
+            "algorithm": "sha256",
+            "commitment": artifact.commitment(),
+            "custody_action": "artifact_added",
+            "binding_stage": _extended_binding_stage(
+                vault,
+                artifact.artifact_id,
+                "artifact_commitment",
+                artifact.commitment(),
+                CustodyAction.ARTIFACT_ADDED,
+            ),
+        },
+    }
+
+
+def _relationship_json(
+    vault: Vault,
+    relationship: EvidenceRelationship,
+    opaque_hlc: Callable[[str], str],
+) -> dict[str, JSONValue]:
+    payload = relationship.semantic_payload()
+    payload["order_token"] = opaque_hlc(relationship.hlc)
+    payload["integrity"] = {
+        "algorithm": "sha256",
+        "commitment": relationship.commitment(),
+        "custody_action": "relationship_added",
+        "binding_stage": _extended_binding_stage(
+            vault,
+            relationship.relationship_id,
+            "relationship_commitment",
+            relationship.commitment(),
+            CustodyAction.RELATIONSHIP_ADDED,
+        ),
+    }
+    return payload
+
+
+def _extended_binding_stage(
+    vault: Vault,
+    item_id: str,
+    detail_key: str,
+    commitment: str,
+    action: CustodyAction,
+) -> str:
+    for entry in reversed(vault.custody.entries):
+        if (
+            entry.action == action
+            and entry.item_id == item_id
+            and entry.details.get(detail_key) == commitment
+        ):
+            return entry.details.get("stage", "recorded")
+    return ""
+
+
+def _ensure_extended_custody(vault: Vault) -> None:
+    """Backfill explicit semantic bindings for legacy/imported workflow records."""
+    actor = vault.identity.public().fingerprint
+    for artifact in vault.document.artifacts():
+        commitment = artifact.commitment()
+        if _extended_binding_stage(
+            vault,
+            artifact.artifact_id,
+            "artifact_commitment",
+            commitment,
+            CustodyAction.ARTIFACT_ADDED,
+        ):
+            continue
+        vault.custody.append(
+            CustodyAction.ARTIFACT_ADDED,
+            artifact.artifact_id,
+            actor=actor,
+            hlc=vault.document.clock.now().encode(),
+            details={"artifact_commitment": commitment, "stage": "import_binding"},
+            identity=vault.identity,
+        )
+    for relationship in vault.document.relationships():
+        commitment = relationship.commitment()
+        if _extended_binding_stage(
+            vault,
+            relationship.relationship_id,
+            "relationship_commitment",
+            commitment,
+            CustodyAction.RELATIONSHIP_ADDED,
+        ):
+            continue
+        vault.custody.append(
+            CustodyAction.RELATIONSHIP_ADDED,
+            relationship.relationship_id,
+            actor=actor,
+            hlc=vault.document.clock.now().encode(),
+            details={"relationship_commitment": commitment, "stage": "import_binding"},
+            identity=vault.identity,
+        )
 
 
 def _select_issues(vault: Vault, issue_id: str | None) -> list[Issue]:
