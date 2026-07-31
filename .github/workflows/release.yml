@@ -2,13 +2,12 @@
 name: release
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to (re)build and attest"
+        description: "Existing signed stable SemVer tag (vX.Y.Z)"
         required: true
+        type: string
 
 permissions:
   contents: read
@@ -21,18 +20,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: build · SBOM · provenance · publish
+  verify-build:
+    name: verify signed tag · build exact artifacts
     runs-on: ubuntu-latest
     outputs:
       release_commit: ${{ steps.tag.outputs.commit }}
       release_tag: ${{ steps.tag.outputs.tag }}
-    # P3 (CICD-04): write grants scoped to the job, not the whole workflow —
-    # rewards a tighter blast radius (OpenSSF Scorecard Token-Permissions check).
+      tag_object_sha: ${{ steps.tag.outputs.tag_object_sha }}
     permissions:
-      contents: write # create/edit the GitHub release
-      id-token: write # sigstore signing for provenance
-      attestations: write # build-provenance attestations
+      contents: read
     steps:
       # P1-3 (SEC-04): audit-mode egress monitoring; see ci.yml's Harden Runner
       # step for the telemetry trade-off note. Flip to `block` + an explicit
@@ -45,6 +41,7 @@ jobs:
       - name: Checkout (full history + tags — needed to verify the tag signature)
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          ref: main
           fetch-depth: 0
           persist-credentials: false
 
@@ -54,35 +51,40 @@ jobs:
           # Bind the (potentially attacker-influenceable, on a workflow_dispatch
           # input) values to an env var rather than expanding `${{ }}` directly
           # into the shell command — avoids template-injection (zizmor High).
-          INPUT_TAG: ${{ github.event.inputs.tag }}
-          REF_NAME: ${{ github.ref_name }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          TAG="${INPUT_TAG:-$REF_NAME}"
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.+-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::Release tag '$TAG' is not a supported vX.Y.Z tag."
+          set -euo pipefail
+          TAG="${INPUT_TAG}"
+          test "${GITHUB_REF}" = refs/heads/main
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(git rev-parse origin/main)" = "${GITHUB_SHA}"
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Release tag '$TAG' is not a stable vX.Y.Z tag."
+            exit 1
+          fi
+          if [ "$(git cat-file -t "refs/tags/${TAG}")" != tag ]; then
+            echo "::error::Release tag '$TAG' must be an annotated tag object."
             exit 1
           fi
           if ! TAG_COMMIT="$(git rev-parse --verify --end-of-options "${TAG}^{commit}")"; then
             echo "::error::Release tag '$TAG' does not resolve to a commit."
             exit 1
           fi
-          DEFAULT_REF="refs/remotes/origin/$DEFAULT_BRANCH"
-          if ! git show-ref --verify --quiet "$DEFAULT_REF"; then
-            echo "::error::Fetched default branch ref '$DEFAULT_REF' is unavailable."
-            exit 1
-          fi
-          if ! git merge-base --is-ancestor "$TAG_COMMIT" "$DEFAULT_REF"; then
+          if ! git merge-base --is-ancestor "$TAG_COMMIT" origin/main; then
             echo "::error::Release tag '$TAG' is not on the reviewed default-branch history."
             exit 1
           fi
+          TAG_OBJECT_SHA="$(git rev-parse "refs/tags/${TAG}")"
           git checkout --detach "$TAG_COMMIT"
           if [ "$(git rev-parse HEAD)" != "$TAG_COMMIT" ]; then
             echo "::error::Checked-out HEAD does not match release tag '$TAG'."
             exit 1
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "commit=$TAG_COMMIT" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=$TAG"
+            echo "commit=$TAG_COMMIT"
+            echo "tag_object_sha=$TAG_OBJECT_SHA"
+          } >> "$GITHUB_OUTPUT"
           echo "Building exact tag commit $TAG_COMMIT."
 
       # --- REL-02/03/08: release identity guard ---------------------------------
@@ -102,8 +104,8 @@ jobs:
         env:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          if ! git tag -v -- "$TAG" 2>/tmp/tag-verify.log; then
-            echo "::error::Tag '$TAG' is not a valid signed tag (git tag -v failed)."
+          if ! git verify-tag -- "$TAG" 2>/tmp/tag-verify.log; then
+            echo "::error::Tag '$TAG' is not a valid signed tag (git verify-tag failed)."
             echo "::error::habitable requires signed release tags (REL-08). See docs/releasing.md."
             cat /tmp/tag-verify.log
             exit 1
@@ -146,11 +148,7 @@ jobs:
         run: |
           uv sync --frozen --no-dev
           uvx cyclonedx-py environment .venv > dist/sbom.cdx.json
-      - name: Attest build provenance (signed via Sigstore)
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
-        with:
-          subject-path: "dist/*.whl,dist/*.tar.gz"
-      - name: Hand the exact attested distributions to the PyPI job
+      - name: Hand the exact verified distributions to the PyPI job
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pypi-distributions
@@ -159,17 +157,65 @@ jobs:
             dist/*.tar.gz
           if-no-files-found: error
           retention-days: 7
-      - name: Publish artifacts to the GitHub release
+
+      - name: Hand the exact verified release assets to the checkout-free publisher
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-assets
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-release:
+    name: attest · recheck tag object · publish without checkout
+    needs: verify-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Harden Runner (audit mode)
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+
+      - name: Download only the verified release assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-assets
+          path: dist
+
+      - name: Recheck the immutable tag object before granting publication
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.tag.outputs.tag }}
+          TAG: ${{ needs.verify-build.outputs.release_tag }}
+          TAG_OBJECT_SHA: ${{ needs.verify-build.outputs.tag_object_sha }}
         run: |
+          set -euo pipefail
+          LIVE_TAG_OBJECT="$(
+            gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --jq .object.sha
+          )"
+          test "${LIVE_TAG_OBJECT}" = "${TAG_OBJECT_SHA}"
+
+      - name: Attest the exact downloaded distributions
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: "dist/*.whl,dist/*.tar.gz"
+
+      - name: Publish assets to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.verify-build.outputs.release_tag }}
+        run: |
+          set -euo pipefail
           gh release view "$TAG" >/dev/null 2>&1 \
-            || gh release create "$TAG" --title "habitable $TAG" --generate-notes
+            || gh release create "$TAG" --verify-tag --title "habitable $TAG" --generate-notes
           gh release upload "$TAG" dist/* --clobber
+
   pypi-publish:
     name: publish to PyPI (Trusted Publishing)
-    needs: release
+    needs: [verify-build, publish-release]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -189,8 +235,8 @@ jobs:
           path: dist
       - name: Guard the transferred distribution set
         env:
-          RELEASE_COMMIT: ${{ needs.release.outputs.release_commit }}
-          RELEASE_TAG: ${{ needs.release.outputs.release_tag }}
+          RELEASE_COMMIT: ${{ needs.verify-build.outputs.release_commit }}
+          RELEASE_TAG: ${{ needs.verify-build.outputs.release_tag }}
         run: |
           mapfile -t WHEELS < <(find dist -maxdepth 1 -type f -name '*.whl' -print)
           mapfile -t SDISTS < <(find dist -maxdepth 1 -type f -name '*.tar.gz' -print)
