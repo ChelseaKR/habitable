@@ -7,7 +7,50 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+### Changed
+
+- Moved the five-minute synthetic quickstart into the README’s visitor-facing
+  opening so the first useful command is visible without traversing product
+  internals.
+- Split releases into a read-only trusted-main verification/build job, a
+  checkout-free GitHub publication job that rechecks the exact annotated-tag
+  object, and the existing isolated PyPI Trusted Publishing job. Releases are
+  now explicitly dispatched from `main` for an existing signed stable tag.
+- Rebuilt the local app, public Unit 4B example, and review surfaces around the
+  condition-first **Repair Trail**. The interface now keeps Reported and Secured
+  dates distinct, separates tenant statements from checkable proof, moves entry
+  creation into focused dialogs, and makes the tenant-copy/review-copy boundary
+  explicit in words as well as color.
+- Refreshed screenshots, support-page descriptions, setup guidance, accessibility
+  test protocols, and the capability ledger to match the Repair Trail workflow.
+  Dated research and execution documents now identify themselves as historical
+  snapshots and defer current claims to the capability ledger.
+
+## [0.3.0] — 2026-07-23
+
 ### Added
+
+- **Roadmap drain and novel-use-case implementation plan.** A dated execution
+  register reconciles the strategic/research roadmaps, current-main tests, and
+  live GitHub queue into shipped, externally blocked, and protocol/research-
+  blocked outcomes with named triggers and completion artifacts. A companion
+  Now/Next/Later plan scores ten application-fit use cases and specifies the
+  shared profile, artifact, relationship, handoff, aggregation, migration,
+  accessibility, privacy, and verification work needed to build them without
+  broadening into a cloud evidence platform.
+
+- **Profile-driven evidence workflows / packet v4.** Ten housing-specific
+  workflows now share versioned bilingual profiles, sealed/timestamped document
+  artifacts, explicit custody-bound evidence relationships, accessible signed
+  handoff manifests, encrypted peer-sync support, standalone v4 verification,
+  CLI and localhost-app creation paths, a fixed consented/no-heat weekly
+  aggregate with household suppression, and a signed partner evidence capsule
+  adapter. Review-dependent inspector, accommodation, public-housing, health,
+  building-pattern, and partner workflows remain visibly marked
+  `external_review_required`; implementation is not represented as domain
+  approval. Packet v1–v3 golden compatibility remains executable. See
+  [`docs/migrations/packet-v4-workflows.md`](docs/migrations/packet-v4-workflows.md)
+  and [`docs/adr/0010-profile-driven-evidence-workflows.md`](docs/adr/0010-profile-driven-evidence-workflows.md).
 
 - **Bounded public review hub.** `/review/` now routes tenant organizers, legal-aid
   reviewers, accessibility testers, and security/verifier reviewers into four
@@ -122,6 +165,11 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   direct fault classification, and repeated real TCP RSTs.
 
 ### Changed
+
+- The local app's last jargon-heavy timestamp recovery action now says “Add
+  missing timestamp tokens” / “Agregar sellos de tiempo faltantes”; English uses
+  an action-first result and Spanish consistently uses *sello de tiempo*. EN/ES
+  parity and a dedicated terminology regression test guard the wording.
 
 - **Distinctive tenant-evidence identity and custom domain.** The public site and
   installable app now share a structural H-frame/evidence-seal mark, self-hosted civic
@@ -520,5 +568,7 @@ installable PWA covers mobile today) remain — see the ACR and the build plan.
   with property-based and tamper-detection tests (`make verify` green, ~85%
   coverage); SHA-pinned GitHub Actions, CodeQL, Dependabot, `pip-audit`.
 
-[Unreleased]: https://github.com/ChelseaKR/habitable/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ChelseaKR/habitable/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/ChelseaKR/habitable/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/ChelseaKR/habitable/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ChelseaKR/habitable/releases/tag/v0.1.0

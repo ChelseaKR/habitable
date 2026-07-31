@@ -105,7 +105,7 @@ def test_public_sample_exports_only_opaque_ids_and_sanitized_media() -> None:
 
     assert not (_SAMPLE / "originals").exists()
     disclosures = cast(list[str], bundle["disclosures"])
-    assert "location stripped from shared copies" in disclosures
+    assert "all embedded metadata stripped from supported shared media" in disclosures
     assert "custody identities not exported" in disclosures
     for item in cast(list[dict[str, JSONValue]], bundle["items"]):
         assert item["has_original"] is False

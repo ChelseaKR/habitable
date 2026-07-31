@@ -43,12 +43,15 @@ in [`docs/accessibility/ACR.md`](../accessibility/ACR.md). The scope below mirro
    appendix; the appendix table announces its column headers with each cell; every evidence
    image has a meaningful text alternative or an adjacent real-text caption; evidence status
    is announced **in words**, never by colour alone.
-2. **The local web app** — `uv run habitable app --vault <demo-vault>`. Walk the full flow:
-   add an issue → capture a (synthetic) photo → add a timeline entry → resolve timestamps →
-   export → read the result. Confirm: a **skip link** on first Tab to `<main>`; labelled
-   controls with required state announced; the resolve button announces its
-   `aria-describedby` help; results and errors arrive via the polite live region; the
-   language toggle is reachable and operable.
+2. **The local web app** — `uv run habitable app --vault <demo-vault>`. Walk the
+   condition-first flow: choose or add a condition → add a synthetic Photo, What happened
+   entry, and Document → compare Reported and Secured dates → open Check this entry → add
+   What happened next? → resolve timestamps → Prepare a copy → create and read the review
+   copy. Confirm: a **skip link** on first Tab to `<main>`; labelled controls with required
+   state announced; entry dialogs trap focus while open and return it to their opener;
+   tenant statements remain distinct from checkable proof; status and tenant/review-copy
+   boundaries are expressed in words, not color alone; results and errors arrive via the
+   polite live region; and the language toggle is reachable and operable.
 
 **AT matrix (2 artifacts × 2 ATs × 2 languages):**
 

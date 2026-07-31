@@ -35,7 +35,8 @@ or maintenance stops.
 - **Maintainer-led** today, with [`governance.md`](governance.md) committing to share authority
   as sustained contributors arrive.
 - **`make verify` is the merge and release gate** (ruff, mypy --strict, full tests incl.
-  tamper-detection and CRDT-convergence, ~85% coverage); accessibility is a merge-blocking CI
+  tamper-detection and CRDT-convergence, plus enforced application and protected-core
+  coverage floors); accessibility is a merge-blocking CI
   gate. Quality does not depend on remembering to check — red does not merge or release.
 
 ## 3. Dependencies & security upkeep

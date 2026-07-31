@@ -64,7 +64,79 @@ _MAX_REFERENCED_FILE_BYTES = 1024 * 1024 * 1024
 # from 1..SUPPORTED_PACKET_VERSION still verifies (guarded by the golden-packet
 # corpus in tests/), and a newer-than-supported packet is rejected with a clear,
 # non-crashing error rather than mis-verified.
-SUPPORTED_PACKET_VERSION = 3
+SUPPORTED_PACKET_VERSION = 4
+
+_ARTIFACT_TYPES = {
+    "repair_request",
+    "delivery_receipt",
+    "landlord_response",
+    "inspection_report",
+    "utility_notice",
+    "accommodation_request",
+    "supporting_letter",
+    "clinician_letter",
+    "expense_receipt",
+    "relocation_record",
+    "partner_export",
+    "other_document",
+}
+_RELATIONSHIP_TYPES = {
+    "documents_condition",
+    "sent_via",
+    "delivery_receipt_for",
+    "response_to",
+    "before_of",
+    "after_of",
+    "inspection_finding_for",
+    "repair_claim_for",
+    "expense_caused_by",
+    "supports",
+}
+_RELATIONSHIP_ENDPOINT_KINDS = {
+    "documents_condition": {
+        ("capture", "issue"),
+        ("artifact", "issue"),
+        ("timeline", "issue"),
+    },
+    "sent_via": {("artifact", "artifact"), ("timeline", "timeline")},
+    "delivery_receipt_for": {
+        ("artifact", "artifact"),
+        ("artifact", "timeline"),
+        ("timeline", "artifact"),
+        ("timeline", "timeline"),
+    },
+    "response_to": {
+        ("artifact", "artifact"),
+        ("artifact", "timeline"),
+        ("timeline", "artifact"),
+        ("timeline", "timeline"),
+    },
+    "before_of": {("capture", "capture")},
+    "after_of": {("capture", "capture")},
+    "inspection_finding_for": {
+        ("artifact", "issue"),
+        ("artifact", "capture"),
+        ("timeline", "issue"),
+        ("timeline", "capture"),
+    },
+    "repair_claim_for": {
+        ("artifact", "issue"),
+        ("artifact", "capture"),
+        ("timeline", "issue"),
+        ("timeline", "capture"),
+    },
+    "expense_caused_by": {
+        ("artifact", "issue"),
+        ("artifact", "artifact"),
+        ("artifact", "capture"),
+        ("artifact", "timeline"),
+    },
+    "supports": {
+        (source, target)
+        for source in ("capture", "artifact", "timeline")
+        for target in ("issue", "capture", "artifact", "timeline")
+    },
+}
 
 # Referenced by name (not an inline `except (...)`) so the formatter cannot rewrite it
 # to the parenthesis-free PEP 758 form, a SyntaxError on Python < 3.14. verify.py is
@@ -382,8 +454,10 @@ def verify_packet(
             )
         )
 
-    if bundle.get("packet_version") == 3:
+    if bundle.get("packet_version") in {3, 4}:
         problems.extend(_verify_v3_timeline(bundle, custody))
+    if bundle.get("packet_version") == 4:
+        problems.extend(_verify_v4_workflows(bundle, custody))
 
     return VerificationReport(
         packet_dir=packet_dir,
@@ -801,6 +875,279 @@ def _verify_v3_timeline(bundle: Mapping[str, JSONValue], custody: CustodyLog) ->
             for message in _verify_v3_links(raw, event_by_id, items_by_id)
         )
     return problems
+
+
+def _verify_v4_workflows(  # noqa: C901 -- ordered fail-closed checks remain linear
+    bundle: Mapping[str, JSONValue], custody: CustodyLog
+) -> list[str]:
+    """Verify packet-v4 artifact, relationship, profile, and handoff structures."""
+    problems: list[str] = []
+    raw_items = _v3_array(bundle, "items", problems)
+    raw_relationships = _v3_array(bundle, "relationships", problems)
+    appendix = _v3_object(bundle, "appendix", problems)
+    issues = {
+        _s(raw, "issue_id")
+        for raw in _v3_array(bundle, "issues", problems)
+        if isinstance(raw, dict)
+    }
+    endpoints: dict[str, tuple[str, str]] = {
+        issue_id: (issue_id, "issue") for issue_id in issues if issue_id
+    }
+    for raw in _v3_array(bundle, "timeline", problems):
+        if isinstance(raw, dict):
+            endpoints[_s(raw, "entry_id")] = (_s(raw, "issue_id"), "timeline")
+
+    artifact_count = 0
+    for raw in raw_items:
+        if not isinstance(raw, dict):
+            continue
+        item_id = _s(raw, "capture_id")
+        kind = _s(raw, "record_kind")
+        if kind not in {"capture", "artifact"}:
+            problems.append(f"item {item_id or '<missing>'}: record_kind is invalid")
+            continue
+        endpoints[item_id] = (_s(raw, "issue_id"), kind)
+        if kind == "artifact":
+            artifact_count += 1
+            problems.extend(
+                f"artifact {item_id or '<missing>'}: {message}"
+                for message in _verify_v4_artifact(raw, custody)
+            )
+
+    if appendix.get("artifact_count") != artifact_count:
+        problems.append("appendix.artifact_count does not match artifact items")
+    if appendix.get("relationship_count") != len(raw_relationships):
+        problems.append("appendix.relationship_count does not match relationships")
+
+    graphs: dict[str, dict[str, set[str]]] = {}
+    seen_relationships: set[str] = set()
+    for raw in raw_relationships:
+        if not isinstance(raw, dict):
+            problems.append("malformed packet-v4 relationship")
+            continue
+        relationship_id = _s(raw, "relationship_id") or "<missing>"
+        if relationship_id in seen_relationships:
+            problems.append(f"relationship {relationship_id}: duplicate relationship_id")
+        seen_relationships.add(relationship_id)
+        messages = _verify_v4_relationship(raw, custody, endpoints)
+        problems.extend(f"relationship {relationship_id}: {message}" for message in messages)
+        relationship_type = _s(raw, "relationship_type")
+        graphs.setdefault(relationship_type, {}).setdefault(_s(raw, "source_id"), set()).add(
+            _s(raw, "target_id")
+        )
+    for relationship_type, graph in graphs.items():
+        if _graph_has_cycle(graph):
+            problems.append(f"{relationship_type} relationship graph contains a cycle")
+
+    problems.extend(_verify_v4_profile_and_handoffs(bundle))
+    return problems
+
+
+def _verify_v4_artifact(  # noqa: C901 -- all signed fields are checked explicitly
+    item: Mapping[str, JSONValue], custody: CustodyLog
+) -> list[str]:
+    problems: list[str] = []
+    artifact = _map(item, "artifact")
+    item_id = _s(item, "capture_id")
+    if artifact.get("artifact_schema") != 1:
+        problems.append("artifact_schema must be 1")
+    if _s(artifact, "artifact_id") != item_id:
+        problems.append("artifact_id does not match the item id")
+    if _s(artifact, "issue_id") != _s(item, "issue_id"):
+        problems.append("artifact issue_id does not match the item")
+    if _s(artifact, "content_hash") != _s(item, "content_hash"):
+        problems.append("artifact content_hash does not match the item")
+    if _s(artifact, "media_type") != _s(item, "media_type"):
+        problems.append("artifact media_type does not match the item")
+    if _s(artifact, "artifact_type") not in _ARTIFACT_TYPES:
+        problems.append("unknown artifact_type")
+    for key in ("title", "source", "occurred_at", "recorded_at"):
+        if not _s(artifact, key).strip():
+            problems.append(f"{key} must not be empty")
+
+    semantic = {
+        key: artifact.get(key)
+        for key in (
+            "artifact_schema",
+            "artifact_id",
+            "issue_id",
+            "artifact_type",
+            "title",
+            "source",
+            "issuer",
+            "occurred_at",
+            "recorded_at",
+            "content_hash",
+            "media_type",
+            "accessible_description",
+        )
+    }
+    expected = sha256_bytes(canonical_json(semantic))
+    integrity = _map(item, "integrity")
+    stage = _s(integrity, "binding_stage")
+    if integrity.get("algorithm") != "sha256":
+        problems.append("integrity.algorithm must be sha256")
+    if integrity.get("custody_action") != "artifact_added":
+        problems.append("integrity.custody_action must be artifact_added")
+    if _s(integrity, "commitment") != expected:
+        problems.append("artifact commitment does not match the signed fields")
+    if stage not in {"semantic_binding", "recorded", "import_binding"}:
+        problems.append("artifact binding_stage is invalid")
+    if not any(
+        entry.action == "artifact_added"
+        and entry.item_id == item_id
+        and entry.details.get("artifact_commitment") == expected
+        and entry.details.get("stage", "recorded") == stage
+        for entry in custody.entries
+    ):
+        problems.append("no custody entry binds this artifact commitment")
+    return problems
+
+
+def _verify_v4_relationship(  # noqa: C901 -- shape, graph, and custody checks are explicit
+    relationship: Mapping[str, JSONValue],
+    custody: CustodyLog,
+    endpoints: Mapping[str, tuple[str, str]],
+) -> list[str]:
+    problems: list[str] = []
+    relationship_id = _s(relationship, "relationship_id")
+    relationship_type = _s(relationship, "relationship_type")
+    source_id = _s(relationship, "source_id")
+    target_id = _s(relationship, "target_id")
+    issue_id = _s(relationship, "issue_id")
+    if relationship.get("relationship_schema") != 1:
+        problems.append("relationship_schema must be 1")
+    if relationship_type not in _RELATIONSHIP_TYPES:
+        problems.append("unknown relationship_type")
+    if not relationship_id or not issue_id or not source_id or not target_id:
+        problems.append("relationship identifiers must not be empty")
+    if source_id == target_id:
+        problems.append("source_id and target_id must differ")
+    source = endpoints.get(source_id)
+    target = endpoints.get(target_id)
+    if source is None or target is None:
+        problems.append("relationship points to a missing endpoint")
+    elif source[0] != issue_id or target[0] != issue_id:
+        problems.append("relationship endpoints must belong to its issue")
+    if (
+        relationship_type in _RELATIONSHIP_ENDPOINT_KINDS
+        and source is not None
+        and target is not None
+        and (source[1], target[1]) not in _RELATIONSHIP_ENDPOINT_KINDS[relationship_type]
+    ):
+        problems.append("relationship endpoint types are invalid")
+
+    semantic = {
+        key: relationship.get(key)
+        for key in (
+            "relationship_schema",
+            "relationship_id",
+            "issue_id",
+            "relationship_type",
+            "source_id",
+            "target_id",
+            "assertion",
+            "recorded_at",
+        )
+    }
+    expected = sha256_bytes(canonical_json(semantic))
+    integrity = _map(relationship, "integrity")
+    stage = _s(integrity, "binding_stage")
+    if integrity.get("algorithm") != "sha256":
+        problems.append("integrity.algorithm must be sha256")
+    if integrity.get("custody_action") != "relationship_added":
+        problems.append("integrity.custody_action must be relationship_added")
+    if _s(integrity, "commitment") != expected:
+        problems.append("relationship commitment does not match the signed fields")
+    if stage not in {"recorded", "import_binding"}:
+        problems.append("relationship binding_stage is invalid")
+    if not any(
+        entry.action == "relationship_added"
+        and entry.item_id == relationship_id
+        and entry.details.get("relationship_commitment") == expected
+        and entry.details.get("stage", "recorded") == stage
+        for entry in custody.entries
+    ):
+        problems.append("no custody entry binds this relationship commitment")
+    return problems
+
+
+def _verify_v4_profile_and_handoffs(  # noqa: C901 -- small signed manifest audit
+    bundle: Mapping[str, JSONValue],
+) -> list[str]:
+    problems: list[str] = []
+    raw_profile = bundle.get("use_case_profile")
+    if raw_profile is not None and not isinstance(raw_profile, dict):
+        problems.append("use_case_profile must be an object or null")
+    if isinstance(raw_profile, dict):
+        if raw_profile.get("profile_schema") != 1:
+            problems.append("use_case_profile.profile_schema must be 1")
+        review_state = _s(raw_profile, "review_state")
+        external = raw_profile.get("external_review_required")
+        if review_state not in {"maintainer_reviewed", "external_review_required"}:
+            problems.append("use_case_profile.review_state is invalid")
+        if external is not (review_state == "external_review_required"):
+            problems.append("use_case_profile external-review flag is inconsistent")
+
+    handoffs = bundle.get("handoff_views")
+    if not isinstance(handoffs, list):
+        return [*problems, "handoff_views must be an array"]
+    if raw_profile is None and handoffs:
+        problems.append("handoff_views require a use_case_profile")
+    bundle_disclosures = bundle.get("disclosures")
+    required_disclosures = (
+        {value for value in bundle_disclosures if isinstance(value, str)}
+        if isinstance(bundle_disclosures, list)
+        else set()
+    )
+    if isinstance(raw_profile, dict):
+        profile_disclosures = raw_profile.get("disclosures")
+        if isinstance(profile_disclosures, list):
+            required_disclosures.update(
+                value for value in profile_disclosures if isinstance(value, str)
+            )
+    for index, handoff in enumerate(handoffs):
+        if not isinstance(handoff, dict):
+            problems.append(f"handoff_views[{index}] must be an object")
+            continue
+        if handoff.get("presentation_only") is not True:
+            problems.append(f"handoff_views[{index}] must be presentation_only")
+        if handoff.get("source_of_truth") != "bundle.json":
+            problems.append(f"handoff_views[{index}] source_of_truth must be bundle.json")
+        if isinstance(raw_profile, dict) and _s(handoff, "profile_id") != _s(
+            raw_profile, "profile_id"
+        ):
+            problems.append(f"handoff_views[{index}] profile_id does not match")
+        if isinstance(raw_profile, dict) and handoff.get("profile") != raw_profile:
+            problems.append(f"handoff_views[{index}] profile snapshot does not match")
+        handoff_disclosures = handoff.get("disclosures")
+        disclosed = (
+            {value for value in handoff_disclosures if isinstance(value, str)}
+            if isinstance(handoff_disclosures, list)
+            else set()
+        )
+        if not required_disclosures.issubset(disclosed):
+            problems.append(f"handoff_views[{index}] suppresses required disclosures")
+    return problems
+
+
+def _graph_has_cycle(graph: Mapping[str, set[str]]) -> bool:
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(node: str) -> bool:
+        if node in visiting:
+            return True
+        if node in visited:
+            return False
+        visiting.add(node)
+        if any(visit(target) for target in graph.get(node, ())):
+            return True
+        visiting.remove(node)
+        visited.add(node)
+        return False
+
+    return any(visit(node) for node in graph)
 
 
 def _v3_array(bundle: Mapping[str, JSONValue], key: str, problems: list[str]) -> list[JSONValue]:

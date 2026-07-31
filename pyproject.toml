@@ -2,7 +2,7 @@
 # Copyright 2026 Chelsea Kelly-Reif
 [project]
 name = "habitable"
-version = "0.2.0"
+version = "0.3.0"
 description = "Court-ready, offline-first, end-to-end-encrypted habitability evidence for tenant unions."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -60,12 +60,12 @@ Issues = "https://github.com/ChelseaKR/habitable/issues"
 dev = [
     "pytest>=9.1.1",
     "pytest-cov>=5",
-    "hypothesis>=6.156.6",
+    "hypothesis>=6.163.0",
     "mypy>=2.3.0",
-    "ruff>=0.15.21",
+    "ruff>=0.16.0",
     "pip-audit>=2.7",
     "playwright>=1.61.0",
-    "axe-playwright-python>=0.1.7",
+    "axe-playwright-python>=0.1.8",
 ]
 
 [build-system]

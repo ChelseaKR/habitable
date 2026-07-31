@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import cast
 from urllib.parse import urlsplit
 
+from .artifact import add_relationship, capture_artifact
 from .capture import capture, resolve_deferred
 from .disclosure import proof_statement
 from .errors import HabitableError
@@ -39,6 +40,7 @@ from .packet import build_packet
 from .private_temp import private_temp_workspace
 from .strength import assess_issue
 from .tsa import DevTSA, TimestampAuthority
+from .usecases import get_profile, list_profiles
 from .vault import Vault
 from .verify import VerificationReport, verify_packet
 
@@ -73,7 +75,16 @@ _TIMELINE_ROUTE = re.compile(r"^/api/issues/([A-Za-z0-9_.-]+)/timeline$")
 # _route_label discipline so no issue id, static path, or query value ever reaches
 # the log stream.
 _API_ROUTES = frozenset(
-    {"/api/status", "/api/issues", "/api/capture", "/api/resolve", "/api/export"}
+    {
+        "/api/status",
+        "/api/issues",
+        "/api/capture",
+        "/api/artifacts",
+        "/api/relationships",
+        "/api/profile",
+        "/api/resolve",
+        "/api/export",
+    }
 )
 
 
@@ -124,7 +135,13 @@ class AppServer:
     def status(self) -> dict[str, object]:
         doc = self.vault.document
         captures = doc.captures()
-        timestamped = sum(1 for c in captures if self.vault.get_token(c.capture_id) is not None)
+        artifacts = doc.artifacts()
+        evidence_ids = [item.capture_id for item in captures] + [
+            item.artifact_id for item in artifacts
+        ]
+        timestamped = sum(
+            1 for item_id in evidence_ids if self.vault.get_token(item_id) is not None
+        )
         custody = self.vault.custody.verify()
         footprint = self.vault.storage_footprint()
         return {
@@ -133,6 +150,11 @@ class AppServer:
             "fingerprint": self.vault.identity.public().fingerprint,
             "issues": [self._issue(i.issue_id) for i in doc.issues()],
             "capture_count": len(captures),
+            "artifact_count": len(artifacts),
+            "evidence_count": len(evidence_ids),
+            "relationship_count": len(doc.relationships()),
+            "profile": doc.use_case_profile(),
+            "profiles": [profile.to_json() for profile in list_profiles()],
             "timestamped": timestamped,
             "deferred": len(self.vault.deferred()),
             "custody_ok": custody.ok,
@@ -161,6 +183,21 @@ class AppServer:
             "severity": issue.severity,
             "description": issue.description,
             "captures": len(doc.captures(issue_id)),
+            "artifacts": [
+                {
+                    **artifact.semantic_payload(),
+                    "timestamped": self.vault.get_token(artifact.artifact_id) is not None,
+                    "custody_entries": sum(
+                        1
+                        for entry in self.vault.custody.entries
+                        if entry.item_id == artifact.artifact_id
+                    ),
+                }
+                for artifact in doc.artifacts(issue_id)
+            ],
+            "relationships": [
+                relationship.semantic_payload() for relationship in doc.relationships(issue_id)
+            ],
             # The local app now renders an evidence atlas instead of flattening
             # captures into a count.  These are still read-only facts from the
             # already-unlocked, loopback-only vault; no media bytes or token bytes
@@ -289,6 +326,57 @@ class AppServer:
             "had_location": result.had_location,
         }
 
+    def add_artifact(self, body: dict[str, object]) -> dict[str, object]:
+        filename = _opt_str(body, "filename") or "document.bin"
+        try:
+            content = base64.b64decode(_req_str(body, "media_b64"), validate=True)
+        except ValueError as exc:
+            raise HabitableError("artifact upload is not valid base64") from exc
+        tsa = self.tsa
+        if _opt_bool(body, "dev_tsa"):
+            tsa = DevTSA("dev-tsa")
+        with private_temp_workspace(forbidden_root=self.vault.path) as workspace:
+            staged = workspace.write_bytes(content, suffix=Path(filename).suffix)
+            result = capture_artifact(
+                self.vault,
+                staged,
+                issue_id=_req_str(body, "issue_id"),
+                artifact_type=_req_str(body, "artifact_type"),
+                title=_req_str(body, "title"),
+                source_assertion=_req_str(body, "source"),
+                issuer=_opt_str(body, "issuer"),
+                occurred_at=_req_str(body, "occurred_at"),
+                accessible_description=_opt_str(body, "accessible_description"),
+                tsa=tsa,
+                extra_tsas=self.extra_tsas,
+                source_name=Path(filename).name,
+            )
+        return {
+            "artifact_id": result.artifact_id,
+            "content_hash": result.content_hash,
+            "timestamped": result.timestamped,
+        }
+
+    def add_relationship(self, body: dict[str, object]) -> dict[str, object]:
+        relationship_id = add_relationship(
+            self.vault,
+            issue_id=_req_str(body, "issue_id"),
+            relationship_type=_req_str(body, "relationship_type"),
+            source_id=_req_str(body, "source_id"),
+            target_id=_req_str(body, "target_id"),
+            assertion=_opt_str(body, "assertion"),
+        )
+        return {"relationship_id": relationship_id}
+
+    def set_profile(self, body: dict[str, object]) -> dict[str, object]:
+        profile = get_profile(_req_str(body, "profile_id"))
+        self.vault.document.set_use_case_profile(profile.profile_id)
+        self.vault.save()
+        return {
+            "profile": profile.to_json(),
+            "external_review_required": profile.external_review_required,
+        }
+
     def resolve(self) -> dict[str, object]:
         if self.tsa is None:
             raise HabitableError("no timestamp authority configured")
@@ -303,7 +391,11 @@ class AppServer:
         name = f"packet-{len(list(exports.iterdir())) + 1}"
         out = exports / name
         result = build_packet(
-            self.vault, out, issue_id=issue_id, include_originals=include_originals
+            self.vault,
+            out,
+            issue_id=issue_id,
+            include_originals=include_originals,
+            handoff_profile=_opt_str(body, "handoff_profile") or None,
         )
         report = verify_packet(out)
         # The same honest "what this proves / does not" statement the packet carries,
@@ -334,6 +426,7 @@ class AppServer:
             "evidence_ready": report.evidence_ready,
             "verification_status": report.status,
             "summary": report.summary(),
+            "handoff_paths": [str(path) for path in result.handoff_paths],
         }
 
 
@@ -366,6 +459,9 @@ def _awaiting_only(report: VerificationReport) -> bool:
 _POST_ROUTES: dict[str, Callable[[AppServer, dict[str, object]], dict[str, object]]] = {
     "/api/issues": lambda app, body: app.add_issue(body),
     "/api/capture": lambda app, body: app.capture(body),
+    "/api/artifacts": lambda app, body: app.add_artifact(body),
+    "/api/relationships": lambda app, body: app.add_relationship(body),
+    "/api/profile": lambda app, body: app.set_profile(body),
     "/api/resolve": lambda app, _body: app.resolve(),
     "/api/export": lambda app, body: app.export(body),
 }

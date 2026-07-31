@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # Plain-language & cognitive review — in-app copy + setup guide
 
-**Date:** 2026-07-02
+**Date:** 2026-07-02 (follow-up completed 2026-07-22)
 **Scope:** `app/i18n/en.json`, `app/i18n/es.json`, `docs/setup-guide.md`
 **Roadmap items:** R-41 (plain-language & cognitive review) / R-04 (human,
 non-lawyerly Spanish)
@@ -67,16 +67,12 @@ pass applies it to the in-app strings and the setup guide.
 - **De-lawyered** the tagline/description: `habitabilidad` → `vivienda`; dropped the
   stiff `evidencia de habitabilidad` calque; added the warm "en tu propio
   dispositivo."
-- **Partial terminology consistency fix:** the bundle mixes *sello de tiempo* and
-  *marca de tiempo* for "timestamp." Standardized on **`sello de tiempo`** (matches
-  the status grid and the packet) across `status_*`, `field_dev_tsa*`, `capture_*`,
-  and `export_timestamped`. `resolve_deferred` / `resolve_help` / `msg_resolved`
-  still say *marca de tiempo* — left alone on this pass because a concurrently
-  merged change already touched their English wording, and
-  `capture_awaiting_reassure` (guard-tested by
-  `test_awaiting_timestamp_copy_is_reassuring`) quotes `resolve_deferred`'s exact
-  text, EN and ES. Finishing the `resolve_*` terminology fix is tracked under *What
-  remains*.
+- **Terminology consistency completed 2026-07-22:** the bundle now uses
+  **`sello de tiempo`** consistently for "timestamp." The `resolve_*` values were
+  changed from implementation jargon to the action-first "Add missing timestamp
+  tokens" / "Agregar sellos de tiempo faltantes"; the quoted
+  `capture_awaiting_reassure` next step and its guard test changed in the same
+  patch.
 - `status_fingerprint`: `Huella del dispositivo` → **`ID del dispositivo`**;
   `capture_hash_label`: `Hash del contenido` → **`Huella del contenido`** (frees
   "huella" for the content digest, its natural plain metaphor).
@@ -116,11 +112,4 @@ This is a maintainer pass. It does **not** substitute for:
 5. **Text-expansion check at 320px** for the two new, longer help strings in both
    locales (the layout is tested to a 320px reflow; eyeball the Spanish, which runs
    longer).
-6. **Finishing the `resolve_*` terminology fix.** `resolve_deferred`, `resolve_help`,
-   and `msg_resolved` still say *marca de tiempo* / "resolve/awaiting" rather than
-   *sello de tiempo* / plain action-first wording. Changing them also requires
-   updating `capture_awaiting_reassure`'s quoted reference in both locales and the
-   guard test `test_awaiting_timestamp_copy_is_reassuring` (`tests/test_app_i18n.py`)
-   in the same change.
-
 Re-run this review whenever UI strings change; the string list above can grow.

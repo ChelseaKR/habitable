@@ -28,6 +28,27 @@ government system and not built for a government customer.
 See the current **[capability and claim ledger](docs/capabilities.md)** for the evidence behind each
 shipped, partial, planned, or externally unvalidated claim.
 
+## Try it
+
+Requires [uv](https://docs.astral.sh/uv/); the right Python (3.14) is fetched automatically.
+
+```console
+$ uv sync                 # create the env and install habitable + dev tools
+$ uv run habitable demo   # capture → seal+hash → RFC 3161 → packet → verify, on synthetic data, offline
+$ make verify             # the full gate: ruff + mypy --strict + pytest (property-based + tamper-detection)
+```
+
+`habitable demo` fabricates a couple of photos with embedded location, captures them as evidence,
+builds a packet (location stripped from the shared copies), and independently verifies it — with no
+network and no real tenant data. From there: `uv run habitable --help`.
+
+**Just want to look?** There is deliberately no hosted app (it runs on `localhost` so your case never
+leaves the device), but the static **[Unit 4B Repair Trail and live sample packet](https://habitable.chelseakr.com/)**
+show the workflow and what it produces using synthetic data. A safe phone package is **not shipped yet**; see the honest
+[`docs/mobile.md`](docs/mobile.md) support boundary. To run the optional sync relay, see
+[`docs/relay-deploy.md`](docs/relay-deploy.md); to sync a case with no network at all — an
+encrypted delta on a USB stick or SD card — see [`docs/sneakernet-sync.md`](docs/sneakernet-sync.md).
+
 **Supported versions:** pre-1.0, only the **latest release** is supported (see `SECURITY.md`).
 
 **Why this domain.** A tenant withholding rent or fighting an eviction over a broken heater needs
@@ -70,7 +91,7 @@ auditability, accessibility, and saying plainly what the tool does not do.
 - **Exports a court/inspector-organized review bundle.** One command assembles a paginated PDF,
   accessible HTML rendering, and structured `bundle.json` for a whole unit: a cover
   sheet, chronological evidence timeline, per-issue detail, and a chain-of-custody/integrity
-  summary. Issue/date-scoped packet exports currently fail closed because packet v3 can carry only
+  summary. Issue/date-scoped packet exports currently fail closed because packet v4 can carry only
   the complete custody chain. Technical integrity is independently checkable; legal, court, and
   inspector usefulness remain externally unvalidated.
 - **Shares with an organizer, end to end.** A tenant can hand a full case, optionally with the
@@ -97,34 +118,11 @@ are reported separately, but the command exits non-zero and does not call the pa
 Development timestamps are never evidence-ready. Technical readiness does not decide admissibility
 or any legal outcome.
 
----
-
-## Try it
-
-Requires [uv](https://docs.astral.sh/uv/); the right Python (3.14) is fetched automatically.
-
-```console
-$ uv sync                 # create the env and install habitable + dev tools
-$ uv run habitable demo   # capture → seal+hash → RFC 3161 → packet → verify, on synthetic data, offline
-$ make verify             # the full gate: ruff + mypy --strict + pytest (property-based + tamper-detection)
-```
-
-`habitable demo` fabricates a couple of photos with embedded location, captures them as evidence,
-builds a packet (location stripped from the shared copies), and independently verifies it — with no
-network and no real tenant data. From there: `uv run habitable --help`.
-
-**Just want to look?** There is deliberately no hosted app (it runs on `localhost` so your case never
-leaves the device), but a static **[landing page + live sample packet](https://habitable.chelseakr.com/)**
-shows what it produces. A safe phone package is **not shipped yet**; see the honest
-[`docs/mobile.md`](docs/mobile.md) support boundary. To run the optional sync relay, see
-[`docs/relay-deploy.md`](docs/relay-deploy.md); to sync a case with no network at all — an
-encrypted delta on a USB stick or SD card — see [`docs/sneakernet-sync.md`](docs/sneakernet-sync.md).
-
 ## Screenshots
 
 | The local app (English / Español) | An exported, verifiable packet |
 | --- | --- |
-| ![The habitable Evidence Atlas showing linked captures and timeline facts, case readiness, and recording tools](site/img/app-en.png) | ![An accessible habitability evidence packet with an issue, a captured photo, and an evidence appendix table](site/img/packet.png) |
+| ![The habitable Unit 4B repair trail showing reported and secured dates, follow-up actions, and the tenant-versus-review copy boundary](site/img/app-en.png) | ![An accessible habitability evidence packet with an issue, a captured photo, and an evidence appendix table](site/img/packet.png) |
 
 The app is bilingual (EN/ES) and has automated axe, keyboard, and reflow coverage; a human
 screen-reader pass remains open. Every export ships an axe-tested `packet.html`, a paginated PDF,
@@ -294,8 +292,8 @@ review and pilot must determine whether the packet contains what a court or insp
 **Confidentiality** and **securability** — end-to-end encryption at rest and in sync; the relay and the
 timestamp authority see ciphertext or a bare hash, never contents; no analytics, no telemetry.
 **Integrity** (supply chain) — pinned, hashed dependencies; Sigstore-signed build-provenance
-attestations per release (signed release **tags** are in progress — see `docs/releasing.md`);
-GitHub Actions pinned to commit SHAs.
+attestations per release; signed release **tags** verified against the committed maintainer
+public key; GitHub Actions pinned to commit SHAs.
 **Vulnerability** management — pip-audit, gitleaks, and CodeQL in CI; a published threat model and
 SECURITY policy with a disclosure path. **Accountability** — append-only custody logs and committed
 `docs/audits/` record who did what to the data, while no outside party can read the data itself.
@@ -430,10 +428,11 @@ to also makes the packets and the app usable to the legal-aid workers and inspec
 
 ## Build plan
 
-Phases 1–3 are **implemented** at the library + CLI level and covered by tests; Phase 4 (the
-installable end-user app and localization) is the remaining work. For the strategic, multi-year
-view beyond these phases — assurance, accessibility, platform, governance, and the v1.0 gate —
-see **[`ROADMAP.md`](ROADMAP.md)**.
+All four phases have implemented code and automated coverage. The remaining work
+is concentrated in independent human/domain validation, PDF/UA, and signed native
+packaging—not another unbuilt application phase. For the strategic, multi-year view
+beyond these phases—assurance, accessibility, platform, governance, and the v1.0
+gate—see **[`ROADMAP.md`](ROADMAP.md)**.
 
 - **Phase 1 — capture and evidence core.** ✅ Media capture, content hashing, sealed originals, the
   append-only custody log, and explicit EXIF handling. Local encrypted storage. Definition of done: an
@@ -444,9 +443,12 @@ see **[`ROADMAP.md`](ROADMAP.md)**.
 - **Phase 3 — local-first sync.** ✅ The CRDT case model, end-to-end-encrypted peer-to-peer sync, the
   optional ciphertext-only relay, and encrypted backup with key rotation. Concurrent-offline-edit
   convergence tested (property-based).
-- **Phase 4 — app accessibility automation and generalization.** Partially done: a bilingual (EN/ES)
-  web app (`habitable app`) gated by **axe-core** scans plus structural + i18n-parity
-  tests (✅); an **installable PWA** with PNG/maskable icons, Apple touch icon, and an offline service
+- **Phase 4 — app accessibility automation and generalization.** Implemented with
+  external validation and packaging gaps: a bilingual (EN/ES) condition-first
+  **Repair Trail** (`habitable app`) with separate Reported/Secured dates, evidence
+  folds, entry dialogs, follow-up actions, and an explicit copy boundary, gated by
+  **axe-core** scans plus structural, keyboard, reflow, and i18n-parity tests (✅);
+  an **installable PWA** with PNG/maskable icons, Apple touch icon, and an offline service
   worker (✅, see `docs/mobile.md`); an **accessible `packet.html`** rendering that passes the same axe
   gate, alongside a PDF that declares its language and carries a navigable outline (✅); configurable
   packet templates (✅), the threat-model doc (✅), the setup guide (✅), and a documented manual
@@ -476,7 +478,7 @@ with open gaps named rather than hidden.
 | 2 | Code quality | Applies (Python; TS/Node/frontend-toolchain controls are N/A — the PWA is no-build vanilla JS with no `package.json`) | `pyproject.toml` (ruff + mypy --strict config); `.pre-commit-config.yaml` |
 | 3 | Security & Supply-Chain | Applies (ships code, releases, and a Dockerfile for the relay) | `SECURITY.md`; `.github/workflows/ci.yml` (gitleaks), `secret-scan-scheduled.yml` (TruffleHog), `codeql.yml`, `zizmor.yml`; `docs/audits/scorecard-2026-07.md` |
 | 4 | CI/CD | Applies (workflows under `.github/workflows/`) | This README's build/verify description; `.github/rulesets/` (active PR/current-check protection on `main` plus active `v*` release-tag protection; zero approvals is an explicit solo-maintainer waiver in ADR 0006) |
-| 5 | Release & versioning | Applies (tagged GitHub Releases) | `docs/releasing.md`; `ROADMAP.md` §Releases & versioning; **gap:** signed release tags not yet in place (tracked there) |
+| 5 | Release & versioning | Applies (tagged GitHub Releases) | `docs/releasing.md`; `ROADMAP.md` §Releases & versioning; signed-tag protection and CI verification are active; PyPI Trusted Publishing still requires the documented registry/environment setup |
 | 6 | Accessibility | Applies (emits HTML: the PWA in `app/`, `packet.html`, the `site/` landing page) | [Accessibility and Section 508 conformance](#accessibility-and-section-508-conformance) below; `docs/accessibility/ACR.md`; **gap:** recorded human screen-reader pass still open, tracked as a v1.0 gate item in `ROADMAP.md` |
 | 7 | Observability | Applies (Tier A for the optional relay, Tier C for the CLI; the no-telemetry principle drives excluded controls) | `ROADMAP.md` §Observability |
 | 8 | Internationalization | Applies (bilingual EN/ES civic surface) | `docs/I18N.md` ("i18n status: IN-SCOPE"); `docs/adr/0005-i18n-g12-cldr-na-by-design.md` |
@@ -497,8 +499,8 @@ statement), CODE_OF_CONDUCT, CONTRIBUTING, SECURITY with a coordinated-disclosur
 covering the packet format and verification protocol, ADRs, a committed `docs/threat-model.md`, and
 committed `docs/audits/`. Conventional commits; GitHub Actions pinned to commit SHAs with
 build-provenance attestations and an SBOM per release; Dependabot. **Signed release tags**
-are not yet in place (tracked: `docs/releasing.md` §One-time setup, ROADMAP's v1.0 gate) —
-said plainly rather than claimed early.
+are protected by the active `v*` ruleset and verified against the committed maintainer
+public key before any release build begins.
 
 **Why AGPL-3.0.** This tool guards people under threat of retaliation, and the credible promise is that
 no operator can quietly read or weaken the data. AGPL closes the hosted-service loophole: anyone who runs

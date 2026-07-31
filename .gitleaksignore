@@ -21,3 +21,9 @@ cf55f34c7ad4f29b097c90b7187b37f66d56b2f9:tests/golden/packet-v3/bundle.json:gene
 # neither finding is a credential. Reviewed 2026-07-10.
 8f831229472e3ab605c78f26daa417e12f4984e7:site/sample-packet/bundle.json:generic-api-key:1
 b1f6a922e793eb226f67a0e7e71a123c096bcc56:site/sample-packet/bundle.json:generic-api-key:1
+
+# Packet-v4 regeneration for the profile-driven workflow release. The one-line
+# canonical JSON contains three public RFC 3161 CMS SignedData values and opaque
+# per-case ordering tokens. Gitleaks reports five matches under this one exact
+# commit/file/rule/line fingerprint; none is a credential. Reviewed 2026-07-23.
+fecb126250590a097de19d01256d777db296a213:site/sample-packet/bundle.json:generic-api-key:1
