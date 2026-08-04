@@ -18,7 +18,6 @@ surfaces as an error rather than a quietly altered exhibit.
 from __future__ import annotations
 
 import base64
-import binascii
 import errno
 import json
 import os
@@ -1447,12 +1446,11 @@ def _decode_timestamp_token(
     if not isinstance(kind, str) or not isinstance(tsa_name, str) or not isinstance(token_b64, str):
         raise VaultError(f"corrupt {label} record for {capture_id}")
     try:
-        strict_data = base64.b64decode(token_b64, validate=True)
+        # `from_dict` decodes strictly (validate=True) and raises TimestampError on
+        # any malformed base64, so no local pre-decode or comparison is needed.
         token = TimestampToken.from_dict(raw)
-    except (binascii.Error, TimestampError, ValueError) as exc:
+    except (TimestampError, ValueError) as exc:
         raise VaultError(f"corrupt {label} record for {capture_id}") from exc
-    if token.data != strict_data:
-        raise VaultError(f"corrupt {label} record for {capture_id}")
     return _validated_token(token)
 
 

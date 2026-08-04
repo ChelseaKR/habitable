@@ -4,21 +4,27 @@
 
 `tests/test_verify_fuzz.py` property-hardens the *packet verifier* against hostile
 input. This module extends the same discipline inward, to the four primitives every
-packet's proof actually rests on — the work `docs/productionization.md` §E17
-("Expand property-based testing") asks for:
+packet's proof actually rests on — the primitive-level targets named in
+`docs/productionization.md` §E17 ("Expand property-based testing"):
 
 1. **Canonical JSON** — round-trip, key-order independence, byte stability, and
    the whitespace/sort rules every hash and signature in habitable depends on.
 2. **Chain of custody** — append/verify invariants: no accepted reordering,
-   insertion, interior deletion, or hashed-field mutation; plus an honest,
-   executable statement of the one edit the chain alone *cannot* see
+   insertion, interior deletion, or hashed-field mutation; hostile records and
+   signatures answered with exactly one named error (`CustodyError`); plus an
+   honest, executable statement of the one edit the chain alone *cannot* see
    (suffix truncation, which is why the head hash is committed separately).
 3. **Sealed boxes and vault AEAD** — round-trips, and exactly one named error
    (`CryptoError`) for every hostile input, never a bare library exception.
 4. **Timestamp tokens** — parse/verify invariants: only `TimestampError` on
-   hostile input, no accepted mutation of a dev token, and — for RFC 3161, whose
-   CMS wrapper legitimately carries bytes outside the signature — an attested
-   ``(gen_time, digest, trusted_chain)`` verdict that mutation can never shift.
+   hostile input, and no accepted mutation of a dev token. For RFC 3161, whose
+   CMS wrapper legitimately carries bytes outside the signature, the invariant is
+   exercised **both with a synthetic certificate anchor configured and without
+   one**, and is stated as what actually holds: mutation can never move the
+   attested ``gen_time`` or ``digest``, and can never *manufacture* trust. Trust
+   is losable — editing the embedded certificate breaks the anchor match and
+   drops `trusted_chain` to `False`, a fail-closed direction that is pinned
+   executably rather than claimed away.
 
 Everything here is offline and synthetic: the local RFC 3161 issuer and the dev
 TSA, never a network authority and never real tenant data.
@@ -35,7 +41,9 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from hypothesis import given, settings
+from cryptography.hazmat.primitives import serialization
+from cryptography.x509 import Certificate
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from habitable.canonical import _CHUNK, JSONValue, canonical_json, sha256_bytes, sha256_file
@@ -205,6 +213,12 @@ _OPS = st.lists(st.tuples(_ACTIONS, _ITEMS, _ACTORS, _DETAILS), min_size=1, max_
 _HASHED_FIELDS = ("seq", "action", "item_id", "hlc", "actor_commitment", "prev_hash", "details")
 _SIGNER = Identity.generate()
 
+# Positions into a per-example collection are drawn from the collection's own range
+# (`st.sampled_from`, via `st.data()` where the length is only known inside the
+# example) rather than from an unbounded integer reduced with `%`: the same
+# bounded-draw discipline `tests/test_verify_fuzz.py` uses for byte offsets, so
+# Hypothesis can shrink and report the index it actually used.
+
 type _Op = tuple[str, str, str, dict[str, str]]
 
 
@@ -278,58 +292,57 @@ class TestCustodyChain:
         assert all(record["actor"] for record in log.to_vault_records())
 
     @settings(max_examples=120, deadline=None)
-    @given(ops=_OPS, index=st.integers(min_value=0), field=st.sampled_from(_HASHED_FIELDS))
+    @given(ops=_OPS, data=st.data(), field=st.sampled_from(_HASHED_FIELDS))
     def test_no_hashed_field_can_be_edited_undetected(
-        self, ops: Sequence[_Op], index: int, field: str
+        self, ops: Sequence[_Op], data: st.DataObject, field: str
     ) -> None:
         log = _build(ops)
         entries = list(log.entries)
-        target = index % len(entries)
+        target = data.draw(st.sampled_from(range(len(entries))), label="entry")
         entries[target] = _mutate(entries[target], field)
         with pytest.raises(CustodyError):
             CustodyLog(entries).verify()
 
     @settings(max_examples=120, deadline=None)
-    @given(ops=_OPS, index=st.integers(min_value=0))
-    def test_forged_entry_hash_is_rejected(self, ops: Sequence[_Op], index: int) -> None:
+    @given(ops=_OPS, data=st.data())
+    def test_forged_entry_hash_is_rejected(self, ops: Sequence[_Op], data: st.DataObject) -> None:
         log = _build(ops)
         entries = list(log.entries)
-        target = index % len(entries)
+        target = data.draw(st.sampled_from(range(len(entries))), label="entry")
         entries[target] = replace(entries[target], entry_hash=sha256_bytes(b"forged"))
         with pytest.raises(CustodyError):
             CustodyLog(entries).verify()
 
     @settings(max_examples=120, deadline=None)
-    @given(ops=_OPS, left=st.integers(min_value=0), right=st.integers(min_value=0))
+    @given(ops=_OPS, data=st.data())
     def test_reordering_two_entries_is_rejected(
-        self, ops: Sequence[_Op], left: int, right: int
+        self, ops: Sequence[_Op], data: st.DataObject
     ) -> None:
         entries = list(_build(ops).entries)
-        if len(entries) < 2:
-            return
-        i, j = left % len(entries), right % len(entries)
-        if i == j:
-            return
+        assume(len(entries) >= 2)
+        i = data.draw(st.sampled_from(range(len(entries))), label="left")
+        # Drawn from the complement, so no example is ever discarded for i == j.
+        j = data.draw(st.sampled_from([k for k in range(len(entries)) if k != i]), label="right")
         entries[i], entries[j] = entries[j], entries[i]
         with pytest.raises(CustodyError):
             CustodyLog(entries).verify()
 
     @settings(max_examples=120, deadline=None)
-    @given(ops=_OPS, index=st.integers(min_value=0))
-    def test_interior_deletion_is_rejected(self, ops: Sequence[_Op], index: int) -> None:
+    @given(ops=_OPS, data=st.data())
+    def test_interior_deletion_is_rejected(self, ops: Sequence[_Op], data: st.DataObject) -> None:
         entries = list(_build(ops).entries)
-        if len(entries) < 2:
-            return
-        target = index % (len(entries) - 1)  # never the tail: see truncation below
+        assume(len(entries) >= 2)
+        # Never the tail: see the truncation limit below.
+        target = data.draw(st.sampled_from(range(len(entries) - 1)), label="entry")
         del entries[target]
         with pytest.raises(CustodyError):
             CustodyLog(entries).verify()
 
     @settings(max_examples=120, deadline=None)
-    @given(ops=_OPS, index=st.integers(min_value=0))
-    def test_replaying_an_entry_is_rejected(self, ops: Sequence[_Op], index: int) -> None:
+    @given(ops=_OPS, data=st.data())
+    def test_replaying_an_entry_is_rejected(self, ops: Sequence[_Op], data: st.DataObject) -> None:
         entries = list(_build(ops).entries)
-        target = index % len(entries)
+        target = data.draw(st.sampled_from(range(len(entries))), label="entry")
         entries.insert(target, entries[target])
         with pytest.raises(CustodyError):
             CustodyLog(entries).verify()
@@ -347,16 +360,15 @@ class TestCustodyChain:
         never be quietly mistaken for a completeness proof.
         """
         log = _build(ops)
-        if len(log) < 2:
-            return
+        assume(len(log) >= 2)
         truncated = CustodyLog(list(log.entries[:-1]))
         assert truncated.verify().ok
         assert truncated.head_hash != log.head_hash
 
     @settings(max_examples=40, deadline=None)
-    @given(ops=_OPS, index=st.integers(min_value=0))
+    @given(ops=_OPS, data=st.data())
     def test_signed_entries_verify_and_a_forged_signature_is_rejected(
-        self, ops: Sequence[_Op], index: int
+        self, ops: Sequence[_Op], data: st.DataObject
     ) -> None:
         log = _build(ops, sign=True)
         keys = {entry.actor_commitment: _SIGNER.public().sign_public for entry in log.entries}
@@ -364,7 +376,7 @@ class TestCustodyChain:
         assert result.signatures_checked == len(ops)
 
         entries = list(log.entries)
-        target = index % len(entries)
+        target = data.draw(st.sampled_from(range(len(entries))), label="entry")
         raw = bytearray(base64.b64decode(entries[target].signature))
         raw[0] ^= 0xFF
         entries[target] = replace(
@@ -372,6 +384,58 @@ class TestCustodyChain:
         )
         with pytest.raises(CustodyError):
             CustodyLog(entries).verify(signer_keys=keys)
+
+    @settings(max_examples=200, deadline=None)
+    @given(ops=_OPS, data=st.data(), signature=st.text(max_size=12))
+    def test_hostile_signatures_raise_only_custodyerror(
+        self, ops: Sequence[_Op], data: st.DataObject, signature: str
+    ) -> None:
+        """An arbitrary `signature` string must never escape as a library exception.
+
+        A stored or imported entry's base64 `signature` is hostile input in exactly
+        the way a token's `token_b64` is: `base64.b64decode` raises `binascii.Error`
+        on a bad alphabet or bad padding, and `CustodyLog.verify` may only ever
+        raise `CustodyError`.
+        """
+        log = _build(ops, sign=True)
+        keys = {entry.actor_commitment: _SIGNER.public().sign_public for entry in log.entries}
+        entries = list(log.entries)
+        target = data.draw(st.sampled_from(range(len(entries))), label="entry")
+        entries[target] = replace(entries[target], signature=signature)
+        try:
+            CustodyLog(entries).verify(signer_keys=keys)
+        except CustodyError:
+            return
+        except Exception as exc:  # a non-habitable exception type is the failure
+            raise AssertionError(f"verify leaked {type(exc).__name__}: {exc}") from exc
+        # Only the empty signature is a legitimate accept: it means "unsigned".
+        assert signature == ""
+
+    @settings(max_examples=200, deadline=None)
+    @given(
+        records=st.lists(
+            st.dictionaries(
+                st.sampled_from(
+                    ["seq", "action", "item_id", "hlc", "actor_commitment", "details", "prev_hash"]
+                ),
+                st.one_of(st.text(max_size=6), st.integers(), st.none(), st.booleans()),
+                max_size=7,
+            ),
+            max_size=3,
+        )
+    )
+    def test_hostile_records_raise_only_custodyerror(
+        self, records: Sequence[Mapping[str, JSONValue]]
+    ) -> None:
+        """Imported chains are hostile input: rebuild + verify may only raise `CustodyError`."""
+        try:
+            CustodyLog.from_records(records).verify()
+        except CustodyError:
+            return
+        except Exception as exc:  # a non-habitable exception type is the failure
+            raise AssertionError(f"from_records/verify leaked {type(exc).__name__}: {exc}") from exc
+        # The only accepted input is the empty chain; anything else lacks `entry_hash`.
+        assert not records
 
     @settings(max_examples=60, deadline=None)
     @given(ops=_OPS)
@@ -424,14 +488,14 @@ class TestSealedBox:
     @settings(max_examples=150, deadline=None)
     @given(
         plaintext=st.binary(max_size=64),
-        position=st.integers(min_value=0),
+        data=st.data(),
         value=st.integers(min_value=0, max_value=255),
     )
     def test_any_single_byte_change_fails_closed(
-        self, plaintext: bytes, position: int, value: int
+        self, plaintext: bytes, data: st.DataObject, value: int
     ) -> None:
         box = bytearray(seal_to(_RECIPIENT.public(), plaintext))
-        index = position % len(box)
+        index = data.draw(st.sampled_from(range(len(box))), label="byte")
         box[index] = value if box[index] != value else value ^ 0xFF
         with pytest.raises(CryptoError):
             open_sealed(_RECIPIENT, bytes(box))
@@ -497,29 +561,48 @@ _DEV_TSA = DevTSA("prop-dev-tsa", time_source=lambda: FIXED_EPOCH_SECONDS)
 _RFC_TSA = LocalRfc3161TSA("prop-rfc3161", time_source=lambda: FIXED_EPOCH_SECONDS)
 _DEV_TOKEN = _DEV_TSA.stamp(_DIGEST)
 _RFC_TOKEN = _RFC_TSA.stamp(_DIGEST)
+
+# A second synthetic authority, so "anchor configured, but not *this* token's
+# authority" is a distinct, exercised condition rather than an untested one.
+_OTHER_RFC_TSA = LocalRfc3161TSA("prop-rfc3161-other", time_source=lambda: FIXED_EPOCH_SECONDS)
+_OWN_ANCHOR = [_RFC_TSA.certificate]
+_FOREIGN_ANCHOR = [_OTHER_RFC_TSA.certificate]
+
 _RFC_BASELINE = verify_token(_RFC_TOKEN, _DIGEST)
+_RFC_ANCHORED_BASELINE = verify_token(_RFC_TOKEN, _DIGEST, trusted_certs=_OWN_ANCHOR)
+
+# Byte offsets are drawn from the token's real length, the way `test_verify_fuzz.py`
+# draws them from `len(_BUNDLE) - 1`.
+_DEV_BYTE = st.integers(min_value=0, max_value=len(_DEV_TOKEN.data) - 1)
+_RFC_BYTE = st.integers(min_value=0, max_value=len(_RFC_TOKEN.data) - 1)
+_VALUE = st.integers(min_value=0, max_value=255)
 
 
-def _mutated(token: TimestampToken, position: int, value: int) -> TimestampToken:
+def _mutated(token: TimestampToken, index: int, value: int) -> TimestampToken:
     data = bytearray(token.data)
-    index = position % len(data)
     data[index] = value if data[index] != value else value ^ 0xFF
     return replace(token, data=bytes(data))
 
 
-def _verdict_must_hold(token: TimestampToken, baseline: TimestampInfo) -> None:
-    """Either a named rejection, or exactly the same attestation as the pristine token."""
+def _attestation_must_hold(
+    token: TimestampToken,
+    baseline: TimestampInfo,
+    *,
+    trusted_certs: list[Certificate] | None,
+) -> TimestampInfo | None:
+    """Either a named rejection, or the pristine token's attested time and digest.
+
+    Returns the accepted :class:`TimestampInfo` (or ``None`` on a rejection) so the
+    caller can assert the trust-verdict invariant that applies to its own anchor.
+    """
     try:
-        info = verify_token(token, _DIGEST)
+        info = verify_token(token, _DIGEST, trusted_certs=trusted_certs)
     except TimestampError:
-        return
+        return None
     except Exception as exc:  # a non-habitable exception type is the failure
         raise AssertionError(f"verify_token leaked {type(exc).__name__}: {exc}") from exc
-    assert (info.gen_time, info.digest_hex, info.trusted_chain) == (
-        baseline.gen_time,
-        baseline.digest_hex,
-        baseline.trusted_chain,
-    )
+    assert (info.gen_time, info.digest_hex) == (baseline.gen_time, baseline.digest_hex)
+    return info
 
 
 class TestTimestampTokenParsing:
@@ -560,10 +643,7 @@ class TestDevTokenVerification:
         assert info.trusted_chain is False
 
     @settings(max_examples=250, deadline=None)
-    @given(
-        position=st.integers(min_value=0),
-        value=st.integers(min_value=0, max_value=255),
-    )
+    @given(position=_DEV_BYTE, value=_VALUE)
     def test_no_byte_mutation_is_ever_accepted(self, position: int, value: int) -> None:
         with pytest.raises(TimestampError):
             verify_token(_mutated(_DEV_TOKEN, position, value), _DIGEST)
@@ -594,43 +674,102 @@ class TestDevTokenVerification:
 class TestRfc3161TokenVerification:
     """A CMS wrapper legitimately carries bytes outside the signature.
 
-    So the invariant is not "every byte is load-bearing" — it is that mutation can
-    never move the attested time, digest, or trust verdict, and can never produce
-    anything but a :class:`TimestampError`.
+    So the invariant is not "every byte is load-bearing". The properties below are
+    exercised across the three trust conditions habitable actually ships — **no
+    anchor**, **this token's own anchor**, and **some other authority's anchor**;
+    each property names the conditions it asserts — and together they pin:
+
+    * the attested ``gen_time`` and ``digest`` can never move;
+    * trust can never be *manufactured*: no mutation makes an unanchored or
+      foreign-anchored token report ``trusted_chain is True``;
+    * trust *can* be lost — editing the embedded certificate breaks the anchor
+      match while leaving the CMS signature over TSTInfo verifiable, so an anchored
+      ``True`` can become ``False``. That is the fail-closed direction, and
+      `test_a_certificate_edit_drops_trust_without_moving_the_attestation` pins it
+      executably rather than claiming it away.
     """
 
-    def test_pristine_token_verifies_untrusted_without_an_anchor(self) -> None:
+    def test_pristine_token_is_trusted_only_under_its_own_anchor(self) -> None:
         assert _RFC_BASELINE.digest_hex == _DIGEST
         assert _RFC_BASELINE.trusted_chain is False
+        assert _RFC_ANCHORED_BASELINE.trusted_chain is True
+        assert _RFC_ANCHORED_BASELINE.digest_hex == _DIGEST
+        foreign = verify_token(_RFC_TOKEN, _DIGEST, trusted_certs=_FOREIGN_ANCHOR)
+        assert foreign.trusted_chain is False
 
     @settings(max_examples=250, deadline=None)
-    @given(
-        position=st.integers(min_value=0),
-        value=st.integers(min_value=0, max_value=255),
-    )
-    def test_mutation_never_shifts_the_attested_verdict(self, position: int, value: int) -> None:
-        _verdict_must_hold(_mutated(_RFC_TOKEN, position, value), _RFC_BASELINE)
+    @given(position=_RFC_BYTE, value=_VALUE)
+    def test_mutation_never_moves_the_attested_time_or_digest(
+        self, position: int, value: int
+    ) -> None:
+        """With no anchor and with a real one — the condition the claim rests on."""
+        token = _mutated(_RFC_TOKEN, position, value)
+        _attestation_must_hold(token, _RFC_BASELINE, trusted_certs=None)
+        _attestation_must_hold(token, _RFC_ANCHORED_BASELINE, trusted_certs=_OWN_ANCHOR)
+
+    @settings(max_examples=250, deadline=None)
+    @given(position=_RFC_BYTE, value=_VALUE)
+    def test_mutation_can_never_manufacture_trust(self, position: int, value: int) -> None:
+        """The direction that matters: an untrusted token can never be edited trusted."""
+        token = _mutated(_RFC_TOKEN, position, value)
+        for anchor in (None, _FOREIGN_ANCHOR):
+            info = _attestation_must_hold(token, _RFC_BASELINE, trusted_certs=anchor)
+            if info is not None:
+                assert info.trusted_chain is False
+
+    def test_a_certificate_edit_drops_trust_without_moving_the_attestation(self) -> None:
+        """The honest limit under an anchor: an anchored verdict is losable.
+
+        The last byte of the embedded certificate's DER is the last byte of the
+        certificate's *own* signature. Editing it leaves the CMS signature over
+        TSTInfo verifiable (the signing public key is in the unchanged `tbs`
+        portion), but the certificate no longer matches the anchor by fingerprint
+        and no longer verifies against a trusted issuer — so `trusted_chain` drops
+        to `False` while the attested time and digest stand.
+        """
+        cert_der = _RFC_TSA.certificate.public_bytes(serialization.Encoding.DER)
+        start = _RFC_TOKEN.data.find(cert_der)
+        assert start >= 0, "an RFC 3161 token must embed its signing certificate"
+        edited = _mutated(_RFC_TOKEN, start + len(cert_der) - 1, 0x00)
+        info = verify_token(edited, _DIGEST, trusted_certs=_OWN_ANCHOR)
+        assert info.trusted_chain is False
+        assert _RFC_ANCHORED_BASELINE.trusted_chain is True
+        assert (info.gen_time, info.digest_hex) == (
+            _RFC_ANCHORED_BASELINE.gen_time,
+            _RFC_ANCHORED_BASELINE.digest_hex,
+        )
 
     @settings(max_examples=250, deadline=None)
     @given(data=st.binary(max_size=192))
     def test_arbitrary_der_raises_only_timestamperror(self, data: bytes) -> None:
         token = TimestampToken(kind="rfc3161", tsa_name="x", data=data)
-        try:
-            verify_token(token, _DIGEST)
-        except TimestampError:
-            return
-        except Exception as exc:  # a non-habitable exception type is the failure
-            raise AssertionError(f"verify_token leaked {type(exc).__name__}: {exc}") from exc
-        raise AssertionError("verify_token accepted arbitrary RFC 3161 bytes")
+        for anchor in (None, _OWN_ANCHOR, _FOREIGN_ANCHOR):
+            try:
+                verify_token(token, _DIGEST, trusted_certs=anchor)
+            except TimestampError:
+                continue
+            except Exception as exc:  # a non-habitable exception type is the failure
+                raise AssertionError(f"verify_token leaked {type(exc).__name__}: {exc}") from exc
+            raise AssertionError("verify_token accepted arbitrary RFC 3161 bytes")
 
     def test_a_token_never_verifies_against_other_content(self) -> None:
-        with pytest.raises(TimestampError):
-            verify_token(_RFC_TOKEN, _OTHER_DIGEST)
+        for anchor in (None, _OWN_ANCHOR):
+            with pytest.raises(TimestampError):
+                verify_token(_RFC_TOKEN, _OTHER_DIGEST, trusted_certs=anchor)
 
 
 _ARCHIVES = [retimestamp(_RFC_TOKEN, _RFC_TSA)]
 _ARCHIVES.append(retimestamp(_ARCHIVES[0], _RFC_TSA))
 _ARCHIVES.append(retimestamp(_ARCHIVES[1], _RFC_TSA))
+
+# Every (link, byte offset) a mutation could land on, drawn directly rather than
+# reduced from an unbounded integer: the links differ in length, so a shared bound
+# would either overrun the short ones or never reach the tail of the long ones.
+_ARCHIVE_SITES = [
+    (link, position)
+    for link, archive in enumerate(_ARCHIVES)
+    for position in range(len(archive.data))
+]
 
 
 class TestArchiveChain:
@@ -643,14 +782,11 @@ class TestArchiveChain:
         assert infos[0].digest_hex == _DIGEST
 
     @settings(max_examples=150, deadline=None)
-    @given(
-        link=st.integers(min_value=0, max_value=2),
-        position=st.integers(min_value=0),
-        value=st.integers(min_value=0, max_value=255),
-    )
+    @given(site=st.sampled_from(_ARCHIVE_SITES), value=_VALUE)
     def test_a_mutated_link_can_never_extend_the_chain(
-        self, link: int, position: int, value: int
+        self, site: tuple[int, int], value: int
     ) -> None:
+        link, position = site
         archives = list(_ARCHIVES)
         archives[link] = _mutated(archives[link], position, value)
         try:
@@ -659,11 +795,31 @@ class TestArchiveChain:
             return
         except Exception as exc:  # a non-habitable exception type is the failure
             raise AssertionError(f"archive chain leaked {type(exc).__name__}: {exc}") from exc
-        # An accepted mutation must have landed outside every signed field; the
-        # attested chain must then be byte-for-byte the verdict of the pristine one.
+        # An accepted mutation must have landed outside every signed field; with no
+        # anchor configured — the condition asserted here — the attested chain must
+        # then be identical to the pristine one, field for field.
         assert verify_archive_chain(_DIGEST, _RFC_TOKEN, archives) == verify_archive_chain(
             _DIGEST, _RFC_TOKEN, _ARCHIVES
         )
+
+    @settings(max_examples=150, deadline=None)
+    @given(site=st.sampled_from(_ARCHIVE_SITES), value=_VALUE)
+    def test_a_mutated_link_can_never_manufacture_trust(
+        self, site: tuple[int, int], value: int
+    ) -> None:
+        """Same sweep with an anchor for a *different* authority: trust stays False."""
+        link, position = site
+        archives = list(_ARCHIVES)
+        archives[link] = _mutated(archives[link], position, value)
+        try:
+            infos = verify_archive_chain(
+                _DIGEST, _RFC_TOKEN, archives, trusted_certs=_FOREIGN_ANCHOR
+            )
+        except TimestampError:
+            return
+        except Exception as exc:  # a non-habitable exception type is the failure
+            raise AssertionError(f"archive chain leaked {type(exc).__name__}: {exc}") from exc
+        assert not any(info.trusted_chain for info in infos)
 
     def test_dropping_a_link_breaks_the_chain(self) -> None:
         with pytest.raises(TimestampError):

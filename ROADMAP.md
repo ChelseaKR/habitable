@@ -162,15 +162,18 @@ Packet-integrity claims live here; this work gets the most scrutiny.
   and no crash. The four primitives the verifier's verdicts rest on — canonical JSON,
   the hash-linked custody chain, sealed-box/vault AEAD, and timestamp-token
   parse/verify — now carry their own property suites
-  (`tests/test_property_invariants.py`; the local productionization plan’s §E17): hostile
-  input yields exactly one named error, no custody reordering/replay/interior
-  deletion/field edit is accepted, and no token mutation can move an attested
-  `(gen_time, digest, trusted_chain)` verdict. Two limits are pinned executably
-  rather than claimed away: the chain proves a *prefix* (suffix truncation is caught
-  by the separately committed head hash, not by the chain), and an RFC 3161 CMS
-  wrapper legitimately carries bytes outside its signature. OSS-Fuzz integration
-  remains a separate ecosystem/discoverability improvement, not missing in-repo
-  adversarial coverage.
+  (`tests/test_property_invariants.py`, the primitive-level targets named in the local
+  productionization plan’s §E17): hostile input yields exactly one named error, no
+  custody reordering/replay/interior deletion/field edit is accepted, and — exercised
+  both with a synthetic certificate anchor configured and with none — no token
+  mutation can move an attested `gen_time`/`digest` or manufacture a trusted chain.
+  Three limits are pinned executably rather than claimed away: the chain proves a
+  *prefix* (suffix truncation is caught by the separately committed head hash, not by
+  the chain); an RFC 3161 CMS wrapper legitimately carries bytes outside its signature;
+  and an anchored `trusted_chain` is *losable* — editing the embedded certificate
+  breaks the anchor match, the fail-closed direction. §E17's stateful harness over
+  hostile packet/token input is still open, as is OSS-Fuzz integration — a separate
+  ecosystem/discoverability improvement, not missing in-repo adversarial coverage.
 - *Shipped:* **Signed releases + build provenance (SLSA).** Tagged releases must
   resolve to reviewed `main` history, carry an allowed SSH signature, match the
   package version, and publish the exact reproducibility-checked artifacts with
