@@ -7,6 +7,51 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+### Added
+
+- **Property-based invariants for the assurance-critical core**
+  (`tests/test_property_invariants.py`), the remaining half of the
+  productionization plan's §E17 (“Expand property-based testing”). The verifier
+  already had a hostile-input fuzz target; the four primitives its verdicts rest
+  on now have executable invariants of their own: canonical-JSON round-trip,
+  key-order independence, sorted-key and no-insignificant-whitespace encoding,
+  and streaming-digest agreement across the read-chunk boundary; custody-chain
+  append/verify invariants that reject every reordering, replay, interior
+  deletion, hashed-field edit, and forged signature; sealed-box and vault-AEAD
+  round-trips that answer hostile bytes with exactly one named `CryptoError`; and
+  timestamp-token parse/verify invariants over dev, RFC 3161, and archive chains.
+  Two boundaries are now pinned honestly rather than overclaimed: a hash-linked
+  chain proves a *prefix*, so suffix truncation is visible only because the head
+  hash is committed separately, and an RFC 3161 CMS wrapper legitimately carries
+  bytes outside its signature, so the invariant there is that mutation can never
+  move the attested `(gen_time, digest, trusted_chain)` verdict.
+
+### Fixed
+
+- **Hostile timestamp and sealed-box input now always fails closed with a named
+  error.** Four paths surfaced by the new property suites could raise a raw
+  library exception — or, in one case, accept a byte-level change — instead of
+  habitable's own error type:
+  - `open_sealed` let a degenerate (all-zero/low-order) ephemeral public key
+    escape as `ValueError` from X25519 instead of `CryptoError`, contradicting
+    `crypto.py`'s stated contract that every authentication failure is a
+    `CryptoError`.
+  - `TimestampToken.from_dict` let malformed base64 escape as `binascii.Error`.
+    Peer sync (`_token_or_none` / `_token_list`) has no broad handler, so an
+    authorized peer's malformed token record raised a traceback rather than a
+    `SyncError`; `vault.py` had already worked around this locally.
+  - `_verify_dev_token` let invalid UTF-8 in token bytes escape as
+    `UnicodeDecodeError`, and malformed base64 in its `pubkey`/`sig` fields
+    escape as `binascii.Error`.
+  - `_verify_dev_token` accepted non-canonical base64 spellings of its `pubkey`
+    and `sig`, so a change to a token's trailing signature character went
+    undetected. Dev tokens now reject alternate spellings the same way
+    `pairing.py` already rejects them for pairing material, and no byte mutation
+    of a dev token is accepted.
+
+  No packet, vault, or sync format changed, and every committed golden packet
+  still verifies: all tokens habitable has ever emitted are canonical base64.
+
 ### Changed
 
 - Moved the five-minute synthetic quickstart into the README’s visitor-facing

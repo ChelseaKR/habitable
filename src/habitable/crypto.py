@@ -340,13 +340,23 @@ def seal_to(recipient: PublicIdentity, plaintext: bytes) -> bytes:
 
 
 def open_sealed(identity: Identity, box: bytes) -> bytes:
-    """Decrypt a sealed box addressed to this device."""
+    """Decrypt a sealed box addressed to this device.
+
+    ``box`` is attacker-supplied (it arrives from a relay, a courier file, or a
+    pairing code), so every rejection path — including a degenerate ephemeral
+    public key that makes X25519 refuse to produce a shared secret — surfaces as
+    :class:`CryptoError` rather than a bare library exception.
+    """
     if len(box) < 32 + _NONCE_BYTES:
         raise CryptoError("sealed box too short")
     eph_pub, nonce, ct = box[:32], box[32 : 32 + _NONCE_BYTES], box[32 + _NONCE_BYTES :]
     box_private = identity.box_private_key()
     recipient_pub = box_private.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
-    shared = box_private.exchange(X25519PublicKey.from_public_bytes(eph_pub))
+    try:
+        shared = box_private.exchange(X25519PublicKey.from_public_bytes(eph_pub))
+    except ValueError as exc:
+        # A low-order/all-zero ephemeral key yields no usable shared secret.
+        raise CryptoError("sealed box has an unusable ephemeral public key") from exc
     key = _derive_box_key(shared, eph_pub, recipient_pub)
     try:
         return ChaCha20Poly1305(key).decrypt(nonce, ct, eph_pub)

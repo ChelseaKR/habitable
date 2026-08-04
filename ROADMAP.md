@@ -157,10 +157,20 @@ Packet-integrity claims live here; this work gets the most scrutiny.
   proof rests on a single TSA. Both the online capture path and deferred-capture resolution
   stamp against N configured authorities (best-effort extras that never block), and the
   verifier reports per-authority status.
-- *Shipped (in-repo):* **Property-harden the verifier.** The Hypothesis hostile-input
-  target runs in every merge gate with no accept-on-tamper and no crash. OSS-Fuzz
-  integration remains a separate ecosystem/discoverability improvement, not missing
-  in-repo adversarial coverage.
+- *Shipped (in-repo):* **Property-harden the verifier — and the primitives under it.**
+  The Hypothesis hostile-input target runs in every merge gate with no accept-on-tamper
+  and no crash. The four primitives the verifier's verdicts rest on — canonical JSON,
+  the hash-linked custody chain, sealed-box/vault AEAD, and timestamp-token
+  parse/verify — now carry their own property suites
+  (`tests/test_property_invariants.py`; the local productionization plan’s §E17): hostile
+  input yields exactly one named error, no custody reordering/replay/interior
+  deletion/field edit is accepted, and no token mutation can move an attested
+  `(gen_time, digest, trusted_chain)` verdict. Two limits are pinned executably
+  rather than claimed away: the chain proves a *prefix* (suffix truncation is caught
+  by the separately committed head hash, not by the chain), and an RFC 3161 CMS
+  wrapper legitimately carries bytes outside its signature. OSS-Fuzz integration
+  remains a separate ecosystem/discoverability improvement, not missing in-repo
+  adversarial coverage.
 - *Shipped:* **Signed releases + build provenance (SLSA).** Tagged releases must
   resolve to reviewed `main` history, carry an allowed SSH signature, match the
   package version, and publish the exact reproducibility-checked artifacts with
