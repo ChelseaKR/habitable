@@ -237,3 +237,65 @@ def test_cli_export_discloses_awaiting_state(
     assert main(["export", "--vault", str(vault), "--out", str(tmp_path / "p2")]) == 0
     out = capsys.readouterr().out
     assert "awaiting a timestamp token" not in out
+
+
+def test_cli_status_lists_awaiting_captures_by_issue(
+    tmp_path: Path,
+    make_jpeg: Callable[..., Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`habitable status` names which queued-offline capture is awaiting a token.
+
+    `status` already reported an aggregate "N awaiting" count, but gave no way
+    to tell *which* capture that was without inspecting the vault directly. A
+    tenant capturing evidence with intermittent connectivity needs to know
+    which specific item still needs `habitable resolve` — the issue it belongs
+    to and its capture id — not just a count.
+    """
+    monkeypatch.setenv("HABITABLE_PASSPHRASE", "pw")
+    vault = tmp_path / "vault"
+    assert main(["init", str(vault), "--case", "bldg-12", "--unit", "4B"]) == 0
+    assert main(["issue", "--vault", str(vault), "--category", "mold", "--title", "Mold"]) == 0
+    out = capsys.readouterr().out
+    issue_id = next(token for token in out.split() if token.startswith("issue-"))
+
+    stamped_photo = make_jpeg()
+    stamped_args = [
+        "capture",
+        str(stamped_photo),
+        "--vault",
+        str(vault),
+        "--issue",
+        issue_id,
+        "--dev-tsa",
+    ]
+    assert main(stamped_args) == 0
+    out = capsys.readouterr().out
+    stamped_id = next(token for token in out.split() if token.startswith("cap-"))
+
+    queued_photo = make_jpeg()
+    queued_args = [
+        "capture",
+        str(queued_photo),
+        "--vault",
+        str(vault),
+        "--issue",
+        issue_id,
+        "--no-timestamp",
+    ]
+    assert main(queued_args) == 0
+    out = capsys.readouterr().out
+    queued_id = next(token for token in out.split() if token.startswith("cap-"))
+
+    assert main(["status", "--vault", str(vault)]) == 0
+    out = capsys.readouterr().out
+    assert f"{queued_id}: awaiting timestamp token (queued)" in out
+    assert f"{stamped_id}: awaiting timestamp token (queued)" not in out
+
+    # Once resolved, the named awaiting line disappears along with the count.
+    assert main(["resolve", "--vault", str(vault), "--dev-tsa"]) == 0
+    capsys.readouterr()
+    assert main(["status", "--vault", str(vault)]) == 0
+    out = capsys.readouterr().out
+    assert "awaiting timestamp token (queued)" not in out

@@ -33,6 +33,15 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   the anchor match and drops `trusted_chain` from `true` to `false`, which the
   suite pins with an executable case rather than claiming away.
 
+- **`habitable status` names which capture is awaiting a timestamp token, not
+  just how many.** The status line already reported an aggregate
+  `timestamps: N/total present; M awaiting`, but a tenant capturing evidence
+  with intermittent connectivity had no way to tell *which* capture that was
+  short of inspecting the vault directly. Each issue's listing now names any
+  of its captures still queued offline, by capture id, using the same
+  `capture_awaiting` message the `capture` command already prints — so the
+  next `habitable resolve` has a concrete target instead of a bare count.
+
 ### Fixed
 
 - **Hostile timestamp, custody, and sealed-box input now always fails closed with
