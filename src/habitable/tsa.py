@@ -114,6 +114,13 @@ class TimestampToken:
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, object]) -> TimestampToken:
+        """Parse a stored/received token record, failing closed on anything malformed.
+
+        Records reach this method from imported packets and from peer sync
+        messages, so a malformed ``token_b64`` must raise :class:`TimestampError`
+        — never a raw ``binascii.Error`` escaping into a caller that is only
+        prepared for habitable's own exception type.
+        """
         import base64
 
         kind = raw.get("kind")
@@ -121,7 +128,12 @@ class TimestampToken:
         token_b64 = raw.get("token_b64")
         if not isinstance(kind, str) or not isinstance(name, str) or not isinstance(token_b64, str):
             raise TimestampError("malformed timestamp token record")
-        return cls(kind=kind, tsa_name=name, data=base64.b64decode(token_b64))
+        try:
+            # binascii.Error (raised on non-alphabet input) subclasses ValueError.
+            data = base64.b64decode(token_b64, validate=True)
+        except ValueError as exc:
+            raise TimestampError("malformed timestamp token record") from exc
+        return cls(kind=kind, tsa_name=name, data=data)
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,12 +210,33 @@ class DevTSA:
         )
 
 
-def _verify_dev_token(token: TimestampToken, digest_hex: str) -> TimestampInfo:
+def _canonical_b64(text: str, label: str) -> bytes:
+    """Decode canonical base64, rejecting alternate spellings of the same bytes.
+
+    The final base64 character of a padded group carries unused bits that
+    :func:`base64.b64decode` silently discards, so several spellings decode
+    identically. Accepting them would let a byte-level change inside a signed
+    token pass unnoticed, which is exactly what a tamper-evident format may not
+    do; :mod:`habitable.pairing` rejects the same aliasing on pairing material.
+    """
     import base64
 
     try:
+        # binascii.Error (raised on non-alphabet input) subclasses ValueError.
+        raw = base64.b64decode(text, validate=True)
+    except ValueError as exc:
+        raise TimestampError(f"dev token {label} is not valid base64") from exc
+    if base64.b64encode(raw).decode("ascii") != text:
+        raise TimestampError(f"dev token {label} uses a non-canonical base64 spelling")
+    return raw
+
+
+def _verify_dev_token(token: TimestampToken, digest_hex: str) -> TimestampInfo:
+    try:
         doc = json.loads(token.data)
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        # Token bytes are attacker-supplied: invalid UTF-8 must be a rejection,
+        # not a UnicodeDecodeError escaping to the caller.
         raise TimestampError("dev token is not valid JSON") from exc
     if not isinstance(doc, dict):
         raise TimestampError("dev token must be an object")
@@ -213,8 +246,8 @@ def _verify_dev_token(token: TimestampToken, digest_hex: str) -> TimestampInfo:
     pub_b64 = doc.get("pubkey")
     if not isinstance(pub_b64, str):
         raise TimestampError("dev token missing pubkey")
-    pub = base64.b64decode(pub_b64)
-    if not verify(pub, canonical_json(doc), base64.b64decode(sig)):
+    pub = _canonical_b64(pub_b64, "pubkey")
+    if not verify(pub, canonical_json(doc), _canonical_b64(sig, "signature")):
         raise TimestampError("dev token signature is invalid")
     if doc.get("digest") != digest_hex:
         raise TimestampError("dev token digest does not match the content")

@@ -286,7 +286,7 @@ class CustodyLog:
             if signer_keys is not None and entry.signature:
                 pub = signer_keys.get(entry.actor_commitment)
                 if pub is not None:
-                    sig = base64.b64decode(entry.signature)
+                    sig = _entry_signature(entry)
                     if not verify(pub, entry.entry_hash.encode("ascii"), sig):
                         raise CustodyError(f"custody entry seq {entry.seq} signature invalid")
                     sigs_checked += 1
@@ -404,3 +404,18 @@ def _str_map(value: JSONValue, key: str) -> dict[str, str]:
     if not isinstance(value, dict):
         raise CustodyError(f"custody entry {key!r} must be an object")
     return {str(k): str(v) for k, v in value.items()}
+
+
+def _entry_signature(entry: CustodyEntry) -> bytes:
+    """Decode an entry's base64 signature, failing closed on anything malformed.
+
+    Entries reach :meth:`CustodyLog.verify` from stored vault records and from
+    imported chains, so a malformed ``signature`` must raise :class:`CustodyError`
+    — never a raw ``binascii.Error`` escaping into a caller that is only prepared
+    for habitable's own exception type.
+    """
+    try:
+        # binascii.Error (raised on non-alphabet input) subclasses ValueError.
+        return base64.b64decode(entry.signature, validate=True)
+    except ValueError as exc:
+        raise CustodyError(f"custody entry seq {entry.seq} has a malformed signature") from exc
