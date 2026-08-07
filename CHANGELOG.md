@@ -44,6 +44,31 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **A capture whose media type had no packet export mapping (`.heic`, the iPhone
+  default photo format) used to ship with no bytes, no custody binding, and a
+  `habitable verify` verdict of READY (issue #158).** `packet.build_packet` now
+  refuses to publish any item that would carry neither a metadata-stripped shared
+  copy nor an embedded original, naming the capture id and media type in a clear
+  `PacketError` -- an operator sees "I cannot export this, here's why" instead of a
+  packet that looks fine and isn't; `--include-originals` remains a real, working,
+  deliberately higher-disclosure way to export such an item byte-exact. `capture.py`
+  and `packet.py` now read one canonical registry (`habitable.media_types`) instead
+  of two independently hand-maintained maps, so this class of gap cannot recur
+  unnoticed; a regression test asserts every registered media type has a working
+  export path, proven end to end. `habitable.verify.ItemVerdict` gained
+  `evidence_present`, folded into `structurally_intact`: an item with no shared
+  media and no embedded original can never be `evidence_ready`, even with an
+  otherwise-valid, authority-trusted timestamp -- defense-in-depth for a
+  hand-crafted bundle or a packet from a different tool, since a normal export can
+  no longer produce that state at all. `packet.html`'s per-item figure and evidence
+  appendix now visibly say when an item carries no shared preview (an embedded
+  original still exists to download) or no evidence bytes at all, rather than
+  rendering an empty figure that looked identical to an intact one. Incidentally
+  surfaced and fixed along the way: `exif.py`'s non-JPEG raster metadata-stripping
+  path (PNG/WEBP/TIFF) called a Pillow accessor this project's Pillow floor
+  (12.3.0) deprecated, previously uncaught because no existing test captured and
+  exported a non-JPEG still image end to end.
+
 - **Hostile timestamp, custody, and sealed-box input now always fails closed with
   a named error.** Five paths surfaced by the new property suites could raise a raw
   library exception — or, in one case, accept a byte-level change — instead of
