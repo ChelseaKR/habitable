@@ -216,6 +216,10 @@ _SUMMARY_TEXT = {
 
 _ITEM_DETAIL_TEXT = {
     "en": {
+        "no_evidence": (
+            "no photo, recording, or file was included for this item — only its "
+            "content hash and timestamp"
+        ),
         "shared_media": "shared media is missing or does not match its recorded hash",
         "custody_binding": "shared media is not bound to the original by custody",
         "original_fixity": "embedded original does not match its recorded hash",
@@ -226,6 +230,10 @@ _ITEM_DETAIL_TEXT = {
         "not_ready": "not evidence-ready",
     },
     "es": {
+        "no_evidence": (
+            "no se incluyó ninguna foto, grabación o archivo para este elemento — solo "
+            "su hash de contenido y sello de tiempo"
+        ),
         "shared_media": "falta el archivo compartido o no coincide con su hash registrado",
         "custody_binding": "la custodia no vincula el archivo compartido con el original",
         "original_fixity": "el original incluido no coincide con su hash registrado",
@@ -258,10 +266,19 @@ class ItemVerdict:
     trusted_authorities: tuple[str, ...] = field(default_factory=tuple)
     timestamp_present: bool = False
     timestamp_kind: str = ""
+    # True unless the item carries neither a recorded shared copy nor an
+    # embedded original (issue #158, decision 3): a content hash and a
+    # timestamp alone are not evidence a human can look at. Before this field
+    # existed, that state read as "nothing to check, therefore fine"; it now
+    # reads as "nothing was exported, therefore not intact." Defaults True so
+    # every pre-existing caller that builds an ItemVerdict without naming this
+    # field keeps its prior meaning.
+    evidence_present: bool = True
 
     @property
     def structurally_intact(self) -> bool:
-        """Whether media, custody binding, and any embedded original are intact.
+        """Whether media, custody binding, any embedded original, and the mere
+        presence of checkable evidence bytes are all intact.
 
         Timestamp presence, token validity, and authority trust are intentionally
         excluded: those are separate claims and must not redefine byte integrity.
@@ -270,6 +287,7 @@ class ItemVerdict:
             self.shared_media_ok
             and self.custody_binding_ok
             and self.original_fixity_ok is not False
+            and self.evidence_present
         )
 
     @property
@@ -297,6 +315,8 @@ class ItemVerdict:
         """Return a localized, non-technical explanation of this item's failed checks."""
         text = _item_detail_text(language)
         reasons: list[str] = []
+        if not self.evidence_present:
+            reasons.append(text["no_evidence"])
         if not self.shared_media_ok:
             reasons.append(text["shared_media"])
         if not self.custody_binding_ok:
@@ -638,6 +658,21 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
                 if not original_fixity_ok:
                     notes.append("embedded original failed fixity")
 
+    # 5. An item is not structurally intact if it carries neither a recorded
+    #    shared copy nor an embedded original -- i.e., no real, checkable
+    #    evidence bytes at all (issue #158 decision 3). Before this check, that
+    #    state read as "nothing to check, therefore fine" (both shared_media_ok
+    #    and custody_binding_ok default True when shared_name is empty); it now
+    #    reads as "nothing was exported, therefore not intact." Whether the
+    #    included bytes go on to pass their own hash checks is judged
+    #    separately, above, by shared_media_ok / original_fixity_ok.
+    evidence_present = bool(shared_name) or has_original
+    if not evidence_present:
+        notes.append(
+            "no shared media and no embedded original: this item carries no "
+            "checkable evidence bytes"
+        )
+
     return ItemVerdict(
         capture_id=capture_id,
         content_hash=content_hash,
@@ -653,6 +688,7 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
         trusted_authorities=tuple(trusted_authorities),
         timestamp_present=timestamp_present,
         timestamp_kind=timestamp_kind,
+        evidence_present=evidence_present,
     )
 
 

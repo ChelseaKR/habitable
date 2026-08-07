@@ -310,7 +310,11 @@ def _strip_with_pillow(
     try:
         with Image.open(source) as image:
             clean = Image.new(image.mode, image.size)
-            clean.putdata(list(image.getdata()))
+            # get_flattened_data (not the deprecated getdata) is the pixel-only
+            # accessor: rebuilding a fresh image from just its return value is
+            # what actually drops every embedded chunk (EXIF, XMP, ICC,
+            # thumbnails, ...) rather than copying the source's container.
+            clean.putdata(list(image.get_flattened_data()))
             clean.save(destination, format=image.format)
             media_format = image.format or meta.media_format
     except (UnidentifiedImageError, OSError, ValueError) as exc:

@@ -333,6 +333,12 @@ def test_redundant_authority_satisfies_when_primary_absent(
     local_tsa: LocalRfc3161TSA, tmp_path: Path
 ) -> None:
     token = local_tsa.stamp(sha256_bytes(b"some sealed bytes"))
+    # A real embedded original, matching the primary fixture's content hash --
+    # this test is about multi-authority timestamp logic, not evidence-byte
+    # presence (issue #158 decision 3), so give the item real bytes rather
+    # than relying on the now-forbidden shared_name="" + no-original state.
+    (tmp_path / "originals").mkdir()
+    (tmp_path / "originals" / "cap-x").write_bytes(b"some sealed bytes")
 
     def item_for(content_hash: str) -> dict[str, JSONValue]:
         return cast(
@@ -341,6 +347,7 @@ def test_redundant_authority_satisfies_when_primary_absent(
                 "capture_id": "cap-x",
                 "shared_name": "",
                 "shared_hash": "",
+                "has_original": True,
                 "timestamp": None,
                 "content_hash": content_hash,
                 "additional_timestamps": [token.to_dict()],
@@ -372,11 +379,17 @@ def test_invalid_attached_timestamp_is_not_mislabeled_awaiting(
     local_tsa: LocalRfc3161TSA, tmp_path: Path
 ) -> None:
     token = local_tsa.stamp(sha256_bytes(b"different content"))
+    # A real embedded original: this test isolates timestamp validity from byte
+    # presence (issue #158 decision 3 requires the latter for structural
+    # intactness on its own), so give the item real evidence bytes.
+    (tmp_path / "originals").mkdir()
+    (tmp_path / "originals" / "cap-invalid").write_bytes(b"expected content")
     item: dict[str, JSONValue] = {
         "capture_id": "cap-invalid",
         "content_hash": sha256_bytes(b"expected content"),
         "shared_name": "",
         "shared_hash": "",
+        "has_original": True,
         "timestamp": cast("JSONValue", token.to_dict()),
     }
     verdict = _verify_item(item, tmp_path, {}, {}, [local_tsa.certificate])
@@ -395,6 +408,60 @@ def test_invalid_attached_timestamp_is_not_mislabeled_awaiting(
     assert report.structurally_intact
     assert report.status == "timestamp_invalid"
     assert not report.timestamp_authority_trusted and not report.evidence_ready
+
+
+def test_byteless_item_is_never_structurally_intact_or_evidence_ready(
+    local_tsa: LocalRfc3161TSA, tmp_path: Path
+) -> None:
+    """issue #158 decision 3: an item with no shared media and no embedded
+    original must never be ``evidence_ready``, even with an otherwise perfect,
+    authority-trusted timestamp over its content hash.
+
+    Decision 1 (``packet._require_shareable_bytes``) makes this state
+    unreachable through ``build_packet``, so this test constructs the item by
+    hand -- the defense-in-depth scenario this check exists for: a hand-
+    crafted bundle, a future code path that bypasses ``build_packet``, or a
+    packet produced by a different tool entirely.
+    """
+    content_hash = sha256_bytes(b"a photograph that was never actually included")
+    token = local_tsa.stamp(content_hash)
+    item: dict[str, JSONValue] = {
+        "capture_id": "cap-byteless",
+        "content_hash": content_hash,
+        "media_type": "image/heic",
+        "shared_name": "",
+        "shared_hash": "",
+        "timestamp": cast("JSONValue", token.to_dict()),
+    }
+    verdict = _verify_item(item, tmp_path, {}, {}, [local_tsa.certificate])
+
+    # The timestamp itself is perfectly valid and trusted...
+    assert verdict.timestamp_verified
+    assert verdict.timestamp_authority_trusted
+    # ...but there is nothing behind it: no shared copy, no embedded original.
+    assert not verdict.evidence_present
+    assert not verdict.structurally_intact
+    assert not verdict.cryptographically_verified
+    assert not verdict.evidence_ready
+    assert not verdict.ok
+    assert "no checkable evidence bytes" in " ".join(verdict.notes)
+    assert "no photo, recording, or file was included" in verdict.human_detail("en")
+    assert "no se incluyó ninguna foto" in verdict.human_detail("es")
+
+    report = VerificationReport(
+        packet_dir=tmp_path,
+        signature_ok=True,
+        custody_ok=True,
+        custody_length=1,
+        items=(verdict,),
+        problems=(),
+    )
+    assert not report.structurally_intact
+    assert not report.evidence_ready
+    assert not report.ok
+    assert report.status == "integrity_failed"
+    assert "evidence readiness: READY" not in report.summary()
+    assert "evidence readiness: NOT READY" in report.summary()
 
 
 def test_media_tamper_detected(

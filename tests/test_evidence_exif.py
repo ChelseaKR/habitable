@@ -114,6 +114,39 @@ class TestExif:
         # original untouched
         assert read_metadata(photo).has_location
 
+    def test_strip_non_jpeg_raster_removes_embedded_gps(self, tmp_path: Path) -> None:
+        """The non-JPEG path (``_strip_with_pillow``, used for PNG/WEBP/TIFF)
+        rebuilds a fresh image from decoded pixel values alone, so it drops
+        embedded metadata the same way the JPEG path does. Regression coverage
+        for a pixel-data API this project's Pillow floor (12.3.0) deprecated:
+        rebuilding from the deprecated accessor still worked but raised a
+        DeprecationWarning this project's `filterwarnings = ["error"]` policy
+        turns into a hard failure -- previously uncaught because no existing
+        test captured and exported a non-JPEG still image end to end.
+        """
+        gps = {
+            piexif.GPSIFD.GPSLatitudeRef: b"N",
+            piexif.GPSIFD.GPSLatitude: ((38, 1), (33, 1), (0, 1)),
+            piexif.GPSIFD.GPSLongitudeRef: b"W",
+            piexif.GPSIFD.GPSLongitude: ((121, 1), (44, 1), (0, 1)),
+        }
+        exif_bytes = piexif.dump({"0th": {}, "Exif": {}, "GPS": gps, "1st": {}, "thumbnail": None})
+        photo = tmp_path / "photo.png"
+        image = Image.new("RGB", (8, 8), (10, 20, 30))
+        image.putpixel((0, 0), (200, 5, 5))
+        image.save(photo, "PNG", exif=exif_bytes)
+        assert read_metadata(photo).has_location  # the fixture actually carries GPS
+
+        out = tmp_path / "shared.png"
+        report = make_shared_copy(photo, out, SharingPolicy())
+        assert not read_metadata(out).has_location
+        assert report.removed == ("all-embedded-metadata",)
+        with Image.open(out) as shared_image:
+            assert shared_image.format == "PNG"
+            assert shared_image.getpixel((0, 0)) == (200, 5, 5)  # pixels survive
+        # original untouched
+        assert read_metadata(photo).has_location
+
     def test_strip_all_removes_xmp_iptc_comments_and_contact_strings(
         self, make_jpeg: Callable[..., Path], tmp_path: Path
     ) -> None:

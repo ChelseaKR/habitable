@@ -103,7 +103,7 @@ in-limit regular files remain residual risks.
 
 | Field / property | Meaning |
 | --- | --- |
-| `structurally_intact` | signature, custody, format, media, bindings, and optional-original fixity pass |
+| `structurally_intact` | signature, custody, format, media, bindings, evidence-bytes presence, and optional-original fixity pass |
 | `timestamp_authority_trusted` | every item has a valid timestamp anchored to a supplied trusted certificate |
 | `evidence_ready` | non-empty packet passes both claims above; technical state, not admissibility |
 | `ok` | retained fail-closed alias for `evidence_ready` |
@@ -122,9 +122,13 @@ in-limit regular files remain residual risks.
 `ItemVerdict` (per media item) preserves the fields above and adds `timestamp_present`,
 `timestamp_kind`,
 `timestamp_authority_trusted`, `trusted_authorities`, `structurally_intact`,
-`cryptographically_verified`, and `evidence_ready`. `verified_authorities` lists every TSA whose
-token signature/imprint verified; `trusted_authorities` is the narrower subset anchored to a root
-the caller supplied. Item `ok` is the fail-closed alias for `evidence_ready`. The diagnostic
+`cryptographically_verified`, `evidence_ready`, and `evidence_present`. `verified_authorities`
+lists every TSA whose token signature/imprint verified; `trusted_authorities` is the narrower
+subset anchored to a root the caller supplied. Item `ok` is the fail-closed alias for
+`evidence_ready`. `evidence_present` is `False` only when the item carries neither a recorded
+shared copy nor an embedded original — a content hash and timestamp with no actual bytes behind
+them — and folds into `structurally_intact`, so such an item can never be `evidence_ready` (see
+`docs/verifier-decision-table.md` §4.2b). The diagnostic
 `notes` remain English machine/log details (for example `awaiting timestamp` or `shared media does
 not match its recorded hash`); `summary()`, `guidance()`, and per-item `human_detail()` are the
 localized human surfaces.

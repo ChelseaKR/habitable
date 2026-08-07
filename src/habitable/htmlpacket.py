@@ -46,6 +46,8 @@ a.skip:focus { position: static; }
 h1, h2, h3 { line-height: 1.25; }
 .warning { border: 2px solid #7a1f1f; background: #fdecec; color: #5a1414;
   padding: .6rem .8rem; border-radius: 6px; font-weight: 600; }
+.notice { border: 2px solid #1f4e5f; background: #eaf2f5; color: #12333d;
+  padding: .6rem .8rem; border-radius: 6px; }
 .meta { color: #333; }
 dl.cover { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .8rem; }
 dl.cover dt { font-weight: 600; }
@@ -532,11 +534,16 @@ def _evidence_figure(item: Mapping[str, JSONValue], trust: PacketTrustText) -> l
     and audio are never embedded as playable <video>/<audio> elements here: doing
     so accessibly requires caption/track markup this packet cannot yet author, so
     the honest accessible fallback is a still poster frame with real alt text and
-    a plain-text transcript, exactly the excellence bar EXP-07 sets."""
+    a plain-text transcript, exactly the excellence bar EXP-07 sets.
+
+    issue #158 (decision 3): if none of the above produces an inline image, a
+    poster frame, or a download link, this item carries no rendered evidence
+    bytes. That state must never look the same as an intact one -- it renders a
+    visible notice (an embedded original still exists to download) or a visible
+    warning (nothing at all was included), never a silently empty figure.
+    """
     media_type = _s(item, "media_type")
     shared = _s(item, "shared_name")
-    poster = _s(item, "poster_name")
-    transcript = _s(item, "transcript")
     stamp = _timestamp_status(item.get("timestamp"), trust)
     content_hash = _s(item, "content_hash")
     captured_at = _s(item, "captured_at")
@@ -546,56 +553,109 @@ def _evidence_figure(item: Mapping[str, JSONValue], trust: PacketTrustText) -> l
 
     out = ["<figure>"]
     if is_artifact and not media_type.startswith("image/"):
-        artifact = _map(item, "artifact")
-        out.append(
-            f"<p><strong>{escape(_s(artifact, 'title') or 'Supporting document')}</strong> · "
-            f"{escape(_s(artifact, 'artifact_type').replace('_', ' '))}</p>"
-        )
-        out.append(
-            f'<p class="meta">Source assertion: {escape(_s(artifact, "source") or "—")} · '
-            f"Issuer assertion: {escape(_s(artifact, 'issuer') or '—')}</p>"
-        )
-        if transcript:
-            out.append(f"<p>{escape(transcript)}</p>")
-        if shared:
-            out.append(
-                f'<p><a href="media/{escape(shared)}">Download supporting document '
-                "(verify its hash against bundle.json before opening)</a></p>"
-            )
+        body, rendered_evidence_bytes = _document_artifact_body(item)
     elif is_video or is_audio:
-        kind = "video" if is_video else "audio"
-        if poster:
-            alt = (
-                f"Poster frame from evidence {kind} for this issue, captured {captured_at}, "
-                f"content hash {content_hash[:12]}, {stamp}."
-            )
-            out.append(f'<img src="media/{escape(poster)}" alt="{escape(alt)}">')
-        if transcript:
-            out.append(
-                f"<details><summary>Transcript</summary><p>{escape(transcript)}</p></details>"
-            )
-        elif not poster:
-            out.append(
-                '<p class="warning">No transcript or poster frame was recorded for this '
-                f"{escape(kind)} — it does not yet meet the accessibility bar.</p>"
-            )
-        if shared:
-            out.append(
-                f'<p><a href="media/{escape(shared)}">Download the {escape(kind)} '
-                "(verify its hash against bundle.json before playing)</a></p>"
-            )
+        body, rendered_evidence_bytes = _video_audio_body(item, stamp, captured_at, content_hash)
     elif shared:
         alt = (
             f"Evidence photo for this issue, captured {captured_at}, "
             f"content hash {content_hash[:12]}, {stamp}."
         )
-        out.append(f'<img src="media/{escape(shared)}" alt="{escape(alt)}">')
+        body = [f'<img src="media/{escape(shared)}" alt="{escape(alt)}">']
+        rendered_evidence_bytes = True
+    else:
+        body, rendered_evidence_bytes = [], False
+    out.extend(body)
+
+    if not rendered_evidence_bytes:
+        out.append(_no_evidence_bytes_notice(item))
     out.append(
         f"<figcaption>Captured {escape(captured_at)} · "
         f"hash {escape(content_hash[:16])}… · {escape(stamp)}</figcaption>"
     )
     out.append("</figure>")
     return out
+
+
+def _document_artifact_body(item: Mapping[str, JSONValue]) -> tuple[list[str], bool]:
+    """The body of a non-image artifact's figure (a repair request, receipt,
+    etc.): title, source/issuer assertions, transcript, and a download link
+    for its shared copy. Returns whether a real download link was rendered."""
+    shared = _s(item, "shared_name")
+    transcript = _s(item, "transcript")
+    artifact = _map(item, "artifact")
+    out = [
+        f"<p><strong>{escape(_s(artifact, 'title') or 'Supporting document')}</strong> · "
+        f"{escape(_s(artifact, 'artifact_type').replace('_', ' '))}</p>",
+        f'<p class="meta">Source assertion: {escape(_s(artifact, "source") or "—")} · '
+        f"Issuer assertion: {escape(_s(artifact, 'issuer') or '—')}</p>",
+    ]
+    if transcript:
+        out.append(f"<p>{escape(transcript)}</p>")
+    if not shared:
+        return out, False
+    out.append(
+        f'<p><a href="media/{escape(shared)}">Download supporting document '
+        "(verify its hash against bundle.json before opening)</a></p>"
+    )
+    return out, True
+
+
+def _video_audio_body(
+    item: Mapping[str, JSONValue], stamp: str, captured_at: str, content_hash: str
+) -> tuple[list[str], bool]:
+    """The body of a video/audio figure: poster frame and/or transcript (EXP-07's
+    accessible fallback -- never a playable element), plus a download link for
+    the shared file. Returns whether a poster frame or download link -- real
+    evidence bytes, as opposed to just a transcript -- was rendered."""
+    poster = _s(item, "poster_name")
+    shared = _s(item, "shared_name")
+    transcript = _s(item, "transcript")
+    kind = "video" if _s(item, "media_type").startswith("video/") else "audio"
+    out: list[str] = []
+    rendered_evidence_bytes = False
+    if poster:
+        alt = (
+            f"Poster frame from evidence {kind} for this issue, captured {captured_at}, "
+            f"content hash {content_hash[:12]}, {stamp}."
+        )
+        out.append(f'<img src="media/{escape(poster)}" alt="{escape(alt)}">')
+        rendered_evidence_bytes = True
+    if transcript:
+        out.append(f"<details><summary>Transcript</summary><p>{escape(transcript)}</p></details>")
+    elif not poster:
+        out.append(
+            '<p class="warning">No transcript or poster frame was recorded for this '
+            f"{escape(kind)} — it does not yet meet the accessibility bar.</p>"
+        )
+    if shared:
+        out.append(
+            f'<p><a href="media/{escape(shared)}">Download the {escape(kind)} '
+            "(verify its hash against bundle.json before playing)</a></p>"
+        )
+        rendered_evidence_bytes = True
+    return out, rendered_evidence_bytes
+
+
+def _no_evidence_bytes_notice(item: Mapping[str, JSONValue]) -> str:
+    """The visible fallback for an item with no rendered evidence bytes (issue
+    #158, decision 3): a link to the embedded original if one exists, else a
+    plain warning that nothing was included at all. Never a silently empty
+    figure -- see :func:`_evidence_figure`."""
+    if item.get("has_original") is True:
+        capture_id = _s(item, "capture_id")
+        return (
+            '<p class="notice">No shared preview copy was made for this item. The '
+            "sealed original file is embedded and hash-verified — "
+            f'<a href="originals/{escape(capture_id)}">download the original</a> '
+            "(verify its hash against bundle.json before opening; it may retain full "
+            "metadata, including location).</p>"
+        )
+    return (
+        '<p class="warning">No photo, recording, or file was included for this '
+        "item. Its content hash and timestamp exist, but there are no evidence "
+        "bytes here to view or verify.</p>"
+    )
 
 
 def _photo_figure(item: Mapping[str, JSONValue], trust: PacketTrustText | None = None) -> str:
@@ -719,6 +779,7 @@ def _appendix_table(bundle: Mapping[str, JSONValue], trust: PacketTrustText) -> 
         '<th scope="col">Content hash (SHA-256)</th>'
         f'<th scope="col">{escape(trust.timestamp_heading)}</th>'
         f'<th scope="col">{escape(trust.authority_heading)}</th>'
+        '<th scope="col">Media</th>'
         "</tr></thead>",
         "<tbody>",
     ]
@@ -734,10 +795,27 @@ def _appendix_table(bundle: Mapping[str, JSONValue], trust: PacketTrustText) -> 
             f"<td>{escape(_s(item, 'content_hash'))}</td>"
             f"<td>{escape(status)}</td>"
             f"<td>{escape(authority)}</td>"
+            f"<td>{escape(_item_media_status(item))}</td>"
             "</tr>"
         )
     rows.append("</tbody></table>")
     return "".join(rows)
+
+
+def _item_media_status(item: Mapping[str, JSONValue]) -> str:
+    """Plain-language summary of what evidence bytes, if any, this item carries.
+
+    issue #158 (decision 3): the appendix table used to say nothing about
+    whether an item's photo/recording/file actually shipped -- a byteless item
+    read exactly like an intact one next to its content hash and timestamp
+    column. This makes that state visible here too, not only in the per-item
+    figure (:func:`_evidence_figure`) and the machine-readable report.
+    """
+    if _s(item, "shared_name") or _s(item, "poster_name") or item.get("sensor") is not None:
+        return "included"
+    if item.get("has_original") is True:
+        return "original only (no shared preview)"
+    return "NONE — no evidence bytes"
 
 
 def _timestamp_status(token: JSONValue | None, trust: PacketTrustText) -> str:
