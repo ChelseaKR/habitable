@@ -21,7 +21,11 @@
 - `custody_ok` — the chain of custody walks cleanly **and** its computed head equals the declared
   `custody_proof.head_hash`, **and**
 - `problems` is empty (no version/structural problem), **and**
-- every item's shared media, custody binding, and optional embedded-original fixity pass.
+- every item's shared media, custody binding, and optional embedded-original fixity pass, **and**
+- every item carries at least one real, checkable evidence artifact — a recorded shared copy or an
+  embedded original (`evidence_present`, [§4.2b](#42b-evidence-bytes-present-evidence_present)). An
+  item with only a content hash and a timestamp, and nothing a human can look at, is never
+  structurally intact.
 
 Timestamp presence and trust do **not** redefine structural integrity. A signed packet can therefore
 be structurally intact while an item awaits a timestamp, contains an invalid token, or has a valid
@@ -136,6 +140,40 @@ trust.
 | `media/<shared_name>` missing | `False` | `shared media file missing` |
 | `sha256(media/<shared_name>)` ≠ `shared_hash` | `False` | `shared media does not match its recorded hash` |
 | file present and hash matches | `True` | — |
+
+`shared_media_ok = True` when `shared_name` is empty does **not**, by itself, mean the item is
+fine — see [§4.2b](#42b-evidence-bytes-present-evidence_present), which independently requires
+some real evidence artifact to exist at all.
+
+### 4.2b Evidence bytes present (`evidence_present`)
+
+Added for issue #158: a `.heic` capture (the iPhone default photo format) once had no packet
+export mapping, so it shipped with `shared_name=""`, nothing in `media/`, and no embedded
+original. Both `shared_media_ok` (§4.2, "no shared media" reads `True`) and `custody_binding_ok`
+(§4.3, gated on `shared_name` being non-empty) read as "nothing to check, therefore fine" for that
+item, so a packet holding zero photographs still verified `evidence_ready`. This check closes that
+gap: an item must carry *some* real, checkable evidence artifact to ever be structurally intact — a
+content hash and a timestamp with nothing behind them are not evidence a human can look at.
+
+| Condition | `evidence_present` | note |
+| --- | --- | --- |
+| item has a non-empty `shared_name` | `True` | — |
+| item has no `shared_name` but `has_original` is `true` (an embedded original was included) | `True` | — |
+| item has neither a `shared_name` nor an embedded original | `False` | `no shared media and no embedded original: this item carries no checkable evidence bytes` |
+
+`evidence_present` folds directly into `structurally_intact` ([§0](#0-the-three-verdicts)), so a
+byteless item can never be `evidence_ready` regardless of an otherwise-valid, authority-trusted
+timestamp. `packet.build_packet` independently refuses (rather than silently omitting) a
+default-policy export of an item that would end up in this state, so it should not arise from a
+packet this codebase produced; this check is defense-in-depth for a hand-crafted or otherwise
+non-conformant bundle, a packet built by a future code path that bypasses `build_packet`, or a
+packet produced by a different tool entirely. An item with an embedded original but no shared
+preview copy (`--include-originals` on a media type with no default sanitizer, e.g. `.heic` today)
+is a deliberate, disclosed, higher-disclosure choice, not a defect: it reads `evidence_present =
+True` and can reach `evidence_ready`, and `packet.html` visibly renders it as an embedded original
+with no shared preview, with a link to the original and a metadata-retention warning, rather than
+silently rendering an empty figure (see README "Originals are sealed; sharing is a deliberate,
+minimizing act").
 
 ### 4.3 Custody binding (`custody_binding_ok`)
 
