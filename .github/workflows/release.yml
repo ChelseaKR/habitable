@@ -206,11 +206,12 @@ jobs:
       - name: Publish assets to the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.verify-build.outputs.release_tag }}
         run: |
           set -euo pipefail
           gh release view "$TAG" >/dev/null 2>&1 \
-            || gh release create "$TAG" --verify-tag --title "habitable $TAG" --generate-notes
+            || gh release create "$TAG" --title "habitable $TAG" --generate-notes
           gh release upload "$TAG" dist/* --clobber
 
   pypi-publish:
