@@ -4,12 +4,15 @@
 
 from __future__ import annotations
 
+import copy
+import json
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
 from habitable.capture import capture
+from habitable.htmlpacket import render_packet_html
 from habitable.packet import build_packet
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
@@ -66,6 +69,83 @@ def test_html_packet_escapes_user_content(
     html = result.html_path.read_text(encoding="utf-8")
     assert "<img src=x onerror=alert(1)>" not in html  # escaped
     assert "&lt;img src=x onerror=alert(1)&gt;" in html
+
+
+def test_byteless_item_renders_a_visible_warning_not_an_empty_figure(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """issue #158 decision 3: ``build_packet`` now refuses to ever produce a
+    byteless item (see tests/test_media_types.py), so this state can only
+    reach ``render_packet_html`` via a hand-crafted or otherwise
+    non-conformant bundle -- exactly the defense-in-depth scenario the visible
+    rendering exists for (a packet from an older/different tool, or a future
+    code path that bypasses ``build_packet``). Simulate that by mutating an
+    otherwise-real, freshly built bundle's one item down to no bytes at all.
+    """
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", title="Mold", issue_id="i1")
+    capture(vault, make_jpeg(with_location=True), issue_id=issue, tsa=local_tsa)
+    out = tmp_path / "pkt"
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z", make_pdf=False)
+
+    bundle = json.loads((out / "bundle.json").read_text(encoding="utf-8"))
+    bundle["items"][0]["shared_name"] = ""
+    bundle["items"][0]["shared_hash"] = ""
+    bundle["items"][0]["has_original"] = False
+
+    rendered = tmp_path / "byteless.html"
+    render_packet_html(bundle, out / "media", rendered)
+    html = rendered.read_text(encoding="utf-8")
+
+    assert (
+        "No photo, recording, or file was included for this item. Its content hash "
+        "and timestamp exist, but there are no evidence bytes here to view or "
+        "verify." in html
+    )
+    assert '<img src="media/' not in html  # never a silently empty figure
+    assert "NONE — no evidence bytes" in html  # the appendix table says so too
+
+
+def test_original_only_item_renders_a_visible_notice_with_a_download_link(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """An item with an embedded original but no shared preview copy (e.g. a
+    HEIC capture exported with ``--include-originals``, see
+    tests/test_media_types.py) is a deliberate, disclosed, higher-disclosure
+    choice, not a defect -- it must be visibly explained, not rendered as an
+    empty figure either."""
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", title="Mold", issue_id="i1")
+    capture(vault, make_jpeg(with_location=True), issue_id=issue, tsa=local_tsa)
+    out = tmp_path / "pkt"
+    build_packet(
+        vault, out, generated_at="2026-01-02T00:10:00Z", make_pdf=False, include_originals=True
+    )
+
+    bundle = json.loads((out / "bundle.json").read_text(encoding="utf-8"))
+    original_item = copy.deepcopy(bundle["items"][0])
+    original_item["shared_name"] = ""
+    original_item["shared_hash"] = ""
+    assert original_item["has_original"] is True
+    bundle["items"][0] = original_item
+
+    rendered = tmp_path / "original-only.html"
+    render_packet_html(bundle, out / "media", rendered)
+    html = rendered.read_text(encoding="utf-8")
+
+    capture_id = original_item["capture_id"]
+    assert "No shared preview copy was made for this item" in html
+    assert "sealed original file is embedded and hash-verified" in html
+    assert f'<a href="originals/{capture_id}">download the original</a>' in html
+    assert "may retain full metadata, including location" in html
+    assert '<img src="media/' not in html
+    assert "original only (no shared preview)" in html  # the appendix table too
 
 
 def _inspector(

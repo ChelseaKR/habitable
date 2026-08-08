@@ -22,30 +22,18 @@ from .evidence import CustodyAction
 from .exif import MediaMetadata, read_metadata
 from .media import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS
 from .media import probe_metadata as probe_media_metadata
+from .media_types import EXTENSION_TO_MEDIA_TYPE
 from .obslog import log_event
 from .tsa import TimestampAuthority, TimestampInfo, TimestampToken, retimestamp, verify_token
 from .vault import Vault
 
 __all__ = ["CaptureResult", "capture", "resolve_deferred", "retimestamp_all"]
 
-_MEDIA_TYPES = {
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".png": "image/png",
-    ".heic": "image/heic",
-    ".webp": "image/webp",
-    ".tif": "image/tiff",
-    ".tiff": "image/tiff",
-    ".mp4": "video/mp4",
-    ".mov": "video/quicktime",
-    ".m4a": "audio/mp4",
-    ".mp3": "audio/mpeg",
-    ".wav": "audio/wav",
-    # EXP-09: an independent instrument's CSV export (temperature logger, moisture
-    # meter, ...) is a capture type like any other — same hash/seal/timestamp
-    # pipeline below, interpreted for rendering by habitable.sensor.
-    ".csv": "text/csv",
-}
+# The canonical extension -> MIME type table now lives in habitable.media_types,
+# the single source of truth also read by packet.py's exporter (issue #158). The
+# name is kept here, private, for anything (tests included) still spelling it
+# ``capture._MEDIA_TYPES``.
+_MEDIA_TYPES = EXTENSION_TO_MEDIA_TYPE
 
 _MEDIA_EXTENSIONS = VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
 

@@ -74,7 +74,22 @@ class UnitHealth:
 
     @property
     def export_ready(self) -> bool:
-        """No captures awaiting a timestamp, an intact chain, and something to show."""
+        """No captures awaiting a timestamp, an intact chain, and something to show.
+
+        This is a cheap, read-only vault-level signal for a roll-up across many
+        units (nothing *known* to block starting an export) -- it is not the
+        verified `evidence_ready` verdict `verify_packet` computes over an
+        actually-built packet, and it does not inspect per-capture media types.
+        A unit can be `export_ready` here and still have `build_packet` /
+        `habitable export` refuse: since issue #158's fix, a capture whose media
+        type has no default packet export mapping (e.g. `.heic`, see
+        `habitable.media_types`) makes the export fail closed with a `PacketError`
+        naming that capture, rather than publish a packet silently missing its
+        bytes as it once did. That refusal is the correct, honest outcome for
+        this roll-up too: better for an organizer to see a clear error naming
+        the capture than a roll-up claiming a unit is ready when its evidence
+        cannot be exported by default.
+        """
         return self.custody_intact and self.awaiting_count == 0 and self.capture_count > 0
 
     def to_json(self) -> dict[str, JSONValue]:

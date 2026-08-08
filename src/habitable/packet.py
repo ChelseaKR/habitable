@@ -36,6 +36,7 @@ from .evidence import CustodyAction, CustodyLog
 from .exif import make_shared_copy
 from .handoff import build_handoff_manifest, render_handoff_html
 from .media import extract_poster_frame, make_shared_media_copy
+from .media_types import REGISTRY as _MEDIA_TYPE_REGISTRY
 from .model import Artifact, Capture, EvidenceRelationship, Issue, TimelineEntry
 from .private_temp import PrivateTempWorkspace, private_temp_workspace
 from .sensor import parse_sensor_csv
@@ -54,17 +55,19 @@ _HTML = "packet.html"
 _INSPECTOR = "inspector.html"
 _HANDOFF_PREFIX = "handoff-"
 
+# Derived from habitable.media_types.REGISTRY (issue #158's single source of
+# truth), not hand-maintained here anymore. A media type with export_kind
+# "unsupported" (image/heic today, see media_types.py) is deliberately absent
+# from both dicts below: _build_item falls through to the include_originals
+# path for it, and _require_shareable_bytes refuses a default-policy export
+# that would otherwise ship the item with no bytes at all (decision 1).
+#
+# Video/audio (EXP-07) are stripped via ffmpeg in habitable.media, not exif.py,
+# but share this same MIME-type -> export-extension shape.
 _EXT_BY_TYPE = {
-    "image/jpeg": ".jpg",
-    "image/png": ".png",
-    "image/tiff": ".tif",
-    "image/webp": ".webp",
-    # Video/audio (EXP-07): stripped via ffmpeg in habitable.media, not exif.py.
-    "video/mp4": ".mp4",
-    "video/quicktime": ".mov",
-    "audio/mp4": ".m4a",
-    "audio/mpeg": ".mp3",
-    "audio/wav": ".wav",
+    spec.media_type: spec.export_ext
+    for spec in _MEDIA_TYPE_REGISTRY
+    if spec.export_kind in {"image", "video", "audio"}
 }
 
 # EXP-09: instrument-corroborated conditions. A data-file capture (a temperature
@@ -72,7 +75,7 @@ _EXT_BY_TYPE = {
 # strip, so it is copied into the packet verbatim rather than sanitized like an
 # image — and interpreted into a chart-ready series for the HTML/PDF renderers.
 _DATA_EXT_BY_TYPE = {
-    "text/csv": ".csv",
+    spec.media_type: spec.export_ext for spec in _MEDIA_TYPE_REGISTRY if spec.export_kind == "data"
 }
 
 _DOCUMENT_EXT_BY_TYPE = {
@@ -239,6 +242,7 @@ def _build_packet_in_dir(  # noqa: C901 -- packet staging keeps one rollback bou
                 include_originals=include_originals,
                 actor=actor,
             )
+            _require_shareable_bytes(item, capture.capture_id, capture.media_type)
             items.append(item)
             if item.get("timestamp") is not None:
                 timestamped += 1
@@ -255,6 +259,7 @@ def _build_packet_in_dir(  # noqa: C901 -- packet staging keeps one rollback bou
                 include_originals=include_originals,
                 actor=actor,
             )
+            _require_shareable_bytes(item, artifact.artifact_id, artifact.media_type)
             items.append(item)
             if item.get("timestamp") is not None:
                 timestamped += 1
@@ -430,6 +435,40 @@ def _publish_staged_packet(staged: Path, target: Path) -> None:
         target.replace(staged)
         backup.replace(target)
         raise
+
+
+def _require_shareable_bytes(item: dict[str, JSONValue], record_id: str, media_type: str) -> None:
+    """Refuse to publish a packet item carrying neither a shared copy nor an
+    embedded original (issue #158, decision 1).
+
+    Before this check, a media type absent from both packet export maps (e.g.
+    ``image/heic``, the iPhone default photo format, which was absent from
+    ``_EXT_BY_TYPE``/``_DATA_EXT_BY_TYPE``) still produced an item: with
+    ``shared_name=""``, nothing written into ``media/``, and no
+    ``copied_for_sharing`` custody entry. ``habitable verify`` still reported
+    the resulting packet READY -- a signed, timestamped bundle asserting
+    readiness over zero photographs. Fail loud here instead, while the
+    evidence is still on the device and the operator can act on it, rather
+    than after a clean-looking packet has already reached an inspector,
+    a legal-aid worker, or a court.
+
+    This is a whole-packet refusal, not a per-item skip: ``build_packet`` has
+    no scoped/partial export mode (packet v4 carries the complete custody
+    chain, see its module docstring), so silently omitting just the bad item
+    would itself produce a packet whose evidence appendix count no longer
+    matches what the operator expected, with no record of what went missing.
+    """
+    if item.get("shared_name") or item.get("has_original"):
+        return
+    raise PacketError(
+        f"cannot export capture {record_id} (media type {media_type!r}): it would "
+        "carry neither a metadata-stripped shared copy nor an embedded original, "
+        "so the packet would contain none of this item's evidence bytes. Re-run "
+        "with --include-originals to embed the sealed original file byte-exact "
+        "(a deliberate, higher-disclosure choice — the original may retain full "
+        "metadata, including location), or capture this item again in a "
+        "supported format."
+    )
 
 
 def _build_item(
