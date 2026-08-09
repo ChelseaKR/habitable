@@ -462,7 +462,7 @@ gate—see **[`ROADMAP.md`](ROADMAP.md)**.
 
 ## Engineering and open-source practices
 
-### Standards conformance
+## Standards Conformance
 
 This repo is developed against a portfolio-wide set of engineering standards
 (quality, security, CI/CD, release, accessibility, observability, i18n,
@@ -472,25 +472,28 @@ standard's own README, silent omission of this declaration is itself a defect
 "fully conformant"; it means the standard's controls are in scope and tracked,
 with open gaps named rather than hidden.
 
-| # | Standard | Applies? | Where it's tracked |
-|---|---|---|---|
-| 1 | Quality & metrics | Applies (all repos) | `make verify` (coverage floor, complexity gate); [Definition of done](#definition-of-done) below; the gate-by-gate contract is [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md) |
-| 2 | Code quality | Applies (Python; TS/Node/frontend-toolchain controls are N/A — the PWA is no-build vanilla JS with no `package.json`) | `pyproject.toml` (ruff + mypy --strict config); `.pre-commit-config.yaml` |
-| 3 | Security & Supply-Chain | Applies (ships code, releases, and a Dockerfile for the relay) | `SECURITY.md`; `.github/workflows/ci.yml` (gitleaks), `secret-scan-scheduled.yml` (TruffleHog), `codeql.yml`, `zizmor.yml`; `docs/audits/scorecard-2026-07.md` |
-| 4 | CI/CD | Applies (workflows under `.github/workflows/`) | This README's build/verify description; `.github/rulesets/` (active PR/current-check protection on `main` plus active `v*` release-tag protection; zero approvals is an explicit solo-maintainer waiver in ADR 0006) |
-| 5 | Release & versioning | Applies (tagged GitHub Releases) | `docs/releasing.md`; `ROADMAP.md` §Releases & versioning; signed-tag protection and CI verification are active; PyPI Trusted Publishing still requires the documented registry/environment setup |
-| 6 | Accessibility | Applies (emits HTML: the PWA in `app/`, `packet.html`, the `site/` landing page) | [Accessibility and Section 508 conformance](#accessibility-and-section-508-conformance) below; `docs/accessibility/ACR.md`; **gap:** recorded human screen-reader pass still open, tracked as a v1.0 gate item in `ROADMAP.md` |
-| 7 | Observability | Applies (Tier A for the optional relay, Tier C for the CLI; the no-telemetry principle drives excluded controls) | `ROADMAP.md` §Observability |
-| 8 | Internationalization | Applies (bilingual EN/ES civic surface) | `docs/I18N.md` ("i18n status: IN-SCOPE"); `docs/adr/0005-i18n-g12-cldr-na-by-design.md` |
-| 9 | AI evaluation | **N/A — no LLM/AI features** (verified: no LLM SDK in `[project].dependencies` or the dev group; no AI code paths) | — |
-| 10 | Documentation | Applies (all repos) | This README; `docs/` tree; `CHANGELOG.md` |
-| 11 | Responsible-tech framework | Applies (all repos) | [`docs/RESPONSIBLE-TECH-AUDITS.md`](docs/RESPONSIBLE-TECH-AUDITS.md) (A–F applicability declaration, ASVS 5.0 self-assessment, secret-management and VEX posture, audit index); `docs/audits/`, `docs/privacy.md`, `docs/threat-model.md` |
+| Standard | State | Where it's tracked |
+|---|---|---|
+| Responsible-Tech Framework | Applies | [`docs/RESPONSIBLE-TECH-AUDITS.md`](docs/RESPONSIBLE-TECH-AUDITS.md) (A–F applicability declaration, ASVS 5.0 self-assessment, secret-management and VEX posture, audit index); `docs/audits/`, `docs/privacy.md`, and `docs/threat-model.md` |
+| Code Quality | Applies (Python; TS/Node/frontend-toolchain controls are N/A — the PWA is no-build vanilla JS with no `package.json`) | `pyproject.toml` (ruff + mypy --strict config); `.pre-commit-config.yaml` |
+| Security & Supply-Chain | Applies (ships code, releases, and a Dockerfile for the relay) | `SECURITY.md`; `.github/workflows/ci.yml` (gitleaks), `secret-scan-scheduled.yml` (TruffleHog), `codeql.yml`, `zizmor.yml`; `docs/audits/scorecard-2026-07.md` |
+| CI/CD | Applies (workflows under `.github/workflows/`) | This README's build/verify description; `.github/rulesets/` (active PR/current-check protection on `main` plus active `v*` release-tag protection; zero approvals is an explicit solo-maintainer waiver in ADR 0006) |
+| Release & Versioning | Applies (tagged GitHub Releases) | `docs/releasing.md`; `ROADMAP.md` §Releases & versioning; signed-tag protection and CI verification are active; PyPI Trusted Publishing still requires the documented registry/environment setup |
+| Observability | Applies (Tier A for the optional relay, Tier C for the CLI; the no-telemetry principle drives excluded controls) | `ROADMAP.md` §Observability |
+| Performance | Applies | [`docs/performance-budget.md`](docs/performance-budget.md) and `ROADMAP.md` define the low-end-device budget and its evidence |
+| Accessibility | Applies (emits HTML: the PWA in `app/`, `packet.html`, and the `site/` landing page) | [Accessibility and Section 508 conformance](#accessibility-and-section-508-conformance) below; `docs/accessibility/ACR.md`; **gap:** recorded human screen-reader pass remains a v1.0 gate in `ROADMAP.md` |
+| Internationalization | Applies (bilingual EN/ES civic surface) | `docs/I18N.md` ("i18n status: IN-SCOPE"); `docs/adr/0005-i18n-g12-cldr-na-by-design.md` |
+| AI Evaluation | N/A — no LLM/AI features | No LLM SDK is present in `[project].dependencies` or the development group, and there are no AI runtime paths |
+| Documentation | Applies | This README; the `docs/` tree; `CHANGELOG.md` |
+| Quality & Metrics | Applies | `make verify` (coverage floor and complexity gate), the [definition of done](#definition-of-done), and [`DEFINITION_OF_DONE.md`](DEFINITION_OF_DONE.md) |
+| AI Development Measurement | Applies — repository ledger gap | AI-assisted development participates in portfolio Track A measurement; a repository-local roadmap declaration and baseline remain to be added |
+| Incident Response | Applies — local-first and optional-relay scope | Privacy, secret, custody, and relay incidents remain in scope; `SECURITY.md`, `docs/key-management.md`, and the incident support commitment in `docs/evidence-pack.md` provide current procedures |
+| Data Governance | Applies — L3 identity-sensitive data | `docs/privacy.md` and `docs/threat-model.md` define the tenant identity/location boundary, disclosure risks, retention choices, and local-first handling |
 
-Every "gap" above is also named in this repo's dated remediation record
-(`habitable-REMEDIATION.md` from the 2026-07-05 conformance audit); formal
-per-gap tracking issues had not been filed as of that date — filing one per
-open row is itself a tracked follow-up, not assumed done by this table's
-existence.
+Every "gap" above remains tracked in this repository's roadmap or audit
+documents. Formal per-gap tracking issues had not been filed as of the
+2026-07-05 conformance audit; filing one per open row is itself a tracked
+follow-up, not assumed done by this table's existence.
 
 pytest plus property-based and tamper-detection tests for the evidence, crypto, sync, and verify paths;
 ruff + mypy strict in CI; verification and packet assembly are deterministic and reproducible; `make
