@@ -1,39 +1,44 @@
 name: Bug report
-description: Report a defect. Use synthetic data only — never real tenant data.
+description: Something behaves differently than documented
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping. **Do not paste real tenant data, addresses, photos, or keys.**
-        If this is a security or privacy vulnerability, stop and follow `SECURITY.md` instead.
+        Thanks for taking the time. The most useful reports say what you ran,
+        what happened, and what you expected instead.
+
+        If this is a security vulnerability, please do not file it here. See
+        SECURITY.md for how to report it privately.
   - type: textarea
     id: what-happened
     attributes:
       label: What happened
-      description: What did you do, what did you expect, and what happened instead?
+      description: >-
+        What you ran and what came back. Paste the output rather than describing it.
     validations:
       required: true
   - type: textarea
-    id: reproduce
+    id: expected
     attributes:
-      label: Reproduce on sample data
-      description: Steps to reproduce, ideally starting from `habitable demo` or synthetic fixtures.
-      placeholder: |
-        1. uv run habitable init ...
-        2. uv run habitable capture ...
-        3. ...
+      label: What you expected instead
+      description: >-
+        If a rule or spec section says otherwise, quoting it helps a lot.
     validations:
       required: true
   - type: input
     id: version
     attributes:
       label: Version
-      description: Output of `uv run habitable --version` and your OS.
+      description: >-
+        The version or commit
     validations:
       required: true
   - type: textarea
-    id: logs
+    id: anything-else
     attributes:
-      label: Output / traceback
-      render: text
+      label: Anything else
+      description: >-
+        Environment, workarounds you tried, related issues.
+    validations:
+      required: false
