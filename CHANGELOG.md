@@ -44,6 +44,53 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **Timestamp-authority trust had only ever been anchored to certificates this
+  repository generated, and the untrusted verdict could not be told apart from
+  operator error (issue #159).** `timestamp_authority_trusted` gates every READY
+  verdict, and its anchor check had never been exercised against a certificate
+  the project did not mint: the integration test proved a real authority could
+  *issue* a token (verifying it with no anchor at all), and every anchor
+  assertion used `LocalRfc3161TSA`'s own certificate or one generated inside the
+  test.
+
+  - **The join is now asserted, offline.** `tests/golden/tsa-freetsa/` commits a
+    real FreeTSA token over a synthetic digest together with FreeTSA's published
+    root and responder certificates (provenance and re-derivation steps in that
+    directory's README), and `tests/test_tsa_real_authority.py` anchors the one
+    to the other in every `make verify` — no network, no flakiness. The live
+    counterpart in `tests/test_tsa_integration.py` now anchors a freshly stamped
+    token to the authority's published root as well, so a change in that
+    authority's chain shape is a visible failure rather than a silent one.
+  - **The three anchor outcomes are distinguishable.** "No anchor was supplied",
+    "anchors were supplied and none chained", and "anchored" produced one
+    sentence about a certificate "not chained to a trusted root". A reviewer who
+    downloaded an authority's published root, passed it, and got NOT TRUSTED was
+    told to do the thing they had just done. `TimestampInfo.note` and
+    `VerificationReport.guidance()` now say which case occurred,
+    `VerificationReport.anchors_supplied` exposes it to machine consumers (also
+    in `habitable verify --json`), and the no-anchor case states plainly that
+    authority trust was *not assessed* — which is not a finding against the
+    token. The machine-readable `status` value is unchanged.
+  - **The anchor rule is stated instead of inferred.** `habitable.tsa.ANCHOR_RULE`
+    documents that this is a *one-hop* check — the anchor must be the signing
+    certificate or the certificate that directly issued it — and that
+    intermediates, validity periods, basic constraints, key usage, name
+    constraints, and revocation are **not** checked. It is not widened here:
+    widening it means this project hand-rolling X.509 path validation inside the
+    one function every READY verdict rests on. `docs/embedding-the-verifier.md`
+    stopped instructing embedders to pass roots (which fails for any authority
+    issuing through an intermediate, DigiCert included) and now says to pass the
+    *issuing* certificate or pin the responder; `docs/verifier-decision-table.md`
+    §5 records that `openssl ts -verify -CAfile` does build a path and can
+    therefore succeed where this check declines, so the two tools are not in
+    conflict about the token.
+  - **The anchor check is no longer RSA-only.** `_issuer_signed` returned
+    `False` for every non-RSA issuer key, so a legitimate EC-issued authority
+    chain was reported exactly as a forged one. Each hop is now delegated to
+    `cryptography`'s `verify_directly_issued_by` (RSA, ECDSA, Ed25519, Ed448),
+    which also checks that issuer and subject names chain. Nothing about what is
+    *not* checked changed.
+
 - **A capture whose media type had no packet export mapping (`.heic`, the iPhone
   default photo format) used to ship with no bytes, no custody binding, and a
   `habitable verify` verdict of READY (issue #158).** `packet.build_packet` now
