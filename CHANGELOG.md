@@ -44,6 +44,42 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **Packet v4 was the only format habitable emits and nothing that pins the
+  format covered it (issue #160).** No golden fixture, a fuzz harness on v1, a
+  reference importer on v1, a BagIt adapter on v3, and a decision table
+  describing itself as normative for v2 — while two documents stated that
+  "every version ever emitted keeps verifying, guarded by the committed
+  golden-packet corpus".
+
+  - `tests/golden/packet-v4/` is committed, and `scripts/make_golden_packet.py`
+    now builds a fixture that actually exercises the version's own surfaces: an
+    artifact item, a relationship, a use-case profile, and a handoff view. A
+    fixture carrying only the shape every version shares would leave
+    `_verify_v4_workflows` — roughly 250 lines of hostile-input parsing in the
+    standalone verifier — as unguarded as no fixture at all.
+  - `tests/test_golden.py` asserts a fixture exists for **every** version in
+    `1..SUPPORTED_PACKET_VERSION`, and that the newest one carries those
+    surfaces. The corpus previously passed with whatever happened to be on disk,
+    which is why a version bump could forget its fixture and stay green. This is
+    the assertion that stops it recurring.
+  - The fuzz harness draws from the whole corpus instead of `packet-v1`, and its
+    structural mutation reaches **nested** objects and array elements rather
+    than only top-level keys — so the v3 timeline and v4
+    artifact/relationship/profile/handoff structures are now fuzzed at all
+    (448 addressable positions in the v4 bundle, against 114 in v1). The
+    reference importer is parametrized over every committed version, and the
+    BagIt adapter test follows `SUPPORTED_PACKET_VERSION` rather than a pinned
+    v3.
+  - Documentation corrected rather than left describing the old state: the two
+    "every version ever emitted" sentences now say what the corpus is actually
+    required to contain, and `docs/verifier-decision-table.md`'s header no
+    longer claims to be normative for `SUPPORTED_PACKET_VERSION = 2`. It states
+    which checks its rows are complete for and which version-specific checks it
+    does not yet enumerate, and tells a reviewer to derive those from the code
+    and the corpus rather than from a stale table. `tests/test_site_sample.py`
+    records that the published sample is a freshness gate, not a compatibility
+    pin.
+
 - **A capture whose media type had no packet export mapping (`.heic`, the iPhone
   default photo format) used to ship with no bytes, no custody binding, and a
   `habitable verify` verdict of READY (issue #158).** `packet.build_packet` now

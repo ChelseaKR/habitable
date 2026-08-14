@@ -26,6 +26,7 @@ from pathlib import Path
 import piexif
 from PIL import Image
 
+from habitable.artifact import add_relationship, capture_artifact
 from habitable.capture import capture
 from habitable.packet import PACKET_VERSION, build_packet
 from habitable.tsa import LocalRfc3161TSA
@@ -88,6 +89,35 @@ def main() -> int:
     _synthetic_photo(photo)
     tsa = LocalRfc3161TSA("golden-tsa", time_source=lambda: _FIXED_EPOCH)
     capture(vault, photo, issue_id=issue, tsa=tsa)
+
+    # Exercise the version-specific surfaces, not just the shape every version
+    # shares (issue #160). A fixture that carries no artifact, relationship,
+    # profile, or handoff view leaves `_verify_v4_workflows` -- roughly 250
+    # lines of hostile-input parsing in the standalone verifier -- with nothing
+    # to bite on, which is how packet v4 shipped pinned by nothing.
+    vault.document.set_use_case_profile("repair_delivery")
+    request = work / "repair-request.txt"
+    request.write_text(
+        "Synthetic repair request for the golden fixture. Never real tenant data.\n",
+        encoding="utf-8",
+    )
+    artifact = capture_artifact(
+        vault,
+        request,
+        issue_id=issue,
+        artifact_type="repair_request",
+        title="Repair request",
+        source_assertion="tenant copy",
+        occurred_at="2026-01-02",
+        tsa=tsa,
+    )
+    add_relationship(
+        vault,
+        issue_id=issue,
+        relationship_type="documents_condition",
+        source_id=artifact.artifact_id,
+        target_id=issue,
+    )
 
     out = work / "packet"
     build_packet(vault, out, generated_at=_GENERATED_AT, make_pdf=False)

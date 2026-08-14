@@ -10,8 +10,20 @@
 > evidence readiness as separate claims, and never crashes on hostile input. Malformed structure
 > becomes a clean rejection, not an exception escaping `verify_packet`. (Pre-structural
 > read/parse conditions are raised as
-> `VerificationError` by design; see [§1](#1-packet-level-outcomes).) This file is normative for
-> `SUPPORTED_PACKET_VERSION = 2`.
+> `VerificationError` by design; see [§1](#1-packet-level-outcomes).)
+>
+> **Coverage, stated rather than assumed.** The rows below are normative for the checks that apply
+> to **every** packet version: structure, signature, custody, media/original fixity, evidence-bytes
+> presence, and timestamp/authority outcomes. They are **not yet complete for the
+> version-specific** checks — there is no row for a v3 timeline-commitment check, nor for a v4
+> artifact-commitment, relationship-endpoint/cycle, profile/review-state, or handoff-suppression
+> check, although the verifier implements all of them (`_verify_v3_timeline`,
+> `_verify_v4_workflows`). Until those rows exist, derive an expected verdict for a v3/v4-specific
+> case from the code and the committed golden corpus (`tests/golden/packet-v1`…`packet-v4`), not
+> from this file, and treat a gap here as a gap in the document rather than a licence the verifier
+> grants. This header previously read "normative for `SUPPORTED_PACKET_VERSION = 2`" while the
+> verifier had moved to 4 — an auditor or an embedder working from it was working from a contract
+> the verifier no longer implements (issue #160).
 
 ## 0. The three verdicts
 
