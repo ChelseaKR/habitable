@@ -27,6 +27,19 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   pins the decoder's validation order, not the encoder's output; issue #163's
   full ask for committed envelope bytes stays open.
 
+- **Claim-ledger rows for the five shipped capabilities that had none** —
+  `letter`, `campaign`, `commons`, `pattern`, and `capsule` (issue #161). The
+  ledger states that it "controls when their historical wording differs from
+  current code"; for these five there was nothing to control, so the project's
+  honesty mechanism did not reach them. Each row carries the claim its tests
+  actually support and a gap column naming what it does not do: the letter's
+  English-only limit and absent legal review; `campaign`'s `export_ready` being
+  a vault-level signal and not `verify`'s `evidence_ready`; the commons and
+  pattern k-anonymity threshold bounding re-identification within one summary
+  but not across several publications or against external datasets; and a
+  capsule signature establishing that a key signed those bytes, never that a
+  partner organization is who it claims to be.
+
 - **Property-based invariants for the assurance-critical core**
   (`tests/test_property_invariants.py`), covering the four primitive-level targets
   named in the productionization plan's §E17 (“Expand property-based testing”).
@@ -206,6 +219,35 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
     and the corpus rather than from a stale table. `tests/test_site_sample.py`
     records that the published sample is a freshness gate, not a compatibility
     pin.
+
+- **The repair-request letter declared `lang="es"` while being English-only, and
+  claimed a verifiable packet with zero photographs (issue #161).** `habitable
+  letter` produces the one document that leaves the tenant's control and lands
+  in a landlord's hands, and it made two claims it had not earned:
+
+  - **Language.** Every string in `letter.py` is an English literal, but
+    `render_letter_html` emitted `<html lang="{vault language}">`, so a vault
+    configured `language = "es"` produced byte-identical English prose under a
+    Spanish language tag — a WCAG 3.1.1 failure that makes a screen reader
+    pronounce English with Spanish phonetics. The letter is now always emitted
+    and labelled `lang="en"`, and `habitable letter` prints the unmet request
+    **in the requested language**. The translation is deliberately not
+    machine-generated: this document carries legal framing and goes out under a
+    tenant's name, so a legal-register Spanish version needs a Spanish-speaking
+    legal-aid reviewer first. That is recorded as an open gap for Spanish-speaking
+    unions in `docs/capabilities.md` and `docs/letter-generator.md`, not as a
+    settled decision.
+  - **Evidence.** The evidence sentence was built unconditionally, so a case with
+    an issue and no captures asserted "documented by 0 photograph(s) … A
+    complete, independently-verifiable evidence packet is available on request".
+    It is now gated on there being captures; with none the letter states that no
+    photographs are attached to the request yet and makes no packet offer.
+
+  Found while fixing the above: `LetterOptions.language` defaulted to `"en"`,
+  which made `options.language or vault.config.language` dead code — a vault
+  configured `language = "es"` was never consulted by `habitable letter` at all.
+  It now defaults to empty ("use the vault's setting"), so a Spanish-speaking
+  union's configuration is actually read, and reported on.
 
 - **A capture whose media type had no packet export mapping (`.heic`, the iPhone
   default photo format) used to ship with no bytes, no custody binding, and a

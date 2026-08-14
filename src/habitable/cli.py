@@ -30,7 +30,7 @@ from .commons import DEFAULT_K, build_commons, summarize_case
 from .config import TSAConfig
 from .crypto import KDF_PROFILES, PublicIdentity
 from .errors import HabitableError, SyncError
-from .i18n import DEFAULT_LOCALE, cli_text, format_datetime, resolve_locale
+from .i18n import DEFAULT_LOCALE, cli_text, format_datetime, language_name, resolve_locale
 from .letter import LetterOptions, build_letter, render_letter_html
 from .obslog import configure_logging, enabled_from_env, log_event
 from .packet import build_packet
@@ -1101,6 +1101,19 @@ def _cmd_letter(args: argparse.Namespace) -> int:
     print(f"habitable: repair-request letter for {letter.property_address}")
     print(f"           {len(letter.issues)} issue(s) · framing: {letter.profile_label}")
     print(f"           accessible letter written to {html_path}")
+    if letter.language_limitation:
+        # Issue #161: the letter is the one surface that is not bilingual. Say so
+        # here, in the language that was asked for, instead of shipping English
+        # prose under a `lang` attribute that claims otherwise.
+        requested = resolve_locale(letter.requested_language)
+        print(
+            "           "
+            + cli_text(
+                "letter_language_unavailable",
+                requested,
+                requested=language_name(letter.requested_language, requested),
+            )
+        )
     if not args.no_pdf:
         from .pdf import render_letter_pdf
 
