@@ -119,6 +119,10 @@ It is deliberately a dumb mailbox: ciphertext in, ciphertext out.
   `{ts,level,msg}` failure event.
   Aggregate passthrough, retained-state, capacity-rejection, and rejected-journal
   counts remain exposed only via `/healthz`; no room id, token, path, or body is included.
+  Those retained-state counts describe process memory, so `/healthz` also reports a
+  `startup_replay` state: an operator must not read `rooms: 0` as "holding nothing" when
+  the relay refused to read its own opt-in journal
+  (see `relay-operator-self-audit.md` §4.7–§4.8).
 
 **What the relay can nonetheless see — connection metadata:** because it forwards traffic, it
 necessarily observes **who connects, to which room, when, and roughly how much data moves**. That

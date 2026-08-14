@@ -69,7 +69,7 @@ subpoena."*
 | **Volume / size** — roughly how much moves | **Yes** (plain) / **bucketed** (`PaddingTransport`) | same | `bytes_relayed` is counted aggregate; per-message size is visible via `Content-Length`. Plain transports leak exact payload size. With the opt-in `PaddingTransport` (§4.5) every message is padded to block-sized buckets and each flush is one uniform size, so size reveals only the block-rounded size of the *largest* message in a batch. |
 | **Frequency / real-message count** — how often / how many | **Yes** (plain) / **hidden up to batch size** (`PaddingTransport`) | same | Plain: inferable from repeated activity and per-message posts on a room id. With `PaddingTransport`, each flush posts a fixed number of indistinguishable blobs (real + decoys), so the operator cannot tell how many were real (up to `batch_size`). *That* a room is active, and roughly when, is still visible. |
 | **Peer IP addresses** | **Yes** (at network/proxy layer) | **Yes** | Not stored by `relay.py` itself, but visible to the host's network stack, the TLS-terminating proxy, and any on-path observer. The relay's *application* logs are empty by default (see audit doc), but the proxy and the network are not the application. |
-| Aggregate counts (`rooms`, live messages/bytes, posted/fetched/relayed totals, capacity rejections, rejected journal records) | **Yes** | **Yes** | Exposed by `/healthz` by design; no room id, token, path, or body is included. The aggregates still confirm relay use, load, and saturation. |
+| Aggregate counts (`rooms`, live messages/bytes, posted/fetched/relayed totals, capacity rejections, rejected journal records/files, journal-load refusals) plus the `startup_replay` state | **Yes** | **Yes** | Exposed by `/healthz` by design; no room id, token, path, or body is included. The aggregates still confirm relay use, load, and saturation. The live-state counts describe *process memory only*: read them together with `startup_replay`, which distinguishes "holding nothing" from "did not read the journal" (self-audit §4.7). |
 
 ### 2.3 The residual exposure, stated so it can't be spun as hidden (R-33)
 
@@ -90,8 +90,11 @@ concealed.
 
 ## 3. Why contents (and sender identity) are safe — the mechanism
 
-- `export_message` (`sync.py`) builds an envelope `{sender, inner_b64, sig}`, then calls
-  `seal_to(recipient, ...)` over the **whole envelope**. The sender pubkey and signature
+- `export_message` (`sync.py`) builds an envelope
+  `{sender, pairing_id, inner_b64, sig, mac}`, then calls
+  `seal_to(recipient, ...)` over the **whole envelope**. (`pairing_id` and `mac` carry
+  the v2 pairing binding; this document listed only three of the five fields until
+  2026-08, which understated what the sealed box covers.) The sender pubkey and signature
   are therefore *inside* the sealed box, not a header the relay reads.
 - The relay's `post()` stores the resulting bytes verbatim; `fetch()`/`do_GET` returns
   them base64-encoded, unparsed. The relay never calls `open_sealed` and holds no key
@@ -124,7 +127,11 @@ If a relay is needed, a union running **its own** relay shrinks the trust surfac
 itself. The shipped relay is already no-request-log by default (normal request logging is
 suppressed; the stdlib error path silences expected connection faults and emits only a fixed
 metadata-only event for unexpected faults in `relay.py`;
-it persists nothing to disk; `/healthz` exposes only aggregate counts). The
+**with on-disk persistence disabled — the default — it persists nothing to disk**;
+`/healthz` exposes only aggregate counts). The opt-in journal
+(`--persist-dir` / `HABITABLE_RELAY_PERSIST_DIR`) ships and does write sealed
+ciphertext to disk; an operator who enabled it must say so rather than repeat the
+unqualified sentence. The
 operator can verify and attest all of this — see
 [`relay-operator-self-audit.md`](relay-operator-self-audit.md). This does **not** remove
 the metadata exposure (a self-hosted relay still observes who/when/how-much), but it
@@ -139,8 +146,15 @@ this is part of the operator self-audit (audit doc §6 Step 1, §7).
 
 ### 4.4 Operational hygiene that blunts (not eliminates) metadata
 
-- **Restart-as-erasure.** Storage is in-memory and FIFO-capped; a restart drops
-  undelivered ciphertext and resets counters.
+- **Restart-as-erasure — only with persistence disabled.** In the default
+  memory-only mode a restart drops undelivered ciphertext and resets counters. Two
+  corrections to how this used to be stated: storage is **not** FIFO-capped — silent
+  `pop(0)` eviction was deliberately removed, and a room at its ceiling now answers
+  **413 `RoomFullError`** rather than displacing an older message — and with
+  `persist_dir` set a restart **reloads** undelivered ciphertext instead of erasing
+  it. Do not offer restart as a privacy mitigation on a persisted relay; it is not
+  one. See `relay-operator-self-audit.md` §4.6–§4.8, including what `/healthz`
+  reports when the journal was refused rather than read.
 - **Scale to zero between sessions.** Run the relay only during a sync window, so there
   is less time during which any activity can be observed.
 - **Reuse room ids minimally.** Because a stable room id links sessions, a union can

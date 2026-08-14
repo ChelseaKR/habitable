@@ -460,7 +460,16 @@ class TestPersistence:
         refused = RelayStore(persist_dir=tmp_path, clock=lambda: 1_000.0)
         assert refused.rooms == {} and refused.tokens == {}
         assert all(orphan.exists() for orphan in orphans)
-        assert refused.metrics()["journal_load_rejections"] == 1
+        # Refusing the whole directory is one refusal, not "one rejected
+        # record" -- and it must never render as an idle relay (issue #162).
+        # The room's ciphertext is still on disk, unloaded and uncounted.
+        assert _journal_path(tmp_path, room).exists()
+        metrics = refused.metrics()
+        assert metrics["journal_load_refusals"] == 1
+        assert metrics["journal_records_rejected"] == 0
+        assert metrics["journal_files_rejected"] == 0
+        assert metrics["startup_replay"] == "incomplete"
+        assert metrics["startup_replay_reason"] == "crash-temp-file-budget"
 
     def test_expired_messages_are_not_resurrected_on_load(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -538,7 +547,10 @@ class TestPersistence:
         loaded = RelayStore(persist_dir=tmp_path, clock=lambda: now["t"])
         assert loaded.fetch(room) == [b"bounded-skew"]
         assert loaded.tokens[room] == "safe-token"
-        assert loaded.metrics()["journal_load_rejections"] == 1
+        # One bad *record*, and the counter now says exactly that.
+        assert loaded.metrics()["journal_records_rejected"] == 1
+        assert loaded.metrics()["journal_load_refusals"] == 0
+        assert loaded.metrics()["startup_replay"] == "degraded"
 
         now["t"] += relay._MAX_FUTURE_CLOCK_SKEW_SECONDS + 11
         expired = RelayStore(persist_dir=tmp_path, clock=lambda: now["t"])
@@ -601,7 +613,8 @@ class TestPersistence:
         monkeypatch.setattr(Path, "read_text", forbid_read_text)
         store = RelayStore(persist_dir=tmp_path, clock=lambda: 1_000.0)
         assert store.fetch(room) == [b"accepted"]
-        assert store.metrics()["journal_load_rejections"] == 5
+        assert store.metrics()["journal_records_rejected"] == 5
+        assert store.metrics()["startup_replay"] == "degraded"
 
     def test_startup_rejection_warning_is_aggregate_metadata_only(self, tmp_path: Path) -> None:
         secret_name = "SECRET-ROOM-TOKEN-PAYLOAD.jsonl"
@@ -614,9 +627,24 @@ class TestPersistence:
             configure_logging()
 
         record = json.loads(buffer.getvalue())
-        assert record["msg"] == "relay journal records rejected during bounded startup"
-        assert record["journal_load_rejections"] == 1
-        assert set(record) == {"ts", "level", "msg", "journal_load_rejections"}
+        assert record["msg"] == (
+            "relay startup replay degraded: some journal records or files were refused"
+        )
+        assert record["journal_files_rejected"] == 1
+        assert record["journal_records_rejected"] == 0
+        assert record["journal_load_refusals"] == 0
+        assert record["startup_replay"] == "degraded"
+        assert record["startup_replay_reason"] == "journal-file-refused"
+        assert set(record) == {
+            "ts",
+            "level",
+            "msg",
+            "startup_replay",
+            "startup_replay_reason",
+            "journal_records_rejected",
+            "journal_files_rejected",
+            "journal_load_refusals",
+        }
         rendered = buffer.getvalue()
         assert secret_name not in rendered and "SECRET-BODY" not in rendered
         assert store.rooms == {} and store.tokens == {}
@@ -631,7 +659,9 @@ class TestPersistence:
         )
         store = RelayStore(persist_dir=tmp_path, clock=lambda: 1_000.0)
         assert room not in store.rooms and room not in store.tokens
-        assert store.metrics()["journal_load_rejections"] == 1
+        # A whole journal file refused -- neither a record nor the directory.
+        assert store.metrics()["journal_files_rejected"] == 1
+        assert store.metrics()["startup_replay"] == "degraded"
 
     def test_noncanonical_duplicate_journal_cannot_override_tofu_token(
         self, tmp_path: Path
@@ -695,7 +725,17 @@ class TestPersistence:
 
         store = RelayStore(persist_dir=tmp_path, clock=lambda: 1_000.0)
         assert store.rooms == {} and store.tokens == {}
-        assert store.metrics()["journal_load_rejections"] == 2
+        metrics = store.metrics()
+        # One over-long line spends the whole startup byte budget by design
+        # (`_bounded_journal_lines` zeroes it), so the *remaining* journals in
+        # the directory are never read. That is a directory refusal, not a
+        # second file rejection, and the difference is the point of issue #162:
+        # a single hostile line can leave an unknown amount of at-rest
+        # ciphertext unloaded, and the operator surface must say so rather than
+        # report a tidy count of two skipped files.
+        assert metrics["journal_files_rejected"] == 1
+        assert metrics["journal_load_refusals"] == 1
+        assert metrics["startup_replay"] == "incomplete"
 
     def test_startup_total_journal_read_budget_is_enforced(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -707,7 +747,8 @@ class TestPersistence:
 
         store = RelayStore(persist_dir=tmp_path, clock=lambda: 1_000.0)
         assert store.rooms == {} and store.tokens == {}
-        assert store.metrics()["journal_load_rejections"] == 1
+        assert store.metrics()["journal_files_rejected"] == 1
+        assert store.metrics()["startup_replay"] == "degraded"
 
     def test_startup_per_journal_and_global_line_budgets_are_enforced(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -719,7 +760,7 @@ class TestPersistence:
         monkeypatch.setattr(relay, "_MAX_JOURNAL_LINES_PER_ROOM", 2)
         store = RelayStore(persist_dir=tmp_path, clock=lambda: 1_000.0)
         assert store.rooms == {} and store.tokens == {}
-        assert store.metrics()["journal_load_rejections"] == 1
+        assert store.metrics()["journal_files_rejected"] == 1
 
         global_dir = tmp_path / "global-lines"
         global_dir.mkdir()
@@ -732,7 +773,11 @@ class TestPersistence:
         monkeypatch.setattr(relay, "_MAX_STARTUP_JOURNAL_LINES", 1)
         globally_bounded = RelayStore(persist_dir=global_dir, clock=lambda: 1_000.0)
         assert len(globally_bounded.rooms) == len(globally_bounded.tokens) == 1
-        assert globally_bounded.metrics()["journal_load_rejections"] == 1
+        # The second journal was never read at all: an unknown remainder, so
+        # this is a directory refusal and the replay is incomplete.
+        assert globally_bounded.metrics()["journal_load_refusals"] == 1
+        assert globally_bounded.metrics()["startup_replay"] == "incomplete"
+        assert globally_bounded.metrics()["startup_replay_reason"] == "startup-read-budget"
 
     @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO requires POSIX")
     def test_startup_skips_symlink_and_fifo_without_following_or_blocking(
@@ -1183,7 +1228,11 @@ def test_healthz_exposes_only_aggregate_counts(server_url: str) -> None:
         "fetched",
         "bytes_relayed",
         "capacity_rejections",
-        "journal_load_rejections",
+        "journal_records_rejected",
+        "journal_files_rejected",
+        "journal_load_refusals",
+        "startup_replay",
+        "startup_replay_reason",
     }
     text = body.decode("utf-8")
     assert "SECRETNAME" not in text  # no room identifiers
@@ -1487,3 +1536,191 @@ def test_unauthenticated_rst_error_path_never_leaks_peer_or_request(
     assert rendered == ""
     for sentinel in (*sentinels, "Traceback", "ConnectionResetError"):
         assert sentinel not in rendered
+
+
+# --- Operator surface: report only what was verified (issue #162) -------------
+
+
+@contextlib.contextmanager
+def _running_relay(store: RelayStore, *, access_log: bool = False) -> Iterator[str]:
+    """Serve ``store`` on a loopback port for the duration of the block."""
+    server = make_server("127.0.0.1", 0, store, access_log=access_log)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+class _PersistenceFailingStore(RelayStore):
+    """A store whose write path fails the way a full or unwritable disk does."""
+
+    def post(self, room: str, blob: bytes, *, token: str | None = None) -> None:
+        raise OSError("synthetic persistence failure")
+
+
+class TestOperatorSurfaceHonesty:
+    """The relay may not report success it did not verify (issue #162).
+
+    Each test asserts the *absence* of a false success signal, not merely the
+    presence of a new field: an unread journal must not render as `status: ok`
+    with zeros, and a request that returned nothing must not render as 200.
+    """
+
+    def _seed(self, persist_dir: Path, rooms: int = 3) -> None:
+        for index in range(rooms):
+            room = f"seeded-room-{index}"
+            _journal_path(persist_dir, room).write_bytes(
+                _journal_record(room, token=f"token-{index}", blob=b"sealed-ciphertext")
+            )
+
+    def test_a_clean_restart_reports_ok_and_ready(self, tmp_path: Path) -> None:
+        """Positive control: when the replay really did happen, say so."""
+        self._seed(tmp_path)
+        store = RelayStore(persist_dir=tmp_path, clock=lambda: 1_000.0)
+        assert store.startup_replay == "complete"
+
+        with _running_relay(store) as url:
+            status, body = _get(f"{url}/healthz")
+            payload = json.loads(body)
+            assert status == 200
+            assert payload["status"] == "ok"
+            assert payload["rooms"] == 3
+            assert payload["startup_replay"] == "complete"
+            assert _get(f"{url}/readyz")[0] == 200
+
+    def test_a_memory_only_relay_reports_replay_disabled_not_complete(self) -> None:
+        """ "Nothing to read" and "read everything" are different answers."""
+        with _running_relay(RelayStore()) as url:
+            payload = json.loads(_get(f"{url}/healthz")[1])
+            assert payload["status"] == "ok"
+            assert payload["startup_replay"] == "disabled"
+            assert _get(f"{url}/readyz")[0] == 200
+
+    def test_a_refused_journal_directory_is_never_reported_as_an_idle_relay(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The headline defect: zeros that mean "did not look", served as ok.
+
+        An operator reading `/healthz` saw `rooms: 0` and could truthfully tell
+        their union the relay was holding nothing, while a directory of members'
+        sealed sync traffic sat on a disk that can be seized, subpoenaed, or
+        backed up. The only signal was a `1` in a counter documented as counting
+        records.
+        """
+        self._seed(tmp_path)
+        monkeypatch.setattr(relay, "_MAX_COMPACTION_TEMP_FILES", 1)
+        for value in ("c", "d"):
+            (tmp_path / f".habitable-relay-{value * 32}.tmp").write_bytes(b"crash-remnant")
+
+        store = RelayStore(persist_dir=tmp_path, clock=lambda: 1_000.0)
+
+        # The ciphertext is really still there; the relay simply did not read it.
+        assert len(list(tmp_path.glob("*.jsonl"))) == 3
+        assert store.rooms == {}
+
+        with _running_relay(store) as url:
+            health_status, health_body = _get(f"{url}/healthz")
+            health = json.loads(health_body)
+            ready_status, ready_body = _get(f"{url}/readyz")
+            ready = json.loads(ready_body)
+
+        assert health_status == 200
+        assert health["status"] != "ok"  # the absence under test
+        assert health["status"] == "degraded"
+        assert health["rooms"] == 0  # still true of memory, no longer the whole story
+        assert health["startup_replay"] == "incomplete"
+        assert health["startup_replay_reason"] == "crash-temp-file-budget"
+        assert health["journal_load_refusals"] == 1
+        assert health["journal_records_rejected"] == 0
+
+        # Readiness fails closed: a relay that cannot see its own retained state
+        # is not fit to serve, and members would otherwise stop converging while
+        # every response looked healthy.
+        assert ready_status == 503
+        assert ready["checks"]["startup_replay"] == "incomplete"
+        assert ready["checks"]["startup_replay_reason"] == "crash-temp-file-budget"
+
+    def test_the_incomplete_replay_warning_names_the_orphaned_state(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A refusal is sticky and leaves ciphertext unreferenced; log it as such."""
+        self._seed(tmp_path, rooms=1)
+        monkeypatch.setattr(relay, "_MAX_COMPACTION_TEMP_FILES", 1)
+        for value in ("c", "d"):
+            (tmp_path / f".habitable-relay-{value * 32}.tmp").write_bytes(b"crash-remnant")
+
+        buffer = io.StringIO()
+        configure_logging(buffer)
+        try:
+            first = RelayStore(persist_dir=tmp_path, clock=lambda: 1_000.0)
+            second = RelayStore(persist_dir=tmp_path, clock=lambda: 1_000.0)
+        finally:
+            configure_logging()
+
+        record = json.loads(buffer.getvalue().splitlines()[0])
+        assert record["level"] == "error"
+        assert "at-rest ciphertext was left unread and unreferenced" in record["msg"]
+        assert record["startup_replay"] == "incomplete"
+        # Sticky: restarting does not clear it, which is why the log says a human
+        # has to act rather than describing a transient blip.
+        assert first.startup_replay == second.startup_replay == "incomplete"
+        assert len(list(tmp_path.glob("*.jsonl"))) == 1
+        # Still metadata only: no path, room id, token, or file content.
+        rendered = buffer.getvalue()
+        assert "seeded-room" not in rendered
+        assert "sealed-ciphertext" not in rendered
+        assert str(tmp_path) not in rendered
+
+    def test_a_request_that_returned_nothing_is_never_logged_as_200(self) -> None:
+        """The access log is evidence about the relay's own behaviour.
+
+        `self._status` used to be initialised to 200 at the top of the request
+        and logged from a `finally`, so a route that raised logged 200 while the
+        peer got `RemoteDisconnected` and no response at all.
+        """
+        buffer = io.StringIO()
+        configure_logging(buffer)
+        try:
+            with _running_relay(_PersistenceFailingStore(), access_log=True) as url:
+                with pytest.raises((urllib.error.URLError, http.client.HTTPException)):
+                    _raw_or_post(f"{url}/rooms/failing", b"sealed-bytes")
+                lines = _wait_for_lines(buffer, 1)
+        finally:
+            configure_logging()
+
+        records = [json.loads(line) for line in lines if json.loads(line)["msg"] == "request"]
+        assert records, "expected an access-log line for the failed request"
+        record = records[0]
+        assert record.get("status") != 200  # the absence under test
+        assert "status" not in record  # no status line was ever written
+        assert record["response"] == "none"
+        assert record["method"] == "POST"
+        assert record["path"] == "/rooms/{room}"
+
+    def test_a_served_response_still_logs_its_real_status(self) -> None:
+        """The fix must not turn every successful request into "no response"."""
+        buffer = io.StringIO()
+        configure_logging(buffer)
+        try:
+            with _running_relay(RelayStore(), access_log=True) as url:
+                assert _post(f"{url}/rooms/ok-room", b"sealed-bytes")[0] == 200
+                assert _post(f"{url}/rooms/ok-room", b"sealed-bytes", token="other")[0] == 403
+                lines = _wait_for_lines(buffer, 2)
+        finally:
+            configure_logging()
+
+        records = [json.loads(line) for line in lines if json.loads(line)["msg"] == "request"]
+        assert [record["status"] for record in records[:2]] == [200, 403]
+        assert all(record["response"] == "complete" for record in records[:2])
+
+
+def _raw_or_post(url: str, data: bytes) -> tuple[int, bytes]:
+    """POST that surfaces a dropped connection instead of swallowing it."""
+    request = urllib.request.Request(url, data=data, headers={_TOKEN_HEADER: _TOKEN}, method="POST")
+    with urllib.request.urlopen(request, timeout=5) as response:
+        return response.status, response.read()
