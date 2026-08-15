@@ -89,7 +89,10 @@ Within a major version:
   change fails the test suite rather than silently breaking adopters.
 - The packet format carries its **own** compatibility gate, `packet_version` (accepted range
   `1..SUPPORTED_PACKET_VERSION`); every version ever emitted keeps verifying, guarded by the
-  committed golden-*packet* corpus in [`tests/golden/`](../tests/golden/).
+  committed golden-*packet* corpus in [`tests/golden/`](../tests/golden/) — which is required to
+  hold a fixture for every version in that range, asserted rather than assumed (issue #160), and
+  whose newest fixture must exercise that version's own surfaces rather than only the shape all
+  versions share.
 
 A change that would break any of the above is a **major** `KERNEL_API_VERSION` bump with a
 migration note in [`CHANGELOG.md`](../CHANGELOG.md), and the golden corpus is regenerated in the

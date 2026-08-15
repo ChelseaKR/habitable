@@ -40,7 +40,13 @@ remains a serious integrity threat.
 - Timestamp tokens are verified before storage, including archive order.
 - Imported source custody is verified, retained, and hash-bound into the local
   import custody entry.
-- A validation failure cannot partially merge the message's CRDT state.
+- A validation failure cannot partially merge the message's CRDT state. Enforced
+  by ordering — every signed inner field is validated in `_validate_message`,
+  which returns before the merge or not at all — and pinned as an *absence* by
+  [`tests/test_sync_fail_closed.py`](../tests/test_sync_fail_closed.py), which
+  asserts the recipient's canonical state is byte-identical after each rejected
+  message in the stored adversarial corpus, not merely that the message was
+  rejected. This invariant was false for the `have` manifest until issue #163.
 
 ## Explicit non-claims
 

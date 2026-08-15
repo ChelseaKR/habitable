@@ -50,6 +50,11 @@ dmypy.json
 *.pem
 # Public certificate generated only for the committed synthetic site sample.
 !site/sample-packet/synthetic-timestamp-authority.pem
+# A public timestamp authority's own published certificates, committed as a
+# golden fixture so authority trust is exercised offline against a certificate
+# this repository did not generate (issue #159). Public artefacts, no private
+# key material; provenance in tests/golden/tsa-freetsa/README.md.
+!tests/golden/tsa-freetsa/*.pem
 *.key
 *.keys
 secrets/
