@@ -71,7 +71,8 @@ presented as evidence readiness.
 | signed/custody-valid empty packet | **True** | **False** (`status = "no_items"`) |
 | intact packet; item awaits timestamp | **True** | **False** (`status = "timestamp_missing"`) |
 | intact packet; attached token invalid | **True** | **False** (`status = "timestamp_invalid"`) |
-| intact packet; all tokens valid but any authority untrusted | **True** | **False** (`status = "timestamp_authority_untrusted"`) |
+| intact packet; all tokens valid, **no anchor supplied** | **True** | **False** (`status = "timestamp_authority_untrusted"`, `anchors_supplied = 0`; guidance says trust was *not assessed*) |
+| intact packet; all tokens valid, **anchors supplied but none chained** | **True** | **False** (same `status`, `anchors_supplied > 0`; guidance says the anchors did not match or issue the signing certificate) |
 | intact packet; every item has a valid, trusted timestamp | **True** | **True** (`status = "evidence_ready"`) |
 
 > The `VerificationError` cases are the only ones that do not return a `VerificationReport`.
@@ -252,8 +253,24 @@ $ openssl ts -verify -digest <content_hash_hex> -in token.tsr -CAfile <tsa-ca-ch
 ```
 
 The imprint in the token must equal the item's `content_hash`, and `genTime` is the upper bound on
-when that content existed. If habitable's verdict and these tools ever disagree, that is a bug worth
-a [security report](../SECURITY.md).
+when that content existed.
+
+**One documented, deliberate difference before you file a bug.** `openssl ts -verify -CAfile`
+performs full X.509 **path validation**: it discovers intermediates, and checks validity periods,
+basic constraints, key usage, and (where configured) revocation. habitable's `--trusted-cert` does
+**not**. It is a *one-hop* check: an anchor is accepted when it **is** the token's signing
+certificate (pinned by fingerprint) or **directly issued** it. The full statement is
+`habitable.tsa.ANCHOR_RULE` in code, and it is repeated in
+[`embedding-the-verifier.md`](embedding-the-verifier.md).
+
+The practical consequence: for an authority that issues its responder through an intermediate
+(DigiCert, for example), `openssl` succeeds with the published **root** while habitable reports
+NOT TRUSTED with that same root, and needs the **issuing** certificate instead. That is not the two
+tools disagreeing about the token — it is habitable checking less and saying so. It reports which
+of the two untrusted cases occurred (`anchors_supplied`, `guidance()`, and each item's `notes`),
+precisely so a reviewer can tell "my anchor did not chain" from "this packet's timestamps are not
+from who it says". A disagreement about the **imprint, the signature, or `genTime`** is still a bug
+worth a [security report](../SECURITY.md).
 
 ## 6. Cross-references
 

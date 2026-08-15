@@ -176,8 +176,17 @@ _SUMMARY_TEXT = {
             "Not evidence-ready: one or more attached timestamp tokens are invalid."
         ),
         "guidance_timestamp_authority_untrusted": (
-            "Not evidence-ready: rerun with --trusted-cert PEM for an authority you "
+            "Not evidence-ready: no certificate anchor was supplied, so authority trust "
+            "was not assessed. Rerun with --trusted-cert PEM for an authority you "
             "independently trust. Development timestamps can never become trusted."
+        ),
+        "guidance_timestamp_authority_did_not_chain": (
+            "Not evidence-ready: the certificate anchor(s) you supplied did not match or "
+            "issue this packet's timestamp certificate. This check is one hop, so supply "
+            "the certificate that issued the authority's responder certificate (or pin "
+            "the responder certificate itself) rather than a root above it; see each "
+            "item's note. This is not, by itself, a finding that the timestamps are "
+            "forged. Development timestamps can never become trusted."
         ),
     },
     "es": {
@@ -207,9 +216,20 @@ _SUMMARY_TEXT = {
             "No está lista como prueba: uno o más sellos de tiempo adjuntos no son válidos."
         ),
         "guidance_timestamp_authority_untrusted": (
-            "No está lista como prueba: vuelva a ejecutar con --trusted-cert PEM para una "
-            "autoridad que usted confíe de forma independiente. Los sellos de desarrollo "
-            "nunca pueden volverse confiables."
+            "No está lista como prueba: no se proporcionó ningún certificado de anclaje, "
+            "así que no se evaluó la confianza en la autoridad. Vuelva a ejecutar con "
+            "--trusted-cert PEM para una autoridad que usted confíe de forma "
+            "independiente. Los sellos de desarrollo nunca pueden volverse confiables."
+        ),
+        "guidance_timestamp_authority_did_not_chain": (
+            "No está lista como prueba: el certificado o los certificados de anclaje que "
+            "usted proporcionó no coinciden con el certificado del sello de tiempo de este "
+            "expediente ni lo emitieron. Esta comprobación es de un solo paso: proporcione "
+            "el certificado que emitió el certificado de respuesta de la autoridad (o fije "
+            "ese mismo certificado de respuesta), no un certificado raíz por encima de él; "
+            "consulte la nota de cada elemento. Esto por sí solo no significa que los "
+            "sellos de tiempo sean falsos. Los sellos de desarrollo nunca pueden volverse "
+            "confiables."
         ),
     },
 }
@@ -344,6 +364,12 @@ class VerificationReport:
     items: tuple[ItemVerdict, ...]
     problems: tuple[str, ...]
     language: str = "en"
+    #: How many certificate anchors the caller supplied. Zero and non-zero are
+    #: different situations behind the same untrusted verdict: "authority trust
+    #: was never assessed" versus "the anchors you supplied did not chain".
+    #: Collapsing them told a reviewer who had just supplied a root to supply a
+    #: root (issue #159).
+    anchors_supplied: int = 0
 
     @property
     def structurally_intact(self) -> bool:
@@ -418,8 +444,17 @@ class VerificationReport:
         )
 
     def guidance(self, language: str | None = None) -> str:
-        """Return localized next-step/caveat text for :attr:`status`."""
-        return _summary_text(language or self.language)[f"guidance_{self.status}"]
+        """Return localized next-step/caveat text for :attr:`status`.
+
+        The untrusted-authority case splits by whether anchors were supplied.
+        ``status`` itself is unchanged — it is a machine-readable contract other
+        code branches on — but the sentence a human reads must not tell someone
+        who just passed ``--trusted-cert`` to pass ``--trusted-cert``.
+        """
+        text = _summary_text(language or self.language)
+        if self.status == "timestamp_authority_untrusted" and self.anchors_supplied:
+            return text["guidance_timestamp_authority_did_not_chain"]
+        return text[f"guidance_{self.status}"]
 
 
 def _summary_text(language: str) -> dict[str, str]:
@@ -450,6 +485,7 @@ def verify_packet(
             items=(),
             problems=(version_problem,),
             language=language,
+            anchors_supplied=len(trusted_certs or ()),
         )
 
     signature_ok = _verify_signature(packet_dir, bundle_bytes)
@@ -487,6 +523,7 @@ def verify_packet(
         items=tuple(items),
         problems=tuple(problems),
         language=language,
+        anchors_supplied=len(trusted_certs or ()),
     )
 
 
