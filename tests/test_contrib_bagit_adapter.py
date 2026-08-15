@@ -18,7 +18,11 @@ sys.path.insert(0, str(_CONTRIB))
 
 import bagit_packet_adapter as bagit  # noqa: E402
 
-_GOLDEN = Path(__file__).resolve().parent / "golden" / "packet-v3"
+from habitable.verify import SUPPORTED_PACKET_VERSION  # noqa: E402
+
+# The newest committed format, not a pinned older one (issue #160): the adapter
+# packages whatever a tenant exported today, which is `PACKET_VERSION`.
+_GOLDEN = Path(__file__).resolve().parent / "golden" / f"packet-v{SUPPORTED_PACKET_VERSION}"
 
 
 def _packet(tmp_path: Path, *, unicode_note: bool = False) -> Path:

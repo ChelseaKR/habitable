@@ -26,7 +26,7 @@ jobs:
       # takes effect under `egress-policy: block`) — a deliberate, documented
       # trade-off for a privacy-first repo, not an oversight.
       - name: Harden Runner (audit mode)
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: audit
       - name: Checkout
@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner (audit mode)
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: audit
       - name: Checkout (full history — gitleaks needs it to scan the diff/range)
@@ -74,7 +74,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # No GITLEAKS_LICENSE: this repo is under a personal account, not an
           # organization, so gitleaks-action does not require a license key.
-          # No mute: default config, no .gitleaksignore, non-zero exit fails the job.
+          # Default config; non-zero exit fails the job. This is not a blanket
+          # mute, but it is not "no mute" either, as this comment used to claim:
+          # `.gitleaksignore` is present and honored, and holds a small set of
+          # per-finding fingerprints, each with a stated, hand-verified reason
+          # (synthetic RFC 3161 tokens in committed demo/golden packets). Any
+          # finding not fingerprinted there still fails this gate.
 
   verifier-portability:
     name: verifier subset compiles on older Pythons
@@ -92,7 +97,7 @@ jobs:
         python-version: ["3.12", "3.13"]
     steps:
       - name: Harden Runner (audit mode)
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: audit
       - name: Checkout
@@ -127,7 +132,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner (audit mode)
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: audit
       - name: Checkout
@@ -149,7 +154,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner (audit mode)
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
         with:
           egress-policy: audit
       - name: Checkout

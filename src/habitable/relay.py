@@ -113,6 +113,24 @@ _BASE64_CHUNK_BYTES = 48 * 1024  # divisible by three; no padding between chunks
 _MESSAGES_PREFIX = b'{"messages":['
 _MESSAGES_SUFFIX = b"]}"
 
+# How much of the on-disk journal a process actually read at startup. An
+# operator reading `/healthz` needs "holding nothing" and "did not look" to be
+# different answers; before issue #162 both rendered as zeros.
+_REPLAY_DISABLED = "disabled"  # memory-only; there is no journal to read
+_REPLAY_COMPLETE = "complete"  # the whole directory was scanned and accepted
+_REPLAY_DEGRADED = "degraded"  # fully scanned; a known, bounded part refused
+_REPLAY_INCOMPLETE = "incomplete"  # never read; the unloaded amount is unknown
+
+# Fixed, metadata-only refusal vocabulary — never a path, room id, or token.
+_REPLAY_REASON_NONE = "none"
+_REPLAY_REASON_CRASH_TEMP_BUDGET = "crash-temp-file-budget"
+_REPLAY_REASON_CRASH_TEMP_CLEANUP = "crash-temp-cleanup-failed"
+_REPLAY_REASON_DIRECTORY_BUDGET = "directory-entry-budget"
+_REPLAY_REASON_DIRECTORY_SCAN = "directory-scan-failed"
+_REPLAY_REASON_STARTUP_BUDGET = "startup-read-budget"
+_REPLAY_REASON_FILE_REFUSED = "journal-file-refused"
+_REPLAY_REASON_RECORD_REFUSED = "journal-record-refused"
+
 # Windows does not permit unlinking an open file. Its fallback closes only after
 # two generation checks, then rechecks immediately before unlink. The persistence
 # directory is single-process owned; concurrent local writers are unsupported.
@@ -277,13 +295,49 @@ class RelayStore:
     persist_dir: Path | None = None
     clock: Callable[[], float] = time.time
     capacity_rejections: int = 0
-    journal_load_rejections: int = 0
+    # Startup-replay accounting, split three ways because the single former
+    # counter (`journal_load_rejections`) reported one increment for outcomes
+    # ranging from "one bad line" to "refused the entire directory" -- and the
+    # docs called it a record count (issue #162). Each of these counts exactly
+    # what its name says:
+    journal_records_rejected: int = 0  # individual journal lines refused
+    journal_files_rejected: int = 0  # whole journal files not loaded
+    journal_load_refusals: int = 0  # the directory, or its remainder, not read
     _room_bytes: dict[str, int] = field(default_factory=dict, init=False, repr=False)
     _live_messages: int = field(default=0, init=False, repr=False)
     _live_bytes: int = field(default=0, init=False, repr=False)
     _startup_bytes_remaining: int = field(default=0, init=False, repr=False)
     _startup_lines_remaining: int = field(default=0, init=False, repr=False)
+    _startup_replay: str = field(default=_REPLAY_DISABLED, init=False, repr=False)
+    _startup_replay_reason: str = field(default=_REPLAY_REASON_NONE, init=False, repr=False)
     _lock: _thread.RLock = field(default_factory=_thread.RLock, init=False, repr=False)
+
+    @property
+    def startup_replay(self) -> str:
+        """How much of the on-disk journal this process actually read.
+
+        ``"disabled"`` (memory-only, nothing to read), ``"complete"`` (every
+        journal in the directory was examined and accepted), ``"degraded"``
+        (the directory was fully scanned; some records or whole journals were
+        refused, so the loss is known and bounded), or ``"incomplete"`` (the
+        directory or its remainder was never read, so the amount of at-rest
+        ciphertext left unloaded is *unknown*).
+
+        ``rooms``/``live_messages``/``live_ciphertext_bytes`` describe memory,
+        never the disk. Reading them as "the relay is holding nothing" is only
+        valid when this is ``"disabled"`` or ``"complete"``; that inference was
+        the defect in issue #162.
+        """
+        return self._startup_replay
+
+    @property
+    def startup_replay_reason(self) -> str:
+        """Why the replay was not complete, or ``"none"``.
+
+        The first refusal or rejection encountered, from the fixed vocabulary in
+        ``_REPLAY_REASON_*`` -- never a path, room id, token, or file content.
+        """
+        return self._startup_replay_reason
 
     def __post_init__(self) -> None:
         self._index_initial_state()
@@ -361,7 +415,16 @@ class RelayStore:
             self.fetched += len(messages)
             return messages
 
-    def metrics(self) -> dict[str, int]:
+    def metrics(self) -> dict[str, int | str]:
+        """Aggregate, metadata-only counters — no room id, token, path, or content.
+
+        ``rooms``/``live_messages``/``live_ciphertext_bytes`` are *in-memory*
+        state. They are a statement about what this process is holding, never
+        about what is on the persistence disk; ``startup_replay`` says whether
+        those two are the same thing (issue #162). They also include
+        TTL-expired messages that nothing has swept yet, so they are an upper
+        bound on what a peer could still fetch.
+        """
         with self._lock:
             return {
                 "rooms": len(self.rooms),
@@ -371,7 +434,11 @@ class RelayStore:
                 "fetched": self.fetched,
                 "bytes_relayed": self.bytes_relayed,
                 "capacity_rejections": self.capacity_rejections,
-                "journal_load_rejections": self.journal_load_rejections,
+                "journal_records_rejected": self.journal_records_rejected,
+                "journal_files_rejected": self.journal_files_rejected,
+                "journal_load_refusals": self.journal_load_refusals,
+                "startup_replay": self._startup_replay,
+                "startup_replay_reason": self._startup_replay_reason,
             }
 
     # --- write capability (trust-on-first-use) --------------------------------
@@ -711,6 +778,28 @@ class RelayStore:
             if descriptor >= 0:
                 os.close(descriptor)
 
+    def _refuse_directory(self, reason: str) -> None:
+        """Record that the journal directory, or the rest of it, was never read.
+
+        Distinct from a rejected record or a rejected file: after this, the
+        amount of at-rest ciphertext left unloaded is *unknown*, the files stay
+        on disk unreferenced, and the next restart refuses identically.
+        """
+        self.journal_load_refusals += 1
+        self._note_replay_reason(reason)
+
+    def _reject_journal_file(self, reason: str = _REPLAY_REASON_FILE_REFUSED) -> None:
+        self.journal_files_rejected += 1
+        self._note_replay_reason(reason)
+
+    def _reject_journal_record(self) -> None:
+        self.journal_records_rejected += 1
+        self._note_replay_reason(_REPLAY_REASON_RECORD_REFUSED)
+
+    def _note_replay_reason(self, reason: str) -> None:
+        if self._startup_replay_reason == _REPLAY_REASON_NONE:
+            self._startup_replay_reason = reason
+
     def _load(self) -> None:
         """Stream a bounded set of regular journals without following or blocking."""
         assert self.persist_dir is not None
@@ -723,18 +812,51 @@ class RelayStore:
             if self._cleanup_compaction_temps():
                 for candidate in self._journal_candidates():
                     if self._startup_bytes_remaining <= 0 or self._startup_lines_remaining <= 0:
-                        self.journal_load_rejections += 1
+                        self._refuse_directory(_REPLAY_REASON_STARTUP_BUDGET)
                         break
                     self._load_journal(candidate, cutoff, now)
-            if self.journal_load_rejections:
-                _LOG.warning(
-                    "relay journal records rejected during bounded startup",
-                    extra={
-                        "event_fields": {
-                            "journal_load_rejections": self.journal_load_rejections,
-                        }
-                    },
-                )
+            self._conclude_startup_replay()
+
+    def _conclude_startup_replay(self) -> None:
+        """Settle what this process can honestly say it read, and say it.
+
+        Before issue #162 a refused directory left the store reporting an empty
+        relay -- ``rooms: 0``, indistinguishable from idle -- with a single
+        aggregate counter of ``1`` as the only signal, logged as though it were
+        a record count. The three states are now separate, and the one that
+        needs a human is logged as needing one.
+        """
+        if self.journal_load_refusals:
+            self._startup_replay = _REPLAY_INCOMPLETE
+        elif self.journal_files_rejected or self.journal_records_rejected:
+            self._startup_replay = _REPLAY_DEGRADED
+        else:
+            self._startup_replay = _REPLAY_COMPLETE
+        if self._startup_replay == _REPLAY_COMPLETE:
+            return
+        fields = {
+            "startup_replay": self._startup_replay,
+            "startup_replay_reason": self._startup_replay_reason,
+            "journal_records_rejected": self.journal_records_rejected,
+            "journal_files_rejected": self.journal_files_rejected,
+            "journal_load_refusals": self.journal_load_refusals,
+        }
+        if self._startup_replay == _REPLAY_INCOMPLETE:
+            # Not "N bad records": an unknown quantity of members' sealed sync
+            # traffic is on this disk, was not loaded, was not removed, is not
+            # counted by /healthz, and will be refused the same way on every
+            # restart until an operator intervenes. Say so.
+            _LOG.error(
+                "relay startup replay incomplete: at-rest ciphertext was left "
+                "unread and unreferenced; /healthz counts describe memory only "
+                "and /readyz will refuse until this is resolved",
+                extra={"event_fields": fields},
+            )
+        else:
+            _LOG.warning(
+                "relay startup replay degraded: some journal records or files were refused",
+                extra={"event_fields": fields},
+            )
 
     def _cleanup_compaction_temps(self) -> bool:
         """Remove a strictly bounded set of exact app-owned crash remnants."""
@@ -748,31 +870,31 @@ class RelayStore:
                     if _COMPACTION_TEMP_RE.fullmatch(entry.name) is None:
                         non_temp_entries += 1
                         if non_temp_entries > _MAX_COMPACTION_NON_TEMP_SCAN_ENTRIES:
-                            self.journal_load_rejections += 1
+                            self._refuse_directory(_REPLAY_REASON_DIRECTORY_BUDGET)
                             return False
                         continue
                     temp_entries += 1
                     if temp_entries > _MAX_COMPACTION_TEMP_FILES:
-                        self.journal_load_rejections += 1
+                        self._refuse_directory(_REPLAY_REASON_CRASH_TEMP_BUDGET)
                         return False
                     try:
                         info = entry.stat(follow_symlinks=False)
                     except OSError:
-                        self.journal_load_rejections += 1
+                        self._reject_journal_file(_REPLAY_REASON_CRASH_TEMP_CLEANUP)
                         continue
                     if not stat.S_ISREG(info.st_mode):
-                        self.journal_load_rejections += 1
+                        self._reject_journal_file(_REPLAY_REASON_CRASH_TEMP_CLEANUP)
                         continue
                     candidates.append(_JournalCandidate.from_stat(Path(entry.path), info))
         except OSError:
-            self.journal_load_rejections += 1
+            self._refuse_directory(_REPLAY_REASON_DIRECTORY_SCAN)
             return False
 
         for candidate in sorted(candidates, key=lambda item: item.path.name):
             try:
                 self._unlink_empty_journal(candidate.path, expected=candidate)
             except OSError:
-                self.journal_load_rejections += 1
+                self._refuse_directory(_REPLAY_REASON_CRASH_TEMP_CLEANUP)
                 return False
         return True
 
@@ -785,24 +907,27 @@ class RelayStore:
                 for entry in entries:
                     inspected += 1
                     if inspected > _MAX_JOURNAL_ENTRIES_SCAN:
-                        self.journal_load_rejections += 1
+                        # The remainder of the directory is never inspected, so
+                        # how much is left there is unknown, not zero.
+                        self._refuse_directory(_REPLAY_REASON_DIRECTORY_BUDGET)
                         break
                     if not entry.name.endswith(".jsonl"):
                         continue
                     if _JOURNAL_NAME_RE.fullmatch(entry.name) is None:
-                        self.journal_load_rejections += 1
+                        self._reject_journal_file()
                         continue
                     try:
                         info = entry.stat(follow_symlinks=False)
                     except OSError:
-                        self.journal_load_rejections += 1
+                        self._reject_journal_file()
                         continue
                     if not stat.S_ISREG(info.st_mode):
-                        self.journal_load_rejections += 1
+                        self._reject_journal_file()
                         continue
                     candidates.append(_JournalCandidate.from_stat(Path(entry.path), info))
         except OSError:
-            self.journal_load_rejections += 1
+            # Whatever this scan had not yet reached is unaccounted for.
+            self._refuse_directory(_REPLAY_REASON_DIRECTORY_SCAN)
         return sorted(candidates, key=lambda candidate: candidate.path.name)
 
     def _open_journal(self, candidate: _JournalCandidate) -> BinaryIO | None:
@@ -845,13 +970,13 @@ class RelayStore:
     ) -> None:
         handle = self._open_journal(candidate)
         if handle is None:
-            self.journal_load_rejections += 1
+            self._reject_journal_file()
             return
         try:
             with handle:
                 staged = self._stage_journal(handle, candidate.path, cutoff, now)
         except _JournalRejectedError:
-            self.journal_load_rejections += 1
+            self._reject_journal_file()
             return
         accepted = False
         if staged.room is not None and staged.token is not None and staged.messages:
@@ -916,13 +1041,13 @@ class RelayStore:
     ) -> tuple[tuple[str, str, float, bytes] | None, bool, bool]:
         record = self._parse_journal_line(raw)
         if record is None:
-            self.journal_load_rejections += 1
+            self._reject_journal_record()
             return None, False, False
         room, _token, timestamp, _blob = record
         if self._room_file(room).name != path.name or not _timestamp_within_future_skew(
             timestamp, now
         ):
-            self.journal_load_rejections += 1
+            self._reject_journal_record()
             return None, False, False
         expired = cutoff is not None and timestamp < cutoff
         return record, expired, True
@@ -1015,7 +1140,7 @@ class RelayStore:
     ) -> bool:
         bound = self.tokens.get(room)
         if bound is not None and not hmac.compare_digest(bound, token):
-            self.journal_load_rejections += 1
+            self._reject_journal_file()
             return False
         current = self.rooms.get(room, [])
         current_bytes = self._room_bytes.get(room, 0)
@@ -1027,7 +1152,7 @@ class RelayStore:
             or self._live_bytes + staged_bytes > _MAX_LIVE_CIPHERTEXT_BYTES
         ):
             self.capacity_rejections += 1
-            self.journal_load_rejections += 1
+            self._reject_journal_file()
             return False
         self.rooms.setdefault(room, []).extend(staged)
         self.tokens.setdefault(room, token)
@@ -1107,9 +1232,30 @@ def _route_label(path: str) -> str:
 
 
 def _log_request(
-    *, method: str, path: str, status: int, request_id: str, latency_ms: float
+    *,
+    method: str,
+    path: str,
+    status: int | None,
+    response: str,
+    request_id: str,
+    latency_ms: float,
 ) -> None:
-    """Emit one structured, metadata-only access-log line."""
+    """Emit one structured, metadata-only access-log line.
+
+    ``status`` is the status line this relay actually wrote to the socket, and
+    is omitted entirely when it wrote none. ``response`` is always present and
+    says which of the three happened: ``"complete"`` (status line and whole body
+    sent), ``"partial"`` (status line sent, body did not finish), or ``"none"``
+    (the handler failed before responding and the peer saw a dropped
+    connection).
+
+    Before issue #162 the status was initialised to ``200`` at the top of the
+    request and logged from a ``finally``, so a request that raised out of the
+    route — an ``OSError`` escaping persistence, say — left the peer with
+    ``RemoteDisconnected`` and the operator's attestable log with ``200``. An
+    access log is evidence about the relay's own behaviour; it may not record a
+    response that was never sent.
+    """
     _LOG.info(
         "request",
         extra={
@@ -1118,6 +1264,7 @@ def _log_request(
                 "method": method,
                 "path": path,
                 "status": status,
+                "response": response,
                 "latency_ms": latency_ms,
             }
         },
@@ -1127,14 +1274,23 @@ def _log_request(
 def _store_ready(store: RelayStore) -> bool:
     """Readiness probe for the in-memory store — the relay's one critical dependency.
 
-    Returns ``True`` only when the store answers with a well-formed metrics map.
-    Any failure returns ``False`` so ``/readyz`` fails closed (503).
+    Returns ``True`` only when the store answers with a well-formed metrics map
+    *and* startup replay is not ``incomplete``. Any failure returns ``False`` so
+    ``/readyz`` fails closed (503).
+
+    An incomplete replay means an unknown amount of at-rest ciphertext was never
+    read: peers on those rooms would silently stop converging while every
+    response looked healthy (issue #162). Refusing readiness is the fail-closed
+    answer — a relay that cannot see its own retained state should not be told
+    it is fit to serve.
     """
     try:
         metrics = store.metrics()
     except Exception:  # fail closed on any store fault
         return False
-    return isinstance(metrics, dict) and "rooms" in metrics
+    if not isinstance(metrics, dict) or "rooms" not in metrics:
+        return False
+    return metrics.get("startup_replay") != _REPLAY_INCOMPLETE
 
 
 def make_server(  # noqa: C901 -- P1-4 follow-up: split route dispatch out of the closure
@@ -1168,22 +1324,27 @@ def make_server(  # noqa: C901 -- P1-4 follow-up: split route dispatch out of th
             return
 
         def do_GET(self) -> None:
-            self._start = time.monotonic()
-            self._request_id = secrets.token_hex(8)
-            self._status = 200
+            self._begin_request()
             try:
                 self._route_get()
             finally:
                 self._access_log("GET")
 
         def do_POST(self) -> None:
-            self._start = time.monotonic()
-            self._request_id = secrets.token_hex(8)
-            self._status = 200
+            self._begin_request()
             try:
                 self._route_post()
             finally:
                 self._access_log("POST")
+
+        def _begin_request(self) -> None:
+            self._start = time.monotonic()
+            self._request_id = secrets.token_hex(8)
+            # Nothing has been written yet, and the log must not claim otherwise
+            # until it has been (issue #162). Both fields are only ever advanced
+            # by the code that actually writes to the socket.
+            self._status: int | None = None
+            self._response_complete = False
 
         def _route_get(self) -> None:
             if self.path == "/livez":
@@ -1194,7 +1355,12 @@ def make_server(  # noqa: C901 -- P1-4 follow-up: split route dispatch out of th
                 self._readyz()
                 return
             if self.path == "/healthz":
-                self._json(200, {"status": "ok", **self.store.metrics()})
+                metrics = self.store.metrics()
+                # "ok" is a claim about what this process verified. A relay that
+                # refused or partially refused its journal has not verified that
+                # its zeros mean "holding nothing" (issue #162).
+                healthy = metrics.get("startup_replay") in {_REPLAY_DISABLED, _REPLAY_COMPLETE}
+                self._json(200, {"status": "ok" if healthy else "degraded", **metrics})
                 return
             match = _ROOM_RE.match(self.path)
             if not match:
@@ -1249,10 +1415,18 @@ def make_server(  # noqa: C901 -- P1-4 follow-up: split route dispatch out of th
                 ready = readiness()
             except Exception:  # an exploding probe means "not ready"
                 ready = False
+            # Report the replay state either way, so a 503 says *which* thing is
+            # wrong and a 200 from a custom ready_check cannot quietly hide it.
+            checks: dict[str, object] = {
+                "store": "ok" if ready else "down",
+                "startup_replay": shared_store.startup_replay,
+            }
+            if shared_store.startup_replay in {_REPLAY_DEGRADED, _REPLAY_INCOMPLETE}:
+                checks["startup_replay_reason"] = shared_store.startup_replay_reason
             if ready:
-                self._json(200, {"status": "ok", "checks": {"store": "ok"}})
+                self._json(200, {"status": "ok", "checks": checks})
             else:
-                self._json(503, {"status": "unavailable", "checks": {"store": "down"}})
+                self._json(503, {"status": "unavailable", "checks": checks})
 
         def _access_log(self, method: str) -> None:
             if not emit_access_log:
@@ -1261,10 +1435,17 @@ def make_server(  # noqa: C901 -- P1-4 follow-up: split route dispatch out of th
             if label in _HEALTH_ROUTES:  # exclude probe noise
                 return
             latency_ms = round((time.monotonic() - self._start) * 1000, 3)
+            if self._status is None:
+                response = "none"
+            elif self._response_complete:
+                response = "complete"
+            else:
+                response = "partial"
             _log_request(
                 method=method,
                 path=label,
                 status=self._status,
+                response=response,
                 request_id=self._request_id,
                 latency_ms=latency_ms,
             )
@@ -1274,11 +1455,12 @@ def make_server(  # noqa: C901 -- P1-4 follow-up: split route dispatch out of th
             if length > _max_get_json_bytes():
                 self._json(500, {"error": "relay response bound violated"})
                 return
-            self._status = 200
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(length))
             self.end_headers()
+            # The status line is on the wire only once end_headers() flushes it.
+            self._status = 200
             self.wfile.write(_MESSAGES_PREFIX)
             for index, message in enumerate(messages):
                 if index:
@@ -1290,15 +1472,17 @@ def make_server(  # noqa: C901 -- P1-4 follow-up: split route dispatch out of th
                     self.wfile.write(base64.b64encode(chunk))
                 self.wfile.write(b'"')
             self.wfile.write(_MESSAGES_SUFFIX)
+            self._response_complete = True
 
         def _json(self, code: int, payload: dict[str, object]) -> None:
             body = json.dumps(payload).encode("utf-8")
-            self._status = code
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
+            self._status = code
             self.wfile.write(body)
+            self._response_complete = True
 
     return _RelayHTTPServer((host, port), Handler)
 
