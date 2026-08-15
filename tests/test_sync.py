@@ -16,7 +16,7 @@ import pytest
 from PIL import Image
 
 from habitable import relay as relay_mod
-from habitable.capture import capture
+from habitable.capture import capture, resolve_deferred
 from habitable.errors import SyncError
 from habitable.relay import RelayStore, make_server
 from habitable.sync import (
@@ -406,3 +406,76 @@ def test_padding_transport_passes_through_unframed_blobs(tmp_path: Path) -> None
     inner.post("room", b"legacy-unframed-message")
     transport = PaddingTransport(inner, block_size=1024, batch_size=2)
     assert b"legacy-unframed-message" in transport.fetch("room")
+
+
+def test_an_imported_capture_with_no_token_is_queued_so_resolve_can_reach_it(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """Issue #180: sync wrote nothing to the deferred queue, so `resolve` could not
+    reach a capture that arrived without a token -- it was untimestamped forever."""
+    a = make_vault("A")
+    b = make_vault("B", passphrase="pw-b")
+    issue = a.document.add_issue(category="no_heat", title="No heat", issue_id="i1")
+    capture(a, make_jpeg(), issue_id=issue, tsa=None)  # offline: no token
+
+    transport = LocalDirTransport(tmp_path / "mbox")
+    sync(a, b.identity.public(), transport, channel="room")
+    sync(b, a.identity.public(), transport, channel="room")
+
+    capture_id = b.document.captures()[0].capture_id
+    assert b.get_token(capture_id) is None
+    assert b.awaiting_timestamp() == (capture_id,)
+    assert [item.capture_id for item in b.deferred()] == [capture_id]
+
+    assert len(resolve_deferred(b, local_tsa)) == 1
+    assert b.get_token(capture_id) is not None
+    assert b.awaiting_timestamp() == ()
+
+
+def test_reimporting_the_same_untimestamped_capture_does_not_double_queue_it(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    tmp_path: Path,
+) -> None:
+    a = make_vault("A")
+    b = make_vault("B", passphrase="pw-b")
+    issue = a.document.add_issue(category="no_heat", title="No heat", issue_id="i1")
+    capture(a, make_jpeg(), issue_id=issue, tsa=None)
+
+    transport = LocalDirTransport(tmp_path / "mbox")
+    for _ in range(2):
+        sync(a, b.identity.public(), transport, channel="room")
+        sync(b, a.identity.public(), transport, channel="room")
+
+    assert len(b.deferred()) == 1
+
+
+def test_a_peers_token_clears_our_own_queued_entry_for_that_capture(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """Otherwise `resolve` fetches a second primary over content already stamped."""
+    a = make_vault("A")
+    b = make_vault("B", passphrase="pw-b")
+    issue = a.document.add_issue(category="no_heat", title="No heat", issue_id="i1")
+    capture(a, make_jpeg(), issue_id=issue, tsa=None)
+
+    transport = LocalDirTransport(tmp_path / "mbox")
+    sync(a, b.identity.public(), transport, channel="room")
+    sync(b, a.identity.public(), transport, channel="room")
+    assert len(b.deferred()) == 1
+
+    # A now gets its token and syncs again.
+    assert len(resolve_deferred(a, local_tsa)) == 1
+    sync(a, b.identity.public(), transport, channel="room")
+    sync(b, a.identity.public(), transport, channel="room")
+
+    capture_id = b.document.captures()[0].capture_id
+    assert b.get_token(capture_id) is not None
+    assert b.deferred() == ()
+    assert b.awaiting_timestamp() == ()

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from habitable.artifact import capture_artifact
 from habitable.campaign import (
     build_campaign_packet,
     build_campaign_report,
@@ -18,6 +19,7 @@ from habitable.campaign import (
 )
 from habitable.capture import capture
 from habitable.cli import main
+from habitable.sync import LocalDirTransport, sync
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
 from habitable.verify import verify_packet
@@ -240,3 +242,74 @@ class TestCampaignCli:
         # A shared passphrase that only matches one of the two vaults fails closed.
         monkeypatch.setenv("HABITABLE_PASSPHRASE", "pw-a")
         assert main(["campaign", "status", "--vault", str(v1), "--vault", str(v2)]) == 1
+
+
+class TestAwaitingIsTokenPresenceNotTheLocalQueue:
+    """Issue #180: `awaiting` read a local queue sync never writes to."""
+
+    def test_a_synced_in_capture_with_no_token_is_awaiting_and_blocks_export_ready(
+        self,
+        make_vault: Callable[..., Vault],
+        make_jpeg: Callable[..., Path],
+        local_tsa: LocalRfc3161TSA,
+        tmp_path: Path,
+    ) -> None:
+        sender = make_vault("sender", unit="4B")
+        receiver = make_vault("receiver", unit="4B", passphrase="pw-b")
+        issue = sender.document.add_issue(category="no_heat", title="No heat")
+        capture(sender, make_jpeg("cold.jpg"), issue_id=issue, tsa=None)  # no token
+
+        transport = LocalDirTransport(tmp_path / "mbox")
+        sync(sender, receiver.identity.public(), transport, channel="room")
+        assert sync(receiver, sender.identity.public(), transport, channel="room")
+
+        # The receiver holds the capture and no token for it.
+        assert len(receiver.document.captures()) == 1
+        assert receiver.get_token(receiver.document.captures()[0].capture_id) is None
+
+        health = health_for(receiver)
+        assert health.capture_count == 1
+        assert health.timestamped_count == 0
+        assert health.awaiting_count == 1
+        assert not health.export_ready
+
+        report = build_campaign_report([(receiver.path, receiver)])
+        assert report.export_ready_count == 0
+        assert report.awaiting_timestamp_count == 1
+
+    def test_untimestamped_artifacts_are_inside_the_denominator_not_only_the_count(
+        self,
+        make_vault: Callable[..., Vault],
+        make_jpeg: Callable[..., Path],
+        local_tsa: LocalRfc3161TSA,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """`timestamps: 1/1 present; 3 awaiting` counted two different populations."""
+        vault = _ready_vault(make_vault, make_jpeg, local_tsa, name="mixed", unit="5C")
+        issue_id = vault.document.issues()[0].issue_id
+        for index in range(3):
+            source = tmp_path / f"notice-{index}.txt"
+            source.write_text(f"Synthetic notice {index}.", encoding="utf-8")
+            capture_artifact(
+                vault,
+                source,
+                issue_id=issue_id,
+                artifact_type="utility_notice",
+                title=f"Utility notice {index}",
+                source_assertion="tenant-received copy",
+                occurred_at="2026-01-03",
+            )
+        vault.save()
+
+        health = health_for(vault)
+        assert health.capture_count == 4  # one photo + three documents
+        assert health.timestamped_count == 1
+        assert health.awaiting_count == 3
+
+        assert main(["status", "--vault", str(vault.path), "--passphrase", "test-passphrase"]) == 0
+        out = capsys.readouterr().out
+        assert "timestamps: 1/4 present; 3 awaiting" in out
+        # Every awaiting item is named, not just counted.
+        for artifact in vault.document.artifacts():
+            assert artifact.artifact_id in out
