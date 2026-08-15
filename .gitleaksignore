@@ -27,3 +27,22 @@ b1f6a922e793eb226f67a0e7e71a123c096bcc56:site/sample-packet/bundle.json:generic-
 # per-case ordering tokens. Gitleaks reports five matches under this one exact
 # commit/file/rule/line fingerprint; none is a credential. Reviewed 2026-07-23.
 fecb126250590a097de19d01256d777db296a213:site/sample-packet/bundle.json:generic-api-key:1
+
+# tests/golden/packet-v4 (issue #160): the committed fixture that pins the format
+# habitable actually emits. scripts/make_golden_packet.py builds it from
+# synthetic media, a local self-signed RFC 3161 test authority ("golden-tsa"),
+# and a fixed clock -- no real tenant data and no credential. Its one-line
+# canonical JSON produces three matches under this one exact
+# commit/file/rule/line fingerprint; each was decoded and identified by hand on
+# 2026-08-14 before this entry was written:
+#   * two `items[].timestamp.token_b64` values (entropy 5.88 / 5.87) -- both
+#     load as CMS SignedData whose encapsulated content type is
+#     1.2.840.113549.1.9.16.1.4 (id-ct-TSTInfo), i.e. RFC 3161 timestamp tokens
+#     from the local test authority, not key or credential material;
+#   * one `relationships[].order_token` value, "hlc-<16 hex>" (entropy 3.78) --
+#     the pseudonymized hybrid-logical-clock ordering label `packet.opaque_hlc`
+#     writes so the shared bundle leaks neither device wall-clock time nor the
+#     node id. It is derived from the per-case salt and is an ordering label, not
+#     a secret; it grants nothing.
+# Same rule, same cause, and same review as the packet-v3 entry above.
+d4771afeaf9e628c1d63432d4cc2cface8121803:tests/golden/packet-v4/bundle.json:generic-api-key:1

@@ -206,7 +206,8 @@ def test_relay_sync_is_end_to_end_encrypted(
         for blob in blobs:
             assert marker not in blob
         assert marker not in served_back
-    assert store.metrics()["posted"] >= 2
+    posted = store.metrics()["posted"]  # metrics carries counters and replay-state strings
+    assert isinstance(posted, int) and posted >= 2
 
 
 def test_relay_client_sends_a_matching_room_token(

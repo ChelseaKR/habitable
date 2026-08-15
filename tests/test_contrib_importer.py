@@ -32,7 +32,35 @@ from habitable.packet import build_packet  # noqa: E402
 from habitable.tsa import LocalRfc3161TSA  # noqa: E402
 from habitable.vault import Vault  # noqa: E402
 
-_GOLDEN = Path(__file__).resolve().parent / "golden" / "packet-v1"
+_GOLDEN_ROOT = Path(__file__).resolve().parent / "golden"
+_GOLDEN = _GOLDEN_ROOT / "packet-v1"
+# Every committed packet format, not just the oldest (issue #160): a downstream
+# integrator ingests whatever version the packet in front of them carries, and
+# this reference importer was only ever cross-tested against v1.
+_CORPUS = sorted(path for path in _GOLDEN_ROOT.glob("packet-v*") if path.is_dir())
+
+
+@pytest.mark.parametrize("packet", _CORPUS, ids=[path.name for path in _CORPUS])
+def test_the_importer_ingests_every_committed_packet_version(packet: Path) -> None:
+    """The reference importer must keep working for every format ever emitted.
+
+    Assertions are derived from the bundle rather than hard-coded to v1's single
+    item, so a fixture with an artifact, a relationship, or a profile is a real
+    test of the importer rather than a shape mismatch.
+    """
+    bundle = json.loads((packet / "bundle.json").read_text("utf-8"))
+
+    result = imp.import_packet(packet, now="2026-01-02T00:10:00Z")
+
+    assert result.structurally_intact
+    assert not result.evidence_ready and not result.ok  # no trust root supplied
+    receipt = result.receipt
+    assert receipt["packet"]["packet_version"] == bundle["packet_version"]
+    assert receipt["packet"]["bundle_sha256"] == sha256_bytes((packet / "bundle.json").read_bytes())
+    assert receipt["verdict"]["items_total"] == len(bundle["items"])
+    assert receipt["verdict"]["items_cryptographically_verified"] == len(bundle["items"])
+    assert len(receipt["items"]) == len(bundle["items"])
+    assert canonical_json(receipt)  # the receipt round-trips through the signed encoder
 
 
 def test_import_golden_packet_verifies_and_builds_receipt() -> None:

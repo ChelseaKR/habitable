@@ -46,6 +46,7 @@ from .crypto import Identity, verify
 from .errors import TimestampError
 
 __all__ = [
+    "ANCHOR_RULE",
     "DevTSA",
     "LocalRfc3161TSA",
     "Rfc3161HttpTSA",
@@ -60,6 +61,39 @@ __all__ = [
 
 _ID_CT_TST_INFO = "tst_info"
 _SHA256 = "sha256"
+
+#: Exactly what ``trusted_certs`` means, in one place, quotable by embedders.
+#:
+#: ``timestamp_authority_trusted`` gates every READY verdict this project emits,
+#: so what it checks is stated rather than inferred (issue #159). A supplied
+#: anchor makes ``trusted_chain`` true when it **is** the token's signing
+#: certificate (SHA-256 fingerprint match, i.e. pinning) or when it **directly
+#: issued** that certificate (one hop, signature and issuer/subject names
+#: verified by ``cryptography``, any key type).
+#:
+#: It is **not** X.509 path validation. Not checked, and therefore not claimed:
+#: intermediates are never discovered or walked, so a root two hops above the
+#: responder does not chain; certificate validity periods are not consulted, at
+#: ``gen_time`` or now; basic constraints, key usage, extended key usage
+#: (including ``id-kp-timeStamping``), name constraints, and policy constraints
+#: are not enforced; and no revocation state (CRL/OCSP) is fetched or honoured.
+#:
+#: The practical consequence for anyone anchoring a real authority: supply the
+#: certificate that **issued** the responder certificate, or pin the responder
+#: certificate itself. FreeTSA issues its responder directly from its published
+#: root, so that root works; DigiCert issues through an intermediate, so its
+#: root alone does not chain and its timestamping CA certificate is the anchor
+#: to supply. ``openssl ts -verify -CAfile`` *does* build a path, so it can
+#: succeed where this check declines — that difference is documented rather than
+#: papered over, and it is the reason the note on an untrusted verdict names
+#: which of the three anchor outcomes occurred.
+ANCHOR_RULE = (
+    "A certificate anchor is accepted when it is the token's signing certificate "
+    "(pinned by fingerprint) or the certificate that directly issued it. This is a "
+    "one-hop check, not path building: intermediates are not discovered, and validity "
+    "periods, basic constraints, key usage, name constraints, and revocation are not "
+    "checked. Supply the issuing certificate, not a root above it."
+)
 
 # Referenced by name (not an inline `except (...)`) so the formatter cannot rewrite
 # it to the parenthesis-free PEP 758 form, a SyntaxError on Python < 3.14. This file
@@ -490,7 +524,7 @@ def _verify_rfc3161_token(
         raise
     except Exception as exc:
         raise TimestampError(f"malformed RFC 3161 token: {exc}") from exc
-    note = "" if trusted else "signature valid; signing certificate not chained to a trusted root"
+    note = _anchor_note(trusted, trusted_certs)
     return TimestampInfo(
         kind=TokenKind.RFC3161.value,
         tsa_name=token.tsa_name,
@@ -498,6 +532,32 @@ def _verify_rfc3161_token(
         digest_hex=digest_hex,
         trusted_chain=trusted,
         note=note,
+    )
+
+
+def _anchor_note(trusted: bool, trusted_certs: list[crypto_x509.Certificate] | None) -> str:
+    """Say which of the three anchor outcomes happened, not just "untrusted".
+
+    "No anchor was supplied" and "an anchor was supplied and did not chain" are
+    different facts with different next steps, and collapsing them was the
+    defect in issue #159: a reviewer who downloaded an authority's published
+    root, passed it, and got NOT TRUSTED was told to do the thing they had just
+    done, with nothing distinguishing their anchor failing to chain from the
+    packet's timestamps not being from who it says.
+    """
+    if trusted:
+        return ""
+    if not trusted_certs:
+        return (
+            "signature valid; no certificate anchor was supplied, so authority trust "
+            "was not assessed (this is not a finding against the token)"
+        )
+    supplied = len(trusted_certs)
+    return (
+        f"signature valid; none of the {supplied} supplied certificate anchor(s) is this "
+        "token's signing certificate or its direct issuer. This check is one hop: supply "
+        "the certificate that issued the authority's responder certificate (or pin the "
+        "responder certificate itself), not a root above it"
     )
 
 
@@ -589,6 +649,17 @@ def _verify_cert_chain(
     signer_cert: crypto_x509.Certificate,
     trusted_certs: list[crypto_x509.Certificate] | None,
 ) -> bool:
+    """Whether one supplied anchor **is** the signing certificate or **directly issued** it.
+
+    This is deliberately a *one-hop* check, not path building: no intermediate
+    is discovered, no validity period, basic-constraints, key-usage, name
+    constraint, policy, or revocation state is consulted. See
+    :data:`ANCHOR_RULE` for the full statement of what a ``True`` here does and
+    does not mean, and ``docs/verifier-decision-table.md`` §5 for the reviewer
+    view. The rule is not widened silently: widening it would mean this project
+    hand-rolling X.509 path validation inside the one function every READY
+    verdict rests on (issue #159).
+    """
     if not trusted_certs:
         return False
     signer_fp = signer_cert.fingerprint(crypto_hashes.SHA256())
@@ -603,13 +674,21 @@ def _verify_cert_chain(
 
 
 def _issuer_signed(issuer: crypto_x509.Certificate, cert: crypto_x509.Certificate) -> bool:
-    """Whether ``cert`` carries a valid RSA signature from ``issuer``."""
-    public_key = issuer.public_key()
-    algorithm = cert.signature_hash_algorithm
-    if not isinstance(public_key, rsa.RSAPublicKey) or algorithm is None:
-        return False
+    """Whether ``cert`` carries a valid signature from ``issuer``, of any key type.
+
+    Delegated to ``cryptography``'s ``verify_directly_issued_by``, which checks
+    that the issuer/subject names chain, that the signature algorithms agree,
+    and that the signature verifies — for RSA, ECDSA, Ed25519, and Ed448 alike.
+
+    This replaced a hand-written RSA-PKCS1v15-only check that returned ``False``
+    for every other key type (issue #159). That was not a conservative default:
+    a legitimate EC-issued authority chain was reported exactly as a forged one,
+    and the untrusted verdict a legal-aid worker saw could not be told apart
+    from a bad packet. Nothing about what is *not* checked changed — see
+    :func:`_verify_cert_chain` and :data:`ANCHOR_RULE`.
+    """
     try:
-        public_key.verify(cert.signature, cert.tbs_certificate_bytes, padding.PKCS1v15(), algorithm)
+        cert.verify_directly_issued_by(issuer)
     except Exception:
         return False
     return True
