@@ -165,8 +165,9 @@ N/A is conformance.
   [`../.github/workflows/release.yml`](../.github/workflows/release.yml)).
 - **Enforcement.** AUTO — CodeQL (python + actions), gitleaks (pre-commit + CI) and weekly
   TruffleHog, pip-audit, Trivy container scan, zizmor workflow-SAST, Harden-Runner, the
-  95% coverage floor on the evidence-integrity core (`crypto.py`, `vault.py`, `tsa.py`,
-  `verify.py`), and OpenSSF Scorecard with the honest committed baseline
+  per-module 95% coverage floor on each evidence-integrity module (`crypto.py`,
+  `vault.py`, `tsa.py`, `verify.py`), asserted one module at a time so a pooled
+  average cannot hide a module below the line, and OpenSSF Scorecard with the honest committed baseline
   ([`audits/scorecard-2026-07.md`](audits/scorecard-2026-07.md)). REVIEW — **open gap:**
   the independent security + cryptographic review (v1.0 gate; reviewer onboarding is ready
   in [`audits/onboarding.md`](audits/onboarding.md) and

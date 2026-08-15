@@ -28,12 +28,33 @@ type: ## Strict type-check
 test: ## Run the test suite (excludes network integration tests)
 	uv run pytest -m "not integration"
 
-cov: ## Run tests with coverage (85% floor overall, 95% on the evidence-integrity core)
+# The security/crypto-critical modules. Each one carries its own 95% floor; see
+# the `cov` recipe for why this must be one assertion per module.
+COVERAGE_CORE := crypto vault tsa verify
+
+cov: ## Run tests with coverage (85% floor overall, per-module 95% on the evidence-integrity core)
 	uv run pytest -m "not integration" --cov=habitable --cov-report=term-missing --cov-report=xml --cov-fail-under=85
 	# Per-module floor (CODE-QUALITY-STANDARD, security/crypto-critical paths): the
-	# crypto/vault/tsa/verify core must hold >=95% branch coverage, above the 85%
-	# baseline. Scoped re-report over the .coverage data the pytest run just wrote.
-	uv run coverage report --include="src/habitable/crypto.py,src/habitable/vault.py,src/habitable/tsa.py,src/habitable/verify.py" --fail-under=95
+	# crypto/vault/tsa/verify core must each hold >=95% branch coverage, above the
+	# 85% baseline. Scoped re-reports over the .coverage data the pytest run wrote.
+	#
+	# One `coverage report --fail-under` PER MODULE, not one over all four.
+	# `--fail-under` only ever tests the TOTAL row, so a single `--include`
+	# listing all four modules is a *pooled* floor: crypto.py at 100% carried
+	# vault.py at 94.42% to a green 95.56% while three documents said the floor
+	# was per-module (issue #183). Every module is reported before anything
+	# fails, so one pass names every module below the line, not just the first.
+	@failed=""; \
+	for module in $(COVERAGE_CORE); do \
+		echo "== per-module 95% floor: src/habitable/$$module.py"; \
+		uv run coverage report --include="src/habitable/$$module.py" --fail-under=95 \
+			|| failed="$$failed src/habitable/$$module.py"; \
+	done; \
+	if [ -n "$$failed" ]; then \
+		echo "error: below the documented per-module 95% floor:$$failed" >&2; \
+		exit 1; \
+	fi; \
+	echo "habitable: every evidence-integrity module is at or above its own 95% floor"
 
 integration: ## Run the network integration tests (real public TSAs)
 	uv run pytest -m integration -v
