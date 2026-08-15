@@ -9,6 +9,24 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **A stored adversarial corpus for sync protocol v2**
+  (`tests/golden/sync-v2-adversarial/malformed-inner-fields.json`, driven by
+  `tests/test_sync_fail_closed.py`). Every hostile sync message in the suite was
+  previously produced by `export_message` and re-sealed by the tests' own
+  helper, so nothing ever omitted or mistyped a field the encoder always emits
+  well-formed — which is why the `have`-ordering defect above went unnoticed.
+  The corpus freezes one malformed shape per signed inner field (missing,
+  wrong-typed, out of range) and each case asserts an *absence*: the recipient's
+  canonical CRDT state must be byte-identical after the rejection, with no
+  imported original, no queued receipt, no recorded peer inventory, and no
+  seen-marker. A further test fails if a signed inner field is ever added
+  without an adversarial case, and another checks that field list against what
+  `export_message` actually emits. Stated limit: these are stored *mutations*
+  applied to a genuinely signed, sealed, paired message — not committed sealed
+  envelope bytes, which would require committing a recipient private key. That
+  pins the decoder's validation order, not the encoder's output; issue #163's
+  full ask for committed envelope bytes stays open.
+
 - **Property-based invariants for the assurance-critical core**
   (`tests/test_property_invariants.py`), covering the four primitive-level targets
   named in the productionization plan's §E17 (“Expand property-based testing”).
@@ -43,6 +61,68 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   next `habitable resolve` has a concrete target instead of a bare count.
 
 ### Fixed
+
+- **A documented fail-closed sync property failed open: the `have` manifest was
+  validated after the CRDT merge (issue #163).** `docs/sync-threat-model.md`
+  states "A validation failure cannot partially merge the message's CRDT state"
+  and `docs/sync-protocol-v2.md` §3 states "Any failure aborts that message
+  before merge". For one signed inner field both sentences were false: the
+  `have` manifest was shape-checked one line *after* `vault.document.merge`, so
+  a malformed manifest from an already-paired peer (version-skewed, buggy, or
+  partially written) raised `SyncError` with the recipient's case document
+  already mutated — and, because the raise preceded `mark_sync_message_seen`
+  and `queue_sync_receipt`, with the custody and receipt record saying the
+  message had never arrived, leaving the same message to merge again on the
+  next exchange. The manifest is now parsed and validated inside
+  `_validate_message`, which returns before the merge or not at all; *which*
+  declared holdings this device can confirm is still computed after the merge
+  (so a capture arriving in the same message counts and its bytes are not
+  re-sent), but that step can no longer reject anything. `docs/sync-protocol-v2.md`
+  §3's ordered checklist — which omitted `have` entirely, and so was the
+  document that drifted from the code — now enumerates it and states the
+  confirmation/validation split explicitly.
+
+- **The relay's operator surface reported success it had not verified (issue
+  #162).** Three separate false signals, all in the surfaces
+  `docs/relay-operator-self-audit.md` tells an operator to inspect and attest to
+  their union:
+
+  - **`/healthz` reported an idle relay for "refused to load".** When bounded
+    startup replay refused the persistence directory, `metrics()` reported
+    in-memory state — `rooms: 0`, `status: ok` — while a directory of members'
+    sealed sync traffic sat unread on disk. `/healthz` now carries
+    `startup_replay` (`disabled` / `complete` / `degraded` / `incomplete`) and a
+    fixed-vocabulary `startup_replay_reason`, reports `status: degraded` for
+    anything it did not fully verify, and `/readyz` returns **503** on
+    `incomplete` — the state where the amount of unloaded at-rest ciphertext is
+    *unknown*. The counts are documented, in code and in the audit doc, as
+    describing process memory and never the disk.
+  - **The counter counted events, not records.** `journal_load_rejections`
+    incremented by exactly one whether a single line was malformed or the whole
+    directory was refused, and three documents called it a record count. It is
+    replaced by `journal_records_rejected` (lines), `journal_files_rejected`
+    (whole journals), and `journal_load_refusals` (the directory or its
+    remainder — an unknown quantity). The startup log line now distinguishes a
+    `warning` for bounded, known loss from an `error` naming the orphaned state:
+    a refusal is sticky, leaves ciphertext unreferenced, and needs a human, so
+    the audit doc gained a manual-recovery section (§4.8) instead of the relay
+    silently deciding to ignore or delete a union's sync traffic.
+  - **The access log recorded `status: 200` for a request that returned
+    nothing.** `_status` was initialised to `200` before routing and logged from
+    a `finally`, so an exception escaping the route left the peer with
+    `RemoteDisconnected` and the attestable log with `200`. The status is now set
+    only by the code that writes the response, and each line carries
+    `response: complete|partial|none`; a request that sent nothing logs **no**
+    `status` field rather than a fabricated one.
+
+  Three stale statements in `docs/relay-observability-matrix.md` are corrected in
+  the same change: the sync envelope shape (it omitted `pairing_id` and `mac`,
+  the two fields carrying the v2 pairing binding), the unqualified "it persists
+  nothing to disk" (true only with the opt-in journal disabled), and
+  "restart-as-erasure", which was doubly wrong — storage is not FIFO-capped
+  (silent `pop(0)` eviction was deliberately replaced by a 413 `RoomFullError`)
+  and a persisted relay *reloads* undelivered ciphertext across a restart, so
+  restart is not the privacy mitigation that section offered.
 
 - **Timestamp-authority trust had only ever been anchored to certificates this
   repository generated, and the untrusted verdict could not be told apart from
