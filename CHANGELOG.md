@@ -9,6 +9,24 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **A stored adversarial corpus for sync protocol v2**
+  (`tests/golden/sync-v2-adversarial/malformed-inner-fields.json`, driven by
+  `tests/test_sync_fail_closed.py`). Every hostile sync message in the suite was
+  previously produced by `export_message` and re-sealed by the tests' own
+  helper, so nothing ever omitted or mistyped a field the encoder always emits
+  well-formed — which is why the `have`-ordering defect above went unnoticed.
+  The corpus freezes one malformed shape per signed inner field (missing,
+  wrong-typed, out of range) and each case asserts an *absence*: the recipient's
+  canonical CRDT state must be byte-identical after the rejection, with no
+  imported original, no queued receipt, no recorded peer inventory, and no
+  seen-marker. A further test fails if a signed inner field is ever added
+  without an adversarial case, and another checks that field list against what
+  `export_message` actually emits. Stated limit: these are stored *mutations*
+  applied to a genuinely signed, sealed, paired message — not committed sealed
+  envelope bytes, which would require committing a recipient private key. That
+  pins the decoder's validation order, not the encoder's output; issue #163's
+  full ask for committed envelope bytes stays open.
+
 - **Property-based invariants for the assurance-critical core**
   (`tests/test_property_invariants.py`), covering the four primitive-level targets
   named in the productionization plan's §E17 (“Expand property-based testing”).
@@ -43,6 +61,26 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   next `habitable resolve` has a concrete target instead of a bare count.
 
 ### Fixed
+
+- **A documented fail-closed sync property failed open: the `have` manifest was
+  validated after the CRDT merge (issue #163).** `docs/sync-threat-model.md`
+  states "A validation failure cannot partially merge the message's CRDT state"
+  and `docs/sync-protocol-v2.md` §3 states "Any failure aborts that message
+  before merge". For one signed inner field both sentences were false: the
+  `have` manifest was shape-checked one line *after* `vault.document.merge`, so
+  a malformed manifest from an already-paired peer (version-skewed, buggy, or
+  partially written) raised `SyncError` with the recipient's case document
+  already mutated — and, because the raise preceded `mark_sync_message_seen`
+  and `queue_sync_receipt`, with the custody and receipt record saying the
+  message had never arrived, leaving the same message to merge again on the
+  next exchange. The manifest is now parsed and validated inside
+  `_validate_message`, which returns before the merge or not at all; *which*
+  declared holdings this device can confirm is still computed after the merge
+  (so a capture arriving in the same message counts and its bytes are not
+  re-sent), but that step can no longer reject anything. `docs/sync-protocol-v2.md`
+  §3's ordered checklist — which omitted `have` entirely, and so was the
+  document that drifted from the code — now enumerates it and states the
+  confirmation/validation split explicitly.
 
 - **A capture whose media type had no packet export mapping (`.heic`, the iPhone
   default photo format) used to ship with no bytes, no custody binding, and a
