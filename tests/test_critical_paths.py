@@ -470,9 +470,85 @@ class TestCertificateChain:
         other_cert = _self_signed("unrelated-root", other_key)
         assert verify_token(token, DIGEST, trusted_certs=[other_cert]).trusted_chain is False
 
-        # A non-RSA trusted certificate can never RSA-vouch for this leaf.
+        # An unrelated EC root does not vouch for this leaf either.
         ec_cert = _self_signed("ec-root", ec.generate_private_key(ec.SECP256R1()))
         assert verify_token(token, DIGEST, trusted_certs=[ec_cert]).trusted_chain is False
+
+    def test_an_ec_issuer_that_really_signed_the_leaf_is_accepted(self) -> None:
+        """Issue #159: the anchor check used to be RSA-only.
+
+        `_issuer_signed` returned False for every non-RSA issuer key, so a
+        legitimate EC-issued authority chain was reported *exactly* as a forged
+        one — a legal-aid worker holding the right certificate could not tell
+        "your anchor did not chain" from "these timestamps are not from who they
+        say". That is a fail-closed-shaped bug, not a conservative default, and
+        the check now delegates each hop to `cryptography`'s
+        `verify_directly_issued_by` (RSA, ECDSA, Ed25519, Ed448 alike).
+        """
+        from habitable.tsa import _issue_token
+
+        ca_key = ec.generate_private_key(ec.SECP256R1())
+        ca_cert = _self_signed("ec-issuing-root", ca_key)
+        leaf_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        now = datetime.now(tz=UTC)
+        leaf_cert = (
+            crypto_x509.CertificateBuilder()
+            .subject_name(
+                crypto_x509.Name([crypto_x509.NameAttribute(NameOID.COMMON_NAME, "ec-issued-tsa")])
+            )
+            .issuer_name(ca_cert.subject)
+            .public_key(leaf_key.public_key())
+            .serial_number(crypto_x509.random_serial_number())
+            .not_valid_before(now.replace(year=now.year - 1))
+            .not_valid_after(now.replace(year=now.year + 5))
+            .sign(ca_key, crypto_hashes.SHA256())
+        )
+        der = _issue_token(DIGEST, private_key=leaf_key, certificate=leaf_cert, gen_time=now)
+        token = TimestampToken(kind="rfc3161", tsa_name="ec-issued-tsa", data=der)
+
+        assert verify_token(token, DIGEST, trusted_certs=[ca_cert]).trusted_chain is True
+
+        # Still one hop, and still fail-closed: a root above the issuer does not
+        # chain, and the note says which of the two untrusted states this is.
+        unrelated_ec = _self_signed("other-ec-root", ec.generate_private_key(ec.SECP256R1()))
+        info = verify_token(token, DIGEST, trusted_certs=[unrelated_ec])
+        assert info.trusted_chain is False
+        assert "none of the 1 supplied certificate anchor(s)" in info.note
+
+    def test_the_three_anchor_outcomes_are_distinguishable(self) -> None:
+        """Issue #159 item 3: "no anchor supplied" and "anchor did not chain"
+        are different facts with different next steps, and the note used to
+        collapse them into one sentence about a certificate "not chained to a
+        trusted root"."""
+        from habitable.tsa import _issue_token
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        cert = _self_signed("standalone-tsa", key)
+        now = datetime.now(tz=UTC)
+        der = _issue_token(DIGEST, private_key=key, certificate=cert, gen_time=now)
+        token = TimestampToken(kind="rfc3161", tsa_name="standalone-tsa", data=der)
+
+        none_supplied = verify_token(token, DIGEST)
+        assert none_supplied.trusted_chain is False
+        assert "no certificate anchor was supplied" in none_supplied.note
+        assert "this is not a finding against the token" in none_supplied.note
+
+        wrong_anchor = verify_token(
+            token,
+            DIGEST,
+            trusted_certs=[
+                _self_signed("a", rsa.generate_private_key(public_exponent=65537, key_size=2048)),
+                _self_signed("b", rsa.generate_private_key(public_exponent=65537, key_size=2048)),
+            ],
+        )
+        assert wrong_anchor.trusted_chain is False
+        assert "none of the 2 supplied certificate anchor(s)" in wrong_anchor.note
+        assert "This check is one hop" in wrong_anchor.note
+        assert none_supplied.note != wrong_anchor.note
+
+        anchored = verify_token(token, DIGEST, trusted_certs=[cert])
+        assert anchored.trusted_chain is True
+        assert anchored.note == ""
 
 
 # --- verify: hostile packet inputs are clean rejections, never crashes ---------

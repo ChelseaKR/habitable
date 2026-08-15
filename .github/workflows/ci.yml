@@ -74,7 +74,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # No GITLEAKS_LICENSE: this repo is under a personal account, not an
           # organization, so gitleaks-action does not require a license key.
-          # No mute: default config, no .gitleaksignore, non-zero exit fails the job.
+          # Default config; non-zero exit fails the job. This is not a blanket
+          # mute, but it is not "no mute" either, as this comment used to claim:
+          # `.gitleaksignore` is present and honored, and holds a small set of
+          # per-finding fingerprints, each with a stated, hand-verified reason
+          # (synthetic RFC 3161 tokens in committed demo/golden packets). Any
+          # finding not fingerprinted there still fails this gate.
 
   verifier-portability:
     name: verifier subset compiles on older Pythons
