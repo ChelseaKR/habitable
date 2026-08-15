@@ -47,8 +47,18 @@ class RelayStore:
     bytes_relayed: int                           # total bytes of ciphertext moved
     persist_dir: Path | None                     # opt-in on-disk journal; None = memory-only
     capacity_rejections: int                     # aggregate rejected size/cap writes
-    journal_load_rejections: int                 # aggregate unsafe/invalid startup records
+    journal_records_rejected: int                # individual journal *lines* refused
+    journal_files_rejected: int                  # whole journal *files* not loaded
+    journal_load_refusals: int                   # the directory, or its remainder, unread
 ```
+
+Plus two read-only properties, `startup_replay` and `startup_replay_reason`, both
+surfaced by `/healthz` (§4.7). Until 2026-08 a single `journal_load_rejections`
+counter covered all three cases above, incrementing by exactly **one** whether a
+single line was malformed or the entire persistence directory was refused — and
+this document described it as a record count. It was not one. The three are now
+separate because the difference is the difference between "some data was bad" and
+"an unknown amount of members' ciphertext is on this disk and was never read".
 
 **It stores, in process memory only:**
 
@@ -135,11 +145,31 @@ class RelayStore:
   ```json
   {"status":"ok","rooms":0,"live_messages":0,"live_ciphertext_bytes":0,
    "posted":0,"fetched":0,"bytes_relayed":0,"capacity_rejections":0,
-   "journal_load_rejections":0}
+   "journal_records_rejected":0,"journal_files_rejected":0,"journal_load_refusals":0,
+   "startup_replay":"disabled","startup_replay_reason":"none"}
   ```
 
   That is the *entire* observable summary — aggregate retained-state, traffic, and
-  rejection integers plus a status. It contains no room ids, journal paths, tokens, or
+  rejection integers, the startup-replay state, plus a status.
+
+  **Read `rooms` together with `startup_replay`, never alone.** `rooms`,
+  `live_messages`, and `live_ciphertext_bytes` describe *process memory*. They are a
+  statement about what this process is holding, never about what is on the
+  persistence disk, and they include TTL-expired messages nothing has swept yet
+  (so they are an upper bound on what a peer could still fetch). `startup_replay`
+  is what tells you whether memory and disk are the same thing:
+
+  | `startup_replay` | What it means | `status` | `/readyz` |
+  | --- | --- | --- | --- |
+  | `disabled` | Memory-only; there is no journal to read. | `ok` | 200 |
+  | `complete` | The whole journal directory was scanned and accepted. | `ok` | 200 |
+  | `degraded` | Fully scanned; some records or whole files were refused. The loss is known and bounded — see the counters. | `degraded` | 200 |
+  | `incomplete` | The directory, or the rest of it, was never read. **The amount of at-rest ciphertext left unloaded is unknown**, the files stay on disk unreferenced, and every restart repeats it. | `degraded` | **503** |
+
+  An `incomplete` replay reporting `rooms: 0` does **not** mean the relay is holding
+  nothing. It means it did not look. Do not attest "the relay is holding nothing"
+  from a `/healthz` body whose `startup_replay` is `incomplete`; see §4.8 for what
+  to do instead. It contains no room ids, journal paths, tokens, or
   contents. `tests/test_relay.py::test_healthz_exposes_only_aggregate_counts`
   pins exactly this: it posts to a room named `room-SECRETNAME-123` with a
   `SECRET-CIPHERTEXT-PAYLOAD` body and asserts neither the room name nor the payload
@@ -200,10 +230,17 @@ dependency), emitting one JSON object per line. There are four kinds of line:
   The startup line logs only *whether* persistence is on (`"persist":true|false`), never
   the `persist_dir` path itself.
 
-- **Bounded-startup warning — only when a journal record/path is rejected.** One aggregate
-  warning may report `journal_load_rejections: N`. It carries no filename, room id, token,
-  timestamp, or body and is not emitted once per hostile line, so malformed persistence
-  input cannot create a content-bearing log or an unbounded log storm.
+- **Bounded-startup line — only when the replay was not complete.** At most one
+  aggregate line per start. A `degraded` replay logs a `warning`; an `incomplete`
+  replay logs an `error` that says plainly that at-rest ciphertext was left unread
+  and unreferenced, that `/healthz` counts describe memory only, and that `/readyz`
+  will refuse until it is resolved. Both carry `startup_replay`,
+  `startup_replay_reason` (a fixed vocabulary — `crash-temp-file-budget`,
+  `crash-temp-cleanup-failed`, `directory-entry-budget`, `directory-scan-failed`,
+  `startup-read-budget`, `journal-file-refused`, `journal-record-refused`), and the
+  three counters. No filename, room id, token, timestamp, or body appears, and it is
+  not emitted once per hostile line, so malformed persistence input cannot create a
+  content-bearing log or an unbounded log storm.
 
 - **Handler-failure line — fixed metadata only.** If an expected client reset, abort, or
   broken pipe reaches `ThreadingHTTPServer.handle_error`, the relay emits nothing; these
@@ -218,7 +255,15 @@ dependency), emitting one JSON object per line. There are four kinds of line:
   access line is emitted per request **only** when you set `HABITABLE_RELAY_LOG=json`.
   When enabled, each line carries **only metadata** — a random per-request id, the
   HTTP method, a **redacted** route (`/rooms/{room}`, **never** the actual room id),
-  the response status, and the latency in milliseconds. It **never** contains peer IP
+  the status line the relay **actually wrote**, a `response` field, and the latency
+  in milliseconds. `response` is `complete` (status line and whole body sent),
+  `partial` (status line sent, body did not finish), or `none` — and when it is
+  `none` the `status` field is **absent**, because no status line was ever written
+  and the peer saw a dropped connection. Until 2026-08 the status was initialised to
+  `200` before routing and logged from a `finally`, so a request that raised out of
+  the route (an `OSError` escaping persistence, say) was logged as `200` having sent
+  nothing at all. An access log an operator attests to their union may not record a
+  response the relay never sent. It **never** contains peer IP
   addresses, room ids, message contents, **or the room write-capability token**
   (the token is compared with `hmac.compare_digest` and never serialized into a log or
   error body), and the health probes (`/livez`, `/readyz`, `/healthz`) are excluded from
@@ -366,6 +411,46 @@ until one of those events, and crash remnants last until cleanup).
 The shipped read-only container does **not** enable persistence; to use it you must mount a
 writable volume and set the env var deliberately.
 
+### 4.7 Startup replay: "holding nothing" vs "did not look"
+
+`/healthz` carries `startup_replay` and `startup_replay_reason` alongside the
+counters; the four states and their effect on `status` and `/readyz` are tabled in
+§3. The single fact worth memorising: **`rooms: 0` with `startup_replay: incomplete`
+is not an empty relay.** It is a relay that refused to read its own persistence
+directory and cannot tell you how much is in there.
+
+Why the counters below it cannot answer that question either: the refusal happens
+*because* the directory could not be safely or completely scanned (too many
+crash-temp files, too many directory entries, a `scandir`/`unlink` error, or an
+exhausted startup read budget). A relay that could count what it failed to read
+would not have failed to read it. Reporting `0` there would repeat exactly the
+defect this state exists to expose, so the honest value is the state name, not a
+number.
+
+### 4.8 If `startup_replay` is `incomplete` — manual recovery
+
+The refusal is **sticky**: nothing on the failing path removes or rewrites the
+journal files, so every restart behaves identically, and the ciphertext in that
+directory is never fetched, never TTL-swept, never compacted, and never counted.
+It is not lost, it is unreferenced. There is no automatic retry, and adding one
+would mean the relay silently deciding to delete or ignore members' sync traffic;
+this is deliberately an operator decision.
+
+1. **Do not attest the relay as holding nothing**, and do not treat a
+   restart as having erased anything (§4.6 and the observability matrix §4.4).
+2. **Read `startup_replay_reason`** — it names which bound was hit, without naming
+   any file.
+3. **Inspect the persistence directory yourself.** Crash-temp remnants
+   (`.habitable-relay-<32 hex>.tmp`) accumulating past the bounded allowance are the
+   common cause; the journals themselves are `<sha256>.jsonl`.
+4. **Decide, explicitly, what happens to the ciphertext that is there.** Peers
+   re-sync (sync is idempotent), so removing an unreadable persistence directory is
+   a legitimate choice — but it destroys undelivered sealed messages, so it is a
+   choice a union should make knowingly, not a cleanup script's default.
+5. **Restart and confirm** `/healthz` reports `startup_replay: complete` (or
+   `disabled`) and `/readyz` returns 200 before you attest anything about retained
+   state.
+
 ---
 
 ## 5. The invariant the project itself tests (your strongest evidence)
@@ -457,11 +542,15 @@ metadata leaks accumulate — turn it off or minimize it (§7).
 $ curl -s http://localhost:8787/healthz
 {"status":"ok","rooms":1,"live_messages":1,"live_ciphertext_bytes":21,
  "posted":1,"fetched":0,"bytes_relayed":21,"capacity_rejections":0,
- "journal_load_rejections":0}
+ "journal_records_rejected":0,"journal_files_rejected":0,"journal_load_refusals":0,
+ "startup_replay":"disabled","startup_replay_reason":"none"}
 ```
 
-Confirm the response contains aggregate counters and `status` only — no room id
-(`audit-probe-room` must not appear), token, journal path, or body content.
+Confirm the response contains aggregate counters, the replay state, and `status`
+only — no room id (`audit-probe-room` must not appear), token, journal path, or body
+content. If `status` is `degraded` or `startup_replay` is anything but `disabled` or
+`complete`, **stop**: the counters above are not a complete account of what this
+relay is holding, and §4.8 applies before you attest anything.
 
 ### Step 3 — Confirm the relay cannot read what it forwards
 
@@ -511,7 +600,8 @@ diff`/restart-resets-state evidence (Step 4); and the green guard-test run (Step
 short signed statement to the union can then say, truthfully:
 
 > *"This relay, running image `<digest>` from commit `<sha>` with on-disk persistence
-> disabled, stores only opaque ciphertext blobs, per-room write tokens, and aggregate
+> disabled and `/healthz` reporting `status: ok` with `startup_replay: disabled`,
+> stores only opaque ciphertext blobs, per-room write tokens, and aggregate
 > counters in memory under fixed aggregate/per-room caps; it persists nothing to disk;
 > it writes no request logs; its `/healthz` exposes only aggregate counts; room writes
 > are gated by a capability token

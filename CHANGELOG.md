@@ -82,6 +82,48 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   document that drifted from the code — now enumerates it and states the
   confirmation/validation split explicitly.
 
+- **The relay's operator surface reported success it had not verified (issue
+  #162).** Three separate false signals, all in the surfaces
+  `docs/relay-operator-self-audit.md` tells an operator to inspect and attest to
+  their union:
+
+  - **`/healthz` reported an idle relay for "refused to load".** When bounded
+    startup replay refused the persistence directory, `metrics()` reported
+    in-memory state — `rooms: 0`, `status: ok` — while a directory of members'
+    sealed sync traffic sat unread on disk. `/healthz` now carries
+    `startup_replay` (`disabled` / `complete` / `degraded` / `incomplete`) and a
+    fixed-vocabulary `startup_replay_reason`, reports `status: degraded` for
+    anything it did not fully verify, and `/readyz` returns **503** on
+    `incomplete` — the state where the amount of unloaded at-rest ciphertext is
+    *unknown*. The counts are documented, in code and in the audit doc, as
+    describing process memory and never the disk.
+  - **The counter counted events, not records.** `journal_load_rejections`
+    incremented by exactly one whether a single line was malformed or the whole
+    directory was refused, and three documents called it a record count. It is
+    replaced by `journal_records_rejected` (lines), `journal_files_rejected`
+    (whole journals), and `journal_load_refusals` (the directory or its
+    remainder — an unknown quantity). The startup log line now distinguishes a
+    `warning` for bounded, known loss from an `error` naming the orphaned state:
+    a refusal is sticky, leaves ciphertext unreferenced, and needs a human, so
+    the audit doc gained a manual-recovery section (§4.8) instead of the relay
+    silently deciding to ignore or delete a union's sync traffic.
+  - **The access log recorded `status: 200` for a request that returned
+    nothing.** `_status` was initialised to `200` before routing and logged from
+    a `finally`, so an exception escaping the route left the peer with
+    `RemoteDisconnected` and the attestable log with `200`. The status is now set
+    only by the code that writes the response, and each line carries
+    `response: complete|partial|none`; a request that sent nothing logs **no**
+    `status` field rather than a fabricated one.
+
+  Three stale statements in `docs/relay-observability-matrix.md` are corrected in
+  the same change: the sync envelope shape (it omitted `pairing_id` and `mac`,
+  the two fields carrying the v2 pairing binding), the unqualified "it persists
+  nothing to disk" (true only with the opt-in journal disabled), and
+  "restart-as-erasure", which was doubly wrong — storage is not FIFO-capped
+  (silent `pop(0)` eviction was deliberately replaced by a 413 `RoomFullError`)
+  and a persisted relay *reloads* undelivered ciphertext across a restart, so
+  restart is not the privacy mitigation that section offered.
+
 - **A capture whose media type had no packet export mapping (`.heic`, the iPhone
   default photo format) used to ship with no bytes, no custody binding, and a
   `habitable verify` verdict of READY (issue #158).** `packet.build_packet` now
