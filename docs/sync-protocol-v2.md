@@ -71,12 +71,28 @@ Before merging CRDT state or writing an original, import verifies:
 5. complete signed per-field provenance for every known author or legacy attestor;
 6. source custody chain and each transferred original's content-hash binding;
 7. original SHA-256 fixity;
-8. primary, additional, and archive timestamp material; and
-9. every embedded receipt against a message actually sent to that peer.
+8. primary, additional, and archive timestamp material;
+9. every embedded receipt against a message actually sent to that peer; and
+10. the `have` manifest's shape — an array of objects, each carrying a non-empty
+    `capture_id` and `content_hash`.
 
 Any failure aborts that message before merge. Unknown peers, unknown signed-field
 authors/attestors, unsigned mutable fields, wrong-case state, stale pairings,
-malformed timestamps, and missing originals all fail closed.
+malformed timestamps, malformed `have` manifests, and missing originals all fail
+closed.
+
+Every field this list enumerates is validated in `_validate_message`, which
+returns before the merge or not at all. Until issue #163 that was true of nine
+of the ten: the `have` manifest was checked one line *after*
+`vault.document.merge`, so a malformed manifest raised with the recipient's
+document already mutated and no receipt or seen-marker to match — this list
+omitted it, which is how the ordering went unnoticed on review.
+
+Which of the sender's declared holdings this device can *confirm* is a separate
+step that deliberately still runs after the merge, so a capture arriving in the
+same message counts as confirmed and its bytes are not re-sent on the next
+exchange. Confirmation only intersects an already-validated manifest against
+local records; it cannot reject a message.
 
 ## 4. Replay and receipts
 

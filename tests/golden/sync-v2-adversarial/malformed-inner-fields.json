@@ -1,0 +1,158 @@
+{
+  "_comment": [
+    "A stored adversarial corpus for sync protocol v2 (issue #163, item 3).",
+    "Each case names one signed inner field and one way it can be malformed:",
+    "missing, wrong-typed, or out of range. tests/test_sync_fail_closed.py loads",
+    "this file from disk, applies one case to a real exported message's inner",
+    "payload, re-seals it with the sender's real identity and real pairing key,",
+    "and asserts import_messages raises AND leaves the recipient's CRDT document",
+    "byte-identical -- the property docs/sync-threat-model.md states as 'A",
+    "validation failure cannot partially merge the message's CRDT state.'",
+    "",
+    "Stated limit: these are stored *mutations*, not stored sealed envelope",
+    "bytes. A committed .hsync blob would require committing the recipient's",
+    "private key, which this repository will not carry; the mutation is the part",
+    "that is frozen on disk, the crypto around it is live. See the module",
+    "docstring in tests/test_sync_fail_closed.py.",
+    "",
+    "'op' is 'delete' (remove the key) or 'replace' (set it to 'value')."
+  ],
+  "cases": [
+    {
+      "id": "protocol-missing",
+      "field": "protocol",
+      "op": "delete",
+      "expect_error": "unsupported sync protocol"
+    },
+    {
+      "id": "protocol-downgraded-to-v1",
+      "field": "protocol",
+      "op": "replace",
+      "value": "habitable-sync-v1",
+      "expect_error": "unsupported sync protocol"
+    },
+    {
+      "id": "message-id-missing",
+      "field": "message_id",
+      "op": "delete",
+      "expect_error": "sync field 'message_id' must be a non-empty string"
+    },
+    {
+      "id": "message-id-out-of-range",
+      "field": "message_id",
+      "op": "replace",
+      "value": "zz",
+      "expect_error": "sync message id is malformed"
+    },
+    {
+      "id": "case-id-wrong",
+      "field": "case_id",
+      "op": "replace",
+      "value": "case-someone-elses",
+      "expect_error": "message is for case"
+    },
+    {
+      "id": "recipient-binding-wrong",
+      "field": "recipient",
+      "op": "replace",
+      "value": "not-this-device",
+      "expect_error": "sync message recipient binding is invalid"
+    },
+    {
+      "id": "state-not-an-object",
+      "field": "state",
+      "op": "replace",
+      "value": "not-an-object",
+      "expect_error": "expected a JSON object"
+    },
+    {
+      "id": "state-digest-wrong",
+      "field": "state_sha256",
+      "op": "replace",
+      "value": "0000000000000000000000000000000000000000000000000000000000000000",
+      "expect_error": "sync state digest is invalid"
+    },
+    {
+      "id": "have-missing",
+      "field": "have",
+      "op": "delete",
+      "expect_error": "sync have manifest must be an array"
+    },
+    {
+      "id": "have-not-an-array",
+      "field": "have",
+      "op": "replace",
+      "value": "not-an-array",
+      "expect_error": "sync have manifest must be an array"
+    },
+    {
+      "id": "have-entry-not-an-object",
+      "field": "have",
+      "op": "replace",
+      "value": ["not-an-object"],
+      "expect_error": "sync have manifest contains a malformed entry"
+    },
+    {
+      "id": "have-entry-missing-capture-id",
+      "field": "have",
+      "op": "replace",
+      "value": [{"content_hash": "aa"}],
+      "expect_error": "sync field 'capture_id' must be a non-empty string"
+    },
+    {
+      "id": "have-entry-capture-id-wrong-type",
+      "field": "have",
+      "op": "replace",
+      "value": [{"capture_id": 7, "content_hash": "aa"}],
+      "expect_error": "sync field 'capture_id' must be a non-empty string"
+    },
+    {
+      "id": "have-entry-missing-content-hash",
+      "field": "have",
+      "op": "replace",
+      "value": [{"capture_id": "cap-1"}],
+      "expect_error": "sync field 'content_hash' must be a non-empty string"
+    },
+    {
+      "id": "captures-not-an-array",
+      "field": "captures",
+      "op": "replace",
+      "value": "not-an-array",
+      "expect_error": "sync captures must be an array"
+    },
+    {
+      "id": "captures-entry-not-an-object",
+      "field": "captures",
+      "op": "replace",
+      "value": ["not-an-object"],
+      "expect_error": "sync capture must be an object"
+    },
+    {
+      "id": "custody-proof-missing",
+      "field": "custody_proof",
+      "op": "delete",
+      "expect_error": "sync message is missing its source custody proof"
+    },
+    {
+      "id": "custody-proof-not-an-object",
+      "field": "custody_proof",
+      "op": "replace",
+      "value": ["not-an-object"],
+      "expect_error": "sync message is missing its source custody proof"
+    },
+    {
+      "id": "receipts-not-an-array",
+      "field": "receipts",
+      "op": "replace",
+      "value": "not-an-array",
+      "expect_error": "sync receipts must be an array"
+    },
+    {
+      "id": "receipts-entry-not-an-object",
+      "field": "receipts",
+      "op": "replace",
+      "value": ["not-an-object"],
+      "expect_error": "sync receipt must be an object"
+    }
+  ]
+}

@@ -9,6 +9,24 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **A stored adversarial corpus for sync protocol v2**
+  (`tests/golden/sync-v2-adversarial/malformed-inner-fields.json`, driven by
+  `tests/test_sync_fail_closed.py`). Every hostile sync message in the suite was
+  previously produced by `export_message` and re-sealed by the tests' own
+  helper, so nothing ever omitted or mistyped a field the encoder always emits
+  well-formed — which is why the `have`-ordering defect above went unnoticed.
+  The corpus freezes one malformed shape per signed inner field (missing,
+  wrong-typed, out of range) and each case asserts an *absence*: the recipient's
+  canonical CRDT state must be byte-identical after the rejection, with no
+  imported original, no queued receipt, no recorded peer inventory, and no
+  seen-marker. A further test fails if a signed inner field is ever added
+  without an adversarial case, and another checks that field list against what
+  `export_message` actually emits. Stated limit: these are stored *mutations*
+  applied to a genuinely signed, sealed, paired message — not committed sealed
+  envelope bytes, which would require committing a recipient private key. That
+  pins the decoder's validation order, not the encoder's output; issue #163's
+  full ask for committed envelope bytes stays open.
+
 - **Property-based invariants for the assurance-critical core**
   (`tests/test_property_invariants.py`), covering the four primitive-level targets
   named in the productionization plan's §E17 (“Expand property-based testing”).
@@ -43,6 +61,151 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   next `habitable resolve` has a concrete target instead of a bare count.
 
 ### Fixed
+
+- **A documented fail-closed sync property failed open: the `have` manifest was
+  validated after the CRDT merge (issue #163).** `docs/sync-threat-model.md`
+  states "A validation failure cannot partially merge the message's CRDT state"
+  and `docs/sync-protocol-v2.md` §3 states "Any failure aborts that message
+  before merge". For one signed inner field both sentences were false: the
+  `have` manifest was shape-checked one line *after* `vault.document.merge`, so
+  a malformed manifest from an already-paired peer (version-skewed, buggy, or
+  partially written) raised `SyncError` with the recipient's case document
+  already mutated — and, because the raise preceded `mark_sync_message_seen`
+  and `queue_sync_receipt`, with the custody and receipt record saying the
+  message had never arrived, leaving the same message to merge again on the
+  next exchange. The manifest is now parsed and validated inside
+  `_validate_message`, which returns before the merge or not at all; *which*
+  declared holdings this device can confirm is still computed after the merge
+  (so a capture arriving in the same message counts and its bytes are not
+  re-sent), but that step can no longer reject anything. `docs/sync-protocol-v2.md`
+  §3's ordered checklist — which omitted `have` entirely, and so was the
+  document that drifted from the code — now enumerates it and states the
+  confirmation/validation split explicitly.
+
+- **The relay's operator surface reported success it had not verified (issue
+  #162).** Three separate false signals, all in the surfaces
+  `docs/relay-operator-self-audit.md` tells an operator to inspect and attest to
+  their union:
+
+  - **`/healthz` reported an idle relay for "refused to load".** When bounded
+    startup replay refused the persistence directory, `metrics()` reported
+    in-memory state — `rooms: 0`, `status: ok` — while a directory of members'
+    sealed sync traffic sat unread on disk. `/healthz` now carries
+    `startup_replay` (`disabled` / `complete` / `degraded` / `incomplete`) and a
+    fixed-vocabulary `startup_replay_reason`, reports `status: degraded` for
+    anything it did not fully verify, and `/readyz` returns **503** on
+    `incomplete` — the state where the amount of unloaded at-rest ciphertext is
+    *unknown*. The counts are documented, in code and in the audit doc, as
+    describing process memory and never the disk.
+  - **The counter counted events, not records.** `journal_load_rejections`
+    incremented by exactly one whether a single line was malformed or the whole
+    directory was refused, and three documents called it a record count. It is
+    replaced by `journal_records_rejected` (lines), `journal_files_rejected`
+    (whole journals), and `journal_load_refusals` (the directory or its
+    remainder — an unknown quantity). The startup log line now distinguishes a
+    `warning` for bounded, known loss from an `error` naming the orphaned state:
+    a refusal is sticky, leaves ciphertext unreferenced, and needs a human, so
+    the audit doc gained a manual-recovery section (§4.8) instead of the relay
+    silently deciding to ignore or delete a union's sync traffic.
+  - **The access log recorded `status: 200` for a request that returned
+    nothing.** `_status` was initialised to `200` before routing and logged from
+    a `finally`, so an exception escaping the route left the peer with
+    `RemoteDisconnected` and the attestable log with `200`. The status is now set
+    only by the code that writes the response, and each line carries
+    `response: complete|partial|none`; a request that sent nothing logs **no**
+    `status` field rather than a fabricated one.
+
+  Three stale statements in `docs/relay-observability-matrix.md` are corrected in
+  the same change: the sync envelope shape (it omitted `pairing_id` and `mac`,
+  the two fields carrying the v2 pairing binding), the unqualified "it persists
+  nothing to disk" (true only with the opt-in journal disabled), and
+  "restart-as-erasure", which was doubly wrong — storage is not FIFO-capped
+  (silent `pop(0)` eviction was deliberately replaced by a 413 `RoomFullError`)
+  and a persisted relay *reloads* undelivered ciphertext across a restart, so
+  restart is not the privacy mitigation that section offered.
+
+- **Timestamp-authority trust had only ever been anchored to certificates this
+  repository generated, and the untrusted verdict could not be told apart from
+  operator error (issue #159).** `timestamp_authority_trusted` gates every READY
+  verdict, and its anchor check had never been exercised against a certificate
+  the project did not mint: the integration test proved a real authority could
+  *issue* a token (verifying it with no anchor at all), and every anchor
+  assertion used `LocalRfc3161TSA`'s own certificate or one generated inside the
+  test.
+
+  - **The join is now asserted, offline.** `tests/golden/tsa-freetsa/` commits a
+    real FreeTSA token over a synthetic digest together with FreeTSA's published
+    root and responder certificates (provenance and re-derivation steps in that
+    directory's README), and `tests/test_tsa_real_authority.py` anchors the one
+    to the other in every `make verify` — no network, no flakiness. The live
+    counterpart in `tests/test_tsa_integration.py` now anchors a freshly stamped
+    token to the authority's published root as well, so a change in that
+    authority's chain shape is a visible failure rather than a silent one.
+  - **The three anchor outcomes are distinguishable.** "No anchor was supplied",
+    "anchors were supplied and none chained", and "anchored" produced one
+    sentence about a certificate "not chained to a trusted root". A reviewer who
+    downloaded an authority's published root, passed it, and got NOT TRUSTED was
+    told to do the thing they had just done. `TimestampInfo.note` and
+    `VerificationReport.guidance()` now say which case occurred,
+    `VerificationReport.anchors_supplied` exposes it to machine consumers (also
+    in `habitable verify --json`), and the no-anchor case states plainly that
+    authority trust was *not assessed* — which is not a finding against the
+    token. The machine-readable `status` value is unchanged.
+  - **The anchor rule is stated instead of inferred.** `habitable.tsa.ANCHOR_RULE`
+    documents that this is a *one-hop* check — the anchor must be the signing
+    certificate or the certificate that directly issued it — and that
+    intermediates, validity periods, basic constraints, key usage, name
+    constraints, and revocation are **not** checked. It is not widened here:
+    widening it means this project hand-rolling X.509 path validation inside the
+    one function every READY verdict rests on. `docs/embedding-the-verifier.md`
+    stopped instructing embedders to pass roots (which fails for any authority
+    issuing through an intermediate, DigiCert included) and now says to pass the
+    *issuing* certificate or pin the responder; `docs/verifier-decision-table.md`
+    §5 records that `openssl ts -verify -CAfile` does build a path and can
+    therefore succeed where this check declines, so the two tools are not in
+    conflict about the token.
+  - **The anchor check is no longer RSA-only.** `_issuer_signed` returned
+    `False` for every non-RSA issuer key, so a legitimate EC-issued authority
+    chain was reported exactly as a forged one. Each hop is now delegated to
+    `cryptography`'s `verify_directly_issued_by` (RSA, ECDSA, Ed25519, Ed448),
+    which also checks that issuer and subject names chain. Nothing about what is
+    *not* checked changed.
+
+- **Packet v4 was the only format habitable emits and nothing that pins the
+  format covered it (issue #160).** No golden fixture, a fuzz harness on v1, a
+  reference importer on v1, a BagIt adapter on v3, and a decision table
+  describing itself as normative for v2 — while two documents stated that
+  "every version ever emitted keeps verifying, guarded by the committed
+  golden-packet corpus".
+
+  - `tests/golden/packet-v4/` is committed, and `scripts/make_golden_packet.py`
+    now builds a fixture that actually exercises the version's own surfaces: an
+    artifact item, a relationship, a use-case profile, and a handoff view. A
+    fixture carrying only the shape every version shares would leave
+    `_verify_v4_workflows` — roughly 250 lines of hostile-input parsing in the
+    standalone verifier — as unguarded as no fixture at all.
+  - `tests/test_golden.py` asserts a fixture exists for **every** version in
+    `1..SUPPORTED_PACKET_VERSION`, and that the newest one carries those
+    surfaces. The corpus previously passed with whatever happened to be on disk,
+    which is why a version bump could forget its fixture and stay green. This is
+    the assertion that stops it recurring.
+  - The fuzz harness draws from the whole corpus instead of `packet-v1`, and its
+    structural mutation reaches **nested** objects and array elements rather
+    than only top-level keys — so the v3 timeline and v4
+    artifact/relationship/profile/handoff structures are now fuzzed at all
+    (448 addressable positions in the v4 bundle, against 114 in v1). The
+    reference importer is parametrized over every committed version, and the
+    BagIt adapter test follows `SUPPORTED_PACKET_VERSION` rather than a pinned
+    v3.
+  - Documentation corrected rather than left describing the old state: the two
+    "every version ever emitted" sentences now say what the corpus is actually
+    required to contain, and `docs/verifier-decision-table.md`'s header no
+    longer claims to be normative for `SUPPORTED_PACKET_VERSION = 2`. It states
+    which checks its rows are complete for and which version-specific checks it
+    does not yet enumerate, and tells a reviewer to derive those from the code
+    and the corpus rather than from a stale table. `tests/test_site_sample.py`
+    records that the published sample is a freshness gate, not a compatibility
+    pin.
 
 - **A capture whose media type had no packet export mapping (`.heic`, the iPhone
   default photo format) used to ship with no bytes, no custody binding, and a

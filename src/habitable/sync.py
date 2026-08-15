@@ -119,6 +119,10 @@ class _ValidatedMessage:
     captures: tuple[_ValidatedCapture, ...]
     custody_proof: dict[str, JSONValue]
     receipt_records: tuple[tuple[str, dict[str, JSONValue]], ...]
+    # The sender's declared inventory, already checked for shape. Parsed here
+    # rather than after the merge so that every signed inner field is validated
+    # in one place and the merge is the last thing that happens (issue #163).
+    have: tuple[tuple[str, str], ...]
 
 
 def export_message(
@@ -256,9 +260,12 @@ def import_messages(
         if vault.has_seen_sync_message(sender, message_id):
             replays += 1
             continue
+        # Everything the message asserts is validated here; the merge below is
+        # the first mutation of local state and every check has already run
+        # (issue #163). Nothing after this line may reject the message.
         validated = _validate_message(vault, inner, sender)
         vault.document.merge(validated.state)
-        vault.record_peer_captures(sender.fingerprint, _confirmed_have(vault, inner))
+        vault.record_peer_captures(sender.fingerprint, _confirmed_have(vault, validated.have))
         imported += _apply_captures(vault, validated, sender)
         for receipt_message_id, receipt in validated.receipt_records:
             vault.record_verified_sync_receipt(sender, receipt_message_id, receipt)
@@ -378,6 +385,7 @@ def _validate_message(
     _validate_extended_state(vault, state)
     captures = _validate_captures(vault, inner, proof)
     receipts = _validate_receipts(vault, sender, inner.get("receipts"))
+    have = _validated_have(inner)
     return _ValidatedMessage(
         message_id=message_id,
         message_digest=sha256_bytes(canonical_json(dict(inner))),
@@ -385,6 +393,7 @@ def _validate_message(
         captures=tuple(captures),
         custody_proof=proof,
         receipt_records=tuple(receipts),
+        have=have,
     )
 
 
@@ -696,23 +705,48 @@ def _validate_receipt(
     return message_id
 
 
-def _confirmed_have(vault: Vault, inner: Mapping[str, JSONValue]) -> list[str]:
+def _validated_have(inner: Mapping[str, JSONValue]) -> tuple[tuple[str, str], ...]:
+    """Parse the signed ``have`` manifest into ``(capture_id, content_hash)`` pairs.
+
+    This is the *only* place the manifest can be rejected, and it runs inside
+    :func:`_validate_message`, before ``vault.document.merge``. It used to run
+    one line after the merge, inside :func:`_confirmed_have` -- so a malformed
+    manifest raised ``SyncError`` with the recipient's case document already
+    mutated, and, because the raise preceded ``mark_sync_message_seen`` and
+    ``queue_sync_receipt``, with the custody/receipt record saying the message
+    had never arrived (issue #163). ``docs/sync-threat-model.md`` and
+    ``docs/sync-protocol-v2.md`` §3 both promise the opposite.
+    """
+    raw = inner.get("have")
+    if not isinstance(raw, list):
+        raise SyncError("sync have manifest must be an array")
+    entries: list[tuple[str, str]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise SyncError("sync have manifest contains a malformed entry")
+        entries.append(
+            (_required_string(item, "capture_id"), _required_string(item, "content_hash"))
+        )
+    return tuple(entries)
+
+
+def _confirmed_have(vault: Vault, have: Iterable[tuple[str, str]]) -> list[str]:
+    """Which of the sender's already-validated declared holdings we can confirm.
+
+    Deliberately still computed *after* the merge, unlike the validation above:
+    a capture arriving in this very message is listed in the sender's manifest,
+    and intersecting against the pre-merge document would leave it unconfirmed,
+    making the next export re-send bytes the peer demonstrably already holds.
+    Cannot raise -- every entry was shape-checked pre-merge by
+    :func:`_validated_have`.
+    """
     local = {capture.capture_id: capture.content_hash for capture in vault.document.captures()}
     local.update(
         {artifact.artifact_id: artifact.content_hash for artifact in vault.document.artifacts()}
     )
-    raw = inner.get("have")
-    if not isinstance(raw, list):
-        raise SyncError("sync have manifest must be an array")
-    confirmed: list[str] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            raise SyncError("sync have manifest contains a malformed entry")
-        capture_id = _required_string(item, "capture_id")
-        content_hash = _required_string(item, "content_hash")
-        if local.get(capture_id) == content_hash:
-            confirmed.append(capture_id)
-    return confirmed
+    return [
+        capture_id for capture_id, content_hash in have if local.get(capture_id) == content_hash
+    ]
 
 
 # --- transports ---------------------------------------------------------------

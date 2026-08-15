@@ -46,6 +46,12 @@ def test_public_sample_is_current_signed_and_intact() -> None:
     assert report.signature_ok and report.custody_ok
 
     bundle = json.loads((_SAMPLE / "bundle.json").read_text(encoding="utf-8"))
+    # A *freshness* gate, not a compatibility pin: the sample is regenerated to
+    # whatever the current version is, so a change that alters the writer and
+    # the verifier together stays green here. Backward compatibility is pinned
+    # by the committed-bytes corpus in tests/golden/ (issue #160), and the
+    # sample also carries none of the v4-specific surfaces (no relationships,
+    # no profile, no handoff view), so it is not a substitute for that fixture.
     assert bundle["packet_version"] == PACKET_VERSION
     assert bundle["appendix"]["item_count"] == len(bundle["items"]) == 3
     assert report.cryptographically_verified_items == 3
