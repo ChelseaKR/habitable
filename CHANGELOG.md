@@ -128,6 +128,28 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   when a peer supplies the token, so `resolve` no longer fetches a second
   primary over content already stamped.
 
+- **Every handoff section was handed the whole bundle, so a packet with no
+  delivery receipt still rendered "Delivery — 1 evidence item(s), 1
+  relationship(s)" (issue #181).** `build_handoff_manifest` computed one set of
+  issue/item/artifact/relationship id lists over the entire bundle and wrote
+  those identical lists into every `section_id` the profile declared, and the
+  renderer printed their lengths under each `<h2>`. The repo's own
+  `repair_delivery` fixture — one repair request, one `documents_condition`
+  relationship, no delivery receipt, no landlord response — therefore told a
+  caseworker or a code inspector that its Delivery section held delivery
+  evidence and its Response section held response evidence. It held neither, and
+  the manifest travels inside the signed `bundle.json`, so a verified packet
+  carried the inflated counts with the signature's authority behind them.
+  `repair_comparison`'s **Proof Limits** heading got the same treatment.
+  Nothing in the case model records which record belongs to which section, so
+  manifest version 2 stops pretending otherwise: sections carry `section_id` and
+  nothing else, a `section_membership: "not_recorded"` field says why, and the
+  only counts in the document are the bundle-wide `counts`, printed once under
+  "This handoff as a whole" and labelled as covering the whole packet. The
+  section headings stay — they are the recipient's expected reading order — with
+  no count attached. Packet v1 manifests still verify; the verifier's handoff
+  checks are structural and never read `sections`.
+
 - **A documented fail-closed sync property failed open: the `have` manifest was
   validated after the CRDT merge (issue #163).** `docs/sync-threat-model.md`
   states "A validation failure cannot partially merge the message's CRDT state"
