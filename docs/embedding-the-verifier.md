@@ -234,7 +234,12 @@ golden-packet corpus in [`tests/test_contrib_importer.py`](../tests/test_contrib
 
 - **`packet_version`** gates compatibility. This verifier accepts versions
   `1..SUPPORTED_PACKET_VERSION` and rejects newer ones cleanly. Every version ever emitted keeps
-  verifying — guarded by the committed golden-packet corpus in `tests/`.
+  verifying — guarded by the committed golden-packet corpus in
+  [`tests/golden/`](../tests/golden/), which holds committed bytes for **every** version in
+  `1..SUPPORTED_PACKET_VERSION`. That completeness is itself asserted
+  (`tests/test_golden.py::test_a_fixture_exists_for_every_version_we_have_ever_emitted`), because
+  the sentence above was true only of formats nobody emitted for the two weeks packet v4 shipped
+  without a fixture (issue #160).
 - The **bundle/field shapes** in [`bundle-schema.md`](bundle-schema.md) are additive within a major
   `packet_version`; a breaking change is a major bump with a migration note (semver on the packet
   format and verification protocol, independent of the package version — see
