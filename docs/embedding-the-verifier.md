@@ -108,6 +108,7 @@ in-limit regular files remain residual risks.
 | `evidence_ready` | non-empty packet passes both claims above; technical state, not admissibility |
 | `ok` | retained fail-closed alias for `evidence_ready` |
 | `status` | stable reason: `evidence_ready`, `integrity_failed`, `no_items`, `timestamp_missing`, `timestamp_invalid`, or `timestamp_authority_untrusted` |
+| `anchors_supplied` | how many certificate anchors the caller passed; `0` with `timestamp_authority_untrusted` means authority trust was never assessed, non-zero means the supplied anchors did not chain |
 | `signature_ok` | producer signature over the bundle bytes verified |
 | `custody_ok` | chain walks cleanly and the declared head matches |
 | `custody_length` | number of custody entries |
@@ -137,25 +138,51 @@ localized human surfaces.
 
 Without `trusted_certs`, a structurally valid RFC 3161 token may still have
 `timestamp_verified = True`, but authority trust, evidence readiness, `ok`, and the CLI exit code
-all fail closed. To require the token chain to a TSA root *you* trust, pass certificates obtained
+all fail closed. To require the token chain to a TSA certificate *you* trust, pass certificates obtained
 and assessed independently:
 
 ```python
 from cryptography import x509
-roots = [x509.load_pem_x509_certificate(Path(p).read_bytes())
-         for p in ("freetsa-root.pem", "digicert-root.pem")]
-report = verify_packet(packet_dir, trusted_certs=roots)
+anchors = [x509.load_pem_x509_certificate(Path(p).read_bytes())
+           for p in ("freetsa-cacert.pem", "digicert-timestamping-ca.pem")]
+report = verify_packet(packet_dir, trusted_certs=anchors)
 ```
 
-Then a token whose authority chains to one of `roots` can set
-`timestamp_authority_trusted = True`. A non-chaining token can still be inspected through
+Then a token whose signing certificate matches, or was directly issued by, one of
+`anchors` can set `timestamp_authority_trusted = True`.
+
+> **This is a one-hop check, not path validation.** An anchor is accepted when it **is**
+> the token's signing certificate (fingerprint match — i.e. pinning) or when it
+> **directly issued** that certificate (signature and issuer/subject names verified, any
+> key type). Intermediates are never discovered or walked, and certificate validity
+> periods, basic constraints, key usage (including `id-kp-timeStamping`), name
+> constraints, policies, and revocation (CRL/OCSP) are **not** checked. The exact
+> statement lives in code as `habitable.tsa.ANCHOR_RULE`.
+>
+> **So supply the *issuing* certificate, not a root above it.** FreeTSA issues its
+> responder directly from its published root (`https://freetsa.org/files/cacert.pem`),
+> so that root works. DigiCert issues through an intermediate, so its *root* does **not**
+> chain here and the anchor to supply is its timestamping CA certificate — which the
+> token itself carries. Earlier revisions of this page told embedders to pass roots for
+> both, which fails for the second; that was issue
+> [#159](https://github.com/ChelseaKR/habitable/issues/159).
+>
+> `openssl ts -verify -CAfile` *does* build a path, so it can succeed where this check
+> declines. That is a difference in what is checked, not a disagreement about the
+> token — see `docs/verifier-decision-table.md` §5.
+
+When the anchors you supplied do not chain, the report says so specifically rather than
+repeating "pass `--trusted-cert`": `anchors_supplied` is non-zero, `guidance()` returns
+the "did not match or issue" sentence, and each item's `notes` carries the one-hop
+explanation. With no anchors at all, both say plainly that authority trust was **not
+assessed** — which is not a finding against the token. A non-chaining token can still be inspected through
 `cryptographically_verified`, but can never set `ok` or `evidence_ready`. A `DevTSA` token remains
 untrusted even if unrelated certificates are supplied.
 
 From the command line, the same anchoring is available without writing code:
 
 ```console
-$ habitable verify 4B-packet --trusted-cert freetsa-root.pem --trusted-cert digicert-root.pem
+$ habitable verify 4B-packet --trusted-cert freetsa-cacert.pem   # the *issuing* certificate
 $ habitable verify 4B-packet --json          # no roots: explicit untrusted/not-ready report, exit 1
 $ habitable verify 4B-packet --lang es       # localized human output (also auto-detects packet lang)
 ```

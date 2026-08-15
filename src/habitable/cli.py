@@ -1165,6 +1165,9 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             "guidance": guidance,
             "structurally_intact": report.structurally_intact,
             "timestamp_authority_trusted": report.timestamp_authority_trusted,
+            # Zero here means authority trust was never assessed, which is a
+            # different fact from "assessed and did not chain" (issue #159).
+            "anchors_supplied": report.anchors_supplied,
             "evidence_ready": report.evidence_ready,
             "signature_ok": report.signature_ok,
             "custody_ok": report.custody_ok,

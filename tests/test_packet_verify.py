@@ -256,7 +256,11 @@ def test_cli_verify_trusted_cert_anchors_chain(
         for item in cast("list[dict[str, object]]", untrusted["items"])
         for note in cast("list[str]", item["notes"])
     )
-    assert "not chained to a trusted root" in notes
+    # No anchor was supplied, so the note says that, rather than implying the
+    # token failed a check it was never given the material to pass (issue #159).
+    assert "no certificate anchor was supplied" in notes
+    assert untrusted["anchors_supplied"] == 0
+    assert "no certificate anchor was supplied" in cast("str", untrusted["guidance"])
 
     # With the issuer's own cert as a trusted root, that note is gone.
     pem = tmp_path / "root.pem"
@@ -270,7 +274,8 @@ def test_cli_verify_trusted_cert_anchors_chain(
         for item in cast("list[dict[str, object]]", anchored["items"])
         for note in cast("list[str]", item["notes"])
     )
-    assert "not chained to a trusted root" not in anchored_notes
+    assert anchored_notes.strip() == ""
+    assert anchored["anchors_supplied"] == 1
 
     # A bad cert path is a clean error, never a crash.
     assert main(["verify", str(out), "--trusted-cert", str(tmp_path / "nope.pem")]) == 1
