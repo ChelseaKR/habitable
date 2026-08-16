@@ -9,6 +9,14 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **A recorded, per-case consent record for the fixed pattern question**
+  (`habitable consent record` / `--withdraw` / `habitable consent show`). The
+  record is a signed, HLC-timestamped register in that household's own case
+  document, carrying the same authorship provenance `habitable provenance`
+  prints for any other mutable field, and merging to paired devices like any
+  other case fact. A withdrawal is a write, not a delete, so "never recorded"
+  and "recorded, then withdrawn" stay distinguishable.
+
 - **A stored adversarial corpus for sync protocol v2**
   (`tests/golden/sync-v2-adversarial/malformed-inner-fields.json`, driven by
   `tests/test_sync_fail_closed.py`). Every hostile sync message in the suite was
@@ -74,6 +82,29 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   next `habitable resolve` has a concrete target instead of a bare count.
 
 ### Fixed
+
+- **`habitable pattern` wrote `"explicit_per_export": true` into an export
+  nobody consented to (issue #182).** The consent token was
+  `sha256("pattern-consent::" + case_id + "::" + out_path)` — a hash of the
+  operator's own command line, derivable by the very process the field was
+  meant to gate, never stored, never compared, and not the product of any act
+  by the household it spoke for. The `consent` block was a hardcoded literal, so
+  the field was true by construction for every file the command could produce.
+  Consent is now a real record: `habitable pattern` reads a per-case,
+  per-question consent record out of each vault and **refuses the whole export**
+  if any offered case has no record or a recorded withdrawal, naming the vault.
+  A case is never silently dropped, because a silently smaller cohort still
+  publishes. `build_no_heat_weekly_summary` no longer accepts a caller-supplied
+  household token at all — it derives one from the consent record's own
+  provenance — so no caller can reintroduce a synthesised token. The emitted
+  block (`schema_version` 2) now reports the mechanism that exists, the number
+  of records actually read, and `"explicit_per_export": false`; the field is
+  kept, with the opposite value, so a reader who saw an old file sees the
+  correction rather than a silent removal. There is still no per-export consent
+  step and the export no longer claims one; `docs/novel-use-cases-plan.md` §N4
+  now describes what was built and why the per-export version is a design
+  change rather than a bug fix. The question prompt and the CLI's success line
+  drop "consented" for a phrasing that names the population the data covers.
 
 - **A documented fail-closed sync property failed open: the `have` manifest was
   validated after the CRDT merge (issue #163).** `docs/sync-threat-model.md`

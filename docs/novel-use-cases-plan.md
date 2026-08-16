@@ -166,9 +166,39 @@ Acceptance:
 
 Extend the existing commons only after a pilot defines a concrete organizing
 question. Contributions must be generated on-device from explicit categories,
-coarsened time/place buckets, and a per-export consent step. Keep distinct-
+coarsened time/place buckets, and a recorded consent step. Keep distinct-
 household thresholds, suppression, contribution receipts, and no network
 transmission.
+
+**What "consent step" means here, as built.** This plan originally said *a
+per-export consent step*. That is not what exists and, for a batch export an
+organizer runs over several unlocked vaults, it is not something the tool can
+honestly capture: nobody is prompted at export time. What `habitable pattern`
+enforces instead is a **standing, per-case, per-question consent record**, held
+in that household's own vault:
+
+- `habitable consent record --vault <v>` writes a signed, hybrid-logical-clock
+  timestamped register into the case document, carrying the same authorship
+  provenance `habitable provenance` prints for any other mutable field. It
+  merges to paired devices like any other case fact.
+- `habitable consent record --vault <v> --withdraw` records a withdrawal. A
+  withdrawal is a write, not a delete: "never recorded" and "recorded, then
+  withdrawn" stay distinguishable.
+- `habitable pattern` reads the record out of each vault and **refuses the whole
+  export** if any offered case has no record or a recorded withdrawal. A case is
+  never silently dropped, because a silently smaller cohort still publishes.
+- The distinct-household token used for thresholding is derived from the consent
+  record's own provenance, so it cannot be produced for a case without one. It
+  is never emitted.
+- The emitted `consent` block states `explicit_per_export: false`, names the
+  mechanism, and reports how many cases had a record. Earlier versions of this
+  format asserted `explicit_per_export: true` from a hash of the export
+  command's own arguments; that field is kept, with the opposite value, so a
+  reader who saw the old file sees the correction rather than a silent removal.
+
+Making per-export consent real would need a prompt on each household's own
+device at export time, which the current batch-over-unlocked-vaults shape does
+not have. That is a design change, not a bug fix, and it is not scheduled.
 
 Never aggregate narrative text, media, exact addresses, device ids, exact times,
 rare free-text categories, or small-cell intersections.
