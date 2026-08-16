@@ -549,3 +549,71 @@ def test_packet_v4_workflow_verifier_rejects_counts_duplicates_and_cycles(
     assert "malformed packet-v4 relationship" in problems
     assert any("duplicate relationship_id" in problem for problem in problems)
     assert "documents_condition relationship graph contains a cycle" in problems
+
+
+def test_a_handoff_section_with_no_member_records_does_not_render_a_count(
+    make_vault: Callable[..., Vault],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """Issue #181: every section was handed the whole bundle's id lists.
+
+    The `repair_delivery` fixture holds one repair request and one
+    `documents_condition` relationship. It has no delivery receipt and no
+    landlord response, yet the Delivery and Response sections each rendered
+    "Presentation pointers: 1 evidence item(s), 1 relationship(s)" -- and
+    `repair_comparison`'s **Proof Limits** section got the same treatment.
+    """
+    vault = make_vault()
+    issue_id = vault.document.add_issue(category="mold", title="Bathroom mold")
+    vault.document.set_use_case_profile("repair_delivery")
+    source = tmp_path / "request.txt"
+    source.write_text("Synthetic repair request.", encoding="utf-8")
+    artifact = capture_artifact(
+        vault,
+        source,
+        issue_id=issue_id,
+        artifact_type="repair_request",
+        title="Repair request",
+        source_assertion="tenant copy",
+        occurred_at="2026-01-03",
+        tsa=local_tsa,
+    )
+    add_relationship(
+        vault,
+        issue_id=issue_id,
+        relationship_type="documents_condition",
+        source_id=artifact.artifact_id,
+        target_id=issue_id,
+    )
+    result = build_packet(
+        vault, tmp_path / "packet", generated_at="2026-01-05T00:00:00Z", make_pdf=False
+    )
+    bundle = json.loads(result.bundle_path.read_text(encoding="utf-8"))
+    manifest = bundle["handoff_views"][0]
+
+    assert manifest["handoff_manifest_version"] == 2
+    assert manifest["section_membership"] == "not_recorded"
+    # No section carries ids it cannot justify -- section_id and nothing else.
+    for section in manifest["sections"]:
+        assert set(section) == {"section_id"}
+    assert [s["section_id"] for s in manifest["sections"]] == [
+        "condition",
+        "notice",
+        "delivery",
+        "response",
+        "follow_up",
+    ]
+
+    html = result.handoff_paths[0].read_text(encoding="utf-8")
+    assert "Presentation pointers" not in html
+    # The headings survive: they are this recipient's expected reading order.
+    for heading in ("Condition", "Notice", "Delivery", "Response", "Follow Up"):
+        assert f"<h2>{heading}</h2>" in html
+    # The real, bundle-wide totals appear exactly once and are labelled as such.
+    assert html.count("These totals cover the whole packet.") == 1
+    assert "1 evidence item(s), of which 1 document(s)" in html
+
+    report = verify_packet(result.out_dir, trusted_certs=[local_tsa.certificate])
+    assert report.structurally_intact
+    assert report.evidence_ready
