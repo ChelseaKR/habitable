@@ -7,7 +7,17 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-08-16
+
 ### Added
+
+- **A recorded, per-case consent record for the fixed pattern question**
+  (`habitable consent record` / `--withdraw` / `habitable consent show`). The
+  record is a signed, HLC-timestamped register in that household's own case
+  document, carrying the same authorship provenance `habitable provenance`
+  prints for any other mutable field, and merging to paired devices like any
+  other case fact. A withdrawal is a write, not a delete, so "never recorded"
+  and "recorded, then withdrawn" stay distinguishable.
 
 - **A stored adversarial corpus for sync protocol v2**
   (`tests/golden/sync-v2-adversarial/malformed-inner-fields.json`, driven by
@@ -26,6 +36,19 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   envelope bytes, which would require committing a recipient private key. That
   pins the decoder's validation order, not the encoder's output; issue #163's
   full ask for committed envelope bytes stays open.
+
+- **Claim-ledger rows for the five shipped capabilities that had none** —
+  `letter`, `campaign`, `commons`, `pattern`, and `capsule` (issue #161). The
+  ledger states that it "controls when their historical wording differs from
+  current code"; for these five there was nothing to control, so the project's
+  honesty mechanism did not reach them. Each row carries the claim its tests
+  actually support and a gap column naming what it does not do: the letter's
+  English-only limit and absent legal review; `campaign`'s `export_ready` being
+  a vault-level signal and not `verify`'s `evidence_ready`; the commons and
+  pattern k-anonymity threshold bounding re-identification within one summary
+  but not across several publications or against external datasets; and a
+  capsule signature establishing that a key signed those bytes, never that a
+  partner organization is who it claims to be.
 
 - **Property-based invariants for the assurance-critical core**
   (`tests/test_property_invariants.py`), covering the four primitive-level targets
@@ -61,6 +84,100 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   next `habitable resolve` has a concrete target instead of a bare count.
 
 ### Fixed
+
+- **`habitable pattern` wrote `"explicit_per_export": true` into an export
+  nobody consented to (issue #182).** The consent token was
+  `sha256("pattern-consent::" + case_id + "::" + out_path)` — a hash of the
+  operator's own command line, derivable by the very process the field was
+  meant to gate, never stored, never compared, and not the product of any act
+  by the household it spoke for. The `consent` block was a hardcoded literal, so
+  the field was true by construction for every file the command could produce.
+  Consent is now a real record: `habitable pattern` reads a per-case,
+  per-question consent record out of each vault and **refuses the whole export**
+  if any offered case has no record or a recorded withdrawal, naming the vault.
+  A case is never silently dropped, because a silently smaller cohort still
+  publishes. `build_no_heat_weekly_summary` no longer accepts a caller-supplied
+  household token at all — it derives one from the consent record's own
+  provenance — so no caller can reintroduce a synthesised token. The emitted
+  block (`schema_version` 2) now reports the mechanism that exists, the number
+  of records actually read, and `"explicit_per_export": false`; the field is
+  kept, with the opposite value, so a reader who saw an old file sees the
+  correction rather than a silent removal. There is still no per-export consent
+  step and the export no longer claims one; `docs/novel-use-cases-plan.md` §N4
+  now describes what was built and why the per-export version is a design
+  change rather than a bug fix. The question prompt and the CLI's success line
+  drop "consented" for a phrasing that names the population the data covers.
+
+- **"0 awaiting a timestamp" and "export-ready" were computed from a local
+  queue, so a synced-in capture with no token counted as neither timestamped
+  nor awaiting (issue #180).** `habitable status`, `habitable campaign status`
+  and the roll-up HTML all answered "does this still need a timestamp?" by
+  reading `vault.deferred()` -- the append-only queue this device writes when it
+  captures something offline. Sync never wrote to that queue, so a capture that
+  arrived from a tenant's device without a token was invisible on both sides of
+  the tally: it was missing from the numerator *and* absent from the awaiting
+  count, and its unit rolled up as **export-ready**. Awaiting is now derived
+  from token *presence* over captures plus artifacts
+  (`Vault.awaiting_timestamp`), the same population the denominator uses. The
+  CLI's `timestamps: N/M present` line previously counted only captures in `M`
+  while counting artifacts in the awaiting figure, so three deferred documents
+  beside one stamped photo printed `1/1 present; 3 awaiting`; both halves now
+  describe the same set, and the `⧗` lines name awaiting artifacts as well as
+  awaiting captures. The app's "Waiting for a timestamp token" tile reads a new
+  `awaiting` field rather than the queue length. Separately, sync now queues an
+  imported capture that arrived without a token, so `habitable resolve` can
+  actually fetch one -- previously nothing could -- and clears a queued entry
+  when a peer supplies the token, so `resolve` no longer fetches a second
+  primary over content already stamped.
+
+- **Every handoff section was handed the whole bundle, so a packet with no
+  delivery receipt still rendered "Delivery — 1 evidence item(s), 1
+  relationship(s)" (issue #181).** `build_handoff_manifest` computed one set of
+  issue/item/artifact/relationship id lists over the entire bundle and wrote
+  those identical lists into every `section_id` the profile declared, and the
+  renderer printed their lengths under each `<h2>`. The repo's own
+  `repair_delivery` fixture — one repair request, one `documents_condition`
+  relationship, no delivery receipt, no landlord response — therefore told a
+  caseworker or a code inspector that its Delivery section held delivery
+  evidence and its Response section held response evidence. It held neither, and
+  the manifest travels inside the signed `bundle.json`, so a verified packet
+  carried the inflated counts with the signature's authority behind them.
+  `repair_comparison`'s **Proof Limits** heading got the same treatment.
+  Nothing in the case model records which record belongs to which section, so
+  manifest version 2 stops pretending otherwise: sections carry `section_id` and
+  nothing else, a `section_membership: "not_recorded"` field says why, and the
+  only counts in the document are the bundle-wide `counts`, printed once under
+  "This handoff as a whole" and labelled as covering the whole packet. The
+  section headings stay — they are the recipient's expected reading order — with
+  no count attached. Packet v1 manifests still verify; the verifier's handoff
+  checks are structural and never read `sections`.
+
+- **The documented "per-module 95% floor on the evidence-integrity core" was a
+  pooled floor, and `vault.py` was below it (issue #183).** `DEFINITION_OF_DONE`,
+  `pyproject.toml` and `RESPONSIBLE-TECH-AUDITS` all described a per-module 95%
+  floor on `crypto.py`, `vault.py`, `tsa.py` and `verify.py`, listed under
+  **Enforcement. AUTO**. The gate was a single
+  `coverage report --include=<all four> --fail-under=95`, and `--fail-under`
+  tests only the TOTAL row — one pooled number. Measured on the committed
+  `coverage.xml`: `crypto.py` 100.00%, `tsa.py` 98.72%, `verify.py` 95.57%,
+  `vault.py` **94.42%**, pooled TOTAL **95.56% — green**. `crypto.py` was
+  subsidising the largest module in the set, and the one that holds the
+  encrypted store at rest. `vault.py` could have fallen to roughly 91% before
+  the build turned red. `make cov` now runs one `--fail-under=95` per module and
+  reports every module before failing, so one pass names each module below the
+  line rather than only the first. `vault.py` is at **95.44%**, raised by
+  covering the fail-closed and legacy-migration paths that were its largest
+  untested region: the pre-FIX-01 plaintext `node_id` migration and its refusal
+  when there is nothing to migrate, a corrupt node-identity record, a corrupt or
+  wrongly-shaped peer-have record, a corrupt sync-security record, a peer
+  identity that does not decode, and a peer filed under a fingerprint that is
+  not its own (`tests/test_vault_legacy_and_corruption.py`).
+
+- **`human_bytes` labelled petabyte-scale sizes with a terabyte-scale number.**
+  The unit loop divides once per entry in `("KB", "MB", "GB", "TB")` and the
+  fallback returned that same terabyte-scaled value with a `PB` suffix, so 2.5 PB
+  rendered as "2500.0 PB" — a number and a unit that disagree by a factor of a
+  thousand. Found while covering `vault.py` for the floor above.
 
 - **A documented fail-closed sync property failed open: the `have` manifest was
   validated after the CRDT merge (issue #163).** `docs/sync-threat-model.md`
@@ -207,6 +324,35 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
     records that the published sample is a freshness gate, not a compatibility
     pin.
 
+- **The repair-request letter declared `lang="es"` while being English-only, and
+  claimed a verifiable packet with zero photographs (issue #161).** `habitable
+  letter` produces the one document that leaves the tenant's control and lands
+  in a landlord's hands, and it made two claims it had not earned:
+
+  - **Language.** Every string in `letter.py` is an English literal, but
+    `render_letter_html` emitted `<html lang="{vault language}">`, so a vault
+    configured `language = "es"` produced byte-identical English prose under a
+    Spanish language tag — a WCAG 3.1.1 failure that makes a screen reader
+    pronounce English with Spanish phonetics. The letter is now always emitted
+    and labelled `lang="en"`, and `habitable letter` prints the unmet request
+    **in the requested language**. The translation is deliberately not
+    machine-generated: this document carries legal framing and goes out under a
+    tenant's name, so a legal-register Spanish version needs a Spanish-speaking
+    legal-aid reviewer first. That is recorded as an open gap for Spanish-speaking
+    unions in `docs/capabilities.md` and `docs/letter-generator.md`, not as a
+    settled decision.
+  - **Evidence.** The evidence sentence was built unconditionally, so a case with
+    an issue and no captures asserted "documented by 0 photograph(s) … A
+    complete, independently-verifiable evidence packet is available on request".
+    It is now gated on there being captures; with none the letter states that no
+    photographs are attached to the request yet and makes no packet offer.
+
+  Found while fixing the above: `LetterOptions.language` defaulted to `"en"`,
+  which made `options.language or vault.config.language` dead code — a vault
+  configured `language = "es"` was never consulted by `habitable letter` at all.
+  It now defaults to empty ("use the vault's setting"), so a Spanish-speaking
+  union's configuration is actually read, and reported on.
+
 - **A capture whose media type had no packet export mapping (`.heic`, the iPhone
   default photo format) used to ship with no bytes, no custody binding, and a
   `habitable verify` verdict of READY (issue #158).** `packet.build_packet` now
@@ -280,6 +426,46 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   test protocols, and the capability ledger to match the Repair Trail workflow.
   Dated research and execution documents now identify themselves as historical
   snapshots and defer current claims to the capability ledger.
+- Vendored the portfolio standards at **v2.0.0** (`docs/standards/`).
+- Added a `lockfile drift (CQ-09)` gate. `uv.lock` is committed and every CI job
+  installs with `uv sync --frozen`, which the standard used to call the
+  lockfile-drift check. It is not one: `--frozen` installs from `uv.lock`
+  *without reading* `pyproject.toml`, so by construction it cannot notice that
+  the two disagree, and it exits 0 on a drifted lock. `uv lock --check` now runs
+  first in CI, before any command that could rewrite the lock — a bare `uv run`
+  silently relocks, so a gate invoked that way repairs the very thing it checks.
+- Gave `gh release create` its repository through `GH_REPO`, so the publication
+  job no longer depends on a checkout it deliberately does not have.
+- Added an "Idea or feature request" issue form, so a reporter is not handed a
+  blank box, and a Ko-fi support link in the README.
+- Routine dependency maintenance across the range: the pinned `cryptography`,
+  CodeQL, `harden-runner`, `attest-build-provenance`, `setup-uv`, `checkout`,
+  `scorecard-action`, `trufflehog`, `zizmor-action`, `gh-action-pypi-publish`,
+  and relay base-image digests, plus three grouped dev-dependency bumps.
+
+### Security
+
+- **CVE-2026-69247 in `cryptography`, remediated by pinning 50.0.0.** The
+  `pyproject.toml` constraint (`cryptography>=44`) already admitted the fixed
+  version, so this was a lockfile-only bump (`uv lock --upgrade-package
+  cryptography`) rather than a constraint change.
+- **The weekly secret scan had been scanning zero commits since it was added.**
+  With `path`, `base`, and `head` all unset, the TruffleHog action resolves base
+  and head to the same commit and exits on its own guard — "BASE and HEAD commits
+  are the same. TruffleHog won't scan anything." Every scheduled run had failed
+  that way, not on a finding: the logs carry no chunk count and no
+  `verified_secrets` line, because no scan ever started. The comment in the
+  workflow asserted the opposite, that omitting base/head falls back to a full
+  scan, and that assumption is what broke it. Setting `path: ./` makes it a
+  whole-repository scan for real — 4,875 chunks over the full history, confirmed
+  locally against the same pinned v3.96.0 image. That first real scan surfaced 37
+  verified findings, **all of them false**: the Lob detector matches `test_` or
+  `live_` followed by alphanumerics, which is the shape of every pytest function
+  name under `tests/`, and its verifier confirms them because it cannot tell a
+  malformed key from an unauthorized one. There is no Lob integration in this
+  repository. The detector is excluded by name rather than by path, because
+  skipping `tests/` would blind the scan to real secrets in fixtures, which is
+  where they are most often committed by accident.
 
 ## [0.3.0] — 2026-07-23
 
@@ -823,7 +1009,15 @@ installable PWA covers mobile today) remain — see the ACR and the build plan.
   with property-based and tamper-detection tests (`make verify` green, ~85%
   coverage); SHA-pinned GitHub Actions, CodeQL, Dependabot, `pip-audit`.
 
-[Unreleased]: https://github.com/ChelseaKR/habitable/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/ChelseaKR/habitable/compare/v0.2.0...v0.3.0
+[Unreleased]: https://github.com/ChelseaKR/habitable/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/ChelseaKR/habitable/compare/v0.2.0...v0.4.0
+<!-- No [0.3.0] link is published here. 0.3.0 was prepared on `main` on 2026-07-23 — the
+     version was bumped in `pyproject.toml` and the section below was written — but it was
+     never tagged and never released, so `v0.3.0` does not exist as a ref and there is no
+     release page to point at. The previous links here (`compare/v0.2.0...v0.3.0` and
+     `compare/v0.3.0...HEAD`) both resolved to 404s for that reason. The 0.4.0 comparison
+     therefore runs from `v0.2.0`, the last tag that actually exists, and spans both bodies
+     of work. The [0.3.0] section stays below as the dated record of what landed that day.
+     This link is restored, pointing at a real tag, if v0.3.0 is ever cut. -->
 [0.2.0]: https://github.com/ChelseaKR/habitable/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ChelseaKR/habitable/releases/tag/v0.1.0

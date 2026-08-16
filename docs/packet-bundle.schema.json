@@ -302,10 +302,11 @@
       "type": "object",
       "required": ["handoff_manifest_version", "profile_id", "profile", "scope", "sections", "counts", "disclosures", "source_of_truth", "presentation_only"],
       "properties": {
-        "handoff_manifest_version": { "type": "integer", "const": 1 },
+        "handoff_manifest_version": { "type": "integer", "enum": [1, 2], "description": "1 gave every section the whole bundle's id lists, so a section with no member records still rendered a non-zero count (issue #181). 2 drops the per-section id lists; sections carry section_id only and 'counts' is the one bundle-wide figure." },
+        "section_membership": { "type": "string", "const": "not_recorded", "description": "Present from manifest version 2. Nothing in the case model records which record belongs to which handoff section, so no section claims membership. Section-scoped counts return when routing does." },
         "profile_id": { "type": "string" },
         "profile": { "$ref": "#/$defs/useCaseProfile" },
-        "sections": { "type": "array" },
+        "sections": { "type": "array", "items": { "type": "object", "required": ["section_id"], "properties": { "section_id": { "type": "string" } } } },
         "disclosures": { "type": "array", "items": { "type": "string" } },
         "source_of_truth": { "type": "string", "const": "bundle.json" },
         "presentation_only": { "type": "boolean", "const": true }

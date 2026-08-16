@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -163,6 +164,168 @@ def test_letter_html_passes_axe(make_vault: Callable[..., Vault], tmp_path: Path
         issue_id="i1",
     )
     letter = build_letter(vault, LetterOptions(sender_name="Tenant", recipient_name="Landlord"))
+    out = tmp_path / "letter.html"
+    out.write_text(render_letter_html(letter), encoding="utf-8")
+
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except PlaywrightError as exc:
+            pytest.skip(f"Chromium not available: {exc}")
+        try:
+            page = browser.new_page()
+            page.goto(out.as_uri(), wait_until="load")
+            results = Axe().run(page)
+        finally:
+            browser.close()
+    blocking = [
+        v
+        for v in results.response.get("violations", [])
+        if v.get("impact") in {"moderate", "serious", "critical"}
+    ]
+    assert not blocking, [v["id"] for v in blocking]
+
+
+# --- Issue #161: the letter declares only what it is -------------------------
+
+
+def _spanish_vault(make_vault: Callable[..., Vault], name: str = "es-vault") -> Vault:
+    """A vault configured `language = "es"` — a supported, documented setup, and
+    the one a Spanish-speaking union would use."""
+    vault = make_vault(name=name)
+    vault.config = replace(vault.config, language="es")
+    vault.document.add_issue(category="mold", title="Mold", issue_id="i1")
+    vault.save()
+    return vault
+
+
+def test_a_spanish_vault_is_never_given_an_english_letter_labelled_spanish(
+    make_vault: Callable[..., Vault],
+) -> None:
+    """The absence under test: `lang="es"` must not appear on English prose.
+
+    Before this fix, `language="es"` produced a letter whose body was
+    byte-identical to the English one and whose only difference was the `lang`
+    attribute — a WCAG 3.1.1 failure that makes a screen reader pronounce
+    English with Spanish phonetics, and a document that tells a Spanish-speaking
+    tenant it is in their language when it is not.
+    """
+    vault = _spanish_vault(make_vault)
+    letter = build_letter(vault, LetterOptions(sender_name="T", recipient_name="LL"))
+    html = render_letter_html(letter)
+
+    assert 'lang="es"' not in html
+    assert 'lang="en"' in html
+    assert letter.language == "en"
+    assert letter.requested_language == "es"
+    # The unmet request is reported rather than silently dropped.
+    assert "es" in letter.language_limitation
+    assert "does not ship a reviewed translation" in letter.language_limitation
+
+
+def test_the_letter_is_byte_identical_in_both_locales_which_is_the_point(
+    make_vault: Callable[..., Vault],
+) -> None:
+    """Pins *why* `lang="es"` was a lie, so a future partial translation cannot
+    quietly reintroduce it: as long as the rendered documents are identical, the
+    language attribute must be too."""
+    english = build_letter(
+        _spanish_vault(make_vault, "en-side"),
+        LetterOptions(sender_name="T", language="en", date="2026-01-10"),
+    )
+    spanish = build_letter(
+        _spanish_vault(make_vault, "es-side"),
+        LetterOptions(sender_name="T", language="es", date="2026-01-10"),
+    )
+
+    assert render_letter_html(english) == render_letter_html(spanish)
+    assert english.language == spanish.language == "en"
+    assert english.language_limitation == ""
+    assert spanish.language_limitation != ""
+
+
+def test_a_letter_with_no_evidence_does_not_claim_a_verifiable_packet(
+    make_vault: Callable[..., Vault],
+) -> None:
+    """The absence under test: no packet offer when there is no packet.
+
+    A case with an issue and zero captures used to produce "documented by 0
+    photograph(s) ... A complete, independently-verifiable evidence packet is
+    available on request" — an overstatement a landlord's representative can
+    call, on the first document carrying the tenant's name.
+    """
+    vault = make_vault()
+    vault.document.add_issue(category="mold", title="Mold", issue_id="i1")
+    vault.save()
+
+    letter = build_letter(vault, LetterOptions(sender_name="T", recipient_name="LL"))
+    html = render_letter_html(letter)
+
+    assert "0 photograph(s)" not in letter.evidence_summary
+    assert "evidence packet is available on request" not in letter.evidence_summary
+    assert "independently-verifiable" not in html
+    # Says plainly what is true instead of dropping the subject.
+    assert "No photographs of these conditions are attached" in letter.evidence_summary
+    assert letter.evidence_summary in html
+
+
+def test_a_letter_with_evidence_still_offers_the_packet(
+    make_vault: Callable[..., Vault], make_jpeg: Callable[..., Path], local_tsa: LocalRfc3161TSA
+) -> None:
+    """Positive control: the claim is gated, not removed."""
+    vault = _case(make_vault, make_jpeg, local_tsa)
+    letter = build_letter(vault, LetterOptions(sender_name="T", recipient_name="LL"))
+
+    assert "1 photograph(s)" in letter.evidence_summary
+    assert "evidence packet is available on request" in letter.evidence_summary
+    assert "timestamp tokens whose validity and authority trust must be checked" in (
+        letter.evidence_summary
+    )
+
+
+@pytest.mark.parametrize("language", ["en", "es"])
+def test_the_lang_attribute_matches_the_language_of_the_content(
+    make_vault: Callable[..., Vault], language: str
+) -> None:
+    """Issue #161 item 4: assert the attribute against the prose, per locale.
+
+    The English marker strings below are the letter's own fixed copy; if a
+    reviewed translation ever lands, this test fails until the `lang` attribute
+    follows it.
+    """
+    vault = _spanish_vault(make_vault)
+    letter = build_letter(vault, LetterOptions(sender_name="T", language=language))
+    html = render_letter_html(letter)
+
+    assert f'lang="{letter.language}"' in html
+    english_markers = ("Conditions requiring repair", "Sincerely,", "not legal advice")
+    content_is_english = all(marker in html for marker in english_markers)
+    assert content_is_english is (letter.language == "en")
+
+
+@pytest.mark.a11y
+def test_letter_html_in_a_spanish_configured_vault_passes_axe(
+    make_vault: Callable[..., Vault], tmp_path: Path
+) -> None:
+    """Issue #161 item 4 asked for an axe scan of the letter. One already exists
+    (``test_letter_html_passes_axe``, since PR #16) — but it only ever built a
+    letter from an English-configured vault, and axe could not have caught this
+    defect regardless: a document declaring ``lang="es"`` over English prose
+    passes ``html-has-lang`` and ``valid-lang`` cleanly, because no automated
+    checker reads the prose. The content-versus-attribute assertion above is what
+    catches it; this scan just extends the existing a11y coverage to the
+    Spanish-configured vault, which is the configuration that was broken.
+    """
+    pytest.importorskip("playwright.sync_api")
+    pytest.importorskip("axe_playwright_python.sync_playwright")
+    from axe_playwright_python.sync_playwright import Axe
+    from playwright.sync_api import Error as PlaywrightError
+    from playwright.sync_api import sync_playwright
+
+    letter = build_letter(
+        _spanish_vault(make_vault, "axe-es"),
+        LetterOptions(sender_name="Tenant", recipient_name="Landlord"),
+    )
     out = tmp_path / "letter.html"
     out.write_text(render_letter_html(letter), encoding="utf-8")
 

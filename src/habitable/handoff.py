@@ -14,36 +14,44 @@ from .usecases import UseCaseProfile
 __all__ = ["build_handoff_manifest", "render_handoff_html"]
 
 
+#: Bumped from 1 when the per-section id lists were removed (issue #181). A v1
+#: manifest gave *every* section the whole bundle's ids, so a packet holding one
+#: artifact and no delivery receipt rendered "Delivery -- 1 evidence item(s), 1
+#: relationship(s)". Old packets still verify: the verifier's handoff checks are
+#: structural and never read ``sections``.
+HANDOFF_MANIFEST_VERSION = 2
+
+
 def build_handoff_manifest(
     bundle: dict[str, JSONValue], profile: UseCaseProfile
 ) -> dict[str, JSONValue]:
-    """Build a presentation-only manifest over facts already in the bundle."""
+    """Build a presentation-only manifest over facts already in the bundle.
+
+    Sections carry their id and nothing else. A profile declares a recipient's
+    expected *reading order* (condition, notice, delivery, response, follow-up)
+    but nothing in the case model records which record belongs to which section,
+    so no section can honestly claim membership. Section-scoped counts return
+    when routing does; until then the only counts in this manifest are
+    ``counts``, which are bundle-wide and labelled as such.
+    """
     issues = _object_list(bundle.get("issues"))
     items = _object_list(bundle.get("items"))
     artifacts = [item for item in items if item.get("record_kind") == "artifact"]
     relationships = _object_list(bundle.get("relationships"))
-    issue_ids = [_string(item.get("issue_id")) for item in issues]
-    item_ids = [_string(item.get("capture_id")) for item in items]
-    artifact_ids = [_string(item.get("capture_id")) for item in artifacts]
-    relationship_ids = [_string(item.get("relationship_id")) for item in relationships]
-    sections: list[JSONValue] = []
-    for section_id in profile.handoff_sections:
-        sections.append(
-            {
-                "section_id": section_id,
-                "issue_ids": cast(JSONValue, issue_ids),
-                "item_ids": cast(JSONValue, item_ids),
-                "artifact_ids": cast(JSONValue, artifact_ids),
-                "relationship_ids": cast(JSONValue, relationship_ids),
-            }
-        )
+    sections: list[JSONValue] = [
+        {"section_id": section_id} for section_id in profile.handoff_sections
+    ]
     bundle_disclosures = bundle.get("disclosures", [])
     disclosures = (
         [str(value) for value in bundle_disclosures] if isinstance(bundle_disclosures, list) else []
     )
     disclosures.extend(profile.disclosures)
     return {
-        "handoff_manifest_version": 1,
+        "handoff_manifest_version": HANDOFF_MANIFEST_VERSION,
+        # Explicit, so a reader is told the absence is a limit of this tool and
+        # not an empty packet -- and so a future routing implementation has a
+        # field to flip rather than a silence to reinterpret.
+        "section_membership": "not_recorded",
         "profile_id": profile.profile_id,
         "profile": profile.to_json(),
         "scope": bundle.get("scope"),
@@ -84,14 +92,35 @@ def render_handoff_html(manifest: dict[str, JSONValue], out_path: Path, *, langu
             "This workflow is implemented for synthetic evaluation; it is not "
             "a legal, medical, inspector, or accessibility approval.</p>"
         )
+    # Bundle-wide, printed once, labelled as covering the whole handoff. Before
+    # issue #181 these same two numbers were printed under *every* section
+    # heading, so a packet with no delivery receipt still read "Delivery -- 1
+    # evidence item(s), 1 relationship(s)".
+    counts = manifest.get("counts")
+    count_map = counts if isinstance(counts, dict) else {}
+    totals_html = (
+        "<section><h2>This handoff as a whole</h2><p>"
+        + str(_count(count_map.get("items")))
+        + " evidence item(s), of which "
+        + str(_count(count_map.get("artifacts")))
+        + " document(s), across "
+        + str(_count(count_map.get("issues")))
+        + " condition(s), with "
+        + str(_count(count_map.get("relationships")))
+        + " stated relationship(s). These totals cover the whole packet.</p></section>"
+    )
+    section_note = (
+        "<p>The headings below are the order this recipient is expected to read in. "
+        "This packet does not record which record belongs to which heading, so no "
+        "heading claims a count of its own; <code>bundle.json</code> lists every "
+        "record.</p>"
+        if sections
+        else ""
+    )
     section_html = "".join(
         "<section><h2>"
         + escape(_string(section.get("section_id")).replace("_", " ").title())
-        + "</h2><p>Presentation pointers: "
-        + str(len(_string_list(section.get("item_ids"))))
-        + " evidence item(s), "
-        + str(len(_string_list(section.get("relationship_ids"))))
-        + " relationship(s).</p></section>"
+        + "</h2></section>"
         for section in sections
     )
     disclosure_html = "".join(f"<li>{escape(value)}</li>" for value in disclosures)
@@ -110,6 +139,8 @@ def render_handoff_html(manifest: dict[str, JSONValue], out_path: Path, *, langu
         + escape(summary)
         + "</p>"
         + review_warning
+        + totals_html
+        + section_note
         + section_html
         + "<section><h2>Limits and disclosures</h2><ul>"
         + disclosure_html
@@ -129,5 +160,5 @@ def _string(value: JSONValue | None) -> str:
     return value if isinstance(value, str) else ""
 
 
-def _string_list(value: JSONValue | None) -> list[str]:
-    return [str(item) for item in value] if isinstance(value, list) else []
+def _count(value: JSONValue | None) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0

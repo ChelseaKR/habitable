@@ -128,6 +128,11 @@ jobs:
         with:
           version: "0.11.19"
           enable-cache: false # this job runs once per release; a stale cache is not worth the risk
+      - name: Lockfile drift (CQ-09)
+        # Must precede `uv sync` and any `uv run`: `--frozen` installs from uv.lock
+        # without reading pyproject.toml and exits 0 on a drifted lock, and a bare
+        # `uv run` silently relocks, repairing the drift a later check would look for.
+        run: uv lock --check
       - name: Sync environment (Python 3.14, locked, with dev tools)
         run: uv sync --frozen
       - name: Run the full gate at the tagged commit (ruff + mypy --strict + pytest + coverage + i18n)

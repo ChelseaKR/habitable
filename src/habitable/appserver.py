@@ -136,12 +136,9 @@ class AppServer:
         doc = self.vault.document
         captures = doc.captures()
         artifacts = doc.artifacts()
-        evidence_ids = [item.capture_id for item in captures] + [
-            item.artifact_id for item in artifacts
-        ]
-        timestamped = sum(
-            1 for item_id in evidence_ids if self.vault.get_token(item_id) is not None
-        )
+        evidence_ids = self.vault.evidence_ids()
+        awaiting = self.vault.awaiting_timestamp()
+        timestamped = len(evidence_ids) - len(awaiting)
         custody = self.vault.custody.verify()
         footprint = self.vault.storage_footprint()
         return {
@@ -156,6 +153,12 @@ class AppServer:
             "profile": doc.use_case_profile(),
             "profiles": [profile.to_json() for profile in list_profiles()],
             "timestamped": timestamped,
+            # `awaiting` is evidence with no token, however it arrived, and is
+            # the honest complement of `timestamped` over `evidence_count`.
+            # `deferred` is only this device's stamp-later work list -- the set
+            # `resolve` can act on -- and is reported separately rather than
+            # displayed as if it were the awaiting count (issue #180).
+            "awaiting": len(awaiting),
             "deferred": len(self.vault.deferred()),
             "custody_ok": custody.ok,
             "custody_length": custody.length,

@@ -38,6 +38,11 @@ jobs:
         with:
           version: "0.11.19"
           enable-cache: true
+      - name: Lockfile drift (CQ-09)
+        # Must precede `uv sync` and any `uv run`: `--frozen` installs from uv.lock
+        # without reading pyproject.toml and exits 0 on a drifted lock, and a bare
+        # `uv run` silently relocks, repairing the drift a later check would look for.
+        run: uv lock --check
       - name: Sync environment (Python 3.14, locked)
         run: uv sync --frozen
       - name: Show interpreter
@@ -144,6 +149,11 @@ jobs:
         with:
           version: "0.11.19"
           enable-cache: true
+      - name: Lockfile drift (CQ-09)
+        # Must precede `uv sync` and any `uv run`: `--frozen` installs from uv.lock
+        # without reading pyproject.toml and exits 0 on a drifted lock, and a bare
+        # `uv run` silently relocks, repairing the drift a later check would look for.
+        run: uv lock --check
       - name: Sync environment
         run: uv sync --frozen
       - name: Audit dependencies (pip-audit)

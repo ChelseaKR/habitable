@@ -44,6 +44,7 @@ __all__ = [
     "format_datetime",
     "format_message",
     "format_number",
+    "language_name",
     "normalize_locale",
     "plural_category",
     "resolve_locale",
@@ -331,7 +332,7 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         "custody_intact": "intact",
         "custody_broken": "BROKEN",
         "capture_timestamped": "timestamp token attached ({when})",
-        "capture_awaiting": "awaiting timestamp token (queued)",
+        "capture_awaiting": "no timestamp token yet",
         "capture_trust_unassessed": (
             "timestamp token attached; authority trust is assessed only by `habitable verify` "
             "with an independently trusted certificate"
@@ -393,6 +394,14 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "storage: {total} total — {sealed} sealed originals + {shared} shared copies "
             "(originals are kept twice by design)"
         ),
+        # Issue #161: the repair-request letter is the one surface that is not
+        # bilingual. It says so instead of relabelling English prose.
+        "letter_language_unavailable": (
+            "note: this letter is written in English. habitable does not yet ship a "
+            "reviewed {requested} translation of the repair-request letter, and will not "
+            "machine-translate a document that carries legal framing and your name. The "
+            'file declares lang="en" so it is not announced as {requested}.'
+        ),
     },
     "es": {
         "status_summary": (
@@ -428,7 +437,7 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         "custody_intact": "intacta",
         "custody_broken": "ROTA",
         "capture_timestamped": "token de sello de tiempo adjunto ({when})",
-        "capture_awaiting": "pendiente de token de sello de tiempo (en cola)",
+        "capture_awaiting": "aún sin token de sello de tiempo",
         "capture_trust_unassessed": (
             "token de sello adjunto; la confianza en la autoridad solo se evalúa con "
             "`habitable verify` y un certificado de confianza independiente"
@@ -498,8 +507,30 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "almacenamiento: {total} en total — {sealed} originales sellados + "
             "{shared} copias compartidas (los originales se guardan por duplicado por diseño)"
         ),
+        "letter_language_unavailable": (
+            "aviso: esta carta está escrita en inglés. habitable todavía no incluye una "
+            "traducción revisada al {requested} de la carta de solicitud de reparaciones, "
+            "y no traducirá automáticamente un documento que lleva lenguaje legal y su "
+            'nombre. El archivo declara lang="en", así que no se anuncia como {requested}.'
+        ),
     },
 }
+
+
+# Endonym-free display names for the shipped locales, in each shipped locale.
+# Small enough to be a table; a third locale adds a row and a column, and
+# `test_i18n_format.py` sweeps SUPPORTED_LOCALES so an omission fails the build.
+_LANGUAGE_NAMES: dict[str, dict[str, str]] = {
+    "en": {"en": "English", "es": "Spanish"},
+    "es": {"en": "inglés", "es": "español"},
+}
+
+
+def language_name(tag: str, locale: str) -> str:
+    """The name of language *tag*, written in *locale* (falls back to the tag)."""
+    loc = normalize_locale(locale)
+    names = _LANGUAGE_NAMES.get(loc, _LANGUAGE_NAMES[DEFAULT_LOCALE])
+    return names.get(normalize_locale(tag), tag)
 
 
 def cli_text(key: str, locale: str, **values: object) -> str:

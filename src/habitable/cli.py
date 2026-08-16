@@ -30,12 +30,17 @@ from .commons import DEFAULT_K, build_commons, summarize_case
 from .config import TSAConfig
 from .crypto import KDF_PROFILES, PublicIdentity
 from .errors import HabitableError, SyncError
-from .i18n import DEFAULT_LOCALE, cli_text, format_datetime, resolve_locale
+from .i18n import DEFAULT_LOCALE, cli_text, format_datetime, language_name, resolve_locale
 from .letter import LetterOptions, build_letter, render_letter_html
 from .obslog import configure_logging, enabled_from_env, log_event
 from .packet import build_packet
 from .pairing import accept_pairing_material, create_pairing_material
-from .patterns import build_no_heat_weekly_summary
+from .patterns import (
+    NO_HEAT_WEEKLY_QUESTION,
+    build_no_heat_weekly_summary,
+    read_consent,
+    record_consent,
+)
 from .share import decode_share, encode_share, export_share, import_share
 from .strength import assess_issue
 from .sync import (
@@ -589,9 +594,37 @@ def _build_parser() -> argparse.ArgumentParser:
         "--confirm-consent",
         required=True,
         action="store_true",
-        help="confirm every included household consented to this specific export",
+        help=(
+            "operator acknowledgement, required so this export is never an accident: "
+            "you have reviewed this release for differencing risk. Per-household "
+            "consent is not taken from this flag -- it is read from each vault's own "
+            "recorded consent (see `habitable consent`), and a vault without one is "
+            "refused."
+        ),
     )
     p_pattern.set_defaults(func=_cmd_pattern)
+
+    p_consent = sub.add_parser(
+        "consent",
+        help="record or inspect this case's consent to the fixed pattern question",
+    )
+    consent_sub = p_consent.add_subparsers(dest="consent_action")
+    p_consent_record = consent_sub.add_parser(
+        "record",
+        help="record this household's consent (or --withdraw it) in its own vault",
+    )
+    add_vault(p_consent_record)
+    p_consent_record.add_argument(
+        "--withdraw",
+        action="store_true",
+        help="record a withdrawal instead of a grant; excludes this case from later exports",
+    )
+    p_consent_record.set_defaults(func=_cmd_consent_record)
+    p_consent_show = consent_sub.add_parser(
+        "show", help="print this case's recorded consent state and its authorship provenance"
+    )
+    add_vault(p_consent_show)
+    p_consent_show.set_defaults(func=_cmd_consent_show)
 
     p_capsule = sub.add_parser(
         "capsule", help="export, verify, or import a partner evidence capsule"
@@ -852,7 +885,10 @@ def _cmd_status(args: argparse.Namespace) -> int:
         f"{len(relationships)} relationship(s)"
     )
     any_issues = False
-    deferred_ids = {item.capture_id for item in vault.deferred()}
+    # Token *presence* over captures plus artifacts -- not `vault.deferred()`,
+    # which is only this device's own stamp-later work list and misses evidence
+    # that arrived by sync or capsule import without a token (issue #180).
+    awaiting_ids = set(vault.awaiting_timestamp())
     for issue in issues:
         any_issues = True
         issue_captures = vault.document.captures(issue.issue_id)
@@ -878,17 +914,21 @@ def _cmd_status(args: argparse.Namespace) -> int:
             timeline=strength.timeline_entries,
         )
         print(f"      {strength_line}")
-        for issue_capture in issue_captures:
-            if issue_capture.capture_id in deferred_ids:
+        issue_evidence_ids = [item.capture_id for item in issue_captures] + [
+            item.artifact_id for item in vault.document.artifacts(issue.issue_id)
+        ]
+        for evidence_id in issue_evidence_ids:
+            if evidence_id in awaiting_ids:
                 awaiting_line = cli_text("capture_awaiting", locale)
-                print(f"      ⧗ {issue_capture.capture_id}: {awaiting_line}")
-    timestamped = sum(1 for c in captures if vault.get_token(c.capture_id) is not None)
+                print(f"      ⧗ {evidence_id}: {awaiting_line}")
+    evidence_ids = vault.evidence_ids()
+    timestamped = len(evidence_ids) - len(awaiting_ids)
     stamps = cli_text(
         "status_timestamps",
         locale,
         timestamped=timestamped,
-        total=len(captures),
-        awaiting=len(vault.deferred()),
+        total=len(evidence_ids),
+        awaiting=len(awaiting_ids),
     )
     print(f"  {stamps}")
     custody = vault.custody.verify()
@@ -1101,6 +1141,19 @@ def _cmd_letter(args: argparse.Namespace) -> int:
     print(f"habitable: repair-request letter for {letter.property_address}")
     print(f"           {len(letter.issues)} issue(s) · framing: {letter.profile_label}")
     print(f"           accessible letter written to {html_path}")
+    if letter.language_limitation:
+        # Issue #161: the letter is the one surface that is not bilingual. Say so
+        # here, in the language that was asked for, instead of shipping English
+        # prose under a `lang` attribute that claims otherwise.
+        requested = resolve_locale(letter.requested_language)
+        print(
+            "           "
+            + cli_text(
+                "letter_language_unavailable",
+                requested,
+                requested=language_name(letter.requested_language, requested),
+            )
+        )
     if not args.no_pdf:
         from .pdf import render_letter_pdf
 
@@ -1426,16 +1479,53 @@ def _cmd_commons(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_consent_record(args: argparse.Namespace) -> int:
+    """Record, in this household's own vault, consent to one fixed question."""
+    vault = _open(args)
+    granted = not args.withdraw
+    record_consent(vault.document, NO_HEAT_WEEKLY_QUESTION, granted=granted)
+    vault.save()
+    state = "recorded consent" if granted else "recorded a withdrawal of consent"
+    print(f"habitable: {state} for {NO_HEAT_WEEKLY_QUESTION.question_id}")
+    print(f"           question: {NO_HEAT_WEEKLY_QUESTION.prompt}")
+    if granted:
+        print("           this case may now contribute to `habitable pattern` exports.")
+        print("           you can withdraw at any time with --withdraw; that stops future")
+        print("           exports and cannot recall an aggregate already published.")
+    else:
+        print("           future `habitable pattern` runs will refuse to include this case.")
+        print("           aggregates already published elsewhere cannot be recalled.")
+    return 0
+
+
+def _cmd_consent_show(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    record = read_consent(vault.document, NO_HEAT_WEEKLY_QUESTION)
+    print(f"habitable: question {NO_HEAT_WEEKLY_QUESTION.question_id}")
+    if record is None:
+        print("  consent: not recorded — this case cannot contribute to a pattern export")
+        return 0
+    authorship = "signed authorship" if record.signed else "unsigned legacy value"
+    print(f"  consent: {record.state}")
+    print(f"  recorded: {record.actor or '(no device identity)'} at {record.recorded_at}")
+    print(f"  provenance: {authorship}")
+    return 0
+
+
 def _cmd_pattern(args: argparse.Namespace) -> int:
     cases = []
     for vault_path in args.vaults:
         vault = Vault.open(vault_path, _passphrase(args))
         case_id = vault.document.case_id
-        consent_token = hashlib.sha256(
-            f"pattern-consent::{case_id}::{args.out}".encode()
-        ).hexdigest()
+        if read_consent(vault.document, NO_HEAT_WEEKLY_QUESTION) is None:
+            raise HabitableError(
+                f"{vault_path}: no recorded consent for "
+                f"{NO_HEAT_WEEKLY_QUESTION.question_id}. Run `habitable consent record "
+                f"--vault {vault_path}` on that household's own device first, or drop "
+                "the vault from this export."
+            )
         building_label = vault.document.get_meta("building") or case_id
-        cases.append((vault.document, building_label, consent_token))
+        cases.append((vault.document, building_label))
     summary = build_no_heat_weekly_summary(cases, k=args.k)
     payload = summary.to_json()
     args.out.write_text(
@@ -1446,8 +1536,13 @@ def _cmd_pattern(args: argparse.Namespace) -> int:
     raw_cells = aggregate.get("cells") if isinstance(aggregate, dict) else None
     cells = raw_cells if isinstance(raw_cells, list) else []
     print(
-        f"habitable: wrote consented fixed-question summary to {args.out} "
-        f"(k={args.k}, {len(cells)} published cell(s))"
+        f"habitable: wrote fixed-question summary to {args.out} "
+        f"(k={args.k}, {len(cells)} published cell(s), "
+        f"{summary.cases_with_recorded_consent} case(s) with a recorded consent record)"
+    )
+    print(
+        "           consent is the standing per-question record in each vault, not a "
+        "per-export step;"
     )
     print("           nothing was transmitted; repeated releases require differencing review.")
     return 0

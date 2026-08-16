@@ -19,7 +19,10 @@ addressed to the landlord, rendered both as accessible HTML (`letter.html`) and 
   documented;
 - states that the conditions are backed by *N* photographs (with *M* carrying an
   independent trusted timestamp) whose content hashes allow integrity verification, and
-  that a full, independently-verifiable evidence packet is available on request;
+  that a full, independently-verifiable evidence packet is available on request —
+  **only when there is evidence to back it**; with zero captures the letter says plainly
+  that no photographs are attached yet and makes no packet offer (see *What the letter
+  will not claim*);
 - makes a dated repair request with a configurable cure period; and
 - carries a standing **"this is not legal advice"** disclaimer.
 
@@ -83,6 +86,48 @@ footer = "Prepared with the <your tenant union>. Not legal advice."
 
 The `header`/`footer` are the right place to put a **locally-verified** statutory citation;
 the generator itself will never invent one.
+
+## Language: English only, and labelled English
+
+Everything else habitable produces is bilingual (EN/ES). **The letter is not.** Every
+string the generator emits — the profile framing, the hedged legal reference, the
+disclaimer, the body, and every section label — is English.
+
+A letter generated from a vault configured `language = "es"` is therefore:
+
+- written in English;
+- rendered with `<html lang="en">`, whatever the vault's configured language; and
+- accompanied by a note, printed by `habitable letter` **in the requested language**,
+  saying the letter is in English and why.
+
+Until 2026-08 the same letter was rendered with `<html lang="es">` — byte-identical
+English prose under a Spanish language tag. That is a
+[WCAG 3.1.1](https://www.w3.org/WAI/WCAG22/Understanding/language-of-page.html) failure
+that makes a screen reader pronounce English words with Spanish phonetics, and it tells a
+Spanish-speaking tenant they are holding a document in their language when they are not.
+
+**Why the letter is not machine-translated.** This is the one document that leaves the
+tenant's control and lands in a landlord's — and possibly a court's — hands, it carries
+legal framing, and it goes out under the tenant's name. A legal-register Spanish
+translation needs a Spanish-speaking legal-aid reviewer before this project puts it in a
+tenant's hands. Declining to claim the language is the same rule the rest of the project
+follows about claims it cannot support: state the limit rather than assert the claim.
+
+This is a real gap for Spanish-speaking unions, recorded as such in
+[`capabilities.md`](capabilities.md), not a closed question. A union that has verified its
+own Spanish wording can already put it in `config.toml` (`[letter] header`/`footer`, and
+the profile framing keys) — the same place local statutory language belongs.
+
+## What the letter will not claim
+
+- **No evidence, no packet offer.** With zero captures the letter states that no
+  photographs are attached to the request yet, and does not offer "a complete,
+  independently-verifiable evidence packet … on request". Until 2026-08 it made that
+  offer over "0 photograph(s)" — an overstatement a landlord's representative could
+  call, on the first document carrying the tenant's name.
+- **No language it is not written in** (above).
+- **No statute it has not been given.** The built-in profiles cite none; a citation
+  appears only if a union puts a verified one in config.
 
 ## Relationship to the evidence
 

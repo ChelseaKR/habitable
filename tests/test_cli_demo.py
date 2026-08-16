@@ -290,12 +290,12 @@ def test_cli_status_lists_awaiting_captures_by_issue(
 
     assert main(["status", "--vault", str(vault)]) == 0
     out = capsys.readouterr().out
-    assert f"{queued_id}: awaiting timestamp token (queued)" in out
-    assert f"{stamped_id}: awaiting timestamp token (queued)" not in out
+    assert f"{queued_id}: no timestamp token yet" in out
+    assert f"{stamped_id}: no timestamp token yet" not in out
 
     # Once resolved, the named awaiting line disappears along with the count.
     assert main(["resolve", "--vault", str(vault), "--dev-tsa"]) == 0
     capsys.readouterr()
     assert main(["status", "--vault", str(vault)]) == 0
     out = capsys.readouterr().out
-    assert "awaiting timestamp token (queued)" not in out
+    assert "no timestamp token yet" not in out

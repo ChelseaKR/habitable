@@ -2,7 +2,7 @@
 # Copyright 2026 Chelsea Kelly-Reif
 [project]
 name = "habitable"
-version = "0.3.0"
+version = "0.4.0"
 description = "Court-ready, offline-first, end-to-end-encrypted habitability evidence for tenant unions."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -60,9 +60,9 @@ Issues = "https://github.com/ChelseaKR/habitable/issues"
 dev = [
     "pytest>=9.1.1",
     "pytest-cov>=5",
-    "hypothesis>=6.165.0",
+    "hypothesis>=6.165.2",
     "mypy>=2.3.0",
-    "ruff>=0.16.1",
+    "ruff>=0.16.2",
     "pip-audit>=2.7",
     "playwright>=1.62.0",
     "axe-playwright-python>=0.1.8",
@@ -148,9 +148,12 @@ source = ["habitable"]
 [tool.coverage.report]
 # Baseline floor: 85% branch coverage (--cov-fail-under in `make cov`). The
 # security/crypto-critical modules — src/habitable/{crypto,vault,tsa,verify}.py —
-# carry a stricter per-module 95% floor, enforced by the scoped
-# `coverage report --include=… --fail-under=95` step in `make cov` (and CI via
-# `make verify`); see CODE-QUALITY-STANDARD "per-module floors".
+# carry a stricter per-module 95% floor: `make cov` runs ONE
+# `coverage report --include=<single module> --fail-under=95` per module (and CI
+# via `make verify`), because `--fail-under` only ever tests the TOTAL row, so a
+# single --include over all four would be a pooled average in which one module at
+# 100% can carry another below the line (issue #183). See CODE-QUALITY-STANDARD
+# "per-module floors".
 fail_under = 85
 show_missing = true
 skip_covered = false
