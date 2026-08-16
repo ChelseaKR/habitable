@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # habitable — developer entry points. `make verify` reproduces the full CI gate.
 .DEFAULT_GOAL := help
-.PHONY: help bootstrap install fmt lint type test cov i18n doc-links markers verify audit a11y integration demo site-sample build repro relay-repro clean
+.PHONY: help bootstrap install lock-check fmt lint type test cov i18n doc-links markers verify audit a11y integration demo site-sample build repro relay-repro clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -13,6 +13,17 @@ bootstrap: ## One-command setup from a bare machine (installs uv if missing, the
 install: ## Create the env and install the project + dev tools (Python 3.14 via uv)
 	uv sync
 	uv run python -c "import sys; print('habitable env on Python', sys.version.split()[0])"
+
+lock-check: ## CQ-09: fail if uv.lock has drifted from pyproject.toml
+	# `uv sync --frozen` is NOT a drift gate. It installs from uv.lock WITHOUT
+	# reading pyproject.toml, so by construction it cannot notice the two disagree,
+	# and it exits 0 on a drifted lock. `uv lock --check` is the gate.
+	#
+	# Ordering is load-bearing: this must run before anything that can rewrite the
+	# lock. A bare `uv run` — which every other target here uses — silently relocks
+	# first, so a gate invoked after one of those repairs the very drift it checks.
+	# That is why `verify` lists this target first, and why CI runs it before `uv sync`.
+	uv lock --check
 
 fmt: ## Auto-format and auto-fix
 	uv run ruff format src tests scripts/check_doc_links.py scripts/check_reproducible_build.py
@@ -84,7 +95,7 @@ markers: ## No bare TODO/FIXME/HACK (must reference an issue, e.g. TODO(#142)); 
 	fi
 	@echo "habitable: no bare TODO/FIXME/HACK; no un-issued noqa/type:ignore"
 
-verify: lint type cov i18n doc-links markers ## The full merge gate: lint + types + tests with coverage + i18n, doc-truth, and marker gates
+verify: lock-check lint type cov i18n doc-links markers ## The full merge gate: lockfile drift + lint + types + tests with coverage + i18n, doc-truth, and marker gates
 	@echo "habitable: full gate green on Python $$(uv run python -c 'import sys;print(sys.version.split()[0])')"
 
 audit: ## Dependency vulnerability audit

@@ -7,6 +7,8 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-08-16
+
 ### Added
 
 - **A recorded, per-case consent record for the fixed pattern question**
@@ -424,6 +426,46 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   test protocols, and the capability ledger to match the Repair Trail workflow.
   Dated research and execution documents now identify themselves as historical
   snapshots and defer current claims to the capability ledger.
+- Vendored the portfolio standards at **v2.0.0** (`docs/standards/`).
+- Added a `lockfile drift (CQ-09)` gate. `uv.lock` is committed and every CI job
+  installs with `uv sync --frozen`, which the standard used to call the
+  lockfile-drift check. It is not one: `--frozen` installs from `uv.lock`
+  *without reading* `pyproject.toml`, so by construction it cannot notice that
+  the two disagree, and it exits 0 on a drifted lock. `uv lock --check` now runs
+  first in CI, before any command that could rewrite the lock — a bare `uv run`
+  silently relocks, so a gate invoked that way repairs the very thing it checks.
+- Gave `gh release create` its repository through `GH_REPO`, so the publication
+  job no longer depends on a checkout it deliberately does not have.
+- Added an "Idea or feature request" issue form, so a reporter is not handed a
+  blank box, and a Ko-fi support link in the README.
+- Routine dependency maintenance across the range: the pinned `cryptography`,
+  CodeQL, `harden-runner`, `attest-build-provenance`, `setup-uv`, `checkout`,
+  `scorecard-action`, `trufflehog`, `zizmor-action`, `gh-action-pypi-publish`,
+  and relay base-image digests, plus three grouped dev-dependency bumps.
+
+### Security
+
+- **CVE-2026-69247 in `cryptography`, remediated by pinning 50.0.0.** The
+  `pyproject.toml` constraint (`cryptography>=44`) already admitted the fixed
+  version, so this was a lockfile-only bump (`uv lock --upgrade-package
+  cryptography`) rather than a constraint change.
+- **The weekly secret scan had been scanning zero commits since it was added.**
+  With `path`, `base`, and `head` all unset, the TruffleHog action resolves base
+  and head to the same commit and exits on its own guard — "BASE and HEAD commits
+  are the same. TruffleHog won't scan anything." Every scheduled run had failed
+  that way, not on a finding: the logs carry no chunk count and no
+  `verified_secrets` line, because no scan ever started. The comment in the
+  workflow asserted the opposite, that omitting base/head falls back to a full
+  scan, and that assumption is what broke it. Setting `path: ./` makes it a
+  whole-repository scan for real — 4,875 chunks over the full history, confirmed
+  locally against the same pinned v3.96.0 image. That first real scan surfaced 37
+  verified findings, **all of them false**: the Lob detector matches `test_` or
+  `live_` followed by alphanumerics, which is the shape of every pytest function
+  name under `tests/`, and its verifier confirms them because it cannot tell a
+  malformed key from an unauthorized one. There is no Lob integration in this
+  repository. The detector is excluded by name rather than by path, because
+  skipping `tests/` would blind the scan to real secrets in fixtures, which is
+  where they are most often committed by accident.
 
 ## [0.3.0] — 2026-07-23
 
@@ -967,7 +1009,15 @@ installable PWA covers mobile today) remain — see the ACR and the build plan.
   with property-based and tamper-detection tests (`make verify` green, ~85%
   coverage); SHA-pinned GitHub Actions, CodeQL, Dependabot, `pip-audit`.
 
-[Unreleased]: https://github.com/ChelseaKR/habitable/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/ChelseaKR/habitable/compare/v0.2.0...v0.3.0
+[Unreleased]: https://github.com/ChelseaKR/habitable/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/ChelseaKR/habitable/compare/v0.2.0...v0.4.0
+<!-- No [0.3.0] link is published here. 0.3.0 was prepared on `main` on 2026-07-23 — the
+     version was bumped in `pyproject.toml` and the section below was written — but it was
+     never tagged and never released, so `v0.3.0` does not exist as a ref and there is no
+     release page to point at. The previous links here (`compare/v0.2.0...v0.3.0` and
+     `compare/v0.3.0...HEAD`) both resolved to 404s for that reason. The 0.4.0 comparison
+     therefore runs from `v0.2.0`, the last tag that actually exists, and spans both bodies
+     of work. The [0.3.0] section stays below as the dated record of what landed that day.
+     This link is restored, pointing at a real tag, if v0.3.0 is ever cut. -->
 [0.2.0]: https://github.com/ChelseaKR/habitable/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ChelseaKR/habitable/releases/tag/v0.1.0
