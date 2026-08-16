@@ -20,6 +20,16 @@ reader to confirm their own jurisdiction's specifics. A union can override every
 via the ``[letter]`` block in ``config.toml`` (see :mod:`habitable.config`), which is
 the right place to encode locally-verified, jurisdiction-specific wording. The letter
 carries a standing "this is not legal advice" disclaimer.
+
+English only, and labelled as such
+----------------------------------
+Everything the rest of habitable produces is bilingual (EN/ES). The letter is not:
+every string in this module is an English literal. It is emitted in English,
+declares ``lang="en"`` whatever the vault's configured language, and reports the
+unmet request rather than quietly relabelling English prose as Spanish. See
+:data:`LETTER_LANGUAGE` for why a legal-register translation is a review task
+rather than a code task, and ``docs/letter-generator.md`` for the user-facing
+statement of the same limit.
 """
 
 from __future__ import annotations
@@ -34,6 +44,7 @@ from .errors import LetterError
 from .vault import Vault
 
 __all__ = [
+    "LETTER_LANGUAGE",
     "PROFILES",
     "LetterIssue",
     "LetterOptions",
@@ -94,6 +105,35 @@ PROFILES: dict[str, LetterProfile] = {
 
 _DEFAULT_PROFILE = "generic"
 
+# The one language the letter is written in, and therefore the only value its
+# `lang` attribute may take (issue #161).
+#
+# Every string this module produces -- the profile framing, the hedged legal
+# reference, the disclaimer, the evidence sentence, the demand, the closing, and
+# every section label -- is an English literal. `LetterOptions.language` and
+# `Config.language` accept "es", and until this constant existed a vault
+# configured `language = "es"` produced a byte-identical English letter whose
+# only difference was `<html lang="es">`. That is a WCAG 3.1.1 failure that makes
+# a screen reader pronounce English words with Spanish phonetics, and it tells a
+# Spanish-speaking tenant they are holding a document in their language when they
+# are not.
+#
+# The fix is deliberately *not* to machine-translate the letter. This is the one
+# document that leaves the tenant's control and lands in a landlord's -- and
+# possibly a court's -- hands, it carries legal framing, and a legal-register
+# Spanish translation needs a Spanish-speaking legal-aid reviewer before this
+# project may put it in a tenant's name. Until that review happens the honest
+# behaviour is the one this project applies elsewhere: decline to claim the
+# language rather than assert it. The letter is emitted in English, labelled
+# English, and the unmet request is reported to the person generating it
+# (`RepairLetter.language_limitation`, surfaced by `habitable letter`).
+#
+# Translating it is tracked as the open gap in docs/capabilities.md and
+# docs/letter-generator.md. When a reviewed translation lands, this becomes a
+# per-locale lookup and the `lang` attribute follows the prose automatically,
+# because `render_letter_html` reads `RepairLetter.language` and nothing else.
+LETTER_LANGUAGE = "en"
+
 
 @dataclass(frozen=True, slots=True)
 class LetterOptions:
@@ -108,7 +148,13 @@ class LetterOptions:
     cure_period_days: int | None = None
     date: str = ""  # ISO date; defaults to today (UTC)
     issue_ids: tuple[str, ...] = ()  # empty = every issue in the case
-    language: str = "en"
+    # The language asked for; empty means "whatever the vault is configured for".
+    # This used to default to "en", which made `options.language or
+    # vault.config.language` in `build_letter` dead code: a vault configured
+    # `language = "es"` was never consulted, so `habitable letter` could not
+    # reach the vault's setting at all and a Spanish-speaking union's
+    # configuration was silently ignored (found while fixing issue #161).
+    language: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,9 +192,32 @@ class RepairLetter:
     closing: str
     disclaimer: str
     profile_label: str
-    language: str = "en"
+    # The language the letter's text is actually *written in*. Always "en"
+    # today; see LETTER_LANGUAGE and issue #161. `render_letter_html` derives
+    # the document's `lang` attribute from this field and from nothing else, so
+    # the attribute cannot drift from the prose again.
+    language: str = LETTER_LANGUAGE
+    # The language that was asked for (CLI/vault config). When this differs
+    # from `language`, the letter is not in the requested language and the
+    # caller is expected to say so -- see `language_limitation`.
+    requested_language: str = LETTER_LANGUAGE
     header: str = ""
     footer: str = ""
+
+    @property
+    def language_limitation(self) -> str:
+        """A plain statement of the unmet language request, or ``""``.
+
+        Not part of the letter body: this is for the tenant/organizer producing
+        the document, not for the landlord receiving it.
+        """
+        if self.requested_language == self.language:
+            return ""
+        return (
+            f"this letter was requested in {self.requested_language!r} but is written in "
+            f"{self.language!r}: habitable does not ship a reviewed translation of the "
+            "repair-request letter"
+        )
 
 
 _DISCLAIMER = (
@@ -186,17 +255,7 @@ def build_letter(
     unit = options.property_address or vault.document.get_meta("unit") or vault.document.case_id
     total_items = sum(i.evidence_count for i in issues)
     total_stamped = sum(i.timestamped_count for i in issues)
-    stamped_clause = (
-        f", {total_stamped} of them carrying timestamp tokens whose validity and "
-        "authority trust must be checked independently"
-        if total_stamped
-        else ""
-    )
-    evidence_summary = (
-        f"These conditions are documented by {total_items} photograph(s){stamped_clause}, "
-        "with content hashes that allow each photo's integrity to be verified. "
-        "A complete, independently-verifiable evidence packet is available on request."
-    )
+    evidence_summary = _evidence_summary(total_items, total_stamped)
     demand = (
         f"Please arrange to inspect and repair these conditions within {cure_days} days of the "
         "date of this letter, and let me know in writing when the work will be done. I am "
@@ -221,9 +280,40 @@ def build_letter(
         closing=closing,
         disclaimer=_DISCLAIMER,
         profile_label=profile.label,
-        language=options.language or vault.config.language,
+        language=LETTER_LANGUAGE,
+        requested_language=options.language or vault.config.language or LETTER_LANGUAGE,
         header=tmpl.header,
         footer=tmpl.footer,
+    )
+
+
+def _evidence_summary(total_items: int, total_stamped: int) -> str:
+    """What the letter may say about the evidence behind it (issue #161).
+
+    The sentence used to be built unconditionally, so a case with issues and no
+    captures produced "documented by 0 photograph(s) ... A complete,
+    independently-verifiable evidence packet is available on request." A
+    landlord's representative can call that, the tenant has nothing to send, and
+    the first thing on the record is an overstatement — on the document carrying
+    the tenant's name. With no captures the letter now says what is true: the
+    request stands on its own and no documented evidence backs it yet.
+    """
+    if total_items <= 0:
+        return (
+            "No photographs of these conditions are attached to this request yet. "
+            "This letter is the written notice itself; if I document these conditions "
+            "later, I will provide that documentation separately."
+        )
+    stamped_clause = (
+        f", {total_stamped} of them carrying timestamp tokens whose validity and "
+        "authority trust must be checked independently"
+        if total_stamped
+        else ""
+    )
+    return (
+        f"These conditions are documented by {total_items} photograph(s){stamped_clause}, "
+        "with content hashes that allow each photo's integrity to be verified. "
+        "A complete, independently-verifiable evidence packet is available on request."
     )
 
 

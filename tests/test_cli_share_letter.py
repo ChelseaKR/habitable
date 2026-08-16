@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from habitable.cli import main
 from habitable.vault import Vault
 
@@ -54,6 +56,70 @@ def test_cli_letter_writes_accessible_letter(tmp_path: Path) -> None:
     html = (out / "letter.html").read_text(encoding="utf-8")
     assert "Repair request" in html
     assert "10 days" in html
+
+
+def test_cli_letter_on_a_spanish_vault_says_the_letter_is_english(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Issue #161: a vault configured `--lang es` must not receive English prose
+    labelled Spanish, and the person generating it must be told, in Spanish."""
+    vault = tmp_path / "vault"
+    assert (
+        main(
+            [
+                "init",
+                str(vault),
+                "--case",
+                "c",
+                "--unit",
+                "4B",
+                "--passphrase",
+                "pw",
+                "--lang",
+                "es",
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "issue",
+                "--vault",
+                str(vault),
+                "--passphrase",
+                "pw",
+                "--category",
+                "mold",
+                "--title",
+                "Moho",
+            ]
+        )
+        == 0
+    )
+    out = tmp_path / "letter"
+    capsys.readouterr()
+    assert (
+        main(
+            [
+                "letter",
+                "--vault",
+                str(vault),
+                "--passphrase",
+                "pw",
+                "--out",
+                str(out),
+                "--no-pdf",
+            ]
+        )
+        == 0
+    )
+
+    printed = capsys.readouterr().out
+    assert "esta carta está escrita en inglés" in printed
+    html = (out / "letter.html").read_text(encoding="utf-8")
+    assert 'lang="en"' in html
+    assert 'lang="es"' not in html
 
 
 def test_cli_share_and_receive(tmp_path: Path) -> None:
