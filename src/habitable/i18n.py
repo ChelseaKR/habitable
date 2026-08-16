@@ -332,7 +332,7 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         "custody_intact": "intact",
         "custody_broken": "BROKEN",
         "capture_timestamped": "timestamp token attached ({when})",
-        "capture_awaiting": "awaiting timestamp token (queued)",
+        "capture_awaiting": "no timestamp token yet",
         "capture_trust_unassessed": (
             "timestamp token attached; authority trust is assessed only by `habitable verify` "
             "with an independently trusted certificate"
@@ -437,7 +437,7 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         "custody_intact": "intacta",
         "custody_broken": "ROTA",
         "capture_timestamped": "token de sello de tiempo adjunto ({when})",
-        "capture_awaiting": "pendiente de token de sello de tiempo (en cola)",
+        "capture_awaiting": "aún sin token de sello de tiempo",
         "capture_trust_unassessed": (
             "token de sello adjunto; la confianza en la autoridad solo se evalúa con "
             "`habitable verify` y un certificado de confianza independiente"

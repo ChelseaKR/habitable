@@ -22,7 +22,9 @@ import pytest
 
 from habitable import appserver as appserver_module
 from habitable.appserver import _STATIC_ROOT, AppServer, _awaiting_only, make_app_server
+from habitable.artifact import capture_artifact
 from habitable.capture import capture
+from habitable.cli import main as cli_main
 from habitable.errors import CaptureError, HabitableError
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
@@ -724,3 +726,43 @@ def _status_code_path(url: str, path: str) -> int:
     except urllib.error.HTTPError as exc:
         exc.close()
         return int(exc.code)
+
+
+def test_app_and_cli_report_the_same_awaiting_figure_over_the_same_evidence_set(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Issue #180: the CLI counted a local queue, the app counted the same queue,
+    and both disagreed with the token-presence numerator they printed beside it."""
+    vault = make_vault()
+    issue_id = vault.document.add_issue(category="mold", room="bath", title="Mold")
+    capture(vault, make_jpeg("stamped.jpg"), issue_id=issue_id, tsa=local_tsa)
+    source = tmp_path / "notice.txt"
+    source.write_text("Synthetic utility notice.", encoding="utf-8")
+    capture_artifact(
+        vault,
+        source,
+        issue_id=issue_id,
+        artifact_type="utility_notice",
+        title="Utility notice",
+        source_assertion="tenant-received copy",
+        occurred_at="2026-01-03",
+    )
+    vault.save()
+
+    status = AppServer(vault, local_tsa, tmp_path, threading.Lock()).status()
+    assert status["evidence_count"] == 2
+    assert status["timestamped"] == 1
+    assert status["awaiting"] == 1
+    # The numerator and the awaiting count are complements over one population.
+    timestamped = status["timestamped"]
+    awaiting = status["awaiting"]
+    assert isinstance(timestamped, int) and isinstance(awaiting, int)
+    assert timestamped + awaiting == status["evidence_count"]
+
+    assert cli_main(["status", "--vault", str(vault.path), "--passphrase", "test-passphrase"]) == 0
+    out = capsys.readouterr().out
+    assert "timestamps: 1/2 present; 1 awaiting" in out

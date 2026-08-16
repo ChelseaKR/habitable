@@ -74,7 +74,13 @@ class UnitHealth:
 
     @property
     def export_ready(self) -> bool:
-        """No captures awaiting a timestamp, an intact chain, and something to show.
+        """No evidence awaiting a timestamp, an intact chain, and something to show.
+
+        ``awaiting_count`` is derived from token *presence* over captures plus
+        artifacts (:meth:`Vault.awaiting_timestamp`), not from the local deferred
+        queue. Before issue #180 it read the queue, so a capture synced in from
+        another device without a token was counted as neither timestamped nor
+        awaiting, and its unit rolled up as export-ready.
 
         This is a cheap, read-only vault-level signal for a roll-up across many
         units (nothing *known* to block starting an export) -- it is not the
@@ -172,11 +178,10 @@ def health_for(vault: Vault, *, vault_path: Path | None = None) -> UnitHealth:
     """
     document = vault.document
     issues = document.issues()
-    captures = document.captures()
-    artifacts = document.artifacts()
     timeline = document.timeline()
-    item_ids = [item.capture_id for item in captures] + [item.artifact_id for item in artifacts]
-    timestamped = sum(1 for item_id in item_ids if vault.get_token(item_id) is not None)
+    item_ids = vault.evidence_ids()
+    awaiting = vault.awaiting_timestamp()
+    timestamped = len(item_ids) - len(awaiting)
     custody_length = len(vault.custody)
     custody_intact: bool
     custody_error = ""
@@ -195,7 +200,7 @@ def health_for(vault: Vault, *, vault_path: Path | None = None) -> UnitHealth:
         issue_count=len(issues),
         capture_count=len(item_ids),
         timestamped_count=timestamped,
-        awaiting_count=len(vault.deferred()),
+        awaiting_count=len(awaiting),
         timeline_count=len(timeline),
         custody_intact=custody_intact,
         custody_length=custody_length,

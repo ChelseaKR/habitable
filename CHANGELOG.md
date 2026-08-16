@@ -106,6 +106,28 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   change rather than a bug fix. The question prompt and the CLI's success line
   drop "consented" for a phrasing that names the population the data covers.
 
+- **"0 awaiting a timestamp" and "export-ready" were computed from a local
+  queue, so a synced-in capture with no token counted as neither timestamped
+  nor awaiting (issue #180).** `habitable status`, `habitable campaign status`
+  and the roll-up HTML all answered "does this still need a timestamp?" by
+  reading `vault.deferred()` -- the append-only queue this device writes when it
+  captures something offline. Sync never wrote to that queue, so a capture that
+  arrived from a tenant's device without a token was invisible on both sides of
+  the tally: it was missing from the numerator *and* absent from the awaiting
+  count, and its unit rolled up as **export-ready**. Awaiting is now derived
+  from token *presence* over captures plus artifacts
+  (`Vault.awaiting_timestamp`), the same population the denominator uses. The
+  CLI's `timestamps: N/M present` line previously counted only captures in `M`
+  while counting artifacts in the awaiting figure, so three deferred documents
+  beside one stamped photo printed `1/1 present; 3 awaiting`; both halves now
+  describe the same set, and the `⧗` lines name awaiting artifacts as well as
+  awaiting captures. The app's "Waiting for a timestamp token" tile reads a new
+  `awaiting` field rather than the queue length. Separately, sync now queues an
+  imported capture that arrived without a token, so `habitable resolve` can
+  actually fetch one -- previously nothing could -- and clears a queued entry
+  when a peer supplies the token, so `resolve` no longer fetches a second
+  primary over content already stamped.
+
 - **A documented fail-closed sync property failed open: the `have` manifest was
   validated after the CRDT merge (issue #163).** `docs/sync-threat-model.md`
   states "A validation failure cannot partially merge the message's CRDT state"

@@ -885,7 +885,10 @@ def _cmd_status(args: argparse.Namespace) -> int:
         f"{len(relationships)} relationship(s)"
     )
     any_issues = False
-    deferred_ids = {item.capture_id for item in vault.deferred()}
+    # Token *presence* over captures plus artifacts -- not `vault.deferred()`,
+    # which is only this device's own stamp-later work list and misses evidence
+    # that arrived by sync or capsule import without a token (issue #180).
+    awaiting_ids = set(vault.awaiting_timestamp())
     for issue in issues:
         any_issues = True
         issue_captures = vault.document.captures(issue.issue_id)
@@ -911,17 +914,21 @@ def _cmd_status(args: argparse.Namespace) -> int:
             timeline=strength.timeline_entries,
         )
         print(f"      {strength_line}")
-        for issue_capture in issue_captures:
-            if issue_capture.capture_id in deferred_ids:
+        issue_evidence_ids = [item.capture_id for item in issue_captures] + [
+            item.artifact_id for item in vault.document.artifacts(issue.issue_id)
+        ]
+        for evidence_id in issue_evidence_ids:
+            if evidence_id in awaiting_ids:
                 awaiting_line = cli_text("capture_awaiting", locale)
-                print(f"      ⧗ {issue_capture.capture_id}: {awaiting_line}")
-    timestamped = sum(1 for c in captures if vault.get_token(c.capture_id) is not None)
+                print(f"      ⧗ {evidence_id}: {awaiting_line}")
+    evidence_ids = vault.evidence_ids()
+    timestamped = len(evidence_ids) - len(awaiting_ids)
     stamps = cli_text(
         "status_timestamps",
         locale,
         timestamped=timestamped,
-        total=len(captures),
-        awaiting=len(vault.deferred()),
+        total=len(evidence_ids),
+        awaiting=len(awaiting_ids),
     )
     print(f"  {stamps}")
     custody = vault.custody.verify()

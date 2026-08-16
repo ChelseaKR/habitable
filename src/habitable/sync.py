@@ -570,6 +570,18 @@ def _apply_captures(vault: Vault, message: _ValidatedMessage, sender: PublicIden
 def _store_timestamp_material(vault: Vault, capture: _ValidatedCapture) -> None:
     if capture.primary is not None:
         vault.store_token(capture.capture_id, capture.primary)
+        # The peer's token settles a capture we may have queued to stamp
+        # ourselves; leaving it queued would have `resolve` fetch a second
+        # primary over the same content and overwrite this one.
+        vault.clear_deferred(capture.capture_id)
+    elif vault.get_token(capture.capture_id) is None:
+        # An imported capture with no token is untimestamped, and before issue
+        # #180 nothing put it anywhere: `resolve` walks the deferred queue, and
+        # sync never wrote to it, so the capture could never be stamped on this
+        # device at all. Queue it (once) with the content hash the sender signed
+        # over, which is what `resolve_deferred` stamps.
+        if all(item.capture_id != capture.capture_id for item in vault.deferred()):
+            vault.queue_deferred(capture.capture_id, capture.content_hash)
     existing_additional = {
         canonical_json(cast(JSONValue, token.to_dict()))
         for token in vault.get_additional_tokens(capture.capture_id)

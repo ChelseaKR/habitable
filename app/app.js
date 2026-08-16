@@ -759,7 +759,10 @@
     setText("st-issues", formatNumber((status.issues || []).length));
     setText("st-captures", formatNumber(status.capture_count || 0));
     setText("st-timestamped", formatNumber(status.timestamped || 0));
-    var deferred = status.deferred || 0;
+    // Evidence with no timestamp token, however it arrived -- not the local
+    // stamp-later queue, which misses a capture synced in without one and so
+    // showed 0 waiting while the timestamp count said otherwise (issue #180).
+    var deferred = (typeof status.awaiting === "number") ? status.awaiting : (status.deferred || 0);
     setText("st-awaiting", formatNumber(deferred));
 
     // Plain, reassuring status copy (R-01, R-17): when items are still waiting

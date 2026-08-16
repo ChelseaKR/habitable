@@ -1069,6 +1069,34 @@ class Vault:
         record = self._load_token_sidecar(capture_id)
         return None if record is None else record.primary
 
+    def evidence_ids(self) -> tuple[str, ...]:
+        """Every record in this case that can carry a timestamp token.
+
+        Captures and artifacts are separate registers in the case document but a
+        single population for anything that counts timestamps: both go through
+        the same seal/stamp/defer pipeline and both are exported as evidence. Any
+        surface reporting "N of M timestamped" must use this set for M, or the
+        numerator and denominator describe different things.
+        """
+        return tuple(
+            [item.capture_id for item in self.document.captures()]
+            + [item.artifact_id for item in self.document.artifacts()]
+        )
+
+    def awaiting_timestamp(self) -> tuple[str, ...]:
+        """Evidence holding no timestamp token, however that evidence arrived.
+
+        Deliberately *not* :meth:`deferred`. The deferred queue records what this
+        device chose to stamp later; it says nothing about a capture that arrived
+        by sync or capsule import without a token, which is untimestamped all the
+        same. Reporting from the queue made such a capture count as neither
+        timestamped nor awaiting — invisible on both sides of the tally, and
+        counted as export-ready (issue #180). The queue remains the work list for
+        :func:`habitable.capture.resolve_deferred`, which needs each item's
+        digest; this is the honest answer to "what still has no timestamp?".
+        """
+        return tuple(item for item in self.evidence_ids() if self.get_token(item) is None)
+
     def add_additional_token(self, capture_id: str, token: TimestampToken) -> None:
         """Append a redundant primary timestamp from another authority.
 
