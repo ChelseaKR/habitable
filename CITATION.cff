@@ -6,8 +6,8 @@ type: software
 authors:
   - family-names: Kelly-Reif
     given-names: Chelsea
-version: 0.2.0
-date-released: 2026-06-17
+version: 0.4.0
+date-released: 2026-08-16
 license: AGPL-3.0-or-later
 repository-code: "https://github.com/ChelseaKR/habitable"
 url: "https://github.com/ChelseaKR/habitable"
