@@ -19,7 +19,7 @@ so local green means CI green.
 |---|-------|-------------------------|-----------------|
 | 1 | Format + lint, complexity ≤ 10 (`C90`) | `make lint` (ruff format --check + ruff check) | [CODE-QUALITY](docs/standards/CODE-QUALITY-STANDARD.md) |
 | 2 | Strict types | `make type` (mypy --strict, zero errors) | CODE-QUALITY |
-| 3 | Tests + coverage: ≥ 85 % overall, ≥ 95 % on the evidence-integrity core (`crypto.py`, `vault.py`, `tsa.py`, `verify.py`); includes property-based, tamper-detection, fuzz, golden-corpus, and the [low-end-device performance budget](docs/performance-budget.md) (`tests/test_perf_budget.py`) | `make cov` (pytest `-m "not integration"`) | CODE-QUALITY / QUALITY-AND-METRICS |
+| 3 | Tests + coverage: ≥ 85 % overall, and ≥ 95 % on **each** evidence-integrity module separately (`crypto.py`, `vault.py`, `tsa.py`, `verify.py`) — one `--fail-under` assertion per module, so a module below the line cannot be carried by another above it; includes property-based, tamper-detection, fuzz, golden-corpus, and the [low-end-device performance budget](docs/performance-budget.md) (`tests/test_perf_budget.py`) | `make cov` (pytest `-m "not integration"`) | CODE-QUALITY / QUALITY-AND-METRICS |
 | 4 | i18n: UTF-8, BCP 47 validity, EN/ES key + plural + placeholder parity | `make i18n` | [I18N](docs/standards/INTERNATIONALIZATION-STANDARD.md) |
 | 5 | Documentation truth: local Markdown links resolve; every capability-ledger claim carries a live evidence path | `make doc-links` over [`docs/capabilities.md`](docs/capabilities.md) | [DOCUMENTATION](docs/standards/DOCUMENTATION-STANDARD.md) |
 | 6 | Markers: no bare `TODO`/`FIXME`/`HACK`, no un-issued `noqa`/`type: ignore` | `make markers` | CODE-QUALITY |

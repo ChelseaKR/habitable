@@ -150,6 +150,33 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   no count attached. Packet v1 manifests still verify; the verifier's handoff
   checks are structural and never read `sections`.
 
+- **The documented "per-module 95% floor on the evidence-integrity core" was a
+  pooled floor, and `vault.py` was below it (issue #183).** `DEFINITION_OF_DONE`,
+  `pyproject.toml` and `RESPONSIBLE-TECH-AUDITS` all described a per-module 95%
+  floor on `crypto.py`, `vault.py`, `tsa.py` and `verify.py`, listed under
+  **Enforcement. AUTO**. The gate was a single
+  `coverage report --include=<all four> --fail-under=95`, and `--fail-under`
+  tests only the TOTAL row — one pooled number. Measured on the committed
+  `coverage.xml`: `crypto.py` 100.00%, `tsa.py` 98.72%, `verify.py` 95.57%,
+  `vault.py` **94.42%**, pooled TOTAL **95.56% — green**. `crypto.py` was
+  subsidising the largest module in the set, and the one that holds the
+  encrypted store at rest. `vault.py` could have fallen to roughly 91% before
+  the build turned red. `make cov` now runs one `--fail-under=95` per module and
+  reports every module before failing, so one pass names each module below the
+  line rather than only the first. `vault.py` is at **95.44%**, raised by
+  covering the fail-closed and legacy-migration paths that were its largest
+  untested region: the pre-FIX-01 plaintext `node_id` migration and its refusal
+  when there is nothing to migrate, a corrupt node-identity record, a corrupt or
+  wrongly-shaped peer-have record, a corrupt sync-security record, a peer
+  identity that does not decode, and a peer filed under a fingerprint that is
+  not its own (`tests/test_vault_legacy_and_corruption.py`).
+
+- **`human_bytes` labelled petabyte-scale sizes with a terabyte-scale number.**
+  The unit loop divides once per entry in `("KB", "MB", "GB", "TB")` and the
+  fallback returned that same terabyte-scaled value with a `PB` suffix, so 2.5 PB
+  rendered as "2500.0 PB" — a number and a unit that disagree by a factor of a
+  thousand. Found while covering `vault.py` for the floor above.
+
 - **A documented fail-closed sync property failed open: the `have` manifest was
   validated after the CRDT merge (issue #163).** `docs/sync-threat-model.md`
   states "A validation failure cannot partially merge the message's CRDT state"

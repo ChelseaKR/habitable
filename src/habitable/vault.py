@@ -344,7 +344,10 @@ def human_bytes(count: int) -> str:
         size /= 1000.0
         if size < 1000.0:
             return f"{size:.1f} {unit}"
-    return f"{size:.1f} PB"
+    # The loop leaves `size` on the TB scale, so the petabyte fallback needs one
+    # more division. Without it 2.5 PB rendered as "2500.0 PB" -- a number and a
+    # unit that disagree by a factor of a thousand.
+    return f"{size / 1000.0:.1f} PB"
 
 
 class Vault:

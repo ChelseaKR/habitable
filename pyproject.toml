@@ -148,9 +148,12 @@ source = ["habitable"]
 [tool.coverage.report]
 # Baseline floor: 85% branch coverage (--cov-fail-under in `make cov`). The
 # security/crypto-critical modules — src/habitable/{crypto,vault,tsa,verify}.py —
-# carry a stricter per-module 95% floor, enforced by the scoped
-# `coverage report --include=… --fail-under=95` step in `make cov` (and CI via
-# `make verify`); see CODE-QUALITY-STANDARD "per-module floors".
+# carry a stricter per-module 95% floor: `make cov` runs ONE
+# `coverage report --include=<single module> --fail-under=95` per module (and CI
+# via `make verify`), because `--fail-under` only ever tests the TOTAL row, so a
+# single --include over all four would be a pooled average in which one module at
+# 100% can carry another below the line (issue #183). See CODE-QUALITY-STANDARD
+# "per-module floors".
 fail_under = 85
 show_missing = true
 skip_covered = false
