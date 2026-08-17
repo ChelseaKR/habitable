@@ -49,9 +49,14 @@ checks.
    - build the linux/amd64 relay twice without cache as OCI archives under the
      tagged commit's fixed source epoch, rewrite layer timestamps, and require the
      complete archives to be byte-identical (`make relay-repro`); this claim is
-     scoped to the pinned base, platform, Dockerfile, and BuildKit invocation,
-     and the comparison uses a clean archive of tracked source so test caches
-     cannot perturb the image;
+     scoped to the pinned base, platform, Dockerfile, BuildKit invocation, and
+     Debian archive state, and the comparison uses a clean archive of tracked
+     source so test caches cannot perturb the image. Archive state is part of
+     the scope because the image applies Debian security updates over the
+     pinned digest — the digest alone leaves published HIGH CVEs unpatched
+     whenever upstream has not rebuilt the base. Two builds seconds apart see
+     the same archive; a rebuild after a later Debian security upload is
+     expected to differ, and that difference is the patch, not a regression;
    - install the wheel into a clean environment and serve the packaged local app;
    - generate a runtime **SBOM** (CycloneDX) into `dist/sbom.cdx.json`;
    - transfer only those verified assets to a checkout-free publication job;

@@ -7,6 +7,55 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+### Fixed
+
+- **The relay image is now both patched and byte-reproducible, which had been
+  treated as a choice between the two.** `container-scan` had been failing on
+  CVE-2026-53615 (integer overflow in util-linux, HIGH), which reaches nine
+  binary packages in the base image: `util-linux`, `bsdutils`, `mount`, `login`,
+  and the `libblkid1` / `libmount1` / `libsmartcols1` / `libuuid1` /
+  `liblastlog2-2` runtime libraries. Debian fixed it in `2.41.5-0+deb13u1` and
+  shipped that to `trixie-security`, but the upstream `python:3.14-slim` image
+  has not been rebuilt against it — the newest published digest as of
+  2026-08-17 still ships the vulnerable `2.41-5` — so bumping the pinned digest
+  could not clear the finding. `relay/Dockerfile` now applies Debian security
+  updates over the pinned base.
+
+  An earlier attempt at that upgrade layer broke `make relay-repro`, the gate
+  requiring two no-cache rebuilds to produce byte-identical OCI archives, and
+  the two properties looked mutually exclusive. They are not. Diffing the
+  failing archives layer by layer found exactly one file differing between two
+  builds of an identical package set: `/var/cache/ldconfig/aux-cache`, which
+  stores each shared library's inode number and ctime *inside its own bytes* and
+  therefore survives BuildKit's `rewrite-timestamp` normalisation of file
+  mtimes. The four apt/dpkg logs were the visible half of the problem and had
+  already been removed; aux-cache was the half keeping the gate red. Removing it
+  too makes the rebuild byte-identical on both `linux/amd64` and `linux/arm64`,
+  with the CVE cleared.
+
+  Stated limit: the reproducibility claim now counts Debian archive state among
+  its inputs, and `scripts/check_reproducible_relay_image.sh` and
+  `docs/releasing.md` say so. Two builds seconds apart see the same archive and
+  must match. A rebuild months later, after Debian has published a newer
+  security upload, is expected to differ — that difference is the patch
+  arriving, not a reproducibility regression. The image is reproducible at a
+  point in time, not across time.
+
+- **The scanned image is built without cache.** Now that the image applies
+  Debian security updates at build time, a reused `apt-get upgrade` layer would
+  let Trivy scan a package set captured from an earlier archive state and report
+  it as current. Hosted runners start cold, so this was latent rather than live;
+  `--no-cache` removes the assumption instead of depending on it, and a test
+  asserts it stays.
+
+- **A regression test for the cleanup, not only for the wiring.**
+  `tests/test_reproducible_build.py` now asserts that the security-update layer
+  exists *and* that it erases every path measured to be nondeterministic. Both
+  halves are deliberate: requiring the upgrade to be present means the test
+  cannot be satisfied by deleting the layer, so dropping the security updates
+  has to be an explicit decision rather than a quiet edit that turns the suite
+  green.
+
 ## [0.4.0] — 2026-08-16
 
 ### Added
