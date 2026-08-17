@@ -39,12 +39,14 @@ jobs:
           version: "0.11.19"
           enable-cache: true
       - name: Lockfile drift (CQ-09)
-        # Must precede `uv sync` and any `uv run`: `--frozen` installs from uv.lock
-        # without reading pyproject.toml and exits 0 on a drifted lock, and a bare
-        # `uv run` silently relocks, repairing the drift a later check would look for.
+        # Must precede `uv sync` and any `uv run`: a bare `uv run` silently relocks,
+        # repairing the very drift a later check would look for. The sync below asks
+        # for `--locked`, not `--frozen`; `--frozen` installs from uv.lock without
+        # reading pyproject.toml, so it cannot see the two disagree and exits 0 on a
+        # drifted lock.
         run: uv lock --check
       - name: Sync environment (Python 3.14, locked)
-        run: uv sync --frozen
+        run: uv sync --locked
       - name: Show interpreter
         run: uv run python -c "import sys; print('Python', sys.version)"
       # `make verify` includes the coverage gates: 85% overall plus the scoped
@@ -150,12 +152,14 @@ jobs:
           version: "0.11.19"
           enable-cache: true
       - name: Lockfile drift (CQ-09)
-        # Must precede `uv sync` and any `uv run`: `--frozen` installs from uv.lock
-        # without reading pyproject.toml and exits 0 on a drifted lock, and a bare
-        # `uv run` silently relocks, repairing the drift a later check would look for.
+        # Must precede `uv sync` and any `uv run`: a bare `uv run` silently relocks,
+        # repairing the very drift a later check would look for. The sync below asks
+        # for `--locked`, not `--frozen`; `--frozen` installs from uv.lock without
+        # reading pyproject.toml, so it cannot see the two disagree and exits 0 on a
+        # drifted lock.
         run: uv lock --check
       - name: Sync environment
-        run: uv sync --frozen
+        run: uv sync --locked
       - name: Audit dependencies (pip-audit)
         run: uv run pip-audit
 

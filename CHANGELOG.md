@@ -7,6 +7,21 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+### Changed
+
+- **Every CI job now installs with `uv sync --locked`, not `uv sync --frozen`**
+  (`ci.yml` twice, `a11y.yml`, `release.yml` twice, `tsa-integration.yml`).
+  `--frozen` installs from `uv.lock` without reading `pyproject.toml`, so it
+  cannot see the two disagree and it exits 0 on a drifted lock; `--locked`
+  re-resolves against `pyproject.toml` and exits 1. Nothing was actually
+  unguarded: each of those six steps is already preceded by `uv lock --check`,
+  and three of them are even named "locked". The point is that the gate no
+  longer depends on a separate step surviving a future reorder. The comment
+  above each `uv lock --check` now explains the ordering constraint (a bare
+  `uv run` silently relocks) rather than describing a `--frozen` call that is
+  no longer there. Workflow YAML only: nothing under `relay/`, no build input,
+  no dependency, no lockfile change.
+
 ## [0.4.0] — 2026-08-16
 
 ### Added
