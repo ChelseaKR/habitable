@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
 import os
 import stat
@@ -370,6 +371,13 @@ class VerificationReport:
     #: Collapsing them told a reviewer who had just supplied a root to supply a
     #: root (issue #159).
     anchors_supplied: int = 0
+    #: Whether the caller pinned the producer's signing key out of band. False
+    #: means "not asserted", not "asserted and matched": ``signature_ok`` alone
+    #: only says the packet is internally consistent with the key sitting inside
+    #: it, so an unpinned verdict never distinguishes the real producer from
+    #: anyone who re-signed the bundle with a fresh key. See
+    #: ``docs/tamper-challenge.md``.
+    producer_key_pinned: bool = False
 
     @property
     def structurally_intact(self) -> bool:
@@ -466,13 +474,25 @@ def _item_detail_text(language: str) -> dict[str, str]:
 
 
 def verify_packet(
-    packet_dir: Path, *, trusted_certs: list[x509.Certificate] | None = None
+    packet_dir: Path,
+    *,
+    trusted_certs: list[x509.Certificate] | None = None,
+    expected_producer_key: str | None = None,
 ) -> VerificationReport:
-    """Verify a packet directory end to end and return a structured report."""
+    """Verify a packet directory end to end and return a structured report.
+
+    ``expected_producer_key`` is the base64 Ed25519 public key the recipient
+    obtained **out of band** (the ``sign_public`` value of a packet they already
+    trust). Supplying it turns a substituted signing key into a structural
+    failure. Omitting it leaves the signature self-attesting — see
+    ``docs/tamper-challenge.md`` for exactly what that does and does not cover.
+    """
     packet_dir = Path(packet_dir)
     bundle_bytes = _read_bundle_bytes(packet_dir)
     bundle = _parse_bundle(bundle_bytes)
     language = _s(bundle, "language") or "en"
+    pin_problem = _producer_pin_problem(packet_dir, expected_producer_key)
+    pinned = expected_producer_key is not None
 
     # Enforce the version contract before trusting the rest of the structure.
     version_problem = _check_packet_version(bundle)
@@ -483,9 +503,10 @@ def verify_packet(
             custody_ok=False,
             custody_length=0,
             items=(),
-            problems=(version_problem,),
+            problems=(version_problem, *([pin_problem] if pin_problem else [])),
             language=language,
             anchors_supplied=len(trusted_certs or ()),
+            producer_key_pinned=pinned,
         )
 
     signature_ok = _verify_signature(packet_dir, bundle_bytes)
@@ -493,7 +514,7 @@ def verify_packet(
     bindings = _sharing_bindings(custody)
     poster_bindings = _poster_bindings(custody)
 
-    problems: list[str] = []
+    problems: list[str] = [pin_problem] if pin_problem else []
     items: list[ItemVerdict] = []
     for raw_item in _list(bundle, "items"):
         if not isinstance(raw_item, dict):
@@ -524,6 +545,7 @@ def verify_packet(
         problems=tuple(problems),
         language=language,
         anchors_supplied=len(trusted_certs or ()),
+        producer_key_pinned=pinned,
     )
 
 
@@ -1489,6 +1511,63 @@ def _verify_signature(packet_dir: Path, bundle_bytes: bytes) -> bool:
     except _SIGNATURE_READ_ERRORS:
         # Any malformed signature file is a failed signature, never a crash.
         return False
+
+
+def _signature_public_key(packet_dir: Path) -> bytes | None:
+    """The raw Ed25519 key the packet says signed it, or None if unreadable.
+
+    This is what the packet *claims*, never an assertion about who that is.
+    """
+    try:
+        signature_bytes = _read_packet_control_file(
+            packet_dir,
+            _SIGNATURE,
+            limit=_MAX_SIGNATURE_BYTES,
+            required=False,
+        )
+        if signature_bytes is None:
+            return None
+        doc = json.loads(signature_bytes)
+        if not isinstance(doc, dict):
+            return None
+        public = doc.get("sign_public")
+        if not isinstance(public, str):
+            return None
+        return base64.b64decode(public, validate=True)
+    except _SIGNATURE_READ_ERRORS:
+        return None
+
+
+def _producer_pin_problem(packet_dir: Path, expected_producer_key: str | None) -> str | None:
+    """Compare the packet's signing key against one the recipient pinned out of band.
+
+    ``signature_ok`` takes its verifying key from ``bundle.sig.json`` itself, so it
+    cannot tell the producer apart from anyone who rewrote the bundle and re-signed
+    it with a fresh key (FIX-05). Pinning is the recipient-side answer: supply the
+    key you obtained through a channel the packet's courier does not control, and a
+    substituted key becomes a structural failure instead of a silent pass.
+
+    A pin that cannot be parsed or matched is always a problem — never a
+    quietly-skipped check.
+    """
+    if expected_producer_key is None:
+        return None
+    try:
+        # `binascii.Error` subclasses ValueError. A single clause keeps the ruff
+        # formatter from rewriting this into PEP 758 `except A, B:`, which is a
+        # SyntaxError for embedders vendoring the subset onto Python < 3.14
+        # (tests/test_guards.py::test_verifier_subset_avoids_py314_only_except_syntax).
+        expected = base64.b64decode(expected_producer_key.strip(), validate=True)
+    except ValueError:
+        return "pinned producer key is not valid base64"
+    if not expected:
+        return "pinned producer key is empty"
+    actual = _signature_public_key(packet_dir)
+    if actual is None:
+        return "producer key pinned, but this packet has no readable signing key"
+    if not hmac.compare_digest(actual, expected):
+        return "packet signing key does not match the pinned producer key"
+    return None
 
 
 def _verify_custody(bundle: Mapping[str, JSONValue]) -> tuple[bool, int, CustodyLog]:

@@ -7,6 +7,52 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+### Added
+
+- **`habitable verify --expected-producer-key`, and a measured account of what
+  the verifier does not catch without it.** The bundle signature has always been
+  self-attesting: `bundle.sig.json` carries the very public key used to check it,
+  so `signature_ok` means "this bundle is internally consistent with the key
+  sitting next to it", not "the producer signed this". That is unimplemented
+  FIX-05 and was disclosed in prose. What was not written down is how far it
+  reaches, so `tests/test_tamper_challenge.py` now carries out the attacks and
+  asserts the verdicts — with the attacker recomputing the custody chain from
+  `docs/crypto-spec.md` rather than importing this project's code.
+
+  The result that matters: **the photograph a reader actually looks at is not
+  protected by the timestamp.** An RFC 3161 token's imprint is `content_hash`,
+  the hash of the *original* bytes, and a default packet does not ship the
+  originals — so no file a recipient can open is bound by the token. The shared
+  copy is bound only by `shared_hash`, which lives in the re-signable bundle. An
+  attacker replaces the image, updates `shared_hash`, rewrites the
+  `copied_for_sharing` custody entry, rebuilds the chain, re-signs with a fresh
+  key, and keeps the genuine token in place; `verify --trusted-cert` reports
+  `evidence_ready`. `--include-originals` does **not** close this: replacing the
+  embedded original is caught, because that hash is what the token signed, but
+  replacing only the shared copy still passes — nothing ties the two files
+  together except a custody entry the attacker has already rewritten. Rewriting
+  the narrative, deleting an item, moving a capture date, and swapping unit and
+  case identity are all likewise undetected.
+
+  `--expected-producer-key` takes the base64 Ed25519 key from a packet the
+  recipient already trusts, obtained out of band, and makes a substituted signing
+  key a structural failure. It catches every attack above and fails closed on an
+  unparseable, empty, or unmatchable pin. It is a recipient-side assertion, **not**
+  FIX-05: binding authenticity into the custody chain, so it travels with the
+  evidence instead of depending on the recipient's diligence, remains open.
+  `producer_fingerprint` is not a usable substitute — it is derived from
+  `sign_public ‖ box_public`, `box_public` is not in the packet, so a recipient
+  cannot recompute it, and the verifier never reads it.
+
+  `docs/tamper-challenge.md` publishes the rules for a public tamper-evidence
+  challenge built on this, including the measured baseline above. **The challenge
+  has not been opened and no external party has attempted it**; the prerequisites
+  are listed in its §7.
+
+- **Packet-level problems are now shown in human-readable `verify` output.** A
+  failing version check, a malformed item, or a pinned-key mismatch was only ever
+  visible via `--json`; a human saw `integrity: NOT INTACT` with no reason given.
+
 ### Fixed
 
 - **The relay image is now both patched and byte-reproducible, which had been
