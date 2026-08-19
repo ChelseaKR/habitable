@@ -124,7 +124,7 @@ jobs:
 
       # --- REL-14/15: release re-runs the full merge gate before it ships --------
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.11.19"
           enable-cache: false # this job runs once per release; a stale cache is not worth the risk
