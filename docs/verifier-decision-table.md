@@ -96,6 +96,32 @@ errors are caught). Note the signature binds the **producer's** key to the bundl
 "this device produced exactly these bytes," not third-party identity (see
 [`crypto-spec.md`](crypto-spec.md) §4).
 
+**`sign_public` is taken from the signature file itself.** So `signature_ok = True` means the packet
+is internally consistent with the key sitting next to it — *not* that the producer signed it. An
+attacker who rewrites `bundle.json`, rebuilds the custody chain, and signs with a freshly generated
+key satisfies every row above. This is unimplemented **FIX-05**; the measured consequences, including
+which tampering it lets through, are enumerated in
+[`tamper-challenge.md`](tamper-challenge.md) §4 and executed by `tests/test_tamper_challenge.py`.
+
+### 2.1 Producer pin (`expected_producer_key` → `producer_key_pinned`)
+
+Optional, recipient-supplied, and the answer to the paragraph above: the base64 Ed25519 key obtained
+through a channel the packet's courier does not control.
+
+| Condition | Result |
+| --- | --- |
+| not supplied | `producer_key_pinned = False`; no pin check runs |
+| not valid base64 | `problems` gains "pinned producer key is not valid base64" |
+| decodes to empty | `problems` gains "pinned producer key is empty" |
+| supplied, but the packet has no readable `sign_public` | `problems` gains "producer key pinned, but this packet has no readable signing key" |
+| supplied and ≠ the packet's `sign_public` | `problems` gains "packet signing key does not match the pinned producer key" |
+| supplied and equal (constant-time) | no problem added |
+
+Any of those problems makes `structurally_intact` — and therefore `evidence_ready` — **False**. The
+pin fails closed: it is never silently skipped. `producer_fingerprint` is **not** a substitute; it is
+derived from `sign_public ‖ box_public`, `box_public` is not in the packet, and the verifier never
+reads it.
+
 ## 3. Chain of custody (`custody_proof` → `custody_ok`)
 
 The chain is parsed and walked; **any** of these makes `custody_ok = False`:
@@ -206,6 +232,15 @@ metadata is stripped, its bytes differ from the sealed original and cannot hash 
 | `originals/<capture_id>` not embedded | `None` (not penalized) |
 | embedded and `sha256` matches `content_hash` | `True` |
 | embedded and hash mismatch | `False` → item not structurally intact; note `embedded original failed fixity` |
+
+**What the timestamp token does and does not reach.** The RFC 3161 token's imprint is
+`content_hash` — the **original** bytes. When originals are not embedded (the default,
+`has_original = false`), no file in the packet is bound by the token: the shared copy a reader
+actually opens is bound only by `shared_hash`, which lives in the re-signable bundle. Embedding
+originals makes the token checkable against real bytes, but still does not tie the shared copy to
+the original — only a `copied_for_sharing` custody entry does, and that entry is rebuildable by
+anyone who re-signs. A recipient who needs the *presented image* anchored must pin the producer key
+(§2.1); the measurements are in [`tamper-challenge.md`](tamper-challenge.md) §4.
 
 ## 5. Independent cross-check without habitable (R-31)
 
