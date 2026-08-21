@@ -45,6 +45,25 @@ RUN apt-get update \
  && rm -rf /var/log/apt /var/log/dpkg.log /var/log/alternatives.log \
  && rm -rf /var/cache/ldconfig
 
+# Remove the base image's bundled pip.
+#
+# python:3.14-slim ships pip via ensurepip so the image is useful standalone,
+# but this relay never runs pip — the comment above already says so. Pip
+# vendors its own copies of its dependencies (see its vendor.txt) rather than
+# depending on packages installed alongside it, and that vendored copy lags
+# upstream: even on the current pip release, it still bundles
+# msgpack 1.1.2 (GHSA-6v7p-g79w-8964, HIGH) and setuptools 70.3.0
+# (CVE-2025-47273, HIGH). Neither is fixable by bumping pip's own version or
+# the base digest — they are pinned inside pip's vendor tree until pip's
+# maintainers refresh it. Since nothing in this image ever imports pip,
+# deleting it removes the code paths those CVEs live in rather than waiting
+# on an upstream release. `python3 -c "import sys"` and the relay's own
+# stdlib-only imports are unaffected — verified by running the built image.
+RUN rm -rf /usr/local/lib/python3.14/site-packages/pip \
+           /usr/local/lib/python3.14/site-packages/pip-*.dist-info \
+           /usr/local/lib/python3.14/site-packages/README.txt \
+           /usr/local/lib/python3.14/ensurepip
+
 # Run as a non-root user.
 RUN useradd --system --uid 10001 --no-create-home relay
 
