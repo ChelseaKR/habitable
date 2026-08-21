@@ -7,6 +7,101 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+### Added
+
+- **`habitable verify --expected-producer-key`, and a measured account of what
+  the verifier does not catch without it.** The bundle signature has always been
+  self-attesting: `bundle.sig.json` carries the very public key used to check it,
+  so `signature_ok` means "this bundle is internally consistent with the key
+  sitting next to it", not "the producer signed this". That is unimplemented
+  FIX-05 and was disclosed in prose. What was not written down is how far it
+  reaches, so `tests/test_tamper_challenge.py` now carries out the attacks and
+  asserts the verdicts — with the attacker recomputing the custody chain from
+  `docs/crypto-spec.md` rather than importing this project's code.
+
+  The result that matters: **the photograph a reader actually looks at is not
+  protected by the timestamp.** An RFC 3161 token's imprint is `content_hash`,
+  the hash of the *original* bytes, and a default packet does not ship the
+  originals — so no file a recipient can open is bound by the token. The shared
+  copy is bound only by `shared_hash`, which lives in the re-signable bundle. An
+  attacker replaces the image, updates `shared_hash`, rewrites the
+  `copied_for_sharing` custody entry, rebuilds the chain, re-signs with a fresh
+  key, and keeps the genuine token in place; `verify --trusted-cert` reports
+  `evidence_ready`. `--include-originals` does **not** close this: replacing the
+  embedded original is caught, because that hash is what the token signed, but
+  replacing only the shared copy still passes — nothing ties the two files
+  together except a custody entry the attacker has already rewritten. Rewriting
+  the narrative, deleting an item, moving a capture date, and swapping unit and
+  case identity are all likewise undetected.
+
+  `--expected-producer-key` takes the base64 Ed25519 key from a packet the
+  recipient already trusts, obtained out of band, and makes a substituted signing
+  key a structural failure. It catches every attack above and fails closed on an
+  unparseable, empty, or unmatchable pin. It is a recipient-side assertion, **not**
+  FIX-05: binding authenticity into the custody chain, so it travels with the
+  evidence instead of depending on the recipient's diligence, remains open.
+  `producer_fingerprint` is not a usable substitute — it is derived from
+  `sign_public ‖ box_public`, `box_public` is not in the packet, so a recipient
+  cannot recompute it, and the verifier never reads it.
+
+  `docs/tamper-challenge.md` publishes the rules for a public tamper-evidence
+  challenge built on this, including the measured baseline above. **The challenge
+  has not been opened and no external party has attempted it**; the prerequisites
+  are listed in its §7.
+
+- **Packet-level problems are now shown in human-readable `verify` output.** A
+  failing version check, a malformed item, or a pinned-key mismatch was only ever
+  visible via `--json`; a human saw `integrity: NOT INTACT` with no reason given.
+
+### Fixed
+
+- **The relay image is now both patched and byte-reproducible, which had been
+  treated as a choice between the two.** `container-scan` had been failing on
+  CVE-2026-53615 (integer overflow in util-linux, HIGH), which reaches nine
+  binary packages in the base image: `util-linux`, `bsdutils`, `mount`, `login`,
+  and the `libblkid1` / `libmount1` / `libsmartcols1` / `libuuid1` /
+  `liblastlog2-2` runtime libraries. Debian fixed it in `2.41.5-0+deb13u1` and
+  shipped that to `trixie-security`, but the upstream `python:3.14-slim` image
+  has not been rebuilt against it — the newest published digest as of
+  2026-08-17 still ships the vulnerable `2.41-5` — so bumping the pinned digest
+  could not clear the finding. `relay/Dockerfile` now applies Debian security
+  updates over the pinned base.
+
+  An earlier attempt at that upgrade layer broke `make relay-repro`, the gate
+  requiring two no-cache rebuilds to produce byte-identical OCI archives, and
+  the two properties looked mutually exclusive. They are not. Diffing the
+  failing archives layer by layer found exactly one file differing between two
+  builds of an identical package set: `/var/cache/ldconfig/aux-cache`, which
+  stores each shared library's inode number and ctime *inside its own bytes* and
+  therefore survives BuildKit's `rewrite-timestamp` normalisation of file
+  mtimes. The four apt/dpkg logs were the visible half of the problem and had
+  already been removed; aux-cache was the half keeping the gate red. Removing it
+  too makes the rebuild byte-identical on both `linux/amd64` and `linux/arm64`,
+  with the CVE cleared.
+
+  Stated limit: the reproducibility claim now counts Debian archive state among
+  its inputs, and `scripts/check_reproducible_relay_image.sh` and
+  `docs/releasing.md` say so. Two builds seconds apart see the same archive and
+  must match. A rebuild months later, after Debian has published a newer
+  security upload, is expected to differ — that difference is the patch
+  arriving, not a reproducibility regression. The image is reproducible at a
+  point in time, not across time.
+
+- **The scanned image is built without cache.** Now that the image applies
+  Debian security updates at build time, a reused `apt-get upgrade` layer would
+  let Trivy scan a package set captured from an earlier archive state and report
+  it as current. Hosted runners start cold, so this was latent rather than live;
+  `--no-cache` removes the assumption instead of depending on it, and a test
+  asserts it stays.
+
+- **A regression test for the cleanup, not only for the wiring.**
+  `tests/test_reproducible_build.py` now asserts that the security-update layer
+  exists *and* that it erases every path measured to be nondeterministic. Both
+  halves are deliberate: requiring the upgrade to be present means the test
+  cannot be satisfied by deleting the layer, so dropping the security updates
+  has to be an explicit decision rather than a quiet edit that turns the suite
+  green.
+
 ## [0.4.0] — 2026-08-16
 
 ### Added

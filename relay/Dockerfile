@@ -9,6 +9,42 @@
 # Pinned by digest for reproducible, tamper-evident builds (Dependabot bumps it).
 FROM python:3.14-slim@sha256:a7fb1e634c4a578f9e0bd6327f11a3cde11b7a9395f48e24360c0988bcc5c2bc
 
+# Apply Debian security updates on top of the pinned digest.
+#
+# The digest pin freezes the package set at whatever upstream built the image
+# with, so a base that is fully patched on the day it is published drifts out of
+# date without its digest changing. CVE-2026-53615 (integer overflow in
+# util-linux, HIGH) is fixed in Debian 2.41.5-0+deb13u1 and has been in
+# trixie-security since before 2026-08-17, but the upstream python:3.14-slim
+# image has not been rebuilt against it: the newest published digest as of
+# 2026-08-17 still ships 2.41-5. Rebasing onto a fresher digest therefore
+# cannot clear the finding, and it reaches nine binary packages
+# (util-linux, bsdutils, mount, login, and the lib{blkid,mount,smartcols,uuid}1
+# and liblastlog2-2 runtime libraries). Only an upgrade layer clears it.
+#
+# The cleanup below is load-bearing, not tidiness. `make relay-repro` rebuilds
+# this image twice with --no-cache and compares the two OCI archives byte for
+# byte. Five apt/dpkg artifacts differ between two builds that install the
+# identical package set, and each was identified by bisecting the failing
+# archive diff rather than guessed at:
+#
+#   /var/log/apt/history.log, /var/log/apt/term.log, /var/log/dpkg.log and
+#   /var/log/alternatives.log record wall-clock times in every entry.
+#
+#   /var/cache/ldconfig/aux-cache stores each shared library's inode number
+#   and ctime inside the file's own bytes. BuildKit's rewrite-timestamp
+#   normalises file mtimes in the layer, so this one survives that
+#   normalisation and is why removing the logs alone still failed the gate.
+#
+# Neither costs anything at runtime: the logs are a build record, and
+# aux-cache is a cache ldconfig regenerates when it next runs.
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/* \
+ && rm -rf /var/log/apt /var/log/dpkg.log /var/log/alternatives.log \
+ && rm -rf /var/cache/ldconfig
+
 # Run as a non-root user.
 RUN useradd --system --uid 10001 --no-create-home relay
 
