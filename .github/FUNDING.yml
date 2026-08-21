@@ -1,0 +1,27 @@
+# FUNDING configuration: habitable takes no money, on purpose.
+#
+# The threat model here assumes a landlord who retaliates, and the audience is
+# tenants and tenant unions documenting conditions in a dispute. Asking someone
+# recording mold in their apartment for a contribution is the wrong ask.
+#
+# There is also deliberately no hosted service, so there is no bill to
+# socialise. Nothing here costs money to run for anyone but the person running
+# it on their own machine.
+#
+# Every platform key below is present and explicitly empty. With no active
+# entries GitHub renders no Sponsor button, and this file overrides the
+# organisation-wide default in ChelseaKR/.github rather than merging with it.
+
+github:           # no GitHub Sponsors
+patreon:          # not used
+open_collective:  # not used
+ko_fi:            # not used
+tidelift:         # not used
+community_bridge: # not used
+liberapay:        # not used
+issuehunt:        # not used
+lfx_crowdfunding: # not used
+polar:            # not used
+buy_me_a_coffee:  # not used
+thanks_dev:       # not used
+custom:           # no external donation links
