@@ -129,12 +129,14 @@ jobs:
           version: "0.11.19"
           enable-cache: false # this job runs once per release; a stale cache is not worth the risk
       - name: Lockfile drift (CQ-09)
-        # Must precede `uv sync` and any `uv run`: `--frozen` installs from uv.lock
-        # without reading pyproject.toml and exits 0 on a drifted lock, and a bare
-        # `uv run` silently relocks, repairing the drift a later check would look for.
+        # Must precede `uv sync` and any `uv run`: a bare `uv run` silently relocks,
+        # repairing the very drift a later check would look for. The sync below asks
+        # for `--locked`, not `--frozen`; `--frozen` installs from uv.lock without
+        # reading pyproject.toml, so it cannot see the two disagree and exits 0 on a
+        # drifted lock.
         run: uv lock --check
       - name: Sync environment (Python 3.14, locked, with dev tools)
-        run: uv sync --frozen
+        run: uv sync --locked
       - name: Run the full gate at the tagged commit (ruff + mypy --strict + pytest + coverage + i18n)
         run: make verify
 
@@ -151,7 +153,7 @@ jobs:
           /tmp/habitable-wheel-smoke/bin/python scripts/smoke_test_installed_wheel.py
       - name: Generate a runtime SBOM (CycloneDX)
         run: |
-          uv sync --frozen --no-dev
+          uv sync --locked --no-dev
           uvx cyclonedx-py environment .venv > dist/sbom.cdx.json
       - name: Hand the exact verified distributions to the PyPI job
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -49,12 +49,14 @@ jobs:
           version: "0.11.19"
           enable-cache: true
       - name: Lockfile drift (CQ-09)
-        # Must precede `uv sync` and any `uv run`: `--frozen` installs from uv.lock
-        # without reading pyproject.toml and exits 0 on a drifted lock, and a bare
-        # `uv run` silently relocks, repairing the drift a later check would look for.
+        # Must precede `uv sync` and any `uv run`: a bare `uv run` silently relocks,
+        # repairing the very drift a later check would look for. The sync below asks
+        # for `--locked`, not `--frozen`; `--frozen` installs from uv.lock without
+        # reading pyproject.toml, so it cannot see the two disagree and exits 0 on a
+        # drifted lock.
         run: uv lock --check
       - name: Sync environment (Python 3.14, locked)
-        run: uv sync --frozen
+        run: uv sync --locked
       - name: Install Chromium for Playwright
         run: uv run playwright install --with-deps chromium
       - name: Run the axe-core accessibility gate
