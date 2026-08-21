@@ -3,8 +3,8 @@
 
 > **Status: mechanism built, challenge not yet published.** Nobody has attempted this
 > challenge. No external party has validated habitable's evidentiary claims. This
-> document defines the rules and publishes the measured baseline; the prerequisites in
-> [§7](#7-before-this-can-go-live) must be met before it is opened. Do not cite this
+> document defines the rules and publishes the measured baseline; the setup in
+> [§7](#7-is-this-publishable-now) remains before it is opened. Do not cite this
 > page as evidence that habitable withstood adversarial review.
 
 habitable's central claim is that a packet is *checkable* rather than *trustworthy* —
@@ -31,12 +31,19 @@ Run against a packet directory, `habitable verify` decides these things and no o
 | Custody chain | entries are strictly sequenced, each `prev_hash` links, each `entry_hash` recomputes, and the walked head equals the declared `head_hash` |
 | Bundle signature | `bundle.json` hashes to `bundle_sha256`, and the Ed25519 signature verifies over it |
 | Timestamp token | the RFC 3161 token's imprint equals the item's `content_hash` and its CMS signature verifies |
+| Packet seal | *if present*, an RFC 3161 token whose imprint is the SHA-256 of the whole `bundle.json` — so it covers every field at once, including every `shared_hash` |
 | Authority anchor (`--trusted-cert`) | the token's signing certificate **is**, or was **directly issued by**, a certificate you supplied |
 | Producer pin (`--expected-producer-key`) | the key that signed the bundle equals a key you supplied |
+| Seal requirement (`--require-packet-seal`) | a packet seal is present, valid, and anchored |
+| Seal date (`--seal-not-after`) | the seal was minted no later than an instant you name — normally the day you received the packet |
 
-The last two are assertions *you* make. Omit them and they are not checked — the report
-says so (`anchors_supplied`, `producer_key_pinned`), and `evidence_ready` stays false
-without an anchor.
+The last four are assertions *you* make. Omit them and they are not checked — the report
+says so (`anchors_supplied`, `producer_key_pinned`, `packet_seal.required`), and
+`evidence_ready` stays false without a certificate anchor.
+
+A seal that *is* present is always checked, whether or not you asked for one. What
+`--require-packet-seal` adds is a verdict on its **absence** — which is the only move an
+attacker has left once a packet is sealed.
 
 ## 2. What it explicitly does not check
 
@@ -53,8 +60,14 @@ without an anchor.
   validity periods, or key usage. `openssl ts -verify` checks *more*. See
   [`verifier-decision-table.md`](verifier-decision-table.md) §5.
 - **That `content_hash` refers to anything you can see.** In a default packet
-  `has_original` is false and the original bytes are not shipped. The timestamp token
-  binds a hash of bytes that are not in the packet. This matters — see §4.
+  `has_original` is false and the original bytes are not shipped. An *item's* timestamp
+  token binds a hash of bytes that are not in the packet. The **packet seal** is what
+  covers the bytes you can open, and only if the packet has one — see §4.
+- **Who the producer is.** No packet establishes that, and after the seal it still
+  doesn't. A seal says *these exact bytes were countersigned by this authority at this
+  time*; it never says who assembled them. Authenticating an unknown party requires an
+  anchor, and habitable has no PKI and runs no key log
+  ([ADR 0011](adr/0011-authority-seal-over-the-whole-packet.md)).
 
 ## 3. The rules
 
@@ -64,14 +77,23 @@ command still reports as `evidence_ready`:**
 ```console
 $ habitable verify \
     --trusted-cert <published-tsa-root.pem> \
-    --expected-producer-key <published-producer-key> \
+    --require-packet-seal \
+    --seal-not-after <the packet's publication date> \
     ./challenge-packet
 ```
 
-Both anchors are mandatory in the challenge invocation, and both are published out of
-band alongside the packet. That is the whole point: an anchor a challenger can rewrite
-is not an anchor. A "break" found by omitting them is not a break — it is the documented
-behaviour in §4, and it is why the flags exist.
+Note what is *not* in that command: `--expected-producer-key`. The challenge is run
+unpinned on purpose, because a pin only helps a recipient who already holds a trustworthy
+key, and most recipients do not. Everything above is either published (the TSA
+certificate), a policy switch (`--require-packet-seal`), or a date anyone can read off
+this page (`--seal-not-after`). None of it is a secret an entrant lacks.
+
+The publication date is the anchor that makes this hard. No authority will backdate a
+token, so any packet an entrant re-seals is provably younger than the challenge itself.
+That is the same protection a real recipient gets from the date they took delivery.
+
+A "break" found by *omitting* these flags is not a break — it is the documented behaviour
+in §4, and it is why the flags exist.
 
 **In scope**
 
@@ -86,10 +108,13 @@ behaviour in §4, and it is why the flags exist.
 
 - Attacks that need the producer's private key, the vault passphrase, or the TSA's
   signing key. Compromising a key is not defeating tamper-evidence.
-- Changing what the anchors say. Substituting the published producer key or TSA root is
-  assumed impossible by construction; that is what "out of band" means.
+- Changing what the anchors say. Substituting the published TSA root is assumed
+  impossible by construction; that is what "out of band" means.
 - Denial of service against any host, and anything touching a real person's data.
-- Findings against `evidence_ready` computed without the pin (§4).
+- Findings against `evidence_ready` computed without the flags in §3 — those are the
+  measured baseline in §4, not discoveries.
+- Persuading the timestamp authority to backdate a token. That is an attack on the TSA,
+  not on habitable, and it is the assumption every RFC 3161 deployment rests on.
 
 **Reporting.** Privately, per [`SECURITY.md`](../SECURITY.md): GitHub private
 vulnerability reporting, or `ckellyreif@gmail.com` with a subject starting
@@ -108,44 +133,116 @@ this project's code.
 The crux is that **the bundle signature is self-attesting**. `bundle.sig.json` carries
 the very public key used to check it, so an attacker rewrites `bundle.json`, recomputes
 the entire custody chain (all unkeyed SHA-256), signs with a freshly generated key, and
-writes their own `sign_public`. This is tracked as unimplemented **FIX-05**
+writes their own `sign_public`. This was tracked as unimplemented **FIX-05**
 (`docs/ideation/02-large-scale-fixes.md`) and disclosed on the
 [trust and limitations](https://habitable.chelseakr.com/trust-limitations/) page.
 
-| Attack (all re-signed with a foreign key) | Without pin | With pin |
-| --- | --- | --- |
-| Media byte flipped / truncated, bundle untouched | **caught** | caught |
-| Bundle edited, not re-signed | **caught** | caught |
-| Custody entry deleted, sequence left with a gap | **caught** | caught |
-| Item's `content_hash` altered | **caught** (token imprint) | caught |
-| Timestamp token removed | **caught** | caught |
-| Token re-minted by an attacker-controlled authority | **caught** (anchor) | caught |
-| Issue narrative rewritten | **MISSED** | caught |
-| An evidence item deleted entirely | **MISSED** | caught |
-| Capture date moved | **MISSED** | caught |
-| Unit and case identity swapped | **MISSED** | caught |
-| `producer_fingerprint` copied across verbatim | **MISSED** | caught |
-| **The photograph replaced, genuine token retained** | **MISSED** | caught |
-| Same, in a packet built with `--include-originals` | **MISSED** | caught |
-| Embedded *original* replaced | **caught** (token imprint) | caught |
+The **packet seal** ([ADR 0011](adr/0011-authority-seal-over-the-whole-packet.md)) is the
+structural answer: an RFC 3161 token over the SHA-256 of the whole `bundle.json`, so one
+signature the attacker cannot mint covers every field they wanted to edit — including
+every `shared_hash`, i.e. the photographs. Columns 2–4 below are the three postures a
+recipient can take, from weakest to strongest.
 
-Two results deserve emphasis, because neither was previously written down:
+| Attack (all re-signed with a foreign key) | Nothing asserted | `--require-packet-seal` | + `--seal-not-after` |
+| --- | --- | --- | --- |
+| Media byte flipped / truncated, bundle untouched | **caught** | caught | caught |
+| Bundle edited, not re-signed | **caught** | caught | caught |
+| Custody entry deleted, sequence left with a gap | **caught** | caught | caught |
+| Item's `content_hash` altered | **caught** (token imprint) | caught | caught |
+| Timestamp token removed | **caught** | caught | caught |
+| Token re-minted by an attacker-controlled authority | **caught** (anchor) | caught | caught |
+| Seal retained over a rewritten bundle | **caught** (seal imprint) | caught | caught |
+| Seal lifted from a different, genuine packet | **caught** (seal imprint) | caught | caught |
+| Seal replaced with a malformed record | **caught** | caught | caught |
+| Issue narrative rewritten | **MISSED** | **caught** | caught |
+| An evidence item deleted entirely | **MISSED** | **caught** | caught |
+| Capture date moved | **MISSED** | **caught** | caught |
+| Unit and case identity swapped | **MISSED** | **caught** | caught |
+| `producer_fingerprint` copied across verbatim | **MISSED** | **caught** | caught |
+| **The photograph replaced, genuine item token retained** | **MISSED** | **caught** | caught |
+| Same, in a packet built with `--include-originals` | **MISSED** | **caught** | caught |
+| Embedded *original* replaced | **caught** (token imprint) | caught | caught |
+| Seal deleted outright, then the bundle rewritten | **MISSED** | **caught** | caught |
+| Fully rehashed forgery re-sealed by an authority you did **not** anchor | **MISSED** | **caught** | caught |
+| Fully rehashed forgery re-sealed by an authority you **did** anchor | **MISSED** | **MISSED** | **caught** |
 
-**The visible photograph is not protected by the timestamp.** The RFC 3161 token binds
-`content_hash`, which is the hash of the *original* bytes. A default packet does not ship
-the originals, so nothing a recipient can open is bound by the token. The image rendered
-into `packet.html` and `packet.pdf` is bound only by `shared_hash`, which sits in the
-rewritable bundle. An attacker replaces the picture, updates `shared_hash`, rewrites the
-`copied_for_sharing` custody entry, rebuilds the chain, re-signs — and keeps the genuine,
-unforgeable timestamp token in place. The verifier reports `evidence_ready`.
+Note the **"re-sealed by an authority you did not anchor"** row, because the obvious
+guess is wrong. A seal from an authority you never anchored does **not** by itself sink
+the verdict: like an absent seal, an untrusted one is reported rather than fatal. Making it fatal would mean a
+producer who seals with an authority you happen not to trust ends up *worse off than one
+who never sealed at all* — a rule that punishes the more careful producer. So the
+untrusted seal is visible in `verify`'s output and in `packet_seal.trusted`, and it
+becomes a verdict under `--require-packet-seal`. The trade is deliberate; it is not an
+oversight, and it is why the challenge invocation in §3 carries that flag.
 
-**`--include-originals` does not close it.** With originals embedded, replacing the
-*original* is caught, because that hash is what the token signed. Replacing only the
-*shared copy* still passes: nothing ties the two files to each other except a custody
-entry the attacker has already rewritten. The attacker has no reason to touch the
-original — nobody looks at `originals/`.
+Every `--expected-producer-key` row from the previous revision of this table still holds:
+the pin catches everything in the MISSED column too. It is left out of the table because
+it answers a different question (*is this the producer I know?*) and because it is
+useless to the recipient this challenge is about — one with no prior relationship.
 
-Both collapse to the same root cause, and the pin closes both.
+### The three results that deserve emphasis
+
+**The visible photograph was not protected by the timestamp, and now can be.** The RFC
+3161 *item* token binds `content_hash`, the hash of the original bytes. A default packet
+does not ship the originals, so nothing a recipient can open was bound by it. The image
+rendered into `packet.html` and `packet.pdf` is bound by `shared_hash`, which sits in the
+bundle — and the seal's imprint is the bundle. An attacker who replaces the picture must
+now also delete the seal, which is a thing a recipient can ask about; before, they had to
+delete nothing.
+
+**`--include-originals` still does not close it on its own.** With originals embedded,
+replacing the *original* is caught because that hash is what the item token signed.
+Replacing only the *shared copy* passes every item-level check: nothing ties the two files
+to each other except a custody entry the attacker rewrote. It is the seal, not the
+embedded original, that catches it.
+
+**A forger who can reach your own authority is not stopped, only dated.** FreeTSA and
+every other public authority will stamp any digest for anyone. Such an attacker re-seals
+the rewritten bundle and passes `--require-packet-seal`. What they cannot do is backdate
+it: the new seal carries the true time of the forgery. `--seal-not-after` — normally the
+date you received the packet — is what turns that into a caught case. This is measured in
+`test_the_fully_rehashed_forgery_is_MISSED_when_it_can_reach_your_authority`, asserted as
+a miss in the middle column and as caught in the last.
+
+### The residual, in one sentence
+
+An attacker who can reach an authority you trust **and** can put the packet in front of
+you before you ever saw the genuine one is not detected by anything in this table. That
+is the honest boundary of tamper-evidence without a producer identity anchor, and it is
+why `--expected-producer-key` still exists for the recipients who can use it.
+
+## 4a. Requiring the seal, and dating it
+
+```console
+$ habitable verify --trusted-cert tsa.pem --require-packet-seal ./packet
+habitable: integrity: intact; timestamp authority: trusted (2/2 items); evidence readiness: READY
+           authority seal: this packet's exact contents were countersigned by …
+
+$ habitable verify --trusted-cert tsa.pem --require-packet-seal ./tampered
+habitable: … integrity: NOT INTACT …
+           authority seal: none. Nothing binds this packet's contents as a whole, …
+  · packet seal required, but this packet carries no authority seal over its contents
+```
+
+The seal line is printed on **every** run, pass or fail, pinned or not. "No seal" is the
+state that lets a rewritten packet through, so a recipient must never have to know to ask
+before being told.
+
+`--seal-not-after` takes any ISO 8601 instant; a bare date means midnight UTC, so
+`--seal-not-after 2026-08-19` means "nothing minted after that day began". Both flags fail
+closed: an unparseable date, or either assertion made against a packet with no seal at
+all, is a problem rather than a skipped check.
+
+On the producing side, sealing is automatic whenever an authority is configured and
+reachable — it is the first network fetch `habitable export` has ever made. `--no-seal`,
+`--dev-tsa`, `--wifi-only`, and simply being offline each produce an unsealed packet
+rather than a failed export, and the command says which happened.
+
+**What the seal does not do.** It does not identify the producer, and a packet built
+offline has none — that is a real state, not a failure, and it verifies exactly as it did
+before. An attacker's cheapest move against a sealed packet is to delete the seal, and no
+field inside the bundle can prevent that, because the attacker rewrites the bundle. Only
+the recipient asking for one does.
 
 ## 5. Pinning the producer key
 
@@ -164,12 +261,15 @@ It fails closed: an unparseable, empty, or unmatchable pin is a problem, never a
 check. `producer_key_pinned` in the JSON report distinguishes "asserted" from "not
 asserted" so an unpinned pass is never mistaken for a pinned one.
 
-**What pinning does not do.** It is a recipient-side assertion, not FIX-05. It helps only
-a recipient who already holds a trustworthy copy of the key; a first-time recipient who
-receives packet and key through the same channel gains nothing, because an attacker
-controlling that channel supplies both. Binding packet authenticity into the custody
-chain — so authenticity travels with the evidence instead of depending on the recipient's
-diligence — remains open and is a design question, not a patch.
+**What pinning does not do.** It helps only a recipient who already holds a trustworthy
+copy of the key; a first-time recipient who receives packet and key through the same
+channel gains nothing, because an attacker controlling that channel supplies both. That
+is why FIX-05 was answered with the seal (§4a) rather than with the pin: the seal's
+anchor is a published certificate and the recipient's own calendar, neither of which has
+to be handed over by the producer. The pin remains the right tool for a recipient who
+*does* have a prior relationship — an organizer receiving from a tenant they have already
+paired with, for instance — and it catches strictly more than the seal does, including
+the residual in §4.
 
 **Note on the fingerprint.** `producer_fingerprint` is *not* a usable anchor. It is
 derived from `sign_public ‖ box_public`, and `box_public` is not in the packet, so a
@@ -185,23 +285,38 @@ $ uv run pytest tests/test_tamper_challenge.py -v
 Every row in §4 is one test. Misses are asserted *as misses*, so the day one is closed
 the suite fails and this document has to be corrected in the same commit.
 
-## 7. Before this can go live
+## 7. Is this publishable now?
 
-1. **Generate and publish the challenge packet**, with its anchors (producer key, TSA
-   root) published separately from the packet itself.
+**Yes — the blocker is cleared.** The reason it could not be published was that the
+honest invocation (no pin, because most recipients have no key to pin) lost to a text
+editor: rewrite the bundle, re-sign with a fresh key, done. Every entrant would have won
+in an afternoon. With the seal, an entrant must produce an RFC 3161 token, from an
+authority the published certificate anchors, over a bundle they wrote — and dated before
+the challenge was published. Nothing in §4 does that.
+
+That is a claim about difficulty, not impossibility, and the residual is stated in §4
+rather than buried: an adversary who reaches the same public authority **and** intercepts
+the packet before its intended recipient ever sees it is still not detected. A challenge
+cannot simulate that adversary, because a published packet has, by definition, already
+been seen.
+
+Remaining work before opening it — none of it a blocker, all of it setup:
+
+1. **Generate and publish the challenge packet**, sealed, with the TSA certificate
+   published separately from the packet itself, and the publication date stated on this
+   page so `--seal-not-after` is unambiguous.
 2. **Decide the timestamp authority.** The current site sample uses a synthetic authority
    minted at build time. For a public challenge a *real* public authority (FreeTSA is
    already exercised in `tests/test_tsa_real_authority.py`) is materially better: nobody
-   has to take our word that a synthetic signing key was discarded.
-3. **Decide whether to ship the pin as the default posture** — including whether the
-   packet-producing side should publish the producer key somewhere durable, and what a
-   recipient with no prior relationship is expected to do.
-4. **Set the terms**: disclosure window, credit, and whether findings are published in
+   has to take our word that a synthetic signing key was discarded. Note the trade-off
+   the seal makes explicit — a public authority is one an entrant can also use, which is
+   exactly why `--seal-not-after` is in the challenge invocation.
+3. **Set the terms**: disclosure window, credit, and whether findings are published in
    full.
-5. **Consider closing FIX-05 first.** Opening a challenge whose headline gaps are already
-   published is defensible only if the pinned invocation is the one under test. That is
-   how §3 is written, deliberately — but it is a judgement call worth making explicitly
-   rather than by default.
+4. **Decide the default export posture.** Sealing now happens automatically whenever an
+   authority is configured, but a tenant exporting in a basement with no signal gets an
+   unsealed packet. Whether the app should nag, queue a re-export, or say nothing beyond
+   the current disclosure line is a product decision, not a security one.
 
 ## 8. Cross-references
 
@@ -211,5 +326,7 @@ the suite fails and this document has to be corrected in the same commit.
 - [`embedding-the-verifier.md`](embedding-the-verifier.md) — running the verifier subset
   standalone, under Apache-2.0.
 - [`crypto-spec.md`](crypto-spec.md) — the constructions an attacker needs.
+- [`adr/0011-authority-seal-over-the-whole-packet.md`](adr/0011-authority-seal-over-the-whole-packet.md)
+  — why the seal, why not a certificate or a key log, and what stays impossible.
 - [`threat-model.md`](threat-model.md) — the adversary this project designs against.
 - [`SECURITY.md`](../SECURITY.md) — disclosure process.

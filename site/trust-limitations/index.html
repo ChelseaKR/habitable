@@ -99,6 +99,7 @@
                     <li>whether packaged files match their recorded SHA-256 hashes;</li>
                     <li>whether the bundle signature validates against the included public identity;</li>
                     <li>whether supported timestamp-token signatures and message imprints validate;</li>
+                    <li>whether a timestamp authority countersigned the whole bundle, and when — the packet seal, which covers every hash, date, and name in one imprint;</li>
                     <li>whether the custody log is internally consistent and references known records.</li>
                   </ul>
                 </div>
@@ -108,6 +109,7 @@
                     <li>what a capture depicts, where it was made, or whether it is complete;</li>
                     <li>who controlled a signing key or whether that person had authority;</li>
                     <li>that a timestamp authority is trusted by a particular recipient;</li>
+                    <li>who produced a packet: the signing key travels inside it, and a seal attests bytes and time, never an identity;</li>
                     <li>the accuracy, legal significance, or outcome of any housing claim.</li>
                   </ul>
                 </div>
@@ -120,6 +122,7 @@
                 <li>Local encrypted vault storage; the static public site does not host case data.</li>
                 <li>Original capture preservation, content hashing, custody events, and signed bundles.</li>
                 <li>RFC 3161 timestamp support, including an explicit awaiting-timestamp state.</li>
+                <li>A packet seal: an RFC 3161 token over the whole bundle, so a rewritten packet cannot keep it. A packet exported with no network has none, and the verifier says so on every run rather than staying quiet about it.</li>
                 <li>A whole-unit export boundary and a packet disclosure statement covering optional originals and metadata handling.</li>
                 <li>HTML designed for accessibility and covered by automated browser checks, a print-oriented PDF, a machine-readable bundle, and a separate verifier.</li>
                 <li>English and Spanish app interfaces with automated structural and browser accessibility checks.</li>

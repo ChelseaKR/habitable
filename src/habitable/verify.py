@@ -32,7 +32,7 @@ import stat
 from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, BinaryIO
 
@@ -41,12 +41,12 @@ from .crypto import verify as verify_signature
 from .errors import VerificationError
 from .evidence import CustodyLog
 from .timeline import EVENT_TYPES, SOURCES, normalize_occurred_at
-from .tsa import TimestampToken, verify_archive_chain, verify_token
+from .tsa import TimestampInfo, TimestampToken, verify_archive_chain, verify_token
 
 if TYPE_CHECKING:
     from cryptography import x509
 
-__all__ = ["ItemVerdict", "VerificationReport", "verify_packet"]
+__all__ = ["ItemVerdict", "SealVerdict", "VerificationReport", "verify_packet"]
 
 _BUNDLE = "bundle.json"
 _SIGNATURE = "bundle.sig.json"
@@ -235,6 +235,44 @@ _SUMMARY_TEXT = {
     },
 }
 
+_SEAL_TEXT = {
+    "en": {
+        "sealed": (
+            "authority seal: this packet's exact contents were countersigned by {tsa} at "
+            "{gen_time}, and that authority chains to a certificate you supplied"
+        ),
+        "sealed_untrusted": (
+            "authority seal: present ({tsa}, {gen_time}), but its authority does not chain "
+            "to a certificate you supplied, so it anchors nothing you independently trust"
+        ),
+        "broken": "authority seal: PRESENT BUT INVALID — it does not cover this packet",
+        "absent": (
+            "authority seal: none. Nothing binds this packet's contents as a whole, so a "
+            "rewritten packet re-signed with a fresh producer key is indistinguishable "
+            "from this one. Ask the producer to re-export while online."
+        ),
+    },
+    "es": {
+        "sealed": (
+            "sello de la autoridad: el contenido exacto de este expediente fue refrendado "
+            "por {tsa} el {gen_time}, y esa autoridad se encadena a un certificado que "
+            "usted proporcionó"
+        ),
+        "sealed_untrusted": (
+            "sello de la autoridad: presente ({tsa}, {gen_time}), pero su autoridad no se "
+            "encadena a ningún certificado que usted haya proporcionado, así que no ancla "
+            "nada en lo que usted confíe de forma independiente"
+        ),
+        "broken": ("sello de la autoridad: PRESENTE PERO INVÁLIDO — no cubre este expediente"),
+        "absent": (
+            "sello de la autoridad: ninguno. Nada vincula el contenido de este expediente "
+            "en su conjunto, así que un expediente reescrito y refirmado con una clave de "
+            "productor nueva es indistinguible de este. Pida al productor que vuelva a "
+            "exportarlo con conexión."
+        ),
+    },
+}
+
 _ITEM_DETAIL_TEXT = {
     "en": {
         "no_evidence": (
@@ -267,6 +305,50 @@ _ITEM_DETAIL_TEXT = {
         "not_ready": "no está listo como prueba",
     },
 }
+
+
+@dataclass(frozen=True, slots=True)
+class SealVerdict:
+    """What an RFC 3161 authority countersigned about the packet *as a whole*.
+
+    Item timestamps bind one ``content_hash`` each, and in a default packet those
+    are the hashes of original bytes the packet does not ship. The seal is a token
+    over the SHA-256 of the exact ``bundle.json`` bytes, so it binds every field in
+    the bundle at once — including every ``shared_hash``, i.e. the photographs a
+    recipient can actually open, and the custody ``head_hash``.
+
+    Absence is a state, not a failure: a packet exported offline cannot be sealed.
+    It is reported rather than inferred, and a recipient who needs the guarantee
+    asserts it (``require_packet_seal``) instead of hoping for it. See
+    ``docs/adr/0011-authority-seal-over-the-whole-packet.md``.
+    """
+
+    present: bool = False
+    #: The token parses, its signature verifies, and its imprint is this bundle's digest.
+    verified: bool = False
+    #: The sealing authority chains to a caller-supplied certificate. ``dev`` never does.
+    trusted: bool = False
+    kind: str = ""
+    tsa_name: str = ""
+    gen_time: str = ""
+    #: True when the caller asserted the seal must be there (``require_packet_seal``).
+    required: bool = False
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+    @property
+    def ok(self) -> bool:
+        """Present, cryptographically valid over this bundle, and authority-anchored."""
+        return self.present and self.verified and self.trusted
+
+    def statement(self, language: str = "en") -> str:
+        """One localized sentence a human can act on, including when there is no seal."""
+        text = _SEAL_TEXT.get(language.lower().split("-", 1)[0], _SEAL_TEXT["en"])
+        if not self.present:
+            return text["absent"]
+        if not self.verified:
+            return text["broken"]
+        key = "sealed" if self.trusted else "sealed_untrusted"
+        return text[key].format(tsa=self.tsa_name or "?", gen_time=self.gen_time or "?")
 
 
 @dataclass(frozen=True, slots=True)
@@ -378,6 +460,12 @@ class VerificationReport:
     #: anyone who re-signed the bundle with a fresh key. See
     #: ``docs/tamper-challenge.md``.
     producer_key_pinned: bool = False
+    #: What an authority countersigned about the whole bundle, if anything. This is
+    #: the fourth claim alongside the three of ADR 0008 — deliberately reported
+    #: separately rather than folded into them, so no existing verdict changes
+    #: meaning. Seal *problems* do reach ``problems`` (and therefore
+    #: ``structurally_intact``); a merely absent, unasserted seal does not.
+    seal: SealVerdict = field(default_factory=SealVerdict)
 
     @property
     def structurally_intact(self) -> bool:
@@ -464,6 +552,15 @@ class VerificationReport:
             return text["guidance_timestamp_authority_did_not_chain"]
         return text[f"guidance_{self.status}"]
 
+    def seal_statement(self, language: str | None = None) -> str:
+        """Return the localized seal sentence — printed on every run, pass or fail.
+
+        Kept out of :meth:`summary` on purpose: ``summary``'s format string is a
+        stable contract other code and tests read. The seal is new information, so
+        it gets its own line rather than silently reshaping an old one.
+        """
+        return self.seal.statement(language or self.language)
+
 
 def _summary_text(language: str) -> dict[str, str]:
     return _SUMMARY_TEXT.get(language.lower().split("-", 1)[0], _SUMMARY_TEXT["en"])
@@ -478,6 +575,8 @@ def verify_packet(
     *,
     trusted_certs: list[x509.Certificate] | None = None,
     expected_producer_key: str | None = None,
+    require_packet_seal: bool = False,
+    seal_not_after: str | None = None,
 ) -> VerificationReport:
     """Verify a packet directory end to end and return a structured report.
 
@@ -486,6 +585,18 @@ def verify_packet(
     trust). Supplying it turns a substituted signing key into a structural
     failure. Omitting it leaves the signature self-attesting — see
     ``docs/tamper-challenge.md`` for exactly what that does and does not cover.
+
+    ``require_packet_seal`` demands that an authority countersigned the whole
+    bundle (``docs/adr/0011-authority-seal-over-the-whole-packet.md``). Unlike the
+    pin it needs no secret: the anchor is the same ``trusted_certs`` the caller
+    already supplies. A present seal is *always* checked; this flag is what makes
+    an absent or unanchored one a failure rather than a note, and is therefore the
+    answer to an attacker who simply strips the seal out.
+
+    ``seal_not_after`` is an ISO 8601 UTC instant the recipient names — typically
+    the moment they received the packet. A seal minted after it means the bundle's
+    bytes came into existence after the packet reached them, which no honest export
+    can do. It is the anchor every recipient already holds: their own calendar.
     """
     packet_dir = Path(packet_dir)
     bundle_bytes = _read_bundle_bytes(packet_dir)
@@ -493,6 +604,13 @@ def verify_packet(
     language = _s(bundle, "language") or "en"
     pin_problem = _producer_pin_problem(packet_dir, expected_producer_key)
     pinned = expected_producer_key is not None
+    seal, seal_problems = _verify_packet_seal(
+        packet_dir,
+        bundle_bytes,
+        trusted_certs=trusted_certs,
+        required=require_packet_seal,
+        not_after=seal_not_after,
+    )
 
     # Enforce the version contract before trusting the rest of the structure.
     version_problem = _check_packet_version(bundle)
@@ -503,10 +621,15 @@ def verify_packet(
             custody_ok=False,
             custody_length=0,
             items=(),
-            problems=(version_problem, *([pin_problem] if pin_problem else [])),
+            problems=(
+                version_problem,
+                *([pin_problem] if pin_problem else []),
+                *seal_problems,
+            ),
             language=language,
             anchors_supplied=len(trusted_certs or ()),
             producer_key_pinned=pinned,
+            seal=seal,
         )
 
     signature_ok = _verify_signature(packet_dir, bundle_bytes)
@@ -515,6 +638,7 @@ def verify_packet(
     poster_bindings = _poster_bindings(custody)
 
     problems: list[str] = [pin_problem] if pin_problem else []
+    problems.extend(seal_problems)
     items: list[ItemVerdict] = []
     for raw_item in _list(bundle, "items"):
         if not isinstance(raw_item, dict):
@@ -546,6 +670,7 @@ def verify_packet(
         language=language,
         anchors_supplied=len(trusted_certs or ()),
         producer_key_pinned=pinned,
+        seal=seal,
     )
 
 
@@ -1568,6 +1693,160 @@ def _producer_pin_problem(packet_dir: Path, expected_producer_key: str | None) -
     if not hmac.compare_digest(actual, expected):
         return "packet signing key does not match the pinned producer key"
     return None
+
+
+def _packet_seal_record(packet_dir: Path) -> Mapping[str, JSONValue] | None:
+    """The ``packet_seal`` object from ``bundle.sig.json``, or None if there is none.
+
+    A signature file that is missing, unreadable, or carries no seal all mean the
+    same thing to a recipient — there is no authority countersignature to check —
+    and none of them is distinguishable from the others by an honest producer's
+    mistake versus an attacker's deletion. They are collapsed deliberately.
+    """
+    try:
+        signature_bytes = _read_packet_control_file(
+            packet_dir,
+            _SIGNATURE,
+            limit=_MAX_SIGNATURE_BYTES,
+            required=False,
+        )
+        if signature_bytes is None:
+            return None
+        doc = json.loads(signature_bytes)
+        if not isinstance(doc, dict):
+            return None
+        record = doc.get("packet_seal")
+        return record if isinstance(record, dict) else None
+    except _SIGNATURE_READ_ERRORS:
+        return None
+
+
+def _verify_packet_seal(
+    packet_dir: Path,
+    bundle_bytes: bytes,
+    *,
+    trusted_certs: list[x509.Certificate] | None,
+    required: bool,
+    not_after: str | None,
+) -> tuple[SealVerdict, list[str]]:
+    """Check the authority countersignature over the whole bundle.
+
+    Three rules, in this order, and each one is deliberate:
+
+    1. **A seal that is present is always checked.** Its imprint must equal the
+       SHA-256 of the bundle bytes on disk, and its token must verify. A broken
+       seal is a problem whether or not the caller asked for one — a packet that
+       carries a seal not covering it is making a false claim.
+    2. **An absent seal is a state, not a failure**, until the caller says
+       otherwise. Requiring it by default would fail every offline export and every
+       packet in the golden corpus, in exchange for a guarantee an attacker
+       sidesteps by deleting one JSON key. ``required`` is where that judgement
+       belongs — with the recipient.
+    3. **Every assertion fails closed.** An unparseable ``not_after``, or either
+       assertion made against a packet with no seal, is a problem, never a
+       quietly-skipped check.
+    """
+    problems: list[str] = []
+    deadline, deadline_problem = _seal_deadline(not_after)
+    if deadline_problem is not None:
+        problems.append(deadline_problem)
+
+    record = _packet_seal_record(packet_dir)
+    if record is None:
+        if required:
+            problems.append(
+                "packet seal required, but this packet carries no authority seal over its contents"
+            )
+        if not_after is not None and deadline_problem is None:
+            problems.append("seal date asserted, but this packet carries no authority seal to date")
+        return SealVerdict(required=required), problems
+
+    bundle_hash = sha256_bytes(bundle_bytes)
+    try:
+        token = TimestampToken.from_dict(record)
+        info = verify_token(token, bundle_hash, trusted_certs=trusted_certs)
+    except Exception as exc:
+        # A malformed record and a token whose imprint is some *other* bundle both
+        # land here, and both mean the same thing to a recipient: this seal does not
+        # cover the packet in front of them. A hostile token must never escape as a
+        # crash, so the clause is deliberately broad.
+        problems.append(f"packet seal does not cover this bundle: {exc}")
+        return SealVerdict(present=True, required=required, notes=(str(exc),)), problems
+
+    notes: list[str] = []
+    if not info.trusted_chain:
+        notes.append(info.note or "packet seal valid but authority not chained to a trusted root")
+        if required:
+            problems.append(
+                "packet seal required, but its authority does not chain to a certificate "
+                "you supplied"
+            )
+    problems.extend(_seal_deadline_problems(info, deadline=deadline, not_after=not_after))
+    return (
+        SealVerdict(
+            present=True,
+            verified=True,
+            trusted=info.trusted_chain,
+            kind=info.kind,
+            tsa_name=info.tsa_name,
+            gen_time=info.gen_time,
+            required=required,
+            notes=tuple(notes),
+        ),
+        problems,
+    )
+
+
+def _seal_deadline_problems(
+    info: TimestampInfo, *, deadline: datetime | None, not_after: str | None
+) -> list[str]:
+    """Compare when the seal was minted against the instant the recipient named.
+
+    This is the check that costs an attacker something they cannot buy. Rewriting a
+    bundle forces a fresh seal, and no authority will backdate one, so a re-sealed
+    packet is provably younger than the packet the recipient actually received.
+    """
+    if deadline is None:
+        return []
+    sealed_at = _parse_iso_utc(info.gen_time)
+    if sealed_at is None:
+        return ["packet seal carries an unreadable generation time"]
+    if sealed_at > deadline:
+        return [
+            f"packet seal was minted at {info.gen_time}, after the {not_after} you "
+            "supplied: these bundle bytes did not exist when you received this packet"
+        ]
+    return []
+
+
+def _seal_deadline(not_after: str | None) -> tuple[datetime | None, str | None]:
+    """Parse the caller's ``--seal-not-after`` assertion, failing closed."""
+    if not_after is None:
+        return None, None
+    parsed = _parse_iso_utc(not_after.strip())
+    if parsed is None:
+        return None, (
+            f"seal date {not_after!r} is not a valid ISO 8601 UTC instant "
+            "(for example 2026-08-19T00:00:00Z)"
+        )
+    return parsed, None
+
+
+def _parse_iso_utc(value: str) -> datetime | None:
+    """Parse an ISO 8601 instant to an aware UTC datetime, or None if unusable.
+
+    A date with no time is read as midnight UTC, so ``--seal-not-after 2026-08-19``
+    means "nothing minted after that day started". A naive instant is read as UTC:
+    every time this project writes is UTC, and guessing a local zone here would
+    make the same packet pass in one country and fail in another.
+    """
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _verify_custody(bundle: Mapping[str, JSONValue]) -> tuple[bool, int, CustodyLog]:

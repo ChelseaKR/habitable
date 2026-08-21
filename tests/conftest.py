@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 import subprocess
+import urllib.parse
+import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 
@@ -165,3 +167,40 @@ def make_vault(tmp_path: Path) -> Callable[..., Vault]:
         return vault
 
     return _make
+
+
+@pytest.fixture(autouse=True)
+def _no_outbound_network(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail any non-``integration`` test that opens a connection off this machine.
+
+    A vault's default config names public authorities (freetsa, digicert), so any
+    code path that resolves "the configured TSA" and stamps calls out over the
+    network for real. That happened silently when packet sealing (ADR 0011) was
+    added to `habitable export`: the merge gate quietly acquired a dependency on a
+    third party being reachable, and on somebody else's rate limit, with nothing
+    red to show for it.
+
+    Loopback stays open, because the relay and app-server tests legitimately speak
+    HTTP to a local port. Tests that fake `urllib.request.urlopen` themselves are
+    unaffected: their `monkeypatch.setattr` runs after this one and wins. The
+    `integration` marker is the sanctioned way to reach a real service
+    (`make integration`), so it is exempt.
+    """
+    if "integration" in request.keywords:
+        return
+
+    real_urlopen = urllib.request.urlopen
+
+    def guarded(url: object, *args: object, **kwargs: object) -> object:
+        target = url.full_url if isinstance(url, urllib.request.Request) else str(url)
+        host = (urllib.parse.urlsplit(target).hostname or "").lower()
+        if host not in {"localhost", "127.0.0.1", "::1", ""}:
+            raise AssertionError(
+                f"test opened an outbound connection to {target!r}. Unit tests must stay "
+                "offline: use the local_tsa/dev_tsa fixtures, or pass --dev-tsa / "
+                "--no-seal to the command under test. Mark the test `integration` only "
+                "if reaching a real service is the point."
+            )
+        return real_urlopen(url, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(urllib.request, "urlopen", guarded)

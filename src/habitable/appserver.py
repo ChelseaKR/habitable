@@ -399,6 +399,10 @@ class AppServer:
             issue_id=issue_id,
             include_originals=include_originals,
             handoff_profile=_opt_str(body, "handoff_profile") or None,
+            # Seal with the same authority this device stamps captures with. Absent
+            # or unreachable, the packet exports unsealed and says so, exactly as on
+            # the command line (docs/adr/0011-authority-seal-over-the-whole-packet.md).
+            tsa=self.tsa,
         )
         report = verify_packet(out)
         # The same honest "what this proves / does not" statement the packet carries,
@@ -412,6 +416,15 @@ class AppServer:
             "awaiting": result.item_count - result.timestamped_count,
             "awaiting_only": _awaiting_only(report),
             "disclosures": list(result.disclosures),
+            # Whether an authority countersigned the whole bundle, and what to say
+            # about it. An unsealed export is not an error, but the app must not
+            # let it look identical to a sealed one.
+            "packet_seal": {
+                "sealed": result.seal.sealed,
+                "authority": result.seal.authority,
+                "gen_time": result.seal.gen_time,
+                "note": result.seal.note,
+            },
             "proof": {
                 "heading": stmt.heading,
                 "proves_heading": stmt.proves_heading,

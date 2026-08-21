@@ -419,6 +419,15 @@ producer's device Ed25519 key signs `bundle_sha256` (hex, ASCII) into `bundle.si
 (`{producer_fingerprint, sign_public(b64), bundle_sha256, signature(b64)}`). The verifier recomputes
 `bundle_sha256`, checks it matches the claimed value, and verifies the signature over it.
 
+**This signature is self-attesting and a reviewer must read it as such.** `sign_public` is carried
+in the same file it authenticates, so `signature_ok` means *this bundle is internally consistent
+with the key beside it* — never *the producer signed this*. Anyone who rewrites `bundle.json`,
+recomputes the (unkeyed) custody chain from §6.2, and signs with a fresh Ed25519 key produces a
+packet where `signature_ok` is true. The measured consequences are tabulated in
+[`tamper-challenge.md`](tamper-challenge.md) §4. Two mechanisms constrain it: an out-of-band key pin
+(`verify --expected-producer-key`), and the packet seal below, which is the one that needs no
+secret.
+
 ### 6.4 Trusted time (RFC 3161)
 
 The content **hash** — never the file — is sent to an RFC 3161 TSA, which returns a signed token
@@ -434,6 +443,51 @@ config ships more than one); the primary token is in `timestamp` and independent
 hash are in `additional_timestamps`, so the existence proof does not rest on a single TSA. The
 verifier accepts an item if at least one authority verifies and reports all that did.
 
+### 6.5 Packet seal — trusted time over the whole bundle
+
+Every construction above binds one value at a time: an item's `content_hash`, one custody entry's
+predecessor. Nothing binds a packet *as a whole*, which is why a rewritten bundle is cheap. The seal
+closes that:
+
+```
+seal_token = TSA.stamp( SHA-256( exact bytes of bundle.json ) )
+```
+
+The result is stored beside the producer signature, as a `packet_seal` member of `bundle.sig.json`,
+in the same opaque `{kind, tsa_name, token_b64}` form as every other token:
+
+```json
+{
+  "producer_fingerprint": "…", "sign_public": "…", "bundle_sha256": "…", "signature": "…",
+  "packet_seal": { "kind": "rfc3161", "tsa_name": "…", "token_b64": "…" }
+}
+```
+
+Because the imprint is a digest of the whole serialized bundle, the seal covers **every** field at
+once — the narrative, `unit`, `case_id`, `generated_at`, each item's `captured_at`, each
+`shared_hash` (i.e. the bytes a recipient can actually open), and the custody `head_hash`. There is
+no partially-covered subset and no second canonicalization: the imprint is over the file as written.
+
+The bundle format is unchanged and `packet_version` does not move. The seal lives in the signature
+sidecar, which was never covered by the signature it contains, so a v1–v4 packet with a seal and one
+without are both well-formed.
+
+**Verification** (`verify._verify_packet_seal`): recompute the bundle digest, parse the token, run
+the same `verify_token` used for item timestamps against that digest, and report four things —
+`present`, `verified`, `trusted` (the authority chains to a caller-supplied certificate; `dev` never
+does), and `required`. A present seal is always checked and a broken one is always a problem. An
+*absent* seal is a state, not a failure, until the caller asserts `require_packet_seal`; requiring it
+by default would fail every offline export in exchange for a guarantee an attacker sidesteps by
+deleting one JSON key. `seal_not_after` compares the token's `genTime` against an instant the
+recipient names.
+
+**What it proves, exactly.** *These exact bytes were countersigned by authority A no later than T.*
+It does not identify the producer. An adversary who can obtain a token from an authority the
+recipient trusts can re-seal a rewritten bundle — they simply cannot backdate it, so the forgery
+carries the true time of the forgery. The design rationale, the alternatives rejected (producer
+certificate, key transparency log, TSA-countersigned key birth), and the residual attacks are in
+[`adr/0011-authority-seal-over-the-whole-packet.md`](adr/0011-authority-seal-over-the-whole-packet.md).
+
 ## 7. Review focus / known tradeoffs
 
 Stated plainly so a reviewer can target effort (and so the project isn't accused of hiding them):
@@ -444,6 +498,15 @@ Stated plainly so a reviewer can target effort (and so the project isn't accused
   problem with per-device, opt-in `key harden` profiles (§3.1) rather than by silently raising the
   default; whether `standard` itself should move is a judgment call for the crypto audit, not
   resolved here.
+- **The packet seal's residual is the recipient's trust store, not the construction.** §6.5 binds
+  the whole bundle with a token, but a public authority stamps any digest for anyone, so an
+  adversary who can reach an authority the recipient anchors re-seals a rewritten packet and passes
+  everything except `seal_not_after`. Reviewers should weigh whether "the forgery is forced to carry
+  its true creation time" is the right guarantee to have chosen — and whether a recipient will in
+  practice supply a date. A related judgement: a *missing* seal is not a failure by default, so a
+  recipient who never passes `require_packet_seal` is at the pre-seal baseline. The reasoning, and
+  the fact that no in-packet marker can fix it, is
+  [ADR 0011](adr/0011-authority-seal-over-the-whole-packet.md).
 - **Random 96-bit nonces.** Safe at habitable's message volumes; confirm no key is driven near the
   birthday bound, especially for the long-lived DEK.
 - **Sender authentication of sync payloads** is not provided by the sealed-box primitive. Confirm

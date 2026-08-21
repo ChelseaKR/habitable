@@ -9,6 +9,54 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **The packet seal: an RFC 3161 countersignature over the whole bundle (FIX-05).**
+  Every proof in a packet used to bind exactly one value — an item's
+  `content_hash`, one custody entry's predecessor — and nothing bound the packet as
+  a unit. `habitable export` now asks the configured timestamp authority to stamp
+  the SHA-256 of the finished `bundle.json` and stores the token as `packet_seal`
+  in `bundle.sig.json`. Because the imprint is a digest of the whole file, one
+  signature no producer's device can mint covers every field at once: the
+  narrative, `unit`, `case_id`, `generated_at`, every `captured_at`, every
+  `shared_hash` — **the photographs a reader actually opens** — and the custody
+  `head_hash`.
+
+  This is what closes the headline finding below. Substituting the visible
+  photograph, rewriting the narrative, deleting an item, moving a capture date, and
+  swapping unit and case identity all now cost the attacker the seal, which they
+  cannot re-mint from an authority the recipient anchored.
+
+  `habitable verify` reports the seal as a fourth claim beside the three of ADR
+  0008, and prints its state — including "there is no seal" — on every run in EN
+  and ES. **A present seal is always checked**, asserted or not: a seal that does
+  not cover the packet is a problem. An **absent** seal is a state, not a failure,
+  until a recipient passes `--require-packet-seal`; requiring it by default would
+  fail every offline export in exchange for a guarantee an attacker sidesteps by
+  deleting one JSON key. `--seal-not-after ISO8601` rejects a seal minted after an
+  instant the recipient names — normally the day they received the packet, which is
+  an anchor every recipient holds without being given anything.
+
+  **No packet format change and no `packet_version` bump**: the seal lives in the
+  signature sidecar, which no version has ever covered, so every packet in
+  `tests/golden/` verifies exactly as before.
+
+  This is the first time `habitable export` has used the network. `--no-seal`,
+  `--dev-tsa`, an unreachable authority, and `--wifi-only` all degrade to an
+  unsealed packet rather than a failed export — capture's offline-first rule
+  extended to export — and the command says which happened and what it cost
+  (R-18/R-19). `resolve` still *refuses* under `--wifi-only`, because there the
+  fetch is the whole operation; for export the packet is.
+
+  Stated as plainly as the gap was: this does **not** establish producer identity,
+  and it does not stop an adversary who can obtain a token from an authority the
+  recipient trusts — it forces that forgery to carry the true time it was made,
+  which `--seal-not-after` then catches. Both residuals are asserted as misses in
+  `tests/test_tamper_challenge.py`, tabulated in `docs/tamper-challenge.md` §4, and
+  reasoned through in
+  `docs/adr/0011-authority-seal-over-the-whole-packet.md`, which also records why a
+  producer certificate, a key transparency log, and a TSA-countersigned key birth
+  were rejected. The tamper challenge is publishable against the *unpinned*
+  invocation as a result; the remaining items in §7 are setup, not blockers.
+
 - **`habitable verify --expected-producer-key`, and a measured account of what
   the verifier does not catch without it.** The bundle signature has always been
   self-attesting: `bundle.sig.json` carries the very public key used to check it,
@@ -37,9 +85,11 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   `--expected-producer-key` takes the base64 Ed25519 key from a packet the
   recipient already trusts, obtained out of band, and makes a substituted signing
   key a structural failure. It catches every attack above and fails closed on an
-  unparseable, empty, or unmatchable pin. It is a recipient-side assertion, **not**
-  FIX-05: binding authenticity into the custody chain, so it travels with the
-  evidence instead of depending on the recipient's diligence, remains open.
+  unparseable, empty, or unmatchable pin. It is a recipient-side assertion that
+  presupposes its own answer — it helps only someone who already holds a
+  trustworthy copy of the key — which is why the packet seal above, and not the
+  pin, is what answered FIX-05. The pin remains the stronger tool for a recipient
+  who does have a prior relationship, and it still catches the seal's residuals.
   `producer_fingerprint` is not a usable substitute — it is derived from
   `sign_public ‖ box_public`, `box_public` is not in the packet, so a recipient
   cannot recompute it, and the verifier never reads it.
@@ -54,6 +104,16 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   visible via `--json`; a human saw `integrity: NOT INTACT` with no reason given.
 
 ### Fixed
+
+- **The test suite can no longer reach the internet without saying so.** A vault's
+  default config names public timestamp authorities, so the moment `export` learned
+  to seal, several CLI tests began making real HTTPS requests to freetsa.org —
+  turning the merge gate into something that depends on a third party being up and
+  on somebody else's rate limit, with nothing red to show for it. `tests/conftest.py`
+  now fails any test not marked `integration` that opens a connection off the
+  machine, naming the URL and the offline fixture or flag to use instead. Loopback
+  stays open for the relay and app-server tests, and tests that fake `urlopen`
+  themselves are unaffected. Caught while reviewing the seal change, not by CI.
 
 - **The relay image is now both patched and byte-reproducible, which had been
   treated as a choice between the two.** `container-scan` had been failing on

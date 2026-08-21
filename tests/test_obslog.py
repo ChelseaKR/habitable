@@ -252,6 +252,7 @@ def _run_flow(
                 passphrase,
                 "--out",
                 str(packet),
+                "--dev-tsa",  # seal offline: a unit test must never call a public TSA
             ]
         )
         == 0

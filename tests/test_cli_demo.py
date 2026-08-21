@@ -58,7 +58,7 @@ def _init_capture_export(
     assert main(["status", "--vault", str(vault)]) == 0
 
     packet = tmp_path / "packet"
-    assert main(["export", "--vault", str(vault), "--out", str(packet)]) == 0
+    assert main(["export", "--vault", str(vault), "--out", str(packet), "--dev-tsa"]) == 0
     return packet
 
 
@@ -226,7 +226,7 @@ def test_cli_export_discloses_awaiting_state(
     assert main([*capture_args, "--no-timestamp"]) == 0
     capsys.readouterr()
 
-    assert main(["export", "--vault", str(vault), "--out", str(tmp_path / "p1")]) == 0
+    assert main(["export", "--vault", str(vault), "--out", str(tmp_path / "p1"), "--dev-tsa"]) == 0
     out = capsys.readouterr().out
     assert "awaiting a timestamp token" in out
     assert "habitable resolve" in out
@@ -234,7 +234,7 @@ def test_cli_export_discloses_awaiting_state(
     # Once every item is timestamped, the hint disappears — nothing cries wolf.
     assert main(["resolve", "--vault", str(vault), "--dev-tsa"]) == 0
     capsys.readouterr()
-    assert main(["export", "--vault", str(vault), "--out", str(tmp_path / "p2")]) == 0
+    assert main(["export", "--vault", str(vault), "--out", str(tmp_path / "p2"), "--dev-tsa"]) == 0
     out = capsys.readouterr().out
     assert "awaiting a timestamp token" not in out
 
