@@ -91,6 +91,7 @@ def test_cli_profile_artifact_relationship_and_handoff(
                 "--out",
                 str(packet),
                 "--no-pdf",
+                "--dev-tsa",  # seal offline: a unit test must never call a public TSA
                 "--handoff-profile",
                 "repair_delivery",
             ]

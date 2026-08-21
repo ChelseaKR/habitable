@@ -5,6 +5,7 @@ Wi-Fi-only / metered network gate (items R-03, R-18, R-19)."""
 
 from __future__ import annotations
 
+import json
 import threading
 import tomllib
 from collections.abc import Callable
@@ -280,3 +281,117 @@ def test_allow_metered_overrides_config_gate(make_vault: Callable[..., Vault]) -
         ]
     )
     assert code == 0
+
+
+# --- R-19 + ADR 0011: sealing a packet is the one network fetch export can make ---
+
+
+def _one_capture_vault(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    name: str,
+) -> Vault:
+    vault = make_vault(name)
+    issue = vault.document.add_issue(category="mold", room="bathroom", title="Leak")
+    capture(vault, make_jpeg(f"{name}.jpg"), issue_id=issue, tsa=local_tsa)
+    return vault
+
+
+def test_export_wifi_only_skips_the_seal_instead_of_refusing_the_packet(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The packet is the point; the seal is the improvement.
+
+    `resolve` refuses under wifi-only because fetching *is* the operation. Export's
+    network fetch is an add-on, so the gate costs the packet its seal, not its
+    existence — and says which happened rather than exporting a quietly weaker
+    packet.
+    """
+    vault = _one_capture_vault(make_vault, make_jpeg, local_tsa, "wifi-only-vault")
+    packet = tmp_path / "wifi-only-packet"
+    code = main(
+        [
+            "export",
+            "--vault",
+            str(vault.path),
+            "--passphrase",
+            "test-passphrase",
+            "--out",
+            str(packet),
+            "--no-pdf",
+            "--wifi-only",
+        ]
+    )
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "packet seal skipped: wifi-only mode" in out
+    assert (packet / "bundle.json").is_file()
+    assert "packet_seal" not in json.loads((packet / "bundle.sig.json").read_text())
+
+
+def test_export_no_seal_makes_no_network_fetch(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    vault = _one_capture_vault(make_vault, make_jpeg, local_tsa, "no-seal-vault")
+    packet = tmp_path / "no-seal-packet"
+    code = main(
+        [
+            "export",
+            "--vault",
+            str(vault.path),
+            "--passphrase",
+            "test-passphrase",
+            "--out",
+            str(packet),
+            "--no-pdf",
+            "--no-seal",
+        ]
+    )
+    assert code == 0
+    out = capsys.readouterr().out
+    # The message must name the actual cause: the user declined, an authority was
+    # not merely absent.
+    assert "packet seal declined (--no-seal)" in out
+    assert "network used" not in out
+    assert "packet_seal" not in json.loads((packet / "bundle.sig.json").read_text())
+
+
+def test_export_dev_tsa_seals_offline(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The offline authority seals without a network fetch — and the resulting seal
+    is still never trusted by a recipient (ADR 0008's DevTSA rule)."""
+    vault = _one_capture_vault(make_vault, make_jpeg, local_tsa, "dev-seal-vault")
+    packet = tmp_path / "dev-seal-packet"
+    code = main(
+        [
+            "export",
+            "--vault",
+            str(vault.path),
+            "--passphrase",
+            "test-passphrase",
+            "--out",
+            str(packet),
+            "--no-pdf",
+            "--dev-tsa",
+        ]
+    )
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "sealed by dev-tsa" in out
+    assert "network used" not in out
+    seal = json.loads((packet / "bundle.sig.json").read_text())["packet_seal"]
+    assert seal["kind"] == "dev"

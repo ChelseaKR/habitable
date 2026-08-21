@@ -111,6 +111,9 @@ $ habitable export --vault ./case-vault --out ./4B-packet
 $ habitable verify ./4B-packet
 $ habitable verify --trusted-cert ./tsa-root.pem ./4B-packet  # additionally anchor TSA trust
 $ habitable verify --trusted-cert ./tsa-root.pem \
+    --require-packet-seal \
+    --seal-not-after 2026-08-19 ./4B-packet                    # require the authority seal, dated
+$ habitable verify --trusted-cert ./tsa-root.pem \
     --expected-producer-key 'BASE64…' ./4B-packet             # additionally pin who signed it
 ```
 
@@ -120,12 +123,24 @@ are reported separately, but the command exits non-zero and does not call the pa
 Development timestamps are never evidence-ready. Technical readiness does not decide admissibility
 or any legal outcome.
 
-Both anchors are assertions the recipient makes, and omitting them is not neutral. Without
-`--expected-producer-key`, the bundle signature is checked against the key carried *inside* the
-packet, so it establishes internal consistency rather than authorship — anyone who rewrites the
-bundle and re-signs it with a fresh key still passes. What that does and does not let through is
-measured attack by attack in [`docs/tamper-challenge.md`](docs/tamper-challenge.md) and executed by
-`tests/test_tamper_challenge.py`; the underlying fix is tracked as FIX-05 and is not implemented.
+These anchors are assertions the recipient makes, and omitting them is not neutral. The bundle
+signature is checked against the key carried *inside* the packet, so on its own it establishes
+internal consistency rather than authorship — anyone who rewrites the bundle and re-signs it with a
+fresh key passes that check.
+
+What constrains that is the **packet seal**: when an authority is reachable, `export` has it
+countersign the SHA-256 of the whole `bundle.json`, so a single signature no producer can mint
+covers every hash, date, and name — including the images a reader actually opens. A rewritten packet
+cannot keep it. `--require-packet-seal` turns its *absence* into a failure, and unlike
+`--expected-producer-key` it needs no secret: the anchor is the certificate you already supply, plus
+optionally the date you took delivery. A packet exported with no network has no seal, and the
+verifier says so on every run instead of staying quiet.
+
+What that does and does not let through is measured attack by attack in
+[`docs/tamper-challenge.md`](docs/tamper-challenge.md), executed by
+`tests/test_tamper_challenge.py`, and designed in
+[ADR 0011](docs/adr/0011-authority-seal-over-the-whole-packet.md) — including the two residuals it
+does not close: who the producer is, and an adversary who can reach the same authority you trust.
 **No external party has attempted to break a habitable packet.**
 
 ## Screenshots
@@ -268,7 +283,8 @@ when you say?" habitable is built so those answers are independently checkable r
 - **Independently verifiable.** `habitable verify` re-derives shared-media hashes, validates each
   timestamp token's imprint/signature, and walks the custody chain using the packet alone. Passing
   `--trusted-cert` additionally requires the timestamp certificate to chain to a root the recipient
-  selected. Packets that embed originals also permit original-byte fixity checks. Because a TSA's
+  selected, and `--require-packet-seal` requires an authority countersignature over the whole bundle.
+  Packets that embed originals also permit original-byte fixity checks. Because a TSA's
   signing certificate eventually expires, long-held packets can be
   re-timestamped (an archive timestamp over the existing token) so old evidence keeps verifying. The
   verification tool is small and auditable on its own, so a skeptic can confirm a packet without

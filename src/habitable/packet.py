@@ -14,6 +14,14 @@ can verify the copy they hold, the custody binding, and the RFC 3161 token over 
 original hash. The default policy strips embedded metadata; a configured policy may
 retain it. Pass ``include_originals=True`` to also embed byte-exact originals with
 their full metadata for end-to-end fixity (a deliberate, higher-disclosure choice).
+
+That binding is only as strong as the custody entry recording it, and every custody
+entry is inside the bundle the producer signature covers with a key it carries itself.
+Pass ``tsa=`` to close that: the authority countersigns the SHA-256 of the finished
+``bundle.json``, so one token no attacker can mint binds the narrative, the dates, the
+identity, every shared-copy hash, and the custody head together. See
+``docs/adr/0011-authority-seal-over-the-whole-packet.md`` for what that does and does
+not prove.
 """
 
 from __future__ import annotations
@@ -31,7 +39,7 @@ from typing import cast
 from .canonical import JSONValue, canonical_json, sha256_bytes, sha256_file
 from .config import SharingPolicy
 from .disclosure import ScopeStatement, proof_statement, scope_statement
-from .errors import PacketError
+from .errors import PacketError, TimestampError
 from .evidence import CustodyAction, CustodyLog
 from .exif import make_shared_copy
 from .handoff import build_handoff_manifest, render_handoff_html
@@ -40,10 +48,11 @@ from .media_types import REGISTRY as _MEDIA_TYPE_REGISTRY
 from .model import Artifact, Capture, EvidenceRelationship, Issue, TimelineEntry
 from .private_temp import PrivateTempWorkspace, private_temp_workspace
 from .sensor import parse_sensor_csv
+from .tsa import TimestampAuthority, verify_token
 from .usecases import get_profile
 from .vault import Vault
 
-__all__ = ["PACKET_VERSION", "PacketResult", "build_packet"]
+__all__ = ["PACKET_VERSION", "PacketResult", "SealOutcome", "build_packet"]
 
 PACKET_VERSION = 4
 _BUNDLE = "bundle.json"
@@ -89,6 +98,24 @@ _DOCUMENT_EXT_BY_TYPE = {
 
 
 @dataclass(frozen=True, slots=True)
+class SealOutcome:
+    """Whether an authority countersigned this packet's exact bundle bytes.
+
+    The seal is the only thing in a packet that binds it *as a whole* — see
+    ``docs/adr/0011-authority-seal-over-the-whole-packet.md``. It is fetched over
+    the network at export time, so ``sealed`` is False for any packet built
+    offline, without a configured authority, or with sealing switched off. That
+    absence is reported, never inferred: an unsealed packet is a weaker packet
+    and the caller is told which case applies in ``note``.
+    """
+
+    sealed: bool = False
+    authority: str = ""
+    gen_time: str = ""
+    note: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class PacketResult:
     """What was produced and what it discloses."""
 
@@ -102,6 +129,7 @@ class PacketResult:
     includes_originals: bool
     disclosures: tuple[str, ...] = field(default_factory=tuple)
     handoff_paths: tuple[Path, ...] = field(default_factory=tuple)
+    seal: SealOutcome = field(default_factory=SealOutcome)
 
 
 def build_packet(
@@ -116,8 +144,18 @@ def build_packet(
     handoff_profile: str | None = None,
     generated_at: str | None = None,
     policy: SharingPolicy | None = None,
+    tsa: TimestampAuthority | None = None,
 ) -> PacketResult:
     """Assemble and publish a complete packet without exposing partial output.
+
+    ``tsa`` is the authority asked to **seal** the finished packet: it stamps the
+    SHA-256 of the exact ``bundle.json`` bytes, so one unforgeable token covers
+    every field in the bundle — narrative, dates, identity, every media hash, and
+    the custody head. Without it, only each item's own ``content_hash`` is bound,
+    and a recipient cannot tell the producer from anyone who rewrote the bundle
+    and signed it with a fresh key. Passing ``None`` (the default, and what an
+    offline device gets) produces an unsealed packet rather than failing the
+    export; the result says so in ``PacketResult.seal``.
 
     Packet v3 exports the complete custody chain. Until a new packet version defines
     a scoped, rehashed custody view, ``issue_id`` and ``since`` fail before staging so
@@ -163,6 +201,7 @@ def build_packet(
             handoff_profile=handoff_profile,
             generated_at=generated_at,
             policy=sharing,
+            tsa=tsa,
         )
         vault.save()
         vault_saved = True
@@ -188,6 +227,7 @@ def build_packet(
         includes_originals=staged.includes_originals,
         disclosures=staged.disclosures,
         handoff_paths=tuple(out_dir / path.name for path in staged.handoff_paths),
+        seal=staged.seal,
     )
 
 
@@ -204,6 +244,7 @@ def _build_packet_in_dir(  # noqa: C901 -- packet staging keeps one rollback bou
     handoff_profile: str | None,
     generated_at: str | None,
     policy: SharingPolicy | None,
+    tsa: TimestampAuthority | None = None,
 ) -> PacketResult:
     """Build every packet artifact inside a new, unpublished directory."""
     sharing = policy or vault.config.sharing
@@ -357,7 +398,7 @@ def _build_packet_in_dir(  # noqa: C901 -- packet staging keeps one rollback bou
     bundle_bytes = canonical_json(bundle)
     bundle_path = out_dir / _BUNDLE
     bundle_path.write_bytes(bundle_bytes)
-    _write_signature(vault, out_dir, bundle_bytes)
+    seal = _write_signature(vault, out_dir, bundle_bytes, tsa)
     # An accessible HTML rendering always accompanies the packet (the conformant
     # human-readable view; see docs/accessibility/ACR.md).
     from . import htmlpacket
@@ -402,6 +443,7 @@ def _build_packet_in_dir(  # noqa: C901 -- packet staging keeps one rollback bou
         includes_originals=include_originals,
         disclosures=disclosures,
         handoff_paths=handoff_paths,
+        seal=seal,
     )
 
 
@@ -809,17 +851,77 @@ def _timeline_json(
     return payload
 
 
-def _write_signature(vault: Vault, out_dir: Path, bundle_bytes: bytes) -> None:
+def _write_signature(
+    vault: Vault, out_dir: Path, bundle_bytes: bytes, tsa: TimestampAuthority | None = None
+) -> SealOutcome:
+    """Write ``bundle.sig.json``: the producer signature, and the authority seal.
+
+    The producer signature carries the key that verifies it, so on its own it
+    proves only internal consistency (FIX-05). The seal is the part an attacker
+    cannot manufacture: an RFC 3161 token over the SHA-256 of the exact bundle
+    bytes, which therefore covers every field in the bundle at once.
+    """
     bundle_hash = sha256_bytes(bundle_bytes)
     signature = vault.identity.sign(bundle_hash.encode("ascii"))
     public = vault.identity.public()
-    doc = {
+    doc: dict[str, JSONValue] = {
         "producer_fingerprint": public.fingerprint,
         "sign_public": base64.b64encode(public.sign_public).decode("ascii"),
         "bundle_sha256": bundle_hash,
         "signature": base64.b64encode(signature).decode("ascii"),
     }
+    seal = _seal_packet(bundle_hash, tsa)
+    if seal.token is not None:
+        doc["packet_seal"] = cast(JSONValue, seal.token)
     (out_dir / _SIGNATURE).write_text(json.dumps(doc, indent=2, sort_keys=True), encoding="utf-8")
+    return seal.outcome
+
+
+@dataclass(frozen=True, slots=True)
+class _Seal:
+    """The record to write, if any, plus what to tell the operator."""
+
+    token: dict[str, str] | None
+    outcome: SealOutcome
+
+
+def _seal_packet(bundle_hash: str, tsa: TimestampAuthority | None) -> _Seal:
+    """Ask ``tsa`` to countersign the finished bundle; never fail the export.
+
+    Export inherits capture's offline-first rule: an unreachable authority costs
+    the packet its seal, not its existence. The difference is reported rather
+    than swallowed, because an unsealed packet is measurably weaker (see
+    ``docs/tamper-challenge.md`` §4).
+    """
+    if tsa is None:
+        return _Seal(
+            token=None,
+            outcome=SealOutcome(
+                note=(
+                    "no timestamp authority was supplied to seal this packet, so nothing "
+                    "binds its contents as a whole"
+                )
+            ),
+        )
+    try:
+        token = tsa.stamp(bundle_hash)
+        info = verify_token(token, bundle_hash)
+    except TimestampError as exc:
+        return _Seal(
+            token=None,
+            outcome=SealOutcome(
+                note=f"packet seal not obtained from {tsa.name}: {exc}",
+            ),
+        )
+    return _Seal(
+        token=token.to_dict(),
+        outcome=SealOutcome(
+            sealed=True,
+            authority=info.tsa_name,
+            gen_time=info.gen_time,
+            note=f"packet contents sealed by {info.tsa_name} at {info.gen_time}",
+        ),
+    )
 
 
 def _disclosures(

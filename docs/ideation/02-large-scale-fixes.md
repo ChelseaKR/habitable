@@ -156,6 +156,18 @@ undelivered blobs.
 
 ## FIX-05 — Bind packet authenticity to the custody chain (not a self-certifying key)
 
+**Status: answered 2026-08-19, differently than proposed below.**
+[ADR 0011](../adr/0011-authority-seal-over-the-whole-packet.md) shipped a **packet seal** — an
+RFC 3161 token over the SHA-256 of the whole `bundle.json`, which therefore binds the custody head,
+every `shared_hash`, and every narrative field at once. The "shape of the work" sketched below was
+rejected during design: a signature over the custody head still verifies against a key the packet
+carries, so it moves the self-attestation rather than removing it, and threading a bundle
+commitment *through* the chain is circular (the chain is inside the bundle). What remains open, and
+is now stated as such rather than tracked here, is **producer identity**, which no in-packet
+construction can establish. The measured before/after is
+[`tamper-challenge.md`](../tamper-challenge.md) §4. The original pitch is kept verbatim below
+because the reasoning that rejected it is only legible against it.
+
 **Pitch.** Make `signature_ok` mean "this producer, tied to the custody chain, signed
 this," not merely "this bundle is internally consistent."
 

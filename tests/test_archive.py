@@ -131,7 +131,7 @@ def test_retimestamp_cli_flow(
     )
     assert main(["retimestamp", "--vault", str(vault), "--dev-tsa"]) == 0
     packet = tmp_path / "packet"
-    assert main(["export", "--vault", str(vault), "--out", str(packet)]) == 0
+    assert main(["export", "--vault", str(vault), "--out", str(packet), "--dev-tsa"]) == 0
     # Dev timestamps remain mechanically valid but never authority-trusted or ready.
     assert main(["verify", str(packet)]) == 1
     output = capsys.readouterr()

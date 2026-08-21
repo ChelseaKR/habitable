@@ -25,7 +25,7 @@
 > verifier had moved to 4 — an auditor or an embedder working from it was working from a contract
 > the verifier no longer implements (issue #160).
 
-## 0. The three verdicts
+## 0. The three verdicts (and the fourth claim beside them)
 
 `VerificationReport.structurally_intact` is `True` **iff** *all* of:
 
@@ -52,6 +52,11 @@ check, never an implicit trust anchor. `DevTSA` always reports `False`.
 least one item, and every item has a valid, authority-trusted timestamp. `VerificationReport.ok` is
 retained as a fail-closed alias for `evidence_ready`; `ItemVerdict.ok` has the same tightened meaning.
 This is technical readiness, **not** an admissibility or legal-outcome claim.
+
+`VerificationReport.seal` is reported **alongside** those three, never folded into them: it says
+whether a timestamp authority countersigned the whole bundle, which is the only thing in a packet
+that binds it as a unit. It changes a verdict only through `problems` (§2.2) — an absent, unasserted
+seal leaves every verdict above exactly as it was before this check existed.
 
 For migrations, `ItemVerdict.cryptographically_verified` and
 `VerificationReport.cryptographically_verified_items` expose the historical mechanical check:
@@ -99,9 +104,10 @@ errors are caught). Note the signature binds the **producer's** key to the bundl
 **`sign_public` is taken from the signature file itself.** So `signature_ok = True` means the packet
 is internally consistent with the key sitting next to it — *not* that the producer signed it. An
 attacker who rewrites `bundle.json`, rebuilds the custody chain, and signs with a freshly generated
-key satisfies every row above. This is unimplemented **FIX-05**; the measured consequences, including
-which tampering it lets through, are enumerated in
-[`tamper-challenge.md`](tamper-challenge.md) §4 and executed by `tests/test_tamper_challenge.py`.
+key satisfies every row above. This was **FIX-05**; the measured consequences, including which
+tampering it lets through, are enumerated in [`tamper-challenge.md`](tamper-challenge.md) §4 and
+executed by `tests/test_tamper_challenge.py`. Two mechanisms constrain it: the pin (§2.1) and the
+packet seal (§2.2). Neither makes `signature_ok` mean more than it says.
 
 ### 2.1 Producer pin (`expected_producer_key` → `producer_key_pinned`)
 
@@ -121,6 +127,40 @@ Any of those problems makes `structurally_intact` — and therefore `evidence_re
 pin fails closed: it is never silently skipped. `producer_fingerprint` is **not** a substitute; it is
 derived from `sign_public ‖ box_public`, `box_public` is not in the packet, and the verifier never
 reads it.
+
+### 2.2 Packet seal (`packet_seal` → `report.seal`)
+
+An optional RFC 3161 token in `bundle.sig.json` whose imprint is the SHA-256 of the whole
+`bundle.json`. It therefore covers every field the signature covers — but with a signature the
+producer's device cannot mint. See [`crypto-spec.md`](crypto-spec.md) §6.5 and
+[ADR 0011](adr/0011-authority-seal-over-the-whole-packet.md).
+
+| Condition | Result |
+| --- | --- |
+| no `packet_seal` (missing/unreadable signature file, or the key is absent) | `seal.present = False`; **no problem** unless asserted below |
+| `packet_seal` present but not a token record, or its imprint ≠ the recomputed bundle digest, or its signature fails | `seal.present = True`, `seal.verified = False`; `problems` gains "packet seal does not cover this bundle: …" |
+| present and valid, authority does **not** chain to a supplied certificate | `seal.trusted = False`; a note, and a problem **only** when `require_packet_seal` |
+| present, valid, `kind = "dev"` | `seal.trusted` is always `False` (the DevTSA rule, ADR 0008) |
+| present, valid, authority chains | `seal.ok = True` |
+| `require_packet_seal` and no seal | `problems` gains "packet seal required, but this packet carries no authority seal over its contents" |
+| `require_packet_seal` and an unanchored authority | `problems` gains "packet seal required, but its authority does not chain to a certificate you supplied" |
+| `seal_not_after` is not a valid ISO 8601 instant | `problems` gains "seal date … is not a valid ISO 8601 UTC instant" |
+| `seal_not_after` supplied and there is no seal | `problems` gains "seal date asserted, but this packet carries no authority seal to date" |
+| `seal_not_after` supplied and the seal's `genTime` is later | `problems` gains "packet seal was minted at …, after the … you supplied" |
+
+Any of those problems makes `structurally_intact` — and therefore `evidence_ready` — **False**. Two
+asymmetries are deliberate:
+
+- **A present seal is always checked**, asserted or not. A packet carrying a seal that does not
+  cover it is making a false claim, and silence about that would be worse than no seal at all.
+- **An absent seal is a state, not a failure.** A packet exported offline has none, and it verifies
+  exactly as it did before this check existed. Requiring a seal by default would fail every such
+  packet — and every packet in `tests/golden/` — in exchange for a guarantee an attacker sidesteps
+  by deleting one JSON key. Recipient policy is the only thing that can close that, which is why
+  `require_packet_seal` exists and why the CLI prints the seal's state on every run.
+
+`report.seal_statement(language)` renders that state as one localized sentence (EN/ES), including
+the "there is no seal" case.
 
 ## 3. Chain of custody (`custody_proof` → `custody_ok`)
 
@@ -289,6 +329,23 @@ $ openssl ts -verify -digest <content_hash_hex> -in token.tsr -CAfile <tsa-ca-ch
 
 The imprint in the token must equal the item's `content_hash`, and `genTime` is the upper bound on
 when that content existed.
+
+**e) Packet seal** — `bundle.sig.json` `.packet_seal.token_b64` is the same DER token structure,
+but its imprint is the SHA-256 of `bundle.json` itself. Same tools, one different digest:
+
+```console
+$ python3 -c 'import base64,json; \
+  t=json.load(open("bundle.sig.json"))["packet_seal"]["token_b64"]; \
+  open("seal.tsr","wb").write(base64.b64decode(t))'
+$ openssl ts -reply -in seal.tsr -text                  # genTime = when this bundle existed
+$ openssl ts -verify -digest $(sha256sum bundle.json | cut -d" " -f1) \
+    -in seal.tsr -CAfile <tsa-ca-chain.pem>
+```
+
+If that verifies, every byte of `bundle.json` — every hash, date, name, and the custody head —
+existed in exactly this form by `genTime`, attested by a party that is not the producer. A packet
+with no `packet_seal` key simply has no such attestation; that is the pre-seal baseline, not a
+failure.
 
 **One documented, deliberate difference before you file a bug.** `openssl ts -verify -CAfile`
 performs full X.509 **path validation**: it discovers intermediates, and checks validity periods,

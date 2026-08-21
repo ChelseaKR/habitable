@@ -265,6 +265,18 @@ def _build_parser() -> argparse.ArgumentParser:
     p_export.add_argument("--include-originals", action="store_true")
     p_export.add_argument("--no-pdf", action="store_true")
     p_export.add_argument(
+        "--no-seal",
+        action="store_true",
+        help="do not ask a timestamp authority to countersign the finished packet. "
+        "The packet still exports, but nothing binds its contents as a whole: see "
+        "docs/adr/0011-authority-seal-over-the-whole-packet.md",
+    )
+    p_export.add_argument(
+        "--dev-tsa",
+        action="store_true",
+        help="seal with the offline dev authority (never trusted by a recipient)",
+    )
+    p_export.add_argument(
         "--inspector-view",
         action="store_true",
         help="also write inspector.html organized by room → condition → timeline",
@@ -274,6 +286,11 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=[item.profile_id for item in list_profiles()],
         help="also render a signed recipient handoff manifest for this workflow",
     )
+    # Sealing is the one part of export that can touch the network, so export joins
+    # resolve/retime/sync under the metered-link gate (item R-19). Unlike those, a
+    # closed gate skips the seal instead of refusing: a tenant on a metered link must
+    # still be able to hand someone a packet.
+    add_metered(p_export)
     p_export.set_defaults(func=_cmd_export)
 
     def add_campaign_vaults(p: argparse.ArgumentParser) -> None:
@@ -377,6 +394,21 @@ def _build_parser() -> argparse.ArgumentParser:
         "`sign_public` value of a packet you already trust). Without it the "
         "signature is checked against the key carried inside the packet, so "
         "anyone who rewrote the bundle and re-signed it still passes.",
+    )
+    p_verify.add_argument(
+        "--require-packet-seal",
+        action="store_true",
+        help="require that a timestamp authority countersigned this packet's whole "
+        "bundle. Unlike --expected-producer-key this needs no secret — the anchor is "
+        "the same --trusted-cert you already supply — and it is what stops an attacker "
+        "from simply deleting the seal.",
+    )
+    p_verify.add_argument(
+        "--seal-not-after",
+        metavar="ISO8601",
+        help="reject a packet seal minted after this instant — normally the date you "
+        "RECEIVED the packet (e.g. 2026-08-19). An honest export cannot have been "
+        "sealed after it reached you; a rewritten one has to be.",
     )
     p_verify.add_argument(
         "--lang",
@@ -992,6 +1024,26 @@ def _cmd_retimestamp(args: argparse.Namespace) -> int:
 
 def _cmd_export(args: argparse.Namespace) -> int:
     vault = _open(args)
+    seal_tsa = None if args.no_seal else _tsa_for(vault, dev=args.dev_tsa)
+    # `build_packet` only ever learns that no authority was supplied, so it cannot
+    # report *why*. The CLI knows, and a message that misstates its own cause is
+    # exactly the kind of thing this project treats as a defect.
+    seal_note = ""
+    if args.no_seal:
+        seal_note = (
+            "packet seal declined (--no-seal): nothing binds this packet's contents "
+            "as a whole, so a rewritten copy is indistinguishable from this one"
+        )
+    if isinstance(seal_tsa, Rfc3161HttpTSA) and not _metered_allowed(args, vault):
+        # R-19: never spend a metered link without permission. Refusing the whole
+        # export would be the wrong trade — the packet is the point, the seal is the
+        # improvement — so skip sealing and say so, in the same place the seal would
+        # otherwise be reported.
+        seal_tsa = None
+        seal_note = (
+            "packet seal skipped: wifi-only mode, and sealing needs a network fetch; "
+            "re-export with --allow-metered or on Wi-Fi to bind this packet's contents"
+        )
     result = build_packet(
         vault,
         args.out,
@@ -1001,6 +1053,7 @@ def _cmd_export(args: argparse.Namespace) -> int:
         make_pdf=not args.no_pdf,
         inspector_view=args.inspector_view,
         handoff_profile=args.handoff_profile,
+        tsa=seal_tsa,
     )
     locale = resolve_locale(vault.config.language)
     unit = vault.document.get_meta("unit") or vault.document.case_id
@@ -1031,6 +1084,17 @@ def _cmd_export(args: argparse.Namespace) -> int:
         print(f"           {hint}")
     for note in result.disclosures:
         print(f"           {note}")
+    # The seal is the only thing binding the packet as a whole, so its presence or
+    # absence is stated on every export rather than left for the recipient to
+    # discover (docs/adr/0011-authority-seal-over-the-whole-packet.md).
+    print(f"           {seal_note or result.seal.note}")
+    if not result.seal.sealed:
+        print(
+            "           without it, anyone who rewrites this bundle and signs it with a "
+            "fresh key verifies exactly like you do; re-export while online to seal it"
+        )
+    if seal_tsa is not None:
+        _print_network_cost(seal_tsa, locale)
     # Keep the honest framing unmissable: a trusted timestamp is an upper bound, not
     # proof of authorship/depiction, and this is documentation, not legal advice. The full
     # "what this proves / does not" statement travels in packet.html and bundle.json.
@@ -1215,9 +1279,12 @@ def _cmd_verify(args: argparse.Namespace) -> int:
         args.packet,
         trusted_certs=_load_trusted_certs(args.trusted_cert),
         expected_producer_key=args.expected_producer_key,
+        require_packet_seal=args.require_packet_seal,
+        seal_not_after=args.seal_not_after,
     )
     summary = report.summary(args.lang)
     guidance = report.guidance(args.lang)
+    seal_statement = report.seal_statement(args.lang)
     if args.json:
         payload = {
             # ``ok`` remains for machine compatibility, but now fails closed and is
@@ -1236,6 +1303,20 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             # False means the caller did not pin a producer key, so `signature_ok`
             # only asserts internal consistency with the key inside the packet.
             "producer_key_pinned": report.producer_key_pinned,
+            # The fourth claim: what an authority countersigned about the whole
+            # bundle. `present: false` is a real answer, not a missing field.
+            "packet_seal": {
+                "present": report.seal.present,
+                "verified": report.seal.verified,
+                "trusted": report.seal.trusted,
+                "ok": report.seal.ok,
+                "required": report.seal.required,
+                "kind": report.seal.kind,
+                "tsa_name": report.seal.tsa_name,
+                "gen_time": report.seal.gen_time,
+                "statement": seal_statement,
+                "notes": list(report.seal.notes),
+            },
             "evidence_ready": report.evidence_ready,
             "signature_ok": report.signature_ok,
             "custody_ok": report.custody_ok,
@@ -1280,6 +1361,9 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     # persistent log sink. The summary contains only fixed status vocabulary and counts.
     # codeql[py/clear-text-logging-sensitive-data]
     print(f"habitable: {summary}")
+    # Printed on every run, pass or fail: "no seal" is the state that lets a rewritten
+    # packet pass, so a recipient must never have to ask to be told about it.
+    print(f"           {seal_statement}")
     print(f"           {guidance}", file=sys.stderr if not report.evidence_ready else sys.stdout)
     if not report.evidence_ready:
         # Packet-level problems (version, pinned-key mismatch, malformed items) were

@@ -411,13 +411,17 @@
     },
     "signature": {
       "type": "object",
-      "description": "Contents of the sibling file bundle.sig.json. The producer's Ed25519 key signs the ASCII hex of bundle_sha256.",
+      "description": "Contents of the sibling file bundle.sig.json. The producer's Ed25519 key signs the ASCII hex of bundle_sha256. That key is carried here too, so the signature alone proves internal consistency, not producer identity — packet_seal is the part an attacker cannot manufacture.",
       "required": ["sign_public", "bundle_sha256", "signature"],
       "properties": {
         "producer_fingerprint": { "type": "string" },
         "sign_public": { "type": "string", "contentEncoding": "base64", "description": "Raw Ed25519 public key, base64." },
         "bundle_sha256": { "$ref": "#/$defs/hexSha256", "description": "SHA-256 of the exact bundle.json bytes." },
-        "signature": { "type": "string", "contentEncoding": "base64", "description": "Ed25519 signature over the ASCII of bundle_sha256." }
+        "signature": { "type": "string", "contentEncoding": "base64", "description": "Ed25519 signature over the ASCII of bundle_sha256." },
+        "packet_seal": {
+          "$ref": "#/$defs/timestampToken",
+          "description": "OPTIONAL. An RFC 3161 token whose imprint is bundle_sha256, so it covers every field of bundle.json at once — including every shared_hash and the custody head_hash. Absent for a packet exported offline or with sealing switched off; that is a weaker packet, not an invalid one. Not versioned with the bundle: it lives in this sidecar, which no packet_version has ever covered. See docs/crypto-spec.md §6.5 and docs/adr/0011-authority-seal-over-the-whole-packet.md."
+        }
       },
       "additionalProperties": true
     }

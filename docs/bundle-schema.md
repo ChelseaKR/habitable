@@ -21,7 +21,7 @@ An ordinary publication failure restores the previous complete directory.
 ```
 4B-packet/
 ├── bundle.json            # the canonical, signed manifest (this document)
-├── bundle.sig.json        # producer Ed25519 signature over bundle.json's bytes
+├── bundle.sig.json        # producer Ed25519 signature over bundle.json's bytes + OPTIONAL packet seal
 ├── media/                 # policy-processed shared copies (referenced by items[].shared_name)
 ├── originals/             # OPTIONAL sealed originals (present only with --include-originals)
 ├── packet.html            # accessible human-readable rendering (the conformant view)
@@ -43,6 +43,15 @@ insignificant whitespace, `NaN`/`Infinity` disallowed. This makes the bytes repr
 machines and Python versions — a prerequisite for the signature and for independent verification.
 The signature in `bundle.sig.json` is over the SHA-256 of these exact bytes, so do **not**
 re-serialize `bundle.json` before checking the signature.
+
+That same digest is what an authority countersigns in `bundle.sig.json`'s optional `packet_seal`
+(`{kind, tsa_name, token_b64}`, the ordinary token shape). Because the imprint is a digest of the
+whole file, the seal binds every field documented below at once — including each item's
+`shared_hash`, i.e. the images a recipient can open, and `custody_proof.head_hash`. It is **not**
+part of the versioned bundle format: it lives in the signature sidecar, so a packet of any version
+may carry one or not. A packet exported offline has none. See
+[`crypto-spec.md`](crypto-spec.md) §6.5, [`verifier-decision-table.md`](verifier-decision-table.md)
+§2.2, and [ADR 0011](adr/0011-authority-seal-over-the-whole-packet.md).
 
 ## Top-level fields
 
