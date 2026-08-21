@@ -371,6 +371,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "anchoring to a specific authority.",
     )
     p_verify.add_argument(
+        "--expected-producer-key",
+        metavar="B64",
+        help="the base64 Ed25519 signing key you obtained OUT OF BAND (the "
+        "`sign_public` value of a packet you already trust). Without it the "
+        "signature is checked against the key carried inside the packet, so "
+        "anyone who rewrote the bundle and re-signed it still passes.",
+    )
+    p_verify.add_argument(
         "--lang",
         choices=("en", "es"),
         help="verification output language (default: packet language, then English)",
@@ -1203,7 +1211,11 @@ def _load_trusted_certs(paths: list[Path] | None) -> list[x509.Certificate] | No
 
 
 def _cmd_verify(args: argparse.Namespace) -> int:
-    report = verify_packet(args.packet, trusted_certs=_load_trusted_certs(args.trusted_cert))
+    report = verify_packet(
+        args.packet,
+        trusted_certs=_load_trusted_certs(args.trusted_cert),
+        expected_producer_key=args.expected_producer_key,
+    )
     summary = report.summary(args.lang)
     guidance = report.guidance(args.lang)
     if args.json:
@@ -1221,6 +1233,9 @@ def _cmd_verify(args: argparse.Namespace) -> int:
             # Zero here means authority trust was never assessed, which is a
             # different fact from "assessed and did not chain" (issue #159).
             "anchors_supplied": report.anchors_supplied,
+            # False means the caller did not pin a producer key, so `signature_ok`
+            # only asserts internal consistency with the key inside the packet.
+            "producer_key_pinned": report.producer_key_pinned,
             "evidence_ready": report.evidence_ready,
             "signature_ok": report.signature_ok,
             "custody_ok": report.custody_ok,
@@ -1267,6 +1282,10 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     print(f"habitable: {summary}")
     print(f"           {guidance}", file=sys.stderr if not report.evidence_ready else sys.stdout)
     if not report.evidence_ready:
+        # Packet-level problems (version, pinned-key mismatch, malformed items) were
+        # only ever visible in `--json`, so a human saw "NOT INTACT" with no reason.
+        for problem in report.problems:
+            print(f"  · {problem}", file=sys.stderr)
         for item in report.items:
             if not item.evidence_ready:
                 detail = item.human_detail(args.lang or report.language)
