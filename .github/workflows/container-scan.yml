@@ -6,7 +6,16 @@ name: container-scan
 # any finding here comes from the base image — keeping it on the gate means a
 # newly-disclosed CVE in python:slim blocks the merge (and the weekly run catches
 # CVEs disclosed against an already-merged image). Threshold is CRITICAL,HIGH per
-# docs/standards/SECURITY-AND-SUPPLY-CHAIN-STANDARD.md §6.3.
+# docs/standards/SECURITY-AND-SUPPLY-CHAIN-STANDARD.md §6.3, with no ignore file:
+# a finding is cleared by patching it, not by waiving it.
+#
+# The image applies Debian security updates over its pinned base digest, so a
+# finding clears on the next build once Debian publishes a fix, without waiting
+# for upstream to rebuild python:slim. That is not optional tidiness — see
+# relay/Dockerfile: as of 2026-08-17 the newest published python:3.14-slim digest
+# still shipped a util-linux fixed in Debian, so a digest bump alone could not
+# clear it. What this gate cannot fix is a CVE Debian has not fixed either; that
+# is a real block, and the answer is a base change, not an exception.
 
 # CICD-§11e: the PR run gates the merge and the weekly schedule catches CVEs
 # disclosed after merge — a push:main run would rebuild and rescan the identical
@@ -37,7 +46,12 @@ jobs:
       - name: Set up Buildx with an archive-capable builder
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Build the relay image
-        run: docker build -f relay/Dockerfile -t habitable-relay:scan .
+        # --no-cache is load-bearing now that the image applies Debian security
+        # updates at build time: a cached `apt-get upgrade` layer would let Trivy
+        # scan a package set captured from some earlier archive state and report
+        # it as today's. Hosted runners start cold, so this costs a few seconds
+        # and removes the assumption rather than relying on it.
+        run: docker build --no-cache -f relay/Dockerfile -t habitable-relay:scan .
       - name: Verify byte-identical relay OCI rebuilds
         run: make relay-repro
       - name: Scan the image (Trivy — fail on HIGH,CRITICAL)

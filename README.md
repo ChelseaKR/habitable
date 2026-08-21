@@ -110,6 +110,8 @@ auditability, accessibility, and saying plainly what the tool does not do.
 $ habitable export --vault ./case-vault --out ./4B-packet
 $ habitable verify ./4B-packet
 $ habitable verify --trusted-cert ./tsa-root.pem ./4B-packet  # additionally anchor TSA trust
+$ habitable verify --trusted-cert ./tsa-root.pem \
+    --expected-producer-key 'BASE64…' ./4B-packet             # additionally pin who signed it
 ```
 
 The verification command is the point: a packet is not "trust me." It exposes technical claims a
@@ -117,6 +119,14 @@ third party can re-check. Without `--trusted-cert`, token imprint/signature and 
 are reported separately, but the command exits non-zero and does not call the packet evidence-ready.
 Development timestamps are never evidence-ready. Technical readiness does not decide admissibility
 or any legal outcome.
+
+Both anchors are assertions the recipient makes, and omitting them is not neutral. Without
+`--expected-producer-key`, the bundle signature is checked against the key carried *inside* the
+packet, so it establishes internal consistency rather than authorship — anyone who rewrites the
+bundle and re-signs it with a fresh key still passes. What that does and does not let through is
+measured attack by attack in [`docs/tamper-challenge.md`](docs/tamper-challenge.md) and executed by
+`tests/test_tamper_challenge.py`; the underlying fix is tracked as FIX-05 and is not implemented.
+**No external party has attempted to break a habitable packet.**
 
 ## Screenshots
 

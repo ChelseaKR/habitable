@@ -4,8 +4,17 @@
 #
 # Build the relay twice from the same tracked source and compare the complete
 # OCI archives byte for byte. This proves reproducibility for this pinned base,
-# platform, Dockerfile, and BuildKit invocation; it does not claim that unrelated
-# builder versions or CPU architectures emit the same bytes.
+# platform, Dockerfile, BuildKit invocation, and Debian archive state; it does
+# not claim that unrelated builder versions or CPU architectures emit the same
+# bytes.
+#
+# Debian archive state is on that list because the Dockerfile applies Debian
+# security updates over the pinned base digest (see relay/Dockerfile for why the
+# digest alone leaves a HIGH CVE unpatched). Both builds here run seconds apart
+# against the same archive, so the package set is identical and the comparison
+# is meaningful; a rebuild months later, after Debian has published a newer
+# security upload, is expected to differ and that difference is the patch
+# arriving, not a reproducibility failure.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
