@@ -3,10 +3,19 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import date
+
 import pytest
 
 from habitable.errors import HabitableError
-from habitable.usecases import ARTIFACT_TYPES, RELATIONSHIP_TYPES, get_profile, list_profiles
+from habitable.usecases import (
+    ARTIFACT_TYPES,
+    RELATIONSHIP_TYPES,
+    get_profile,
+    list_profiles,
+    profile_expired,
+)
 
 
 def test_all_ten_profiles_are_versioned_and_valid() -> None:
@@ -38,3 +47,27 @@ def test_sensitive_profiles_keep_external_review_gate() -> None:
 def test_unknown_profile_fails_closed() -> None:
     with pytest.raises(HabitableError, match="unknown use-case profile"):
         get_profile("not-real")
+
+
+def test_no_shipped_profile_expires_today() -> None:
+    # None of the ten built-in profiles sets expires_at yet; this is
+    # forward-looking infrastructure for jurisdiction/community profiles, not a
+    # behavior change for what ships today.
+    for profile in list_profiles():
+        assert profile.expires_at == ""
+        assert not profile_expired(profile)
+
+
+def test_profile_expired_compares_calendar_dates() -> None:
+    base = get_profile("repair_delivery")
+    never_expires = replace(base, expires_at="")
+    expires_tomorrow = replace(base, expires_at="2026-08-23")
+    expires_today = replace(base, expires_at="2026-08-22")
+    expired_yesterday = replace(base, expires_at="2026-08-21")
+    today = date(2026, 8, 22)
+
+    assert not profile_expired(never_expires, today=today)
+    assert not profile_expired(expires_tomorrow, today=today)
+    # A profile expires at the start of its named day, not partway through it.
+    assert profile_expired(expires_today, today=today)
+    assert profile_expired(expired_yesterday, today=today)

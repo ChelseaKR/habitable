@@ -71,6 +71,7 @@ may carry one or not. A packet exported offline has none. See
 | `items` | array | The media items — the evidentiary core (see below). |
 | `relationships` | array | Packet-v4 typed, custody-bound links between evidence records. |
 | `use_case_profile` | object \| null | Packet-v4 versioned presentation workflow and signed review state. |
+| `use_case_profile_fallback` | object \| null | Present only when a selected/named profile's review had expired by export time; export then carries no `use_case_profile`, and this names what was requested and why (see ADR 0012). Absent (not merely null) in packets built before this field existed. |
 | `handoff_views` | array | Packet-v4 presentation-only manifests; `bundle.json` remains the source of truth. |
 | `custody_proof` | object | Identity-stripped chain-of-custody proof (see below). |
 | `disclosures` | array | Human-readable notes of what the packet reveals (shared-copy metadata handling, custody identities not exported, originals embedded). Also rendered, localized, in `packet.html`/`packet.pdf`. |
@@ -153,6 +154,17 @@ its id/version, bilingual name and summary, allowed vocabulary, handoff section
 order, disclosures, and review state. A handoff manifest contains only pointers
 and counts derived from the signed bundle, is marked `presentation_only`, and
 cannot remove bundle disclosures or change a verifier verdict.
+
+A profile's `review.expires_at` (a plain `YYYY-MM-DD` date) is enforced, not
+merely descriptive (ADR 0012): selecting an already-expired profile onto a case
+is refused, and if a profile expires *between* selection and a later export,
+that export carries no profile — `use_case_profile` is `null` and
+`use_case_profile_fallback` instead records `{requested_profile_id,
+requested_profile_version, reason: "expired", expires_at}` — rather than
+presenting guidance whose review window has passed. A matching sentence is
+appended to `disclosures`. None of the ten built-in profiles sets an expiry
+today; this is forward-looking for jurisdiction- and community-contributed
+profiles.
 
 A **timestamp token** is `{kind: "rfc3161"|"dev", tsa_name, token_b64}` where `token_b64` is base64
 of the DER token (`rfc3161`) or a canonical-JSON token (`dev`, non-production/offline only).

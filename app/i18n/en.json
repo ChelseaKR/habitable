@@ -232,6 +232,7 @@
   "profile_submit": "Select workflow",
   "profile_generic": "Generic packet",
   "profile_external_review": "external review required",
+  "profile_expired": "review expired, cannot select",
   "field_handoff_profile": "Handoff view",
   "issue_artifacts_count": "{count, plural, =0 {No documents} one {# document} other {# documents}}",
 

@@ -27,6 +27,17 @@ calendar. Decisions of consequence are recorded as ADRs in `docs/adr/`.
 > accessibility, housing-authority, or adopter review remain explicitly
 > `external_review_required`; those human gates are not treated as completed.
 
+> **Roadmap reconciliation (2026-08-22).** This file, `docs/novel-use-cases-plan.md`
+> (the product-expansion portfolio), and the gitignored, maintainer-local
+> `docs/productionization.md` (the v1.0-gate task tracker; deliberately not
+> committed, per the alpha-caveat and audit-recruitment discipline in workstream
+> A/D) previously drifted: the trust-gate horizon (this file) never named the
+> product-expansion workstream at all, and the use-case plan's own execution
+> narrative had gone stale relative to its own status line. Workstream E below
+> folds product expansion into the same multiyear picture as the trust gate
+> instead of leaving it a separately-tracked, unlinked document; see workstream E
+> for what that reconciliation found and fixed.
+
 > **Alpha caveat.** Until the v1.0 gate below is met, do not rely on habitable for
 > real legal matters. See *Honest limits* in the [README](README.md).
 
@@ -42,6 +53,7 @@ calendar. Decisions of consequence are recorded as ADRs in `docs/adr/`.
   - [B. Accessibility, localization & inclusive design](#b-accessibility-localization--inclusive-design)
   - [C. Apps, sync & platform](#c-apps-sync--platform)
   - [D. Governance, community, partnerships & sustainability](#d-governance-community-partnerships--sustainability)
+  - [E. Product & use-case expansion](#e-product--use-case-expansion)
 - [Risks & mitigations](#risks--mitigations)
 - [Measuring progress without surveillance](#measuring-progress-without-surveillance)
 - [Non-goals](#non-goals)
@@ -117,16 +129,18 @@ Until every box is checked, the project stays pre-1.0 and the caveat stays.
 
 ## Release horizons
 
-Targets for a small volunteer/solo effort, updated after **v0.2.0 (June 2026)**. Expect slip.
+Targets for a small volunteer/solo effort, updated after **v0.4.0 (2026-08-16)**. Expect slip.
 
-| Release | Horizon | Theme | Headline goals |
-| --- | --- | --- | --- |
-| **v0.1.x** | shipped | Initial alpha | Evidence core, local vault, verifier, sync, and app baseline |
-| **v0.2** | shipped June 2026 | Assurance groundwork | Verifier fuzzing; archive/re-timestamping; provenance; security/reviewer handoff materials |
-| **v0.3** | early 2027 | Accessible packet + platform spike | PDF/UA path decided & started; native-packaging spike (engine-on-device); jurisdiction template library |
-| **v0.5 (beta)** | mid 2027 | Pilot-ready | Security/crypto audit underway; recorded AT pass; 1–2 union/legal-aid pilots running; multi-device + recovery UX |
-| **v1.0** | ~2028 | Trustworthy | The [v1.0 gate](#the-v10-gate-when-alpha-comes-off) met; "alpha" caveat removed |
-| **v2.x+** | beyond | Reach & resilience | More languages/jurisdictions; metadata-resistant sync; broader interop; shared governance |
+| Release | Horizon | Theme | Headline goals | Product expansion (workstream E) |
+| --- | --- | --- | --- | --- |
+| **v0.1.x** | shipped | Initial alpha | Evidence core, local vault, verifier, sync, and app baseline | — |
+| **v0.2** | shipped June 2026 | Assurance groundwork | Verifier fuzzing; archive/re-timestamping; provenance; security/reviewer handoff materials | — |
+| **v0.3.0** | shipped 2026-07-23 (CHANGELOG-recorded; folded into the v0.4.0 tag below rather than tagged on its own) | Use-case foundation | Roadmap drain / novel-use-cases plan; bounded public review hub | N0–N4 primitives and all ten use-case profiles shipped (§E) |
+| **v0.4.0** | shipped & tagged 2026-08-16 | Packet-seal & release hygiene | Whole-packet RFC 3161 seal (ADR 0011); `--expected-producer-key`; `uv sync --locked` lockfile gate | Consent-record withdrawal semantics for local aggregation (N4) |
+| **Unreleased** | now (2026-08-22) | — | — | Profile review-expiry enforcement (ADR 0012): selection refuses an expired profile, export falls back and discloses rather than presenting stale guidance |
+| **v0.5 (beta)** | mid/late 2027 | Pilot-ready | Security/crypto audit underway; recorded AT pass; 1–2 union/legal-aid pilots running; multi-device + recovery UX; one-click desktop packaging (the native-mobile spike is already done — see workstream C — and blocked on upstream `cryptography` mobile wheels, not on this) | Solo-buildable Now items from *Beyond the current portfolio*: move-out/deposit-dispute record, jurisdiction template growth; named reviewer/partner secured for at least one of the six `external_review_required` profiles; joint multi-tenant case bundle prototyped |
+| **v1.0** | ~2028 | Trustworthy | The [v1.0 gate](#the-v10-gate-when-alpha-comes-off) met; "alpha" caveat removed | At least one `external_review_required` profile promoted to `maintainer_reviewed` on a recorded review |
+| **v2.x+** | beyond | Reach & resilience | More languages/jurisdictions; metadata-resistant sync; broader interop; shared governance | Remaining partner-gated profiles as partners arrive; protected-activity timeline only after its framing ADR; jurisdiction/language growth using the now-enforced expiry mechanism |
 
 ## Workstreams
 
@@ -317,6 +331,51 @@ Packet-integrity claims live here; this work gets the most scrutiny.
   coordinated-disclosure flow and published advisories where relevant.
 - **Education.** *Objective:* organizers can self-serve. *Exit:* the "set up your union in
   an afternoon" guide kept current; short task walkthroughs.
+
+### E. Product & use-case expansion
+
+New user-facing capability — as opposed to workstreams A–D, which build the
+*trust* a tenant needs to rely on what already exists. Detailed scoring,
+acceptance criteria, and delivery plans live in
+[`docs/novel-use-cases-plan.md`](docs/novel-use-cases-plan.md); this section
+keeps that document's status honest against this roadmap's horizons instead of
+letting it drift as an unlinked, separately-tracked plan — the drift this
+reconciliation (2026-08-22) found and fixed.
+
+- *Shipped (2026-07-23, ADR 0010):* **The N0–N4 use-case foundation and all ten
+  built-in workflow profiles** — versioned profiles, corroborating artifacts,
+  explicit evidence relationships, signed handoff manifests, and consented
+  local aggregation — implemented through case schema v3 / packet v4, the CLI,
+  the localhost app, encrypted sync, and the verifier. Four profiles
+  (`repair_delivery`, `repair_comparison`, `utility_outage`,
+  `displacement_expense`) are `maintainer_reviewed` and usable as shipped; six
+  (`inspector_handoff`, `accommodation_request`, `public_housing_remediation`,
+  `health_corroboration`, `building_pattern`, `partner_capsule`) are
+  implemented but remain `external_review_required` — a named reviewer/partner
+  gate, not an engineering gap. Availability is never presented as domain
+  approval.
+- *Shipped (2026-08-22, ADR 0012):* **Profile review-expiry enforcement.**
+  Closes a gap the foundation's own acceptance criteria named but left
+  unenforced: selecting an already-expired profile is refused, and a profile
+  that expires between selection and a later export no longer gets silently
+  presented — export falls back to none and discloses why. This is what makes
+  growing the profile registry (the item below) safe to do at all.
+- **Next use-case portfolio.** *Objective:* keep adding new tenant/organizer
+  jobs on the same shared primitives instead of bespoke workflows, exactly as
+  ADR 0010 chose. *Exit:* see `docs/novel-use-cases-plan.md`'s "Beyond the
+  current portfolio" section for the scored candidate set — a move-out/
+  deposit-dispute record and jurisdiction template growth are solo-buildable
+  next; a joint multi-tenant case bundle is next after a presentation-only
+  prototype; a protected-activity timeline is explicitly **not** queued until
+  its own ADR settles a non-inference framing (it must never become a
+  retaliation score — `docs/novel-use-cases-plan.md`'s fit filter already
+  excludes "landlord risk scores" and "automated judgments about truth").
+- **Named reviewer/partner recruitment for the six gated profiles.**
+  *Objective:* convert `external_review_required` into `maintainer_reviewed`
+  one profile at a time, on the record. *Exit:* a dated review recorded per
+  profile in `docs/capabilities.md`, following the same recruitment kit
+  (`docs/recruitment/`) already supporting the v1.0 gate's external reviews —
+  this is a partnership problem shared with workstream D, not a separate one.
 
 ## Risks & mitigations
 

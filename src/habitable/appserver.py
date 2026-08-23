@@ -40,7 +40,7 @@ from .packet import build_packet
 from .private_temp import private_temp_workspace
 from .strength import assess_issue
 from .tsa import DevTSA, TimestampAuthority
-from .usecases import get_profile, list_profiles
+from .usecases import get_profile, list_profiles, profile_expired
 from .vault import Vault
 from .verify import VerificationReport, verify_packet
 
@@ -151,7 +151,13 @@ class AppServer:
             "evidence_count": len(evidence_ids),
             "relationship_count": len(doc.relationships()),
             "profile": doc.use_case_profile(),
-            "profiles": [profile.to_json() for profile in list_profiles()],
+            # "expired" is computed here, not carried on the packet-embedded
+            # `to_json()` shape, so it reflects *this request's* wall clock rather
+            # than becoming a live-changing fact baked into signed packet content.
+            "profiles": [
+                {**profile.to_json(), "expired": profile_expired(profile)}
+                for profile in list_profiles()
+            ],
             "timestamped": timestamped,
             # `awaiting` is evidence with no token, however it arrived, and is
             # the honest complement of `timestamped` over `evidence_count`.

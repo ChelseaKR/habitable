@@ -9,6 +9,30 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **Workflow-profile review expiry is now enforced, not just recorded.** ADR
+  0010 gave every use-case profile a `reviewed_at`/`expires_at` pair, and the
+  plan that introduced it named the acceptance criterion: "an expired
+  jurisdiction profile warns and falls back instead of silently presenting
+  stale guidance." That shipped the field, not the behavior — nothing ever
+  read `expires_at`. None of the ten built-in profiles sets one today, so this
+  was latent, not actively wrong, but the roadmap's next product-expansion
+  work plans jurisdiction-specific and community-contributed profiles that
+  will carry a real one.
+
+  `habitable profile set` (CLI and app) now refuses to select an
+  already-expired profile. A profile that instead expires *between* selection
+  and a later `export` no longer gets silently presented: the export carries
+  **no** profile — as if none were ever selected — records a
+  `use_case_profile_fallback` object in `bundle.json` naming what was
+  requested and why, and appends a plain-language disclosure that surfaces
+  wherever disclosures already render (CLI, app, `packet.html`,
+  `packet.pdf`). `habitable profile list`, `habitable status`, and the app's
+  `/api/profile` listing now flag an expired profile before it ever forces
+  that fallback. The verifier validates the new field's shape but does not
+  re-derive an expiry judgment from its own wall clock, so old packets (which
+  lack the key) verify unchanged and `packet_version` stays 4. See
+  `docs/adr/0012-profile-review-expiry-enforcement.md`.
+
 - **The packet seal: an RFC 3161 countersignature over the whole bundle (FIX-05).**
   Every proof in a packet used to bind exactly one value — an item's
   `content_hash`, one custody entry's predecessor — and nothing bound the packet as

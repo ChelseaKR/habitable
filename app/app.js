@@ -1025,7 +1025,13 @@
         option.value = profiles[i].profile_id;
         var names = profiles[i].name || {};
         option.textContent = names[lang] || names.en || profiles[i].profile_id;
-        if (profiles[i].external_review_required) {
+        if (profiles[i].expired) {
+          // The server refuses to *select* an expired profile (an export already
+          // using one instead falls back silently-to-generic with a disclosure).
+          // The option stays visible and pickable so its state is legible, but
+          // submitting it returns a 400 the profile-form handler announces.
+          option.textContent += " — " + t("profile_expired");
+        } else if (profiles[i].external_review_required) {
           option.textContent += " — " + t("profile_external_review");
         }
         select.appendChild(option);

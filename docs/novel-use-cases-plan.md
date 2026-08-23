@@ -7,12 +7,17 @@ promises.
 **Product boundary:** tenant-owned habitability evidence, not a generic evidence
 cloud and not legal advice.
 
-**Implementation status (2026-07-23):** the shared N0–N4 primitives and all ten
-profile surfaces are implemented in case schema v3 / packet v4, including CLI,
-localhost app, encrypted sync, verifier, accessible HTML, fixed-question local
-aggregation, and partner capsules. “External review required” profiles remain
-synthetic-evaluation surfaces only; the named human/partner gates below are still
-open and cannot be completed by code.
+**Implementation status (2026-07-23, reconciled 2026-08-22):** the shared N0–N4
+primitives and all ten profile surfaces are implemented in case schema v3 /
+packet v4, including CLI, localhost app, encrypted sync, verifier, accessible
+HTML, fixed-question local aggregation, and partner capsules. “External review
+required” profiles remain synthetic-evaluation surfaces only; the named
+human/partner gates below are still open and cannot be completed by code. The
+`Now / Next / Later` section below was left describing this as unbuilt work
+after it shipped; it is corrected in place. Profile review-expiry enforcement
+(ADR 0012) shipped 2026-08-22, and
+[Beyond the current portfolio](#beyond-the-current-portfolio--year-2-and-year-3-candidates)
+names the next scored set of candidates.
 
 This plan identifies new user jobs that reuse Habitable's strongest primitives:
 offline capture, an encrypted local vault, an attributable timeline, independent
@@ -84,7 +89,13 @@ Acceptance:
 - one profile cannot hide signed facts;
 - EN/ES parity and 320 px expansion checks pass;
 - an expired jurisdiction profile warns and falls back instead of silently
-  presenting stale guidance.
+  presenting stale guidance. **Shipped 2026-08-22:** selection refuses an
+  already-expired profile, export falls back to none and records why if one
+  expires after selection, and the CLI/app flag expiry before it forces that
+  fallback (`docs/adr/0012-profile-review-expiry-enforcement.md`). None of the
+  ten profiles below sets an expiry yet; this is enforced infrastructure for
+  the jurisdiction/community profiles in
+  [Beyond the current portfolio](#beyond-the-current-portfolio--year-2-and-year-3-candidates).
 
 ### N1 — Corroborating artifact records
 
@@ -360,31 +371,101 @@ Implementation:
 5. Do not promise protocol stability beyond the documented surface or ship a
    hosted verification service.
 
+## Beyond the current portfolio — Year 2 and Year 3 candidates
+
+**Added 2026-08-22**, as part of reconciling this plan with `ROADMAP.md` and
+`docs/productionization.md` into one multiyear picture (`ROADMAP.md`,
+workstream E). The ten use cases above are implemented; this section is the
+*next* portfolio, scored the same way and passed through the same
+[fit filter](#fit-filter). None of this is committed work — it is a ranked set
+of candidates for the roadmap's v0.3–v2.x horizons, sized so a solo/volunteer
+effort can actually plan against it.
+
+| Rank | Use case | Primary user job | Value | Fit | Confidence | Effort | Decision |
+| ---: | --- | --- | ---: | ---: | ---: | --- | --- |
+| 11 | Move-out condition & deposit-dispute record | Pair documented move-in/move-out condition with an itemized deduction to dispute a withheld security deposit | 5 | 5 | 4 | M | **Now: solo-buildable, no partner gate — same class as #1/#2** |
+| 12 | Jurisdiction template growth | Add a second/third `letter.py` jurisdiction framing beyond `generic`/`us_habitability`, dated and expiry-tracked | 4 | 5 | 4 | S–M | **Now: solo-buildable — ADR 0012 makes this safely growable for the first time** |
+| 13 | Joint multi-tenant case bundle | Let an organizer present several already-signed individual packets as one navigable building-wide submission, without merging custody chains | 4 | 5 | 3 | M | **Next: prototype presentation-only bundling over existing signed packets** |
+| 14 | Protected-activity and landlord-action timeline | Juxtapose a tenant's protected activity (complaint filed, union joined) and a landlord's later action on one neutral chronology | 5 | 3 | 2 | M | **Later: framing decision (ADR) before any code — see caution below** |
+
+Sequencing notes:
+
+- **#11 and #12** need no new primitive: #11 reuses `before_of`/`after_of` plus
+  a new `expense_receipt`-adjacent artifact type for the itemized deduction
+  (already in `ARTIFACT_TYPES`'s neighborhood — a `deduction_itemization` type
+  and a `deduction_for` relationship are the only additions); #12 reuses
+  `letter.py`'s existing `LetterProfile` registry pattern. Both are natural
+  first picks for the *Now* row above precisely because they cost no new
+  protocol surface.
+- **#13** is presentation over facts that already exist and verify
+  independently — it must not create a new merged-custody artifact (that would
+  reopen the scoped/rehashed-custody-view gate workstream A is still closing).
+  A safe version is closer to a signed table of contents over N already-signed
+  `bundle.json` files than a new packet shape.
+- **#14 is flagged, not queued, on purpose.** "Retaliation" is a legal
+  conclusion, and the fit filter explicitly excludes "automated judgments
+  about truth" and "landlord risk scores." A neutral two-column chronology
+  (what the tenant did, what the landlord did, both already-recorded facts)
+  stays inside the filter; anything that scores, flags, or labels the
+  juxtaposition as retaliation does not. This needs a maintainer decision
+  recorded as an ADR — not a feature branch — before implementation starts,
+  specifically choosing the non-inference framing and rejecting the
+  scoring/labeling version outright rather than leaving it ambiguous.
+
 ## Now / Next / Later
+
+**Reconciled 2026-08-22** — the sections below described this as unbuilt work;
+it is not. The N0–N4 foundation and all ten profiles have been implemented
+end to end (CLI, app, sync, packet v4, verifier, accessible HTML, i18n) since
+2026-07-23, confirmed against current code (`src/habitable/usecases.py`,
+`artifact.py`, `handoff.py`, `patterns.py`, `capsule.py`), not merely asserted.
+Four profiles (`repair_delivery`, `repair_comparison`, `utility_outage`,
+`displacement_expense`) are `maintainer_reviewed` and require no further
+engineering to use as shipped. Six (`inspector_handoff`,
+`accommodation_request`, `public_housing_remediation`,
+`health_corroboration`, `building_pattern`, `partner_capsule`) remain
+`external_review_required` — implemented and synthetic-evaluation-tested, but
+gated on a named human reviewer/partner per use case, exactly as designed; that
+gate is a *decision*, not a to-do list an engineer can clear alone. What
+follows is honest present-tense status, not a build plan.
 
 ### Now
 
-- Run synthetic partner tests for repair notice/delivery and before/after views.
-- Specify N0, N1, and N2 in ADRs; prototype without changing emitted packet
-  versions.
-- Complete external roadmap gates already prepared by the review hub.
+- Recruit the named reviewer/partner for each of the six
+  `external_review_required` profiles (see `docs/recruitment/`); this is the
+  actual remaining work for the current ten, and it is a partnership problem,
+  not an implementation one.
+- Complete external roadmap gates already prepared by the review hub (security/
+  crypto audit, recorded AT pass, tenant-union pilot — see `ROADMAP.md`'s v1.0
+  gate); these block the alpha caveat regardless of use-case count.
+- Ship the first genuinely new, solo-buildable expansion item from
+  [Beyond the current portfolio](#beyond-the-current-portfolio--year-2-and-year-3-candidates)
+  (profile review-expiry enforcement, ADR 0012, shipped 2026-08-22, is the
+  first of these).
 - Keep 20% capacity for scoped-view protocol/security work and 10% for
-  unplanned safety fixes.
+  unplanned safety fixes, unchanged from the original plan.
 
 ### Next
 
-- Implement N0–N2 behind versioned schemas and feature flags.
-- Ship the repair/delivery and comparison vertical slices through app, CLI,
-  sync, packet, verifier, HTML, tests, and docs.
-- Pilot the inspector and utility/outage profiles using synthetic data.
-- Decide the supported desktop/mobile target from observed pilot constraints.
+- Pick up the next 1–2 solo-buildable ideas from *Beyond the current
+  portfolio* (jurisdiction template growth is the most natural next one, since
+  it is now expiry-aware) and take them through this project's full
+  definition of done: ADR, tests, i18n parity, a11y, threat-model delta,
+  CHANGELOG.
+- As each `external_review_required` profile clears its named gate, promote it
+  to `maintainer_reviewed` in an ADR-recorded decision and update
+  `docs/capabilities.md`.
+- Decide the supported desktop/mobile target from observed pilot constraints
+  (unchanged — no pilot has run yet).
 
 ### Later
 
-- Add N3 handoff profiles and N4 aggregation after review evidence exists.
-- Consider accommodation, public-housing, health, displacement, and partner
-  capsule work only with named maintainers/partners.
-- Expand jurisdictions and languages only with dated owners and expiry policy.
+- Only take on a *new* partner-gated use case (health, public-housing,
+  accommodation-adjacent ideas beyond the current six) with a named
+  maintainer/partner attached before implementation starts, per the fit
+  filter above.
+- Expand jurisdictions and languages only with dated owners and expiry policy
+  — now enforceable rather than aspirational (ADR 0012).
 
 ## Cross-cutting Definition of Done
 

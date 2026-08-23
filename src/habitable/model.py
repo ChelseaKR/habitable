@@ -39,6 +39,7 @@ from .usecases import (
     RELATIONSHIP_ENDPOINT_KINDS,
     RELATIONSHIP_TYPES,
     get_profile,
+    profile_expired,
 )
 
 __all__ = [
@@ -491,8 +492,20 @@ class CaseDocument:
         return register.value
 
     def set_use_case_profile(self, profile_id: str) -> None:
-        """Select one reviewed built-in presentation/workflow profile."""
-        get_profile(profile_id)
+        """Select one reviewed built-in presentation/workflow profile.
+
+        Refuses an already-expired profile rather than persisting stale
+        guidance a case would then carry going forward; a profile that expires
+        *after* selection is instead caught at export time (``packet.py`` falls
+        back rather than presenting it). See
+        ``docs/adr/0012-profile-review-expiry-enforcement.md``.
+        """
+        profile = get_profile(profile_id)
+        if profile_expired(profile):
+            raise HabitableError(
+                f"workflow profile {profile_id!r} review expired on {profile.expires_at}; "
+                "choose another profile, or leave the case generic"
+            )
         self.set_meta("use_case_profile", profile_id)
 
     def use_case_profile(self) -> str:

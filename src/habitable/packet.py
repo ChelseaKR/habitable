@@ -49,7 +49,7 @@ from .model import Artifact, Capture, EvidenceRelationship, Issue, TimelineEntry
 from .private_temp import PrivateTempWorkspace, private_temp_workspace
 from .sensor import parse_sensor_csv
 from .tsa import TimestampAuthority, verify_token
-from .usecases import get_profile
+from .usecases import get_profile, profile_expired
 from .vault import Vault
 
 __all__ = ["PACKET_VERSION", "PacketResult", "SealOutcome", "build_packet"]
@@ -130,6 +130,10 @@ class PacketResult:
     disclosures: tuple[str, ...] = field(default_factory=tuple)
     handoff_paths: tuple[Path, ...] = field(default_factory=tuple)
     seal: SealOutcome = field(default_factory=SealOutcome)
+    #: Set when a case's selected (or --handoff-profile-requested) workflow profile
+    #: had expired by export time; this export then carries no profile instead of
+    #: presenting stale guidance. See docs/adr/0012-profile-review-expiry-enforcement.md.
+    profile_fallback: dict[str, JSONValue] | None = None
 
 
 def build_packet(
@@ -228,6 +232,7 @@ def build_packet(
         disclosures=staged.disclosures,
         handoff_paths=tuple(out_dir / path.name for path in staged.handoff_paths),
         seal=staged.seal,
+        profile_fallback=staged.profile_fallback,
     )
 
 
@@ -346,6 +351,28 @@ def _build_packet_in_dir(  # noqa: C901 -- packet staging keeps one rollback bou
     ]
     selected_profile_id = handoff_profile or vault.document.use_case_profile()
     selected_profile = get_profile(selected_profile_id) if selected_profile_id else None
+    # A profile valid when selected (or named on the command line) can expire before
+    # export. Presenting it anyway would be exactly the silently-stale guidance the
+    # profile registry exists to prevent, so export falls back to no profile and says
+    # so, rather than either quietly keeping the expired one or refusing the whole
+    # export. Selecting an already-expired profile is instead refused up front by
+    # ``Document.set_use_case_profile``. See
+    # docs/adr/0012-profile-review-expiry-enforcement.md.
+    profile_fallback: dict[str, JSONValue] | None = None
+    if selected_profile is not None and profile_expired(selected_profile):
+        profile_fallback = {
+            "requested_profile_id": selected_profile.profile_id,
+            "requested_profile_version": selected_profile.version,
+            "reason": "expired",
+            "expires_at": selected_profile.expires_at,
+        }
+        disclosures = (
+            *disclosures,
+            f"workflow profile {selected_profile.profile_id!r} review expired on "
+            f"{selected_profile.expires_at}; this export carries no workflow profile "
+            "instead of presenting guidance whose review window has passed",
+        )
+        selected_profile = None
     bundle: dict[str, JSONValue] = {
         "packet_version": PACKET_VERSION,
         "case_id": vault.document.case_id,
@@ -377,6 +404,7 @@ def _build_packet_in_dir(  # noqa: C901 -- packet staging keeps one rollback bou
         "use_case_profile": (
             cast(JSONValue, selected_profile.to_json()) if selected_profile is not None else None
         ),
+        "use_case_profile_fallback": cast(JSONValue, profile_fallback),
         "custody_proof": vault.custody.integrity_proof(hlc_map=opaque_hlc),
         "appendix": {
             "item_count": len(items),
@@ -444,6 +472,7 @@ def _build_packet_in_dir(  # noqa: C901 -- packet staging keeps one rollback bou
         disclosures=disclosures,
         handoff_paths=handoff_paths,
         seal=seal,
+        profile_fallback=profile_fallback,
     )
 
 
