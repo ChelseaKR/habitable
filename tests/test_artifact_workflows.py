@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 
@@ -20,6 +21,7 @@ from habitable.model import CaseDocument
 from habitable.packet import _write_signature, build_packet
 from habitable.sync import LocalDirTransport, sync
 from habitable.tsa import DevTSA, LocalRfc3161TSA
+from habitable.usecases import get_profile
 from habitable.vault import Vault
 from habitable.verify import (
     _verify_v4_artifact,
@@ -229,6 +231,53 @@ def test_packet_v4_verifies_artifact_relationship_profile_and_handoff(
     report = verify_packet(result.out_dir, trusted_certs=[local_tsa.certificate])
     assert report.structurally_intact
     assert report.evidence_ready
+
+
+def test_selecting_an_already_expired_profile_is_refused(
+    make_vault: Callable[..., Vault], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    expired = replace(get_profile("repair_delivery"), expires_at="2000-01-01")
+    monkeypatch.setattr("habitable.model.get_profile", lambda profile_id: expired)
+    vault = make_vault()
+
+    with pytest.raises(HabitableError, match="review expired on 2000-01-01"):
+        vault.document.set_use_case_profile("repair_delivery")
+    assert vault.document.use_case_profile() == ""
+
+
+def test_export_falls_back_when_the_selected_profile_has_since_expired(
+    make_vault: Callable[..., Vault],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A profile can be valid when a case selects it and expire before a later
+    # export -- selection-time refusal (tested above) cannot catch that case.
+    vault = make_vault()
+    vault.document.add_issue(category="mold", title="Bathroom mold")
+    vault.document.set_use_case_profile("repair_delivery")  # valid at selection time
+    expired = replace(get_profile("repair_delivery"), expires_at="2000-01-01")
+    monkeypatch.setattr("habitable.packet.get_profile", lambda profile_id: expired)
+
+    result = build_packet(vault, tmp_path / "packet-expired-profile", tsa=local_tsa, make_pdf=False)
+    bundle = json.loads(result.bundle_path.read_text(encoding="utf-8"))
+
+    assert bundle["use_case_profile"] is None
+    assert bundle["use_case_profile_fallback"] == {
+        "requested_profile_id": "repair_delivery",
+        "requested_profile_version": 1,
+        "reason": "expired",
+        "expires_at": "2000-01-01",
+    }
+    assert bundle["handoff_views"] == []
+    assert result.handoff_paths == ()
+    assert result.profile_fallback == bundle["use_case_profile_fallback"]
+    assert any("review expired" in note for note in result.disclosures)
+    assert any("review expired" in note for note in bundle["disclosures"])
+    assert _verify_v4_profile_and_handoffs(bundle) == []
+
+    report = verify_packet(result.out_dir, trusted_certs=[local_tsa.certificate])
+    assert report.structurally_intact
 
 
 def test_artifact_relationship_and_profile_converge_over_peer_sync(
@@ -514,6 +563,46 @@ def test_packet_v4_profile_handoff_verifier_rejects_suppression_and_mismatch(
     assert "handoff_views[0] profile_id does not match" in problems
     assert "handoff_views[0] profile snapshot does not match" in problems
     assert "handoff_views[0] suppresses required disclosures" in problems
+
+
+def test_verifier_rejects_malformed_or_contradictory_profile_fallback() -> None:
+    assert _verify_v4_profile_and_handoffs(
+        {"use_case_profile": None, "use_case_profile_fallback": "wrong", "handoff_views": []}
+    ) == ["use_case_profile_fallback must be an object or null"]
+
+    contradiction = _verify_v4_profile_and_handoffs(
+        {
+            "use_case_profile": {
+                "profile_schema": 1,
+                "review_state": "maintainer_reviewed",
+                "external_review_required": False,
+            },
+            "use_case_profile_fallback": {
+                "requested_profile_id": "repair_delivery",
+                "requested_profile_version": 1,
+                "reason": "expired",
+                "expires_at": "2000-01-01",
+            },
+            "handoff_views": [],
+        }
+    )
+    assert (
+        "use_case_profile_fallback must be null when use_case_profile is present" in contradiction
+    )
+
+    incomplete = _verify_v4_profile_and_handoffs(
+        {"use_case_profile": None, "use_case_profile_fallback": {}, "handoff_views": []}
+    )
+    assert "use_case_profile_fallback.requested_profile_id is required" in incomplete
+    assert "use_case_profile_fallback.reason must be 'expired'" in incomplete
+    assert "use_case_profile_fallback.expires_at is required" in incomplete
+
+    assert (
+        _verify_v4_profile_and_handoffs(
+            {"use_case_profile": None, "use_case_profile_fallback": None, "handoff_views": []}
+        )
+        == []
+    )
 
 
 def test_packet_v4_workflow_verifier_rejects_counts_duplicates_and_cycles(

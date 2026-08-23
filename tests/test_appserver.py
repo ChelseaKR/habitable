@@ -15,6 +15,7 @@ import threading
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterator
+from dataclasses import replace
 from pathlib import Path
 from typing import NamedTuple, NoReturn, cast
 
@@ -27,6 +28,7 @@ from habitable.capture import capture
 from habitable.cli import main as cli_main
 from habitable.errors import CaptureError, HabitableError
 from habitable.tsa import LocalRfc3161TSA
+from habitable.usecases import get_profile
 from habitable.vault import Vault
 from habitable.verify import ItemVerdict, VerificationReport
 
@@ -240,6 +242,26 @@ def test_app_workflow_api_adds_profile_artifact_and_relationship(
     assert status["relationship_count"] == 1
     issue = cast(list[dict[str, object]], status["issues"])[0]
     assert cast(list[dict[str, object]], issue["artifacts"])[0]["artifact_type"] == "repair_request"
+
+
+def test_app_profile_listing_reports_expiry_and_refuses_selecting_an_expired_one(
+    make_vault: Callable[..., Vault],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vault = make_vault()
+    app_server = AppServer(vault, local_tsa, tmp_path, threading.Lock())
+
+    status = app_server.status()
+    profiles = cast(list[dict[str, object]], status["profiles"])
+    assert profiles  # none of the ten built-in profiles expires today
+    assert all(profile["expired"] is False for profile in profiles)
+
+    expired = replace(get_profile("repair_delivery"), expires_at="2000-01-01")
+    monkeypatch.setattr("habitable.model.get_profile", lambda profile_id: expired)
+    with pytest.raises(HabitableError, match="review expired on 2000-01-01"):
+        app_server.set_profile({"profile_id": "repair_delivery"})
 
 
 def test_app_start_removes_legacy_incoming_without_following_symlinks(

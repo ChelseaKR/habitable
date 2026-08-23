@@ -54,7 +54,13 @@ from .sync import (
 )
 from .timeline import EVENT_TYPES, SOURCES
 from .tsa import DevTSA, Rfc3161HttpTSA, TimestampAuthority
-from .usecases import ARTIFACT_TYPES, RELATIONSHIP_TYPES, get_profile, list_profiles
+from .usecases import (
+    ARTIFACT_TYPES,
+    RELATIONSHIP_TYPES,
+    get_profile,
+    list_profiles,
+    profile_expired,
+)
 from .vault import Vault, human_bytes
 from .verify import verify_packet
 
@@ -832,7 +838,12 @@ def _cmd_relate(args: argparse.Namespace) -> int:
 
 def _cmd_profile_list(_args: argparse.Namespace) -> int:
     for profile in list_profiles():
-        gate = "external review required" if profile.external_review_required else "implemented"
+        if profile_expired(profile):
+            gate = f"review expired {profile.expires_at}"
+        elif profile.external_review_required:
+            gate = "external review required"
+        else:
+            gate = "implemented"
         print(f"{profile.profile_id}\tv{profile.version}\t{gate}\t{profile.name_en}")
     return 0
 
@@ -920,8 +931,15 @@ def _cmd_status(args: argparse.Namespace) -> int:
     )
     print(f"habitable: {summary}")
     profile_id = vault.document.use_case_profile() or "generic"
+    profile_note = ""
+    if profile_id != "generic":
+        active_profile = get_profile(profile_id)
+        if profile_expired(active_profile):
+            profile_note = (
+                f" (review expired {active_profile.expires_at}; export falls back to generic)"
+            )
     print(
-        f"  workflow: {profile_id} · {len(artifacts)} artifact(s) · "
+        f"  workflow: {profile_id}{profile_note} · {len(artifacts)} artifact(s) · "
         f"{len(relationships)} relationship(s)"
     )
     any_issues = False

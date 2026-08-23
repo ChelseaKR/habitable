@@ -11,6 +11,7 @@ for lawyer-, clinician-, inspector-, or accessibility-reviewed guidance.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, date, datetime
 from typing import cast
 
 from .canonical import JSONValue
@@ -23,6 +24,7 @@ __all__ = [
     "UseCaseProfile",
     "get_profile",
     "list_profiles",
+    "profile_expired",
 ]
 
 PROFILE_SCHEMA_VERSION = 1
@@ -341,3 +343,29 @@ def get_profile(profile_id: str) -> UseCaseProfile:
         return _BY_ID[profile_id]
     except KeyError as exc:
         raise HabitableError(f"unknown use-case profile: {profile_id!r}") from exc
+
+
+def profile_expired(profile: UseCaseProfile, *, today: date | None = None) -> bool:
+    """Whether *profile*'s review window has passed.
+
+    A profile with no ``expires_at`` never expires -- none of the ten built-in
+    profiles sets one today, so this is presently inert, forward-looking
+    infrastructure for the jurisdiction- and community-contributed profiles the
+    roadmap's product-expansion workstream plans to add next. ``today`` is
+    injectable so callers and tests can pin the comparison instead of reading
+    the wall clock; it defaults to the real local date. Comparison is by
+    calendar date, matching the plain ``YYYY-MM-DD`` shape of ``expires_at``, so
+    a profile expires at the start of its named day rather than partway through
+    it in some timezone.
+
+    A profile that is already expired must never be silently presented as
+    current: see ``get_profile`` callers in ``model.py`` (selection refuses an
+    already-expired profile) and ``packet.py`` (export falls back to no profile
+    if one that was valid at selection time has since expired), and
+    ``docs/adr/0012-profile-review-expiry-enforcement.md``.
+    """
+    if not profile.expires_at:
+        return False
+    if today is None:
+        today = datetime.now(tz=UTC).date()
+    return today >= date.fromisoformat(profile.expires_at)

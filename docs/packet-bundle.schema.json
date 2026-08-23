@@ -67,6 +67,9 @@
     "use_case_profile": {
       "oneOf": [{ "$ref": "#/$defs/useCaseProfile" }, { "type": "null" }]
     },
+    "use_case_profile_fallback": {
+      "oneOf": [{ "$ref": "#/$defs/useCaseProfileFallback" }, { "type": "null" }]
+    },
     "handoff_views": {
       "type": "array",
       "items": { "$ref": "#/$defs/handoffManifest" }
@@ -295,6 +298,18 @@
         "version": { "type": "integer", "minimum": 1 },
         "review_state": { "type": "string", "enum": ["maintainer_reviewed", "external_review_required"] },
         "external_review_required": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "useCaseProfileFallback": {
+      "type": "object",
+      "description": "Present only when a selected/named profile's review had expired by export time (ADR 0012); export then carries no use_case_profile.",
+      "required": ["requested_profile_id", "requested_profile_version", "reason", "expires_at"],
+      "properties": {
+        "requested_profile_id": { "type": "string" },
+        "requested_profile_version": { "type": "integer", "minimum": 1 },
+        "reason": { "type": "string", "const": "expired" },
+        "expires_at": { "type": "string", "description": "YYYY-MM-DD; the review-expiry date that triggered the fallback." }
       },
       "additionalProperties": true
     },

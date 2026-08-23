@@ -232,6 +232,7 @@
   "profile_submit": "Seleccionar flujo",
   "profile_generic": "Paquete genérico",
   "profile_external_review": "requiere revisión externa",
+  "profile_expired": "revisión caducada, no se puede seleccionar",
   "field_handoff_profile": "Vista de entrega",
   "issue_artifacts_count": "{count, plural, =0 {Sin documentos} one {# documento} other {# documentos}}",
 

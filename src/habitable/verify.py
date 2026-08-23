@@ -1309,6 +1309,27 @@ def _verify_v4_profile_and_handoffs(  # noqa: C901 -- small signed manifest audi
         if external is not (review_state == "external_review_required"):
             problems.append("use_case_profile external-review flag is inconsistent")
 
+    # A profile whose review expired between selection and export leaves no
+    # ``use_case_profile`` behind -- it falls back to none rather than presenting
+    # stale guidance (docs/adr/0012-profile-review-expiry-enforcement.md) -- but the
+    # export is not silent about the request: this record says what was asked for
+    # and why it was not honored. Old (pre-fallback) packets simply lack the key.
+    raw_fallback = bundle.get("use_case_profile_fallback")
+    if raw_fallback is not None:
+        if not isinstance(raw_fallback, dict):
+            problems.append("use_case_profile_fallback must be an object or null")
+        else:
+            if raw_profile is not None:
+                problems.append(
+                    "use_case_profile_fallback must be null when use_case_profile is present"
+                )
+            if not _s(raw_fallback, "requested_profile_id"):
+                problems.append("use_case_profile_fallback.requested_profile_id is required")
+            if raw_fallback.get("reason") != "expired":
+                problems.append("use_case_profile_fallback.reason must be 'expired'")
+            if not _s(raw_fallback, "expires_at"):
+                problems.append("use_case_profile_fallback.expires_at is required")
+
     handoffs = bundle.get("handoff_views")
     if not isinstance(handoffs, list):
         return [*problems, "handoff_views must be an array"]

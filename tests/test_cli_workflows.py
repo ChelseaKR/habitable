@@ -4,9 +4,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from habitable.cli import main
+from habitable.usecases import get_profile, list_profiles
 from habitable.vault import Vault
 
 
@@ -106,3 +110,44 @@ def test_cli_lists_all_profiles(capsys: object) -> None:
     captured = capsys.readouterr()  # type: ignore[attr-defined]
     assert captured.out.count("\tv1\t") == 10
     assert "external review required" in captured.out
+
+
+def test_cli_profile_list_flags_an_expired_profile(
+    capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    expired = replace(get_profile("repair_delivery"), expires_at="2000-01-01")
+    patched = tuple(
+        expired if profile.profile_id == "repair_delivery" else profile
+        for profile in list_profiles()
+    )
+    monkeypatch.setattr("habitable.cli.list_profiles", lambda: patched)
+
+    assert main(["profile", "list"]) == 0
+    captured = capsys.readouterr()  # type: ignore[attr-defined]
+    assert "repair_delivery\tv1\treview expired 2000-01-01\t" in captured.out
+
+
+def test_cli_status_notes_an_expired_selected_profile(
+    make_vault: Callable[..., Vault], capsys: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = make_vault()
+    assert (
+        main(
+            [
+                "profile",
+                "set",
+                "--vault",
+                str(vault.path),
+                "--passphrase",
+                "test-passphrase",
+                "repair_delivery",
+            ]
+        )
+        == 0
+    )
+    expired = replace(get_profile("repair_delivery"), expires_at="2000-01-01")
+    monkeypatch.setattr("habitable.cli.get_profile", lambda profile_id: expired)
+
+    assert main(["status", "--vault", str(vault.path), "--passphrase", "test-passphrase"]) == 0
+    captured = capsys.readouterr()  # type: ignore[attr-defined]
+    assert "review expired 2000-01-01; export falls back to generic" in captured.out
