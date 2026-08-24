@@ -165,6 +165,30 @@ class TestCrypto:
         with pytest.raises(CryptoError, match="unknown KDF profile"):
             KdfParams.for_profile("nonexistent", salt=b"0" * 16)
 
+    @pytest.mark.parametrize(
+        "bad_kdf",
+        [
+            {"n": 3, "r": 8, "p": 1, "length": 32},
+            {"n": 0, "r": 8, "p": 1, "length": 32},
+            {"n": -1, "r": 8, "p": 1, "length": 32},
+            {"n": 1024, "r": 0, "p": 1, "length": 32},
+            {"n": 1024, "r": 8, "p": 0, "length": 32},
+        ],
+    )
+    def test_corrupted_kdf_params_raise_crypto_error(self, bad_kdf: dict[str, int]) -> None:
+        params = KdfParams(salt=b"0" * 16, **bad_kdf)
+        with pytest.raises(CryptoError, match="invalid KDF parameters"):
+            params.derive(b"passphrase")
+
+        doc = {
+            "habitable_keyfile_version": 1,
+            "aead": "chacha20poly1305",
+            "kdf": params.to_dict(),
+            "wrapped_dek": "AAAA",
+        }
+        with pytest.raises(CryptoError, match="invalid KDF parameters"):
+            open_keyfile(json.dumps(doc), "passphrase")
+
     def test_sign_and_verify(self) -> None:
         identity = Identity.generate()
         pub = identity.public()

@@ -96,8 +96,11 @@ class KdfParams:
 
     def derive(self, passphrase: bytes) -> bytes:
         """Derive a key-encryption key from a passphrase."""
-        kdf = Scrypt(salt=self.salt, length=self.length, n=self.n, r=self.r, p=self.p)
-        return kdf.derive(passphrase)
+        try:
+            kdf = Scrypt(salt=self.salt, length=self.length, n=self.n, r=self.r, p=self.p)
+            return kdf.derive(passphrase)
+        except (ValueError, OverflowError, MemoryError) as exc:
+            raise CryptoError(f"invalid KDF parameters: {exc}") from exc
 
     def to_dict(self) -> dict[str, object]:
         return {
