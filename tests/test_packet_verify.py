@@ -142,6 +142,20 @@ def test_packet_html_has_proof_and_disclosure(
         assert scope.statement in html
 
 
+def test_disclosure_locale_normalization() -> None:
+    """Regional and case variants normalize consistently across all disclosure functions."""
+    from habitable.disclosure import packet_trust_text, proof_statement, scope_statement
+
+    for tag in ("es-MX", "es-ES", "ES", "es-CO"):
+        proof = proof_statement(tag)
+        trust = packet_trust_text(tag)
+        scope = scope_statement(tag, scope_type="unit")
+        assert proof.heading == proof_statement("es").heading
+        assert trust.timestamp_summary == packet_trust_text("es").timestamp_summary
+        assert scope.heading == scope_statement("es", scope_type="unit").heading
+        assert scope.heading == "Alcance de esta exportación"
+
+
 def test_awaiting_timestamp_disclosed_at_export(
     make_vault: Callable[..., Vault],
     make_jpeg: Callable[..., Path],

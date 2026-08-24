@@ -261,7 +261,9 @@ def scope_statement(
     ``since`` remain compatibility inputs for rendering previously emitted packets;
     they are not available packet-v3 export modes.
     """
-    resolved = lang if lang in _SCOPE else _DEFAULT_LANG
+    resolved = lang.lower().split("-", 1)[0]
+    if resolved not in _SCOPE:
+        resolved = _DEFAULT_LANG
     strings = _SCOPE[resolved]
     is_issue_scope = scope_type == "issue" and issue_id
     statement = strings["issue"].format(issue_id=issue_id) if is_issue_scope else strings["unit"]
