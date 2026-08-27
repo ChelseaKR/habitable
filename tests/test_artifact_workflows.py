@@ -706,3 +706,224 @@ def test_a_handoff_section_with_no_member_records_does_not_render_a_count(
     report = verify_packet(result.out_dir, trusted_certs=[local_tsa.certificate])
     assert report.structurally_intact
     assert report.evidence_ready
+
+
+def _move_out_case(
+    vault: Vault,
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> tuple[str, str, str, str]:
+    """Build the synthetic move-out case ADR 0013 describes.
+
+    Returns the issue id, the move-out capture id, the itemization artifact id, and a
+    second artifact id (the tenant's own receipt) so endpoint tests have two documents.
+    """
+    issue_id = vault.document.add_issue(
+        category="other", room="kitchen", title="Kitchen floor at move-out"
+    )
+    move_in = capture(vault, make_jpeg("move-in.jpg"), issue_id=issue_id, tsa=local_tsa)
+    move_out = capture(vault, make_jpeg("move-out.jpg"), issue_id=issue_id, tsa=local_tsa)
+    add_relationship(
+        vault,
+        issue_id=issue_id,
+        relationship_type="before_of",
+        source_id=move_in.capture_id,
+        target_id=move_out.capture_id,
+        assertion="Tenant-selected move-in and move-out photographs.",
+    )
+
+    statement = tmp_path / "itemized-deductions.txt"
+    statement.write_text("Synthetic itemized deduction statement.", encoding="utf-8")
+    itemization = capture_artifact(
+        vault,
+        statement,
+        issue_id=issue_id,
+        artifact_type="deduction_itemization",
+        title="Itemized deduction statement",
+        source_assertion="received by mail",
+        issuer="landlord (asserted)",
+        occurred_at="2026-08-10",
+        tsa=local_tsa,
+    )
+    add_relationship(
+        vault,
+        issue_id=issue_id,
+        relationship_type="deduction_for",
+        source_id=itemization.artifact_id,
+        target_id=move_out.capture_id,
+        assertion="Charge stated against the kitchen floor.",
+    )
+
+    paid = tmp_path / "cleaning-receipt.txt"
+    paid.write_text("Synthetic receipt for cleaning the tenant paid for.", encoding="utf-8")
+    receipt = capture_artifact(
+        vault,
+        paid,
+        issue_id=issue_id,
+        artifact_type="expense_receipt",
+        title="Cleaning receipt",
+        source_assertion="tenant copy",
+        occurred_at="2026-08-02",
+        tsa=local_tsa,
+    )
+    add_relationship(
+        vault,
+        issue_id=issue_id,
+        relationship_type="supports",
+        source_id=receipt.artifact_id,
+        target_id=issue_id,
+    )
+    return issue_id, move_out.capture_id, itemization.artifact_id, receipt.artifact_id
+
+
+def test_move_out_deposit_record_seals_verifies_and_states_its_limits(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """ADR 0013 end to end. A landlord's itemized deduction is sealed as its own
+    document on the same evidence spine as any tenant capture, pointed at the condition
+    it charges for, and answered by the tenant's own receipt -- and the packet still
+    verifies while saying, in the export itself, that none of that decides who is right.
+    """
+    vault = make_vault()
+    vault.document.set_use_case_profile("move_out_deposit")
+    issue_id, move_out_id, itemization_id, _receipt_id = _move_out_case(
+        vault, make_jpeg, local_tsa, tmp_path
+    )
+
+    result = build_packet(
+        vault,
+        tmp_path / "packet-move-out",
+        generated_at="2026-08-20T00:00:00Z",
+        make_pdf=False,
+    )
+    bundle = json.loads(result.bundle_path.read_text(encoding="utf-8"))
+
+    itemization = next(
+        item
+        for item in bundle["items"]
+        if item["record_kind"] == "artifact" and item["capture_id"] == itemization_id
+    )
+    assert itemization["artifact"]["artifact_type"] == "deduction_itemization"
+    # The itemization is the landlord's document: it is sealed and custody-bound like
+    # any other, and its issuer stays an assertion rather than an authenticated source.
+    assert itemization["integrity"]["binding_stage"] == "semantic_binding"
+    assert itemization["artifact"]["issuer"] == "landlord (asserted)"
+
+    by_type = {
+        relationship["relationship_type"]: relationship for relationship in bundle["relationships"]
+    }
+    assert {"before_of", "deduction_for", "supports"} <= set(by_type)
+    assert by_type["deduction_for"]["source_id"] == itemization_id
+    assert by_type["deduction_for"]["target_id"] == move_out_id
+    assert by_type["deduction_for"]["issue_id"] == issue_id
+
+    assert bundle["use_case_profile"]["profile_id"] == "move_out_deposit"
+    assert bundle["use_case_profile"]["review_state"] == "maintainer_reviewed"
+    handoff = bundle["handoff_views"][0]
+    assert [section["section_id"] for section in handoff["sections"]] == [
+        "move_in_condition",
+        "move_out_condition",
+        "deduction_claim",
+        "tenant_records",
+        "proof_limits",
+    ]
+    # The limits travel with the export, not only with the docs.
+    disclosures = " ".join(handoff["disclosures"])
+    assert "neither accepts nor rebuts" in disclosures
+    assert "wear and tear" in disclosures
+    assert result.handoff_paths[0].exists()
+    rendered = result.handoff_paths[0].read_text(encoding="utf-8")
+    assert "neither accepts nor rebuts" in rendered
+
+    report = verify_packet(result.out_dir, trusted_certs=[local_tsa.certificate])
+    assert report.structurally_intact
+    assert report.evidence_ready
+
+
+def test_deduction_for_refuses_endpoints_the_registry_forbids(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """`deduction_for` records a claim about a documented condition, so it may only run
+    from the document (or the timeline entry recording its arrival) to an issue or a
+    capture. Chaining one deduction to another, or pointing a photograph at the issue as
+    though the photograph were the charge, is refused before anything is written."""
+    vault = make_vault()
+    issue_id, move_out_id, itemization_id, receipt_id = _move_out_case(
+        vault, make_jpeg, local_tsa, tmp_path
+    )
+
+    with pytest.raises(HabitableError, match="cannot connect artifact to artifact"):
+        vault.document.add_relationship(
+            issue_id=issue_id,
+            relationship_type="deduction_for",
+            source_id=itemization_id,
+            target_id=receipt_id,
+        )
+    with pytest.raises(HabitableError, match="cannot connect capture to issue"):
+        vault.document.add_relationship(
+            issue_id=issue_id,
+            relationship_type="deduction_for",
+            source_id=move_out_id,
+            target_id=issue_id,
+        )
+    assert [item.relationship_type for item in vault.document.relationships(issue_id)] == [
+        "before_of",
+        "deduction_for",
+        "supports",
+    ]
+
+
+def test_verifier_rejects_a_forged_deduction_between_two_documents(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """Tamper-detection: the endpoint rule is not only a local input check. A packet
+    rewritten so one deduction points at another document must be rejected by a
+    recipient's verifier, which never saw the vault that refused to write it."""
+    vault = make_vault()
+    vault.document.set_use_case_profile("move_out_deposit")
+    issue_id, _move_out_id, itemization_id, receipt_id = _move_out_case(
+        vault, make_jpeg, local_tsa, tmp_path
+    )
+    result = build_packet(
+        vault, tmp_path / "packet-forged", generated_at="2026-08-20T00:00:00Z", make_pdf=False
+    )
+    bundle = json.loads(result.bundle_path.read_text(encoding="utf-8"))
+    proof = cast(dict[str, JSONValue], bundle["custody_proof"])
+    entries = cast(list[JSONValue], proof["entries"])
+    custody = CustodyLog.from_records([cast(dict[str, JSONValue], entry) for entry in entries])
+
+    genuine = next(
+        cast(dict[str, JSONValue], relationship)
+        for relationship in bundle["relationships"]
+        if relationship["relationship_type"] == "deduction_for"
+    )
+    assert _verify_v4_relationship(
+        genuine,
+        custody,
+        {
+            itemization_id: (issue_id, "artifact"),
+            cast(str, genuine["target_id"]): (issue_id, "capture"),
+        },
+    ) == []
+
+    forged = deepcopy(genuine)
+    forged["target_id"] = receipt_id
+    problems = _verify_v4_relationship(
+        forged,
+        custody,
+        {itemization_id: (issue_id, "artifact"), receipt_id: (issue_id, "artifact")},
+    )
+    assert "relationship endpoint types are invalid" in problems
+    # Rewriting the endpoint also breaks the signed commitment, so the packet fails on
+    # two independent grounds rather than one.
+    assert "relationship commitment does not match the signed fields" in problems
