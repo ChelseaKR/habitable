@@ -7,17 +7,19 @@ promises.
 **Product boundary:** tenant-owned habitability evidence, not a generic evidence
 cloud and not legal advice.
 
-**Implementation status (2026-07-23, reconciled 2026-08-22):** the shared N0–N4
-primitives and all ten profile surfaces are implemented in case schema v3 /
-packet v4, including CLI, localhost app, encrypted sync, verifier, accessible
+**Implementation status (2026-07-23, reconciled 2026-08-22, extended
+2026-08-26):** the shared N0–N4 primitives and all eleven profile surfaces —
+the original ten, plus `move_out_deposit` (candidate #11, ADR 0013) — are
+implemented in case schema v3 / packet v4, including CLI, localhost app, encrypted sync, verifier, accessible
 HTML, fixed-question local aggregation, and partner capsules. “External review
 required” profiles remain synthetic-evaluation surfaces only; the named
 human/partner gates below are still open and cannot be completed by code. The
 `Now / Next / Later` section below was left describing this as unbuilt work
 after it shipped; it is corrected in place. Profile review-expiry enforcement
-(ADR 0012) shipped 2026-08-22, and
+(ADR 0012) shipped 2026-08-22 and the move-out/deposit-dispute record
+(candidate #11, ADR 0013) shipped 2026-08-26;
 [Beyond the current portfolio](#beyond-the-current-portfolio--year-2-and-year-3-candidates)
-names the next scored set of candidates.
+names the rest of the scored candidate set.
 
 This plan identifies new user jobs that reuse Habitable's strongest primitives:
 offline capture, an encrypted local vault, an attributable timeline, independent
@@ -383,8 +385,8 @@ effort can actually plan against it.
 
 | Rank | Use case | Primary user job | Value | Fit | Confidence | Effort | Decision |
 | ---: | --- | --- | ---: | ---: | ---: | --- | --- |
-| 11 | Move-out condition & deposit-dispute record | Pair documented move-in/move-out condition with an itemized deduction to dispute a withheld security deposit | 5 | 5 | 4 | M | **Now: solo-buildable, no partner gate — same class as #1/#2** |
-| 12 | Jurisdiction template growth | Add a second/third `letter.py` jurisdiction framing beyond `generic`/`us_habitability`, dated and expiry-tracked | 4 | 5 | 4 | S–M | **Now: solo-buildable — ADR 0012 makes this safely growable for the first time** |
+| 11 | Move-out condition & deposit-dispute record | Pair documented move-in/move-out condition with an itemized deduction to dispute a withheld security deposit | 5 | 5 | 4 | M | **Shipped 2026-08-26** as the `move_out_deposit` profile (ADR 0013) |
+| 12 | Jurisdiction template growth | Add a second/third `letter.py` jurisdiction framing beyond `generic`/`us_habitability`, dated and expiry-tracked | 4 | 5 | 4 | S–M | **Now: solo-buildable — ADR 0012 makes this safely growable for the first time. Filed as issue #207 and labelled *good first issue*: left for a newcomer on purpose, since a sustained outside contributor is an open workstream-D exit criterion** |
 | 13 | Joint multi-tenant case bundle | Let an organizer present several already-signed individual packets as one navigable building-wide submission, without merging custody chains | 4 | 5 | 3 | M | **Next: prototype presentation-only bundling over existing signed packets** |
 | 14 | Protected-activity and landlord-action timeline | Juxtapose a tenant's protected activity (complaint filed, union joined) and a landlord's later action on one neutral chronology | 5 | 3 | 2 | M | **Later: framing decision (ADR) before any code — see caution below** |
 
@@ -405,7 +407,13 @@ design, per this plan's own fit filter and the "Later" line below.
   and a `deduction_for` relationship are the only additions); #12 reuses
   `letter.py`'s existing `LetterProfile` registry pattern. Both are natural
   first picks for the *Now* row above precisely because they cost no new
-  protocol surface.
+  protocol surface. **#11 shipped 2026-08-26 exactly to that sizing** — the two
+  named additions and nothing else, `packet_version` unchanged at 4 (ADR 0013).
+  Building it surfaced one thing this plan had not: `verify.py` restates the
+  artifact/relationship vocabulary rather than importing it, to keep the
+  Apache-2.0 subset standalone, and nothing held the two copies equal. Any
+  future vocabulary addition — #13's included — must update both sides, and a
+  drift guard now fails the gate if one is forgotten.
 - **#13** is presentation over facts that already exist and verify
   independently — it must not create a new merged-custody artifact (that would
   reopen the scoped/rehashed-custody-view gate workstream A is still closing).
@@ -424,9 +432,10 @@ design, per this plan's own fit filter and the "Later" line below.
 ## Now / Next / Later
 
 **Reconciled 2026-08-22** — the sections below described this as unbuilt work;
-it is not. The N0–N4 foundation and all ten profiles have been implemented
-end to end (CLI, app, sync, packet v4, verifier, accessible HTML, i18n) since
-2026-07-23, confirmed against current code (`src/habitable/usecases.py`,
+it is not. The N0–N4 foundation and all eleven profiles have been implemented
+end to end (CLI, app, sync, packet v4, verifier, accessible HTML, i18n) — ten
+since 2026-07-23 and `move_out_deposit` since 2026-08-26 — confirmed against
+current code (`src/habitable/usecases.py`,
 `artifact.py`, `handoff.py`, `patterns.py`, `capsule.py`), not merely asserted.
 Four profiles (`repair_delivery`, `repair_comparison`, `utility_outage`,
 `displacement_expense`) are `maintainer_reviewed` and require no further
@@ -447,20 +456,25 @@ follows is honest present-tense status, not a build plan.
 - Complete external roadmap gates already prepared by the review hub (security/
   crypto audit, recorded AT pass, tenant-union pilot — see `ROADMAP.md`'s v1.0
   gate); these block the alpha caveat regardless of use-case count.
-- Ship the first genuinely new, solo-buildable expansion item from
-  [Beyond the current portfolio](#beyond-the-current-portfolio--year-2-and-year-3-candidates)
-  (profile review-expiry enforcement, ADR 0012, shipped 2026-08-22, is the
-  first of these).
+- Ship the genuinely new, solo-buildable expansion items from
+  [Beyond the current portfolio](#beyond-the-current-portfolio--year-2-and-year-3-candidates).
+  Two are done: profile review-expiry enforcement (ADR 0012, 2026-08-22) and
+  the move-out/deposit-dispute record (#11, ADR 0013, 2026-08-26). Of the
+  remainder, #12 is deliberately reserved for a first-time contributor (issue
+  #207), #13 needs a presentation-only prototype first, and #14 is blocked on
+  its own framing ADR.
 - Keep 20% capacity for scoped-view protocol/security work and 10% for
   unplanned safety fixes, unchanged from the original plan.
 
 ### Next
 
-- Pick up the next 1–2 solo-buildable ideas from *Beyond the current
-  portfolio* (jurisdiction template growth is the most natural next one, since
-  it is now expiry-aware) and take them through this project's full
-  definition of done: ADR, tests, i18n parity, a11y, threat-model delta,
-  CHANGELOG.
+- Prototype #13 (joint multi-tenant case bundle) as a signed table of contents
+  over N already-signed `bundle.json` files — never a merged custody chain,
+  which would reopen the scoped/rehashed-custody-view gate workstream A is
+  still closing. Take it through the same full definition of done #11 went
+  through: ADR, tests, i18n parity, a11y, threat-model delta, CHANGELOG.
+  Jurisdiction template growth (#12) stays available to a newcomer rather than
+  being absorbed by the maintainer.
 - As each `external_review_required` profile clears its named gate, promote it
   to `maintainer_reviewed` in an ADR-recorded decision and update
   `docs/capabilities.md`.

@@ -197,3 +197,25 @@ def test_verifier_subset_avoids_py314_only_except_syntax() -> None:
     assert not offenders, "parenthesis-free multi-type except in verifier subset:\n" + "\n".join(
         offenders
     )
+
+
+def test_verifier_vocabulary_mirrors_the_use_case_registry() -> None:
+    """`verify.py` restates the artifact/relationship vocabulary instead of importing
+    it, because the Apache-2.0 subset must not depend on `habitable.usecases` (see the
+    import guard above). Restating buys independence and costs drift: a term added to
+    the registry but not to the verifier means a vault happily seals evidence that its
+    own verifier then rejects, and an endpoint pair loosened on only one side means the
+    two disagree about what is valid. Nothing but this test holds the copies equal."""
+    from habitable import usecases, verify
+
+    assert set(usecases.ARTIFACT_TYPES) == verify._ARTIFACT_TYPES
+    assert set(usecases.RELATIONSHIP_TYPES) == verify._RELATIONSHIP_TYPES
+    assert set(verify._RELATIONSHIP_ENDPOINT_KINDS) == set(usecases.RELATIONSHIP_ENDPOINT_KINDS)
+    for relationship_type, pairs in usecases.RELATIONSHIP_ENDPOINT_KINDS.items():
+        assert verify._RELATIONSHIP_ENDPOINT_KINDS[relationship_type] == set(pairs), (
+            f"verifier and registry disagree on {relationship_type} endpoints"
+        )
+    # Every relationship type is constrained on both sides. A type present in the
+    # vocabulary but absent from the endpoint table would accept any pair of records,
+    # and the verifier's own check is written to skip an unknown key rather than fail.
+    assert set(usecases.RELATIONSHIP_ENDPOINT_KINDS) == set(usecases.RELATIONSHIP_TYPES)

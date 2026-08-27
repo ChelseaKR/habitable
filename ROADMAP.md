@@ -137,8 +137,8 @@ Targets for a small volunteer/solo effort, updated after **v0.4.0 (2026-08-16)**
 | **v0.2** | shipped June 2026 | Assurance groundwork | Verifier fuzzing; archive/re-timestamping; provenance; security/reviewer handoff materials | — |
 | **v0.3.0** | shipped 2026-07-23 (CHANGELOG-recorded; folded into the v0.4.0 tag below rather than tagged on its own) | Use-case foundation | Roadmap drain / novel-use-cases plan; bounded public review hub | N0–N4 primitives and all ten use-case profiles shipped (§E) |
 | **v0.4.0** | shipped & tagged 2026-08-16 | Packet-seal & release hygiene | Whole-packet RFC 3161 seal (ADR 0011); `--expected-producer-key`; `uv sync --locked` lockfile gate | Consent-record withdrawal semantics for local aggregation (N4) |
-| **Unreleased** | now (2026-08-26) | — | — | Profile review-expiry enforcement (ADR 0012): selection refuses an expired profile, export falls back and discloses rather than presenting stale guidance. Dated, expiring **letter** jurisdiction framing (ADR 0013): lapsed union-supplied local-law wording is withheld from the letter instead of sent, closing the stated precondition for jurisdiction template growth |
-| **v0.5 (beta)** | mid/late 2027 | Pilot-ready | Security/crypto audit underway; recorded AT pass; 1–2 union/legal-aid pilots running; multi-device + recovery UX; one-click desktop packaging (the native-mobile spike is already done — see workstream C — and blocked on upstream `cryptography` mobile wheels, not on this) | Solo-buildable Now items from *Beyond the current portfolio*: move-out/deposit-dispute record, jurisdiction template growth; named reviewer/partner secured for at least one of the six `external_review_required` profiles; joint multi-tenant case bundle prototyped |
+| **Unreleased** | now (2026-08-26) | — | — | Profile review-expiry enforcement (ADR 0012): selection refuses an expired profile, export falls back and discloses rather than presenting stale guidance. Dated, expiring **letter** jurisdiction framing (ADR 0013): lapsed union-supplied local-law wording is withheld from the letter instead of sent, closing the stated precondition for jurisdiction template growth. Move-out/deposit-dispute record (ADR 0014): the `move_out_deposit` profile, a `deduction_itemization` artifact type, and a `deduction_for` relationship, with a drift guard pinning the verifier's restated vocabulary to the registry |
+| **v0.5 (beta)** | mid/late 2027 | Pilot-ready | Security/crypto audit underway; recorded AT pass; 1–2 union/legal-aid pilots running; multi-device + recovery UX; one-click desktop packaging (the native-mobile spike is already done — see workstream C — and blocked on upstream `cryptography` mobile wheels, not on this) | Solo-buildable Now items from *Beyond the current portfolio*: the move-out/deposit-dispute record shipped early (2026-08-26, ADR 0014); jurisdiction template growth is unblocked on the engineering side (ADR 0013 closed its precondition) and is left open for a first-time contributor (issue #207), still gated on a named legal reviewer; named reviewer/partner secured for at least one of the six `external_review_required` profiles; joint multi-tenant case bundle prototyped |
 | **v1.0** | ~2028 | Trustworthy | The [v1.0 gate](#the-v10-gate-when-alpha-comes-off) met; "alpha" caveat removed | At least one `external_review_required` profile promoted to `maintainer_reviewed` on a recorded review |
 | **v2.x+** | beyond | Reach & resilience | More languages/jurisdictions; metadata-resistant sync; broader interop; shared governance | Remaining partner-gated profiles as partners arrive; protected-activity timeline only after its framing ADR; jurisdiction/language growth using the now-enforced expiry mechanism |
 
@@ -372,16 +372,28 @@ reconciliation (2026-08-22) found and fixed.
   No new jurisdiction framing shipped with it: that remains blocked on a named
   legal reviewer, not on engineering.
 
+- *Shipped (2026-08-26, ADR 0014):* **The move-out condition and
+  deposit-dispute record**, the highest-scored solo-buildable candidate (#11)
+  in `docs/novel-use-cases-plan.md`'s "Beyond the current portfolio" set, built
+  to exactly the sizing that plan recorded: a `deduction_itemization` artifact
+  type, a `deduction_for` relationship, and a `move_out_deposit` profile that
+  pairs them with the existing `before_of`/`after_of` comparison. No new
+  protocol surface — `packet_version` stays 4 and every old packet verifies
+  unchanged. The profile decides nothing: two disclosures ride in every export
+  saying that an itemized deduction is the landlord's assertion, and that
+  condition records establish neither wear and tear nor what is owed.
 - **Next use-case portfolio.** *Objective:* keep adding new tenant/organizer
   jobs on the same shared primitives instead of bespoke workflows, exactly as
   ADR 0010 chose. *Exit:* see `docs/novel-use-cases-plan.md`'s "Beyond the
-  current portfolio" section for the scored candidate set — a move-out/
-  deposit-dispute record and jurisdiction template growth are solo-buildable
-  next; a joint multi-tenant case bundle is next after a presentation-only
-  prototype; a protected-activity timeline is explicitly **not** queued until
-  its own ADR settles a non-inference framing (it must never become a
-  retaliation score — `docs/novel-use-cases-plan.md`'s fit filter already
-  excludes "landlord risk scores" and "automated judgments about truth").
+  current portfolio" section for the rest of the scored candidate set —
+  jurisdiction template growth stays deliberately unclaimed as a *good first
+  issue* (#207) rather than absorbed by the maintainer, because a sustained
+  outside contributor is itself an open exit criterion in workstream D; a joint
+  multi-tenant case bundle is next after a presentation-only prototype; a
+  protected-activity timeline is explicitly **not** queued until its own ADR
+  settles a non-inference framing (it must never become a retaliation score —
+  `docs/novel-use-cases-plan.md`'s fit filter already excludes "landlord risk
+  scores" and "automated judgments about truth").
 - **Named reviewer/partner recruitment for the six gated profiles.**
   *Objective:* convert `external_review_required` into `maintainer_reviewed`
   one profile at a time, on the record. *Exit:* a dated review recorded per
