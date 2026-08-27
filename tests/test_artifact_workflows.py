@@ -907,14 +907,17 @@ def test_verifier_rejects_a_forged_deduction_between_two_documents(
         for relationship in bundle["relationships"]
         if relationship["relationship_type"] == "deduction_for"
     )
-    assert _verify_v4_relationship(
-        genuine,
-        custody,
-        {
-            itemization_id: (issue_id, "artifact"),
-            cast(str, genuine["target_id"]): (issue_id, "capture"),
-        },
-    ) == []
+    assert (
+        _verify_v4_relationship(
+            genuine,
+            custody,
+            {
+                itemization_id: (issue_id, "artifact"),
+                cast(str, genuine["target_id"]): (issue_id, "capture"),
+            },
+        )
+        == []
+    )
 
     forged = deepcopy(genuine)
     forged["target_id"] = receipt_id

@@ -43,6 +43,36 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   reviewer, deliberately, per ADR 0013. No packet, bundle, or verifier change;
   `packet_version` and `CONFIG_SCHEMA_VERSION` are unmoved. See
   [ADR 0013](docs/adr/0013-dated-expiring-letter-jurisdiction-framing.md).
+- **A move-out condition and deposit-dispute record (ADR 0014).** A tenant who
+  moves out, has part of their deposit withheld, and receives an itemized
+  statement of deductions could already photograph the unit and seal the
+  statement — but only as an untyped `other_document`, with the link between the
+  charge and the condition it charges for living in a free-text note a recipient
+  has no reason to trust. Two additions to existing vocabularies close that,
+  exactly as `docs/novel-use-cases-plan.md` sized this work: a
+  `deduction_itemization` artifact type, so the landlord's statement is a
+  first-class sealed document on the unchanged capture/custody/timestamp spine,
+  and a `deduction_for` relationship, which runs from that document (or the
+  timeline entry recording its arrival) to the issue or the specific photograph
+  it charges against. A new `move_out_deposit` profile pairs them with the
+  existing `before_of`/`after_of` move-in/move-out comparison and `supports` for
+  the tenant's own receipts.
+
+  The profile decides nothing. Two disclosures travel with every export and are
+  asserted in the rendered handoff, not merely documented: an itemized deduction
+  is the landlord's assertion, and recording it here neither accepts nor rebuts
+  it; condition records do not establish wear and tear, damage, cost, or what a
+  deposit is owed. `deduction_for` cannot connect two documents, so a chain of
+  itemizations can never be presented as though the record joined them, and a
+  packet forged to do it is rejected by a recipient's verifier on both the
+  endpoint rule and the broken commitment.
+
+  `packet_version` stays 4 and every existing packet verifies unchanged. The
+  forward direction is stated rather than papered over: a verifier built before
+  this change does not know the two new terms and will refuse a packet using
+  them, which is the fail-closed direction. Published schema enums
+  (`docs/packet-bundle.schema.json`), the browser app's document-type and
+  relationship pickers, and the EN/ES app labels are updated together.
 
 - **Workflow-profile review expiry is now enforced, not just recorded.** ADR
   0010 gave every use-case profile a `reviewed_at`/`expires_at` pair, and the
@@ -163,6 +193,18 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   visible via `--json`; a human saw `integrity: NOT INTACT` with no reason given.
 
 ### Fixed
+
+- **The verifier's copy of the workflow vocabulary can no longer drift from the
+  registry.** `verify.py` restates `ARTIFACT_TYPES`, `RELATIONSHIP_TYPES`, and
+  `RELATIONSHIP_ENDPOINT_KINDS` instead of importing `habitable.usecases`,
+  because the Apache-2.0 verifier subset must stay standalone for embedders —
+  but nothing held the two copies equal. A term added to the registry alone
+  would have let a vault seal evidence that its own verifier then rejects, and an
+  endpoint pair loosened on one side would have left the two disagreeing about
+  what is valid. `tests/test_guards.py` now fails on drift in either direction,
+  and a companion guard pins the browser app's `<option>` lists to the same
+  vocabularies so the app cannot offer a type the engine rejects, or omit one it
+  accepts.
 
 - **The test suite can no longer reach the internet without saying so.** A vault's
   default config names public timestamp authorities, so the moment `export` learned

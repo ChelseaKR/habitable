@@ -162,9 +162,17 @@ that export carries no profile — `use_case_profile` is `null` and
 `use_case_profile_fallback` instead records `{requested_profile_id,
 requested_profile_version, reason: "expired", expires_at}` — rather than
 presenting guidance whose review window has passed. A matching sentence is
-appended to `disclosures`. None of the ten built-in profiles sets an expiry
+appended to `disclosures`. None of the eleven built-in profiles sets an expiry
 today; this is forward-looking for jurisdiction- and community-contributed
 profiles.
+
+The artifact and relationship vocabularies are closed sets, enumerated in
+`docs/packet-bundle.schema.json`. They grow by addition only: a value is never
+removed or repurposed, so every packet written under an earlier vocabulary keeps
+verifying. The direction that does *not* hold is forward — a verifier predating a
+term rejects a packet using it, which is the fail-closed direction. `packet_version`
+is not bumped for an added value; the schema file is the enumeration of record.
+`deduction_itemization` and `deduction_for` (ADR 0014) were added this way.
 
 A **timestamp token** is `{kind: "rfc3161"|"dev", tsa_name, token_b64}` where `token_b64` is base64
 of the DER token (`rfc3161`) or a canonical-JSON token (`dev`, non-production/offline only).

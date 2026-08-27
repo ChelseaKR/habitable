@@ -208,8 +208,8 @@ def test_verifier_vocabulary_mirrors_the_use_case_registry() -> None:
     two disagree about what is valid. Nothing but this test holds the copies equal."""
     from habitable import usecases, verify
 
-    assert verify._ARTIFACT_TYPES == set(usecases.ARTIFACT_TYPES)
-    assert verify._RELATIONSHIP_TYPES == set(usecases.RELATIONSHIP_TYPES)
+    assert set(usecases.ARTIFACT_TYPES) == verify._ARTIFACT_TYPES
+    assert set(usecases.RELATIONSHIP_TYPES) == verify._RELATIONSHIP_TYPES
     assert set(verify._RELATIONSHIP_ENDPOINT_KINDS) == set(usecases.RELATIONSHIP_ENDPOINT_KINDS)
     for relationship_type, pairs in usecases.RELATIONSHIP_ENDPOINT_KINDS.items():
         assert verify._RELATIONSHIP_ENDPOINT_KINDS[relationship_type] == set(pairs), (

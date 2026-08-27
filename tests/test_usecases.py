@@ -128,7 +128,9 @@ def test_browser_app_offers_exactly_the_registry_vocabulary() -> None:
     engine rejects is a dead end a tenant only discovers on submit; a registry term with
     no option is a record the browser app cannot create at all."""
     markup = (Path(__file__).resolve().parent.parent / "app" / "index.html").read_text("utf-8")
-    selects = dict(re.findall(r'<select id="(art-type|rel-type)"[^>]*>(.*?)</select>', markup, re.S))
+    selects = dict(
+        re.findall(r'<select id="(art-type|rel-type)"[^>]*>(.*?)</select>', markup, re.S)
+    )
     assert set(selects) == {"art-type", "rel-type"}, "app select ids moved; update this guard"
 
     assert set(re.findall(r'<option value="([^"]+)"', selects["art-type"])) == set(ARTIFACT_TYPES)
