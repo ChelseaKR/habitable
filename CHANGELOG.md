@@ -9,6 +9,41 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **The repair-request letter's jurisdiction wording is now dated, and lapsed
+  wording is withheld instead of sent.** `ROADMAP.md` (workstream E) and
+  `docs/novel-use-cases-plan.md` (candidate #12) both queue jurisdiction
+  template growth on the stated precondition that jurisdictions expand "only
+  with dated owners and expiry policy — now enforceable rather than
+  aspirational (ADR 0012)." That precondition was not true here: ADR 0012's
+  machinery lives on `UseCaseProfile`, and `LetterProfile` had no reviewer, no
+  review date, and no expiry at all.
+
+  It matters most on this surface. `docs/letter-generator.md` designates
+  `[letter] header`/`footer` as the home for a **locally verified statutory
+  citation** — correctly, since habitable must not invent law — but that left
+  the one string this project emits that can silently stop being true sitting
+  in an undated field, on the one document that leaves the tenant's control and
+  goes to a landlord under the tenant's name.
+
+  `[letter]` now takes `local_law_reviewer`, `local_law_reviewed_at`, and
+  `local_law_expires_at`. Wording whose review has lapsed is left out of both
+  the HTML and the PDF — they read the same two fields, so they cannot
+  disagree about what was withheld — and `habitable letter` reports what was
+  dropped and what to do about it, in the requested language. Undated wording
+  is still used, and reported as undated, so no existing config breaks.
+  Backdating the letter with `--date` cannot resurrect expired wording.
+  Review dates must be plain `YYYY-MM-DD` days, rejected at config load
+  otherwise.
+
+  `LetterProfile` gains `reviewer`/`reviewed_at`/`expires_at` and a
+  `framing_expired` predicate mirroring `usecases.profile_expired`; an expired
+  framing falls back to `generic` and says so. Both built-in framings are dated
+  and neither expires — they name no statute, so they have no specifics to go
+  stale. No new jurisdiction framing ships: that stays blocked on a named legal
+  reviewer, deliberately, per ADR 0013. No packet, bundle, or verifier change;
+  `packet_version` and `CONFIG_SCHEMA_VERSION` are unmoved. See
+  [ADR 0013](docs/adr/0013-dated-expiring-letter-jurisdiction-framing.md).
+
 - **Workflow-profile review expiry is now enforced, not just recorded.** ADR
   0010 gave every use-case profile a `reviewed_at`/`expires_at` pair, and the
   plan that introduced it named the acceptance criterion: "an expired

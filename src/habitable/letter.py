@@ -35,8 +35,8 @@ statement of the same limit.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
-from datetime import UTC, datetime
+from dataclasses import dataclass, replace
+from datetime import UTC, date, datetime
 from html import escape
 
 from .config import LetterTemplate
@@ -45,31 +45,61 @@ from .vault import Vault
 
 __all__ = [
     "LETTER_LANGUAGE",
+    "LOCAL_LAW_STATES",
     "PROFILES",
     "LetterIssue",
     "LetterOptions",
     "LetterProfile",
+    "LocalLawReview",
     "RepairLetter",
     "build_letter",
+    "framing_expired",
     "render_letter_html",
     "resolve_profile",
+    "review_local_law",
 ]
 
 
 @dataclass(frozen=True, slots=True)
 class LetterProfile:
-    """Jurisdiction-aware *framing* for a letter (presentation only, never a legal claim)."""
+    """Jurisdiction-aware *framing* for a letter (presentation only, never a legal claim).
+
+    ``reviewer``/``reviewed_at``/``expires_at`` date the wording the same way
+    :class:`habitable.usecases.UseCaseProfile` dates a workflow's review, so a
+    jurisdiction framing cannot be added without saying who stood behind it and
+    when. ``expires_at`` empty means the framing never goes stale; see
+    :data:`PROFILES` for why that is the honest setting for the two built-ins and
+    ``docs/adr/0013-dated-expiring-letter-jurisdiction-framing.md`` for the rule.
+    """
 
     key: str
     label: str
     framing: str
     legal_reference: str
     cure_period_days: int = 14
+    reviewer: str = "Habitable maintainers"
+    reviewed_at: str = ""
+    expires_at: str = ""
 
+
+# The day the two built-in framings were last read end to end against the rule
+# that they assert no statute -- the mechanical half of that read is
+# `test_jurisdiction_profiles_and_fallback`, which fails the build on a `§` or a
+# `U.S.C` in any reader-visible field.
+_BUILTIN_REVIEWED_AT = "2026-08-26"
 
 # Built-in profiles. These intentionally cite no specific statute: they describe
 # commonly-recognized concepts in hedged terms and defer to local confirmation.
 # A union encodes verified, jurisdiction-specific wording in config instead.
+#
+# Neither built-in sets `expires_at`, and that is a decision rather than an
+# oversight. An expiry exists to stop *stale specifics* going out unread; a
+# framing that names no statute, no deadline, and no remedy has no specifics to
+# go stale, and giving it one would only mean `habitable letter` stopped
+# producing the fallback framing on a date -- taking the safe default away from a
+# tenant to punish a maintainer. Wording that does make a jurisdiction-specific
+# claim lives in `[letter] header`/`footer`, and that is exactly what
+# `review_local_law` dates and expires.
 PROFILES: dict[str, LetterProfile] = {
     "generic": LetterProfile(
         key="generic",
@@ -84,6 +114,7 @@ PROFILES: dict[str, LetterProfile] = {
             "treat this letter as that written notice."
         ),
         cure_period_days=14,
+        reviewed_at=_BUILTIN_REVIEWED_AT,
     ),
     "us_habitability": LetterProfile(
         key="us_habitability",
@@ -100,10 +131,46 @@ PROFILES: dict[str, LetterProfile] = {
             "where the property is located."
         ),
         cure_period_days=14,
+        reviewed_at=_BUILTIN_REVIEWED_AT,
     ),
 }
 
 _DEFAULT_PROFILE = "generic"
+
+
+#: Every state union-supplied local-law wording can be in. Exhaustive on purpose:
+#: a reader of a letter's provenance should never meet a fifth value.
+#:
+#: - ``absent``  — the union supplied no ``header``/``footer`` wording at all.
+#: - ``undated`` — wording is present but carries no review date. Used, and said so.
+#: - ``current`` — wording is dated and has not reached its expiry.
+#: - ``expired`` — wording reached its expiry and is left out of the letter.
+LOCAL_LAW_STATES = ("absent", "undated", "current", "expired")
+
+
+@dataclass(frozen=True, slots=True)
+class LocalLawReview:
+    """Who checked the union's local-law wording, when, and whether it still holds."""
+
+    state: str
+    reviewer: str = ""
+    reviewed_at: str = ""
+    expires_at: str = ""
+
+    @property
+    def usable(self) -> bool:
+        """Whether the wording may go into a letter at all.
+
+        Fail-closed direction: only ``expired`` withholds wording. Undated wording
+        is still the union's own considered text, and refusing it would break every
+        config written before this field existed; it is reported instead.
+        """
+        return self.state != "expired"
+
+
+#: A letter whose config supplied no local-law wording. Module-level so
+#: :class:`RepairLetter` can default to it without a factory.
+_NO_LOCAL_LAW = LocalLawReview(state="absent")
 
 # The one language the letter is written in, and therefore the only value its
 # `lang` attribute may take (issue #161).
@@ -203,6 +270,16 @@ class RepairLetter:
     requested_language: str = LETTER_LANGUAGE
     header: str = ""
     footer: str = ""
+    #: The framing profile actually used, after any expiry fallback.
+    profile_key: str = _DEFAULT_PROFILE
+    #: When that framing was last reviewed ("" if the framing predates dating).
+    framing_reviewed_at: str = ""
+    #: The key of a framing that was asked for and dropped because its review had
+    #: expired, or "" when nothing was dropped.
+    framing_expired_fallback: str = ""
+    #: Whether the union's own local-law wording is dated, current, or stale, and
+    #: therefore whether ``header``/``footer`` above still carry it.
+    local_law: LocalLawReview = _NO_LOCAL_LAW
 
     @property
     def language_limitation(self) -> str:
@@ -219,12 +296,91 @@ class RepairLetter:
             "repair-request letter"
         )
 
+    @property
+    def local_law_limitation(self) -> str:
+        """A plain statement about the union-supplied local-law wording, or ``""``.
+
+        Not part of the letter body: like :attr:`language_limitation` this is for
+        the tenant/organizer producing the document, not for the landlord
+        receiving it. The landlord's copy simply does not carry wording whose
+        review has lapsed, which is the point.
+        """
+        if self.local_law.state == "expired":
+            return (
+                "the locally verified wording in [letter] expired on "
+                f"{self.local_law.expires_at} and was left out of this letter: re-check it "
+                "against current local law, then update local_law_reviewed_at and "
+                "local_law_expires_at in config.toml"
+            )
+        if self.local_law.state == "undated":
+            return (
+                "the locally verified wording in [letter] carries no review date, so nothing "
+                "can tell you when it stopped being true: set local_law_reviewed_at and "
+                "local_law_expires_at in config.toml"
+            )
+        return ""
+
+    @property
+    def framing_limitation(self) -> str:
+        """A plain statement that an expired framing was swapped out, or ``""``."""
+        if not self.framing_expired_fallback:
+            return ""
+        return (
+            f"the {self.framing_expired_fallback!r} framing's review has expired, so this "
+            f"letter uses the {self.profile_key!r} framing instead"
+        )
+
 
 _DISCLAIMER = (
     "This letter was generated from documented evidence as a convenience. It is not legal "
     "advice. Habitability requirements, notice rules, and deadlines vary by jurisdiction; "
     "confirm the rules that apply to you, and seek legal aid where you can."
 )
+
+
+def framing_expired(profile: LetterProfile, *, today: date | None = None) -> bool:
+    """Whether *profile*'s review window has passed.
+
+    The letter-side twin of :func:`habitable.usecases.profile_expired`, with the
+    same semantics: no ``expires_at`` never expires, comparison is by calendar
+    date so a framing expires at the start of its named day rather than partway
+    through it in some timezone, and ``today`` is injectable so callers and tests
+    pin the comparison instead of reading the wall clock.
+
+    Presently inert — neither built-in framing sets ``expires_at`` (see
+    :data:`PROFILES`) — and deliberately so: this is the enforcement a dated
+    jurisdiction framing needs to exist *before* one is added, not after.
+    """
+    if not profile.expires_at:
+        return False
+    if today is None:
+        today = datetime.now(tz=UTC).date()
+    return today >= date.fromisoformat(profile.expires_at)
+
+
+def review_local_law(template: LetterTemplate, *, today: date | None = None) -> LocalLawReview:
+    """Classify the union-supplied ``[letter]`` local-law wording against its review dates.
+
+    ``header``/``footer`` are the documented home for a locally verified statutory
+    citation, and a citation is the one string here that can quietly stop being
+    true. This decides nothing about the law; it only reports whether the human
+    who checked the wording said it was still good as of *today*.
+    """
+    if not (template.header or template.footer):
+        return _NO_LOCAL_LAW
+    review = LocalLawReview(
+        state="undated",
+        reviewer=template.local_law_reviewer,
+        reviewed_at=template.local_law_reviewed_at,
+        expires_at=template.local_law_expires_at,
+    )
+    if not (review.reviewed_at or review.expires_at):
+        return review
+    if today is None:
+        today = datetime.now(tz=UTC).date()
+    if review.expires_at and today >= date.fromisoformat(review.expires_at):
+        return replace(review, state="expired")
+    return replace(review, state="current")
 
 
 def resolve_profile(jurisdiction: str) -> LetterProfile:
@@ -238,11 +394,32 @@ def resolve_profile(jurisdiction: str) -> LetterProfile:
 
 
 def build_letter(
-    vault: Vault, options: LetterOptions, *, template: LetterTemplate | None = None
+    vault: Vault,
+    options: LetterOptions,
+    *,
+    template: LetterTemplate | None = None,
+    today: date | None = None,
 ) -> RepairLetter:
-    """Assemble a :class:`RepairLetter` from the case's logged evidence."""
+    """Assemble a :class:`RepairLetter` from the case's logged evidence.
+
+    *today* dates the review checks on the jurisdiction framing and the union's
+    local-law wording. It is injectable so the decision is reproducible under test
+    instead of depending on the day the suite happens to run; it defaults to the
+    real UTC date. It deliberately is **not** derived from ``options.date``, which
+    a caller controls: a backdated letter must not be able to resurrect wording
+    whose review has lapsed.
+    """
     tmpl = template if template is not None else vault.config.letter
-    profile = resolve_profile(options.jurisdiction or tmpl.jurisdiction)
+    requested_profile = resolve_profile(options.jurisdiction or tmpl.jurisdiction)
+    profile = requested_profile
+    expired_framing = ""
+    if framing_expired(requested_profile, today=today):
+        # Same direction as an expired use-case profile at export (ADR 0012):
+        # fall back to wording that claims less and say so, rather than either
+        # refusing a tenant their letter or sending a lapsed framing.
+        expired_framing = requested_profile.key
+        profile = PROFILES[_DEFAULT_PROFILE]
+    local_law = review_local_law(tmpl, today=today)
     cure_days = _first_positive(
         options.cure_period_days, tmpl.cure_period_days, profile.cure_period_days
     )
@@ -282,8 +459,16 @@ def build_letter(
         profile_label=profile.label,
         language=LETTER_LANGUAGE,
         requested_language=options.language or vault.config.language or LETTER_LANGUAGE,
-        header=tmpl.header,
-        footer=tmpl.footer,
+        # Wording whose review has lapsed does not reach the landlord's copy. Both
+        # renderers read these two fields and nothing else, so HTML and PDF cannot
+        # disagree about what was withheld, and the HTML footer falls back to the
+        # built-in "Framing profile: … Not legal advice." line on its own.
+        header=tmpl.header if local_law.usable else "",
+        footer=tmpl.footer if local_law.usable else "",
+        profile_key=profile.key,
+        framing_reviewed_at=profile.reviewed_at,
+        framing_expired_fallback=expired_framing,
+        local_law=local_law,
     )
 
 

@@ -10,9 +10,11 @@ administration surface, and it is plain TOML so it diffs and reviews cleanly.
 
 from __future__ import annotations
 
+import re
 import tomllib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +33,30 @@ __all__ = [
 ]
 
 CONFIG_SCHEMA_VERSION = 1
+
+# Review dates are plain calendar days and nothing else. Written `[0-9]` rather
+# than `\d` on purpose: `\d` matches every Unicode decimal digit, so a fullwidth
+# or Devanagari "2026" would satisfy the pattern and then raise deep inside
+# `date.fromisoformat` instead of being named here as a bad config value.
+_REVIEW_DATE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+
+
+def _require_review_date(value: str, key: str) -> None:
+    """Accept "" (unset) or a strict ``YYYY-MM-DD`` calendar date, else fail closed.
+
+    Strictness is the point. ``date.fromisoformat`` alone accepts ``20260826`` and
+    full timestamps, and a value that parses in one place but not another is how a
+    date that was meant to expire quietly never does.
+    """
+    if not value:
+        return
+    if not _REVIEW_DATE.match(value):
+        raise ConfigError(f"{key!r} must be a YYYY-MM-DD date, got {value!r}")
+    try:
+        date.fromisoformat(value)
+    except ValueError as exc:
+        raise ConfigError(f"{key!r} is not a real calendar date: {value!r}") from exc
+
 
 # Public, free RFC 3161 timestamp authorities are configured by default so a union
 # never has to pay for or host one. The dev authority is for offline tests/demos
@@ -118,6 +144,15 @@ class LetterTemplate:
     by key (e.g. ``"generic"``, ``"us_habitability"``); the built-ins make no
     statute-specific claim. A union that has confirmed its local law can override the
     header/footer text here. None of this changes how the underlying evidence verifies.
+
+    ``header``/``footer`` are the documented home for a *locally verified* statutory
+    citation (``docs/letter-generator.md``), which is the one string in this project
+    that can go stale on a date nobody is watching: a statute is amended, a local
+    ordinance is repealed, and the citation keeps going out on correspondence
+    carrying a tenant's name. The three ``local_law_*`` fields date that wording and
+    give it an expiry, so :func:`habitable.letter.build_letter` can leave stale
+    wording out and say it did. See
+    ``docs/adr/0013-dated-expiring-letter-jurisdiction-framing.md``.
     """
 
     sender_name: str = ""
@@ -128,6 +163,21 @@ class LetterTemplate:
     cure_period_days: int = 0  # 0 = fall back to the profile's default
     header: str = ""
     footer: str = ""
+    #: Who checked the ``header``/``footer`` wording against local law. Free text:
+    #: a person, a legal-aid clinic, a union's housing committee.
+    local_law_reviewer: str = ""
+    #: ``YYYY-MM-DD`` the wording was last checked, or "" for undated.
+    local_law_reviewed_at: str = ""
+    #: ``YYYY-MM-DD`` the check goes stale, or "" for no expiry. On and after this
+    #: date the wording is left out of generated letters rather than sent unchecked.
+    local_law_expires_at: str = ""
+
+    def __post_init__(self) -> None:
+        # Validated here rather than only at TOML load, so a caller constructing a
+        # template programmatically cannot smuggle in a date that never compares
+        # true and therefore silently never expires.
+        _require_review_date(self.local_law_reviewed_at, "local_law_reviewed_at")
+        _require_review_date(self.local_law_expires_at, "local_law_expires_at")
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,6 +294,9 @@ class Config:
                 cure_period_days=_opt_int(letter_raw, "cure_period_days", 0),
                 header=_opt_str(letter_raw, "header", ""),
                 footer=_opt_str(letter_raw, "footer", ""),
+                local_law_reviewer=_opt_str(letter_raw, "local_law_reviewer", ""),
+                local_law_reviewed_at=_opt_str(letter_raw, "local_law_reviewed_at", ""),
+                local_law_expires_at=_opt_str(letter_raw, "local_law_expires_at", ""),
             )
         return cls(
             schema_version=version,
@@ -315,6 +368,18 @@ def default_config_toml(*, language: str = "en") -> str:
         '# recipient_address = "<mailing address>"',
         '# jurisdiction = "generic"',
         "# cure_period_days = 14",
+        '# header = "Notice under <your state> habitability law, § <verified citation>"',
+        '# footer = "Prepared with <your tenant union>. Not legal advice."',
+        "",
+        "# Who checked that header/footer wording against local law, and when. A",
+        "# statute you cited correctly in 2026 can be amended in 2027, and the letter",
+        "# goes out under a tenant's name. On and after local_law_expires_at habitable",
+        "# leaves that wording OUT of the letter and tells you it did, rather than",
+        "# sending an unchecked citation. Leave the dates empty and the wording is",
+        "# used as-is and reported as undated.",
+        '# local_law_reviewer = "<person or legal-aid clinic who checked it>"',
+        '# local_law_reviewed_at = "2026-08-26"',
+        '# local_law_expires_at = "2027-08-26"',
         "",
     ]
     return "\n".join(lines)

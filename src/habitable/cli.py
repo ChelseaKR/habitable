@@ -31,7 +31,7 @@ from .config import TSAConfig
 from .crypto import KDF_PROFILES, PublicIdentity
 from .errors import HabitableError, SyncError
 from .i18n import DEFAULT_LOCALE, cli_text, format_datetime, language_name, resolve_locale
-from .letter import LetterOptions, build_letter, render_letter_html
+from .letter import LetterOptions, RepairLetter, build_letter, render_letter_html
 from .obslog import configure_logging, enabled_from_env, log_event
 from .packet import build_packet
 from .pairing import accept_pairing_material, create_pairing_material
@@ -1212,6 +1212,37 @@ def _cmd_campaign_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_letter_review_notes(letter: RepairLetter) -> None:
+    """Say what the letter left out, and why, in the language that was asked for.
+
+    ADR 0013. These are operator-facing notes about *provenance*, not letter
+    content: the landlord's copy simply does not carry wording whose review has
+    lapsed. Printing them here is what keeps the withholding from being silent.
+    """
+    locale = resolve_locale(letter.requested_language)
+    if letter.framing_expired_fallback:
+        print(
+            "           "
+            + cli_text(
+                "letter_framing_expired",
+                locale,
+                requested=letter.framing_expired_fallback,
+                used=letter.profile_key,
+            )
+        )
+    if letter.local_law.state == "expired":
+        print(
+            "           "
+            + cli_text(
+                "letter_local_law_expired",
+                locale,
+                expires_at=letter.local_law.expires_at,
+            )
+        )
+    elif letter.local_law.state == "undated":
+        print("           " + cli_text("letter_local_law_undated", locale))
+
+
 def _cmd_letter(args: argparse.Namespace) -> int:
     vault = _open(args)
     options = LetterOptions(
@@ -1229,8 +1260,10 @@ def _cmd_letter(args: argparse.Namespace) -> int:
     html_path = args.out / "letter.html"
     html_path.write_text(render_letter_html(letter), encoding="utf-8")
     print(f"habitable: repair-request letter for {letter.property_address}")
-    print(f"           {len(letter.issues)} issue(s) · framing: {letter.profile_label}")
+    reviewed = f" (reviewed {letter.framing_reviewed_at})" if letter.framing_reviewed_at else ""
+    print(f"           {len(letter.issues)} issue(s) · framing: {letter.profile_label}{reviewed}")
     print(f"           accessible letter written to {html_path}")
+    _print_letter_review_notes(letter)
     if letter.language_limitation:
         # Issue #161: the letter is the one surface that is not bilingual. Say so
         # here, in the language that was asked for, instead of shipping English

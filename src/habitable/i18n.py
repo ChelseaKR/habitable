@@ -402,6 +402,24 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "machine-translate a document that carries legal framing and your name. The "
             'file declares lang="en" so it is not announced as {requested}.'
         ),
+        # ADR 0013: the [letter] header/footer is where a union puts a locally
+        # verified statutory citation, and a citation is the one string here that
+        # can stop being true on a date nobody watches.
+        "letter_local_law_expired": (
+            "note: the wording your union verified for this jurisdiction expired on "
+            "{expires_at} and was left out of this letter. Re-check it against current "
+            "local law, then update local_law_reviewed_at and local_law_expires_at in "
+            "config.toml. The letter went out with the built-in framing, which claims less."
+        ),
+        "letter_local_law_undated": (
+            "note: the wording your union verified for this jurisdiction carries no review "
+            "date, so nothing can tell you when it stopped being true. Set "
+            "local_law_reviewed_at and local_law_expires_at in config.toml."
+        ),
+        "letter_framing_expired": (
+            "note: the {requested} framing's review has expired, so this letter uses the "
+            "{used} framing instead."
+        ),
     },
     "es": {
         "status_summary": (
@@ -512,6 +530,21 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "traducción revisada al {requested} de la carta de solicitud de reparaciones, "
             "y no traducirá automáticamente un documento que lleva lenguaje legal y su "
             'nombre. El archivo declara lang="en", así que no se anuncia como {requested}.'
+        ),
+        "letter_local_law_expired": (
+            "aviso: el texto que su sindicato verificó para esta jurisdicción caducó el "
+            "{expires_at} y quedó fuera de esta carta. Vuelva a comprobarlo con la ley local "
+            "vigente y luego actualice local_law_reviewed_at y local_law_expires_at en "
+            "config.toml. La carta salió con el texto integrado, que afirma menos."
+        ),
+        "letter_local_law_undated": (
+            "aviso: el texto que su sindicato verificó para esta jurisdicción no tiene fecha "
+            "de revisión, así que nada puede avisarle de cuándo dejó de ser cierto. Ponga "
+            "local_law_reviewed_at y local_law_expires_at en config.toml."
+        ),
+        "letter_framing_expired": (
+            "aviso: la revisión del texto {requested} caducó, así que esta carta usa el "
+            "texto {used} en su lugar."
         ),
     },
 }

@@ -137,7 +137,7 @@ Targets for a small volunteer/solo effort, updated after **v0.4.0 (2026-08-16)**
 | **v0.2** | shipped June 2026 | Assurance groundwork | Verifier fuzzing; archive/re-timestamping; provenance; security/reviewer handoff materials | — |
 | **v0.3.0** | shipped 2026-07-23 (CHANGELOG-recorded; folded into the v0.4.0 tag below rather than tagged on its own) | Use-case foundation | Roadmap drain / novel-use-cases plan; bounded public review hub | N0–N4 primitives and all ten use-case profiles shipped (§E) |
 | **v0.4.0** | shipped & tagged 2026-08-16 | Packet-seal & release hygiene | Whole-packet RFC 3161 seal (ADR 0011); `--expected-producer-key`; `uv sync --locked` lockfile gate | Consent-record withdrawal semantics for local aggregation (N4) |
-| **Unreleased** | now (2026-08-22) | — | — | Profile review-expiry enforcement (ADR 0012): selection refuses an expired profile, export falls back and discloses rather than presenting stale guidance |
+| **Unreleased** | now (2026-08-26) | — | — | Profile review-expiry enforcement (ADR 0012): selection refuses an expired profile, export falls back and discloses rather than presenting stale guidance. Dated, expiring **letter** jurisdiction framing (ADR 0013): lapsed union-supplied local-law wording is withheld from the letter instead of sent, closing the stated precondition for jurisdiction template growth |
 | **v0.5 (beta)** | mid/late 2027 | Pilot-ready | Security/crypto audit underway; recorded AT pass; 1–2 union/legal-aid pilots running; multi-device + recovery UX; one-click desktop packaging (the native-mobile spike is already done — see workstream C — and blocked on upstream `cryptography` mobile wheels, not on this) | Solo-buildable Now items from *Beyond the current portfolio*: move-out/deposit-dispute record, jurisdiction template growth; named reviewer/partner secured for at least one of the six `external_review_required` profiles; joint multi-tenant case bundle prototyped |
 | **v1.0** | ~2028 | Trustworthy | The [v1.0 gate](#the-v10-gate-when-alpha-comes-off) met; "alpha" caveat removed | At least one `external_review_required` profile promoted to `maintainer_reviewed` on a recorded review |
 | **v2.x+** | beyond | Reach & resilience | More languages/jurisdictions; metadata-resistant sync; broader interop; shared governance | Remaining partner-gated profiles as partners arrive; protected-activity timeline only after its framing ADR; jurisdiction/language growth using the now-enforced expiry mechanism |
@@ -360,6 +360,18 @@ reconciliation (2026-08-22) found and fixed.
   that expires between selection and a later export no longer gets silently
   presented — export falls back to none and discloses why. This is what makes
   growing the profile registry (the item below) safe to do at all.
+- *Shipped (2026-08-26, ADR 0013):* **Dated, expiring letter jurisdiction
+  framing.** The "Next use-case portfolio" item below names jurisdiction
+  template growth as solo-buildable *because* ADR 0012 made expiry
+  enforceable — but ADR 0012's machinery is on `UseCaseProfile`, and
+  `LetterProfile` had no reviewer, review date, or expiry at all, so the
+  precondition did not hold on the surface that needed it most. `[letter]`
+  local-law wording (the documented home for a union's verified statutory
+  citation) now carries its own review dates, and wording whose review has
+  lapsed is withheld from the letter rather than sent under a tenant's name.
+  No new jurisdiction framing shipped with it: that remains blocked on a named
+  legal reviewer, not on engineering.
+
 - **Next use-case portfolio.** *Objective:* keep adding new tenant/organizer
   jobs on the same shared primitives instead of bespoke workflows, exactly as
   ADR 0010 chose. *Exit:* see `docs/novel-use-cases-plan.md`'s "Beyond the

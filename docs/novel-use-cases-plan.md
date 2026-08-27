@@ -390,6 +390,15 @@ effort can actually plan against it.
 
 Sequencing notes:
 
+**Status (2026-08-26):** #12's stated precondition — "dated and expiry-tracked",
+resting on ADR 0012 — did not actually hold for `letter.py`, whose
+`LetterProfile` carried no review metadata of any kind. That mechanism now
+exists (ADR 0013): built-in framings are dated, an expired framing falls back,
+and union-supplied `[letter]` local-law wording carries review dates whose lapse
+withholds the wording from the letter. The remaining half of #12 — an actual
+second/third jurisdiction framing — is blocked on a named legal reviewer by
+design, per this plan's own fit filter and the "Later" line below.
+
 - **#11 and #12** need no new primitive: #11 reuses `before_of`/`after_of` plus
   a new `expense_receipt`-adjacent artifact type for the itemized deduction
   (already in `ARTIFACT_TYPES`'s neighborhood — a `deduction_itemization` type
