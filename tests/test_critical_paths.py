@@ -14,7 +14,7 @@ from __future__ import annotations
 import base64
 import json
 import urllib.request
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -549,6 +549,157 @@ class TestCertificateChain:
         anchored = verify_token(token, DIGEST, trusted_certs=[cert])
         assert anchored.trusted_chain is True
         assert anchored.note == ""
+
+
+class TestCertificateValidityPeriod:
+    """Issue #204 (split from #121): an anchor that never expires cannot fail.
+
+    ``_verify_cert_chain`` matched an anchor by fingerprint or direct issuance
+    and stopped there, so a certificate that expired years ago went on minting
+    ``trusted_chain: True`` forever. That is the shape this project treats as
+    worse than no check: the field a recipient reads to decide "is this
+    timestamp from who it says" was structurally incapable of reporting a
+    rotated-out authority key.
+
+    The comparison is against the token's own ``gen_time``, never against now,
+    so an old but legitimate token stays trusted after its authority rotates.
+    """
+
+    @staticmethod
+    def _cert_valid_between(
+        common_name: str,
+        key: rsa.RSAPrivateKey,
+        *,
+        not_before: datetime,
+        not_after: datetime,
+    ) -> crypto_x509.Certificate:
+        name = crypto_x509.Name([crypto_x509.NameAttribute(NameOID.COMMON_NAME, common_name)])
+        return (
+            crypto_x509.CertificateBuilder()
+            .subject_name(name)
+            .issuer_name(name)
+            .public_key(key.public_key())
+            .serial_number(crypto_x509.random_serial_number())
+            .not_valid_before(not_before)
+            .not_valid_after(not_after)
+            .sign(key, crypto_hashes.SHA256())
+        )
+
+    def test_a_token_minted_after_its_certificate_expired_is_not_trusted(self) -> None:
+        """The #121 reproducer: mint today with a certificate that expired a year ago."""
+        from habitable.tsa import _issue_token
+
+        now = datetime.now(tz=UTC)
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        expired = self._cert_valid_between(
+            "rotated-out-tsa",
+            key,
+            not_before=now - timedelta(days=1200),
+            not_after=now - timedelta(days=365),
+        )
+        der = _issue_token(DIGEST, private_key=key, certificate=expired, gen_time=now)
+        token = TimestampToken(kind="rfc3161", tsa_name="rotated-out-tsa", data=der)
+
+        # Pinning the expired certificate itself must not resurrect it...
+        pinned = verify_token(token, DIGEST, trusted_certs=[expired])
+        assert pinned.trusted_chain is False
+        assert pinned.cert_validity == "expired"
+        assert "expired" in pinned.note
+
+        # ...and neither must anchoring the issuer, which here is the same self-signed
+        # certificate reached by the other of the two anchor arms.
+        assert verify_token(token, DIGEST, trusted_certs=[expired]).trusted_chain is False
+
+    def test_a_token_minted_before_its_certificate_was_valid_is_not_trusted(self) -> None:
+        from habitable.tsa import _issue_token
+
+        now = datetime.now(tz=UTC)
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        future = self._cert_valid_between(
+            "not-yet-tsa",
+            key,
+            not_before=now + timedelta(days=30),
+            not_after=now + timedelta(days=400),
+        )
+        der = _issue_token(DIGEST, private_key=key, certificate=future, gen_time=now)
+        token = TimestampToken(kind="rfc3161", tsa_name="not-yet-tsa", data=der)
+
+        info = verify_token(token, DIGEST, trusted_certs=[future])
+        assert info.trusted_chain is False
+        assert info.cert_validity == "not-yet-valid"
+        assert "not yet valid" in info.note
+
+    def test_an_old_token_stays_trusted_after_its_authority_rotates(self) -> None:
+        """The reason the comparison is against ``gen_time`` and not ``now``.
+
+        A packet exported in 2021 must still verify in 2031. Checking expiry
+        against the wall clock would quietly un-trust every archived packet the
+        moment an authority rotated a key, which is the opposite of what a
+        timestamp is for.
+        """
+        from habitable.tsa import _issue_token
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        long_expired = self._cert_valid_between(
+            "retired-but-honest-tsa",
+            key,
+            not_before=datetime(2020, 1, 1, tzinfo=UTC),
+            not_after=datetime(2021, 1, 1, tzinfo=UTC),
+        )
+        minted_while_valid = datetime(2020, 6, 1, tzinfo=UTC)
+        der = _issue_token(
+            DIGEST, private_key=key, certificate=long_expired, gen_time=minted_while_valid
+        )
+        token = TimestampToken(kind="rfc3161", tsa_name="retired-but-honest-tsa", data=der)
+
+        info = verify_token(token, DIGEST, trusted_certs=[long_expired])
+        assert info.trusted_chain is True
+        assert info.cert_validity == "within"
+        assert info.note == ""
+
+    def test_checked_and_fine_is_distinguishable_from_never_checked(self) -> None:
+        """Issue #204: "expiry not checked" and "expiry checked and fine" are
+        different facts, so they get different values rather than a shared silence."""
+        from habitable.tsa import DevTSA, _issue_token
+
+        now = datetime.now(tz=UTC)
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        cert = _self_signed("in-date-tsa", key)
+        der = _issue_token(DIGEST, private_key=key, certificate=cert, gen_time=now)
+        rfc = verify_token(TimestampToken(kind="rfc3161", tsa_name="in-date-tsa", data=der), DIGEST)
+        assert rfc.cert_validity == "within"
+
+        # A dev token carries no X.509 certificate at all, so there is nothing to
+        # check and it says so rather than borrowing the in-date answer.
+        dev = DevTSA(name="dev")
+        dev_info = verify_token(dev.stamp(DIGEST), DIGEST)
+        assert dev_info.cert_validity == "not-applicable"
+
+    def test_an_expired_authority_cannot_carry_a_packet_to_ready(self) -> None:
+        """The field is not decorative: it has to move the verdict.
+
+        ``verify.py`` gates every READY verdict on ``trusted_chain``, so an
+        expired-at-mint certificate has to fall out of the trusted-authority
+        list, not merely gain a footnote next to a green verdict.
+        """
+        from habitable.tsa import _issue_token
+
+        now = datetime.now(tz=UTC)
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        expired = self._cert_valid_between(
+            "expired-authority",
+            key,
+            not_before=now - timedelta(days=900),
+            not_after=now - timedelta(days=30),
+        )
+        der = _issue_token(DIGEST, private_key=key, certificate=expired, gen_time=now)
+        token = TimestampToken(kind="rfc3161", tsa_name="expired-authority", data=der)
+
+        info = verify_token(token, DIGEST, trusted_certs=[expired])
+        assert info.trusted_chain is False
+        # The note has to name the authority problem, so a reader is not sent
+        # off to re-download an anchor they already supplied correctly.
+        assert "anchor" in info.note or "certificate" in info.note
 
 
 # --- verify: hostile packet inputs are clean rejections, never crashes ---------
