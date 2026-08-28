@@ -137,6 +137,108 @@ class TestKeyfileRejections:
             open_keyfile(self._tampered(mutate), "pw")
 
 
+class TestCorruptKdfParameters:
+    """Issue #212: `crypto.py`'s docstring promises every failure is a `CryptoError`.
+
+    `KdfParams.from_dict` type-checked `n`/`r`/`p`/`length` and stopped there, so
+    values that are integers but not *valid scrypt parameters* went straight into
+    `Scrypt(...)`. `cli.main()` catches only `HabitableError`, so each of these
+    escaped as an unhandled traceback out of `habitable key restore` or an
+    ordinary vault unlock — on exactly the long-lived recovery backups
+    `docs/key-custody-playbook.md` expects to survive years and bit-rot.
+
+    Three distinct library exceptions escaped, not the one the issue named:
+    `ValueError` (n/r/p out of range), `OverflowError` (any negative, which is
+    *not* a `ValueError` subclass, so wrapping `ValueError` alone would still
+    miss it), and `MemoryError` (a cost so large it is a resource-exhaustion
+    vector, not merely a typo).
+    """
+
+    @staticmethod
+    def _keyfile_with_kdf(**overrides: object) -> str:
+        keyfile, _ = create_keyfile("pw")
+        doc: dict[str, object] = json.loads(keyfile)
+        kdf = doc["kdf"]
+        assert isinstance(kdf, dict)
+        kdf.update(overrides)
+        return json.dumps(doc)
+
+    @pytest.mark.parametrize(
+        ("label", "overrides"),
+        [
+            ("n is not a power of two", {"n": 3}),
+            ("n is too small", {"n": 1}),
+            ("n is zero", {"n": 0}),
+            ("n is negative", {"n": -16}),
+            ("r is zero", {"r": 0}),
+            ("r is negative", {"r": -8}),
+            ("p is zero", {"p": 0}),
+            ("p is negative", {"p": -1}),
+            ("length is zero", {"length": 0}),
+            ("length is negative", {"length": -1}),
+        ],
+    )
+    def test_corrupt_parameters_raise_cryptoerror(
+        self, label: str, overrides: dict[str, object]
+    ) -> None:
+        with pytest.raises(CryptoError):
+            open_keyfile(self._keyfile_with_kdf(**overrides), "pw")
+
+    def test_an_absurd_cost_is_refused_without_trying_to_allocate_it(self) -> None:
+        """A corrupted `n` is a denial-of-service vector, not just a wrong answer.
+
+        scrypt's memory cost is ~``128 * n * r`` bytes. A keyfile claiming
+        ``n = 2**40`` asks for a terabyte. It must be refused by inspection, and
+        fast — the failure must not depend on the machine happening to be small
+        enough for the allocation to fail.
+        """
+        import time
+
+        started = time.monotonic()
+        with pytest.raises(CryptoError):
+            open_keyfile(self._keyfile_with_kdf(n=2**40), "pw")
+        with pytest.raises(CryptoError):
+            open_keyfile(self._keyfile_with_kdf(r=2**20, p=2**20), "pw")
+        assert time.monotonic() - started < 5.0, "refused only after attempting the allocation"
+
+    def test_the_recovery_blob_path_is_covered_too(self) -> None:
+        """The path the issue is actually about: a backup handed back by a steward.
+
+        `import_recovery_blob` is what `habitable key restore` calls, and a
+        courier copy that rotted in a drawer for three years is the realistic
+        input. It must fail the same clean, documented way as everything else.
+        """
+        from habitable.crypto import SymmetricKey, export_recovery_blob, import_recovery_blob
+
+        blob = export_recovery_blob(SymmetricKey.generate(), "recovery-pass")
+        doc: dict[str, object] = json.loads(blob)
+        kdf = doc["kdf"]
+        assert isinstance(kdf, dict)
+        kdf["n"] = 3  # a single flipped digit in a stored backup
+        with pytest.raises(CryptoError):
+            import_recovery_blob(json.dumps(doc), "recovery-pass")
+
+    def test_every_shipped_cost_profile_still_opens(self) -> None:
+        """The guard must not be tightened past what this project itself writes.
+
+        Every value in `KDF_PROFILES` has to survive validation, or hardening a
+        vault would lock it. This is the assertion that stops the fix for #212
+        from becoming a worse bug than #212.
+        """
+        from habitable.crypto import KDF_PROFILES, SymmetricKey, harden_keyfile
+
+        dek = SymmetricKey.generate()
+        for profile in KDF_PROFILES:
+            if KDF_PROFILES[profile] > 2**17:
+                continue  # the paranoid profile is ~1 GiB; covered by params-only checks below
+            wrapped = harden_keyfile(dek, "pw", profile=profile)
+            assert open_keyfile(wrapped, "pw")._raw() == dek._raw()
+
+        # The paranoid profile is validated without paying for the derivation.
+        for name, n in KDF_PROFILES.items():
+            KdfParams(salt=b"0" * 16, n=n).validated(), f"{name} must pass validation"
+
+
 # --- vault: fixity failures and corrupt records surface as errors --------------
 
 
