@@ -406,7 +406,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_letter.add_argument("--from-name", default="", help="sender name")
     p_letter.add_argument("--from-contact", default="", help="sender phone/email")
     p_letter.add_argument(
-        "--jurisdiction", default="", help="framing profile: generic | us_habitability"
+        "--jurisdiction",
+        default="",
+        help="framing profile: generic | us_habitability | ew_disrepair",
     )
     p_letter.add_argument("--cure-days", type=int, help="repair deadline in days")
     p_letter.add_argument("--date", default="", help="letter date (ISO; default today)")

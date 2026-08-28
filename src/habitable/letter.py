@@ -133,6 +133,36 @@ PROFILES: dict[str, LetterProfile] = {
         cure_period_days=14,
         reviewed_at=_BUILTIN_REVIEWED_AT,
     ),
+    # Issue #207, the first step of ROADMAP workstream C's jurisdiction template
+    # library. Written to the same bar as the two above and no higher: hedged,
+    # citing no statute, no section number, no jurisdiction-specific deadline, and
+    # explicitly deferring to local confirmation.
+    #
+    # `cure_period_days` stays at habitable's own 14-day default. It is NOT a
+    # legal deadline for this or any jurisdiction, and picking a different number
+    # here would read as one.
+    #
+    # UNREVIEWED: no solicitor or advice worker for England and Wales has read
+    # this wording. It is presentation-only framing, like its siblings, and the
+    # letter carries the standing "not legal advice" disclaimer either way -- but
+    # a reviewer for this jurisdiction is the obvious next improvement.
+    "ew_disrepair": LetterProfile(
+        key="ew_disrepair",
+        label="England and Wales — landlord repairing obligations (generic framing)",
+        framing=(
+            "I am writing to give you written notice of disrepair affecting my home and to "
+            "ask that it be put right."
+        ),
+        legal_reference=(
+            "Residential tenancies in England and Wales generally carry landlord repairing "
+            "obligations, and a landlord is normally expected to act within a reasonable time "
+            "once they have notice of a disrepair. Which obligations apply, how long is "
+            "reasonable, and what remedies are available depend on the type of tenancy and on "
+            "the circumstances. Please confirm the rules that apply to this tenancy; I have "
+            "not taken legal advice in preparing this letter."
+        ),
+        cure_period_days=14,
+    ),
 }
 
 _DEFAULT_PROFILE = "generic"

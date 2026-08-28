@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import date
@@ -116,15 +117,47 @@ def test_jurisdiction_profiles_and_fallback() -> None:
     assert resolve_profile("").key == "generic"
     assert resolve_profile("us_habitability").key == "us_habitability"
     assert resolve_profile("US Habitability").key == "us_habitability"  # normalized
+    assert resolve_profile("ew_disrepair").key == "ew_disrepair"  # issue #207
+    assert resolve_profile("EW Disrepair").key == "ew_disrepair"  # normalized
     assert resolve_profile("narnia").key == "generic"  # unknown → generic, never refuses
     # Built-in profiles never assert a specific statute/code section — in *any*
     # reader-visible field (the framing and legal reference both render into the
     # letter), not just the legal-reference line.
+    #
+    # The three literal needles below only ever caught U.S.-shaped citations, so a
+    # profile for any other jurisdiction could have carried "Landlord and Tenant
+    # Act 1985 s.11", "Section 1941", or "Art. 6" past them untouched. Adding a
+    # non-U.S. profile is exactly the change that makes that gap reachable, so the
+    # guard is widened in the same breath: a citation is a named instrument, a
+    # section marker, or a bare year-numbered Act, and none belongs in framing
+    # this project states plainly is not legal advice.
+    citation_shapes = re.compile(
+        r"§"
+        r"|U\.\s?S\.\s?C"
+        r"|\bs(?:ec|ect|ection)?\.?\s*\d"
+        r"|\bart(?:icle)?\.?\s*\d"
+        r"|\bAct\s+(?:of\s+)?\d{4}\b"
+        r"|\b\d{4}\s+Act\b"
+        r"|\bc\.\s*\d+\b",
+        re.IGNORECASE,
+    )
+    assert len(PROFILES) >= 3, "the statute guard must run against every shipped profile"
     for profile in PROFILES.values():
-        for text in (profile.label, profile.framing, profile.legal_reference):
-            assert "§" not in text
-            assert "U.S.C" not in text
-            assert "U. S. C" not in text
+        for field, text in (
+            ("label", profile.label),
+            ("framing", profile.framing),
+            ("legal_reference", profile.legal_reference),
+        ):
+            found = citation_shapes.search(text)
+            assert found is None, (
+                f"profile {profile.key!r} field {field} cites {found.group(0)!r}; "
+                "built-in framing must stay hedged and statute-free"
+            )
+        # A profile that hedges nothing is a legal claim wearing framing's clothes.
+        hedged = ("generally", "in most", "many", "normally", "depend", "confirm", "vary")
+        assert any(word in profile.legal_reference.casefold() for word in hedged), (
+            f"profile {profile.key!r} states its legal reference without hedging"
+        )
 
 
 def test_cure_period_precedence(
