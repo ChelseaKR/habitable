@@ -10,11 +10,14 @@ modules (verify.py docstring, NOTICE)."""
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
+
+import pytest
 
 from habitable.capture import capture
 from habitable.packet import build_packet
@@ -219,3 +222,144 @@ def test_verifier_vocabulary_mirrors_the_use_case_registry() -> None:
     # vocabulary but absent from the endpoint table would accept any pair of records,
     # and the verifier's own check is written to skip an unknown key rather than fail.
     assert set(usecases.RELATIONSHIP_ENDPOINT_KINDS) == set(usecases.RELATIONSHIP_TYPES)
+
+
+# --- the accessibility gate must be capable of failing --------------------------
+
+# `make a11y` / the `a11y.yml` workflow run `pytest -m a11y`, and
+# `axe-core WCAG scan (merge gate)` is a *required* status check in
+# `.github/rulesets/main-branch.json`. Every test behind that marker guards its
+# browser dependency with `pytest.importorskip` or `pytest.skip(...)` on a
+# Playwright launch error, which is right for a contributor with no Chromium --
+# and wrong for the merge gate, because pytest exits 0 when every selected test
+# skips. If `playwright` or `axe-playwright-python` ever left the dev dependency
+# group, or Chromium installed but would not launch, the required accessibility
+# gate would report green having asserted nothing at all.
+#
+# This repo already writes this guard elsewhere (`test_golden.py`'s "no golden
+# packets committed", `test_verify_fuzz.py`'s `assert _NAMES`); the a11y suite was
+# the one required gate without it.
+_MIN_A11Y_TESTS = 20
+
+
+def test_the_accessibility_marker_still_selects_a_real_suite() -> None:
+    """`pytest -m a11y` must select tests, not an empty set.
+
+    A renamed or dropped marker, or a `pytest.ini` filter change, would otherwise
+    turn the required gate into a no-op that still exits 0.
+    """
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-m", "a11y", "--collect-only", "-q"],
+        cwd=Path(__file__).resolve().parent.parent,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, f"a11y collection failed:\n{result.stdout}\n{result.stderr}"
+    match = re.search(r"(\d+)/\d+ tests collected", result.stdout)
+    assert match is not None, f"could not read a collected count from:\n{result.stdout[-2000:]}"
+    collected = int(match.group(1))
+    assert collected >= _MIN_A11Y_TESTS, (
+        f"`pytest -m a11y` selected only {collected} test(s), below the floor of "
+        f"{_MIN_A11Y_TESTS}. The accessibility merge gate is required, so an empty "
+        "or gutted selection would pass it while checking nothing."
+    )
+
+
+def test_the_browser_stack_is_a_failure_in_ci_not_a_skip() -> None:
+    """In CI, a missing browser must fail the gate rather than silently skip it.
+
+    Locally this skips: a contributor fixing a typo should not need Chromium. In
+    CI the browser is installed on purpose by the `a11y` workflow, so its absence
+    means the gate did not run -- and a gate that did not run must not report
+    success. This is the whole difference between "the scan found no violations"
+    and "no scan happened".
+    """
+    if not os.environ.get("CI"):
+        pytest.skip("browser stack is optional outside CI; the CI branch is the gate")
+
+    import axe_playwright_python.sync_playwright  # noqa: F401
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as driver:
+        browser = driver.chromium.launch()
+        try:
+            assert browser.version, "Chromium launched but reported no version"
+        finally:
+            browser.close()
+
+
+# --- the docs-only a11y twin must stay a true complement ------------------------
+
+
+def test_the_a11y_docs_only_twin_matches_the_real_scans_ignore_list() -> None:
+    """`a11y-docs-only.yml` reports a REQUIRED context with nothing but an `echo`.
+
+    That is deliberate (CICD-STANDARD §11h): the real axe scan skips docs-only PRs
+    via `paths-ignore`, and a required context that never reports leaves a PR stuck
+    on "Expected — waiting for status". The twin publishes the same context name so
+    docs-only PRs stay mergeable.
+
+    Both files say in prose that the twin's `paths` "must stay the exact complement"
+    of the real scan's `paths-ignore`, and until now nothing enforced it. If the real
+    scan's ignore list grew an entry the twin did not, a PR touching only that path
+    would skip the real scan *and* the twin, and the required context would never
+    report. If the twin's list grew an entry the real scan did not ignore, an
+    `echo` would satisfy the accessibility gate for a change that really does touch
+    the UI.
+
+    What this test does NOT fix, because it is a topology decision for the owner:
+    on a PR touching both docs and code, both jobs run and both report to the same
+    context. GitHub resolves it to whichever reported last. The comment asserts the
+    real scan "finishing later, its result governs", which holds only because the
+    echo is fast -- it is a race, not an invariant. A real scan that fails early
+    (a checkout or `uv sync` failure) while the twin waits on a runner would report
+    first and be overwritten by a green echo.
+    """
+    workflows = Path(__file__).resolve().parent.parent / ".github" / "workflows"
+    real = (workflows / "a11y.yml").read_text(encoding="utf-8")
+    twin = (workflows / "a11y-docs-only.yml").read_text(encoding="utf-8")
+
+    def path_globs(text: str, key: str) -> list[list[str]]:
+        """Every `key:` block's list of quoted globs, in file order."""
+        blocks: list[list[str]] = []
+        lines = text.splitlines()
+        for index, line in enumerate(lines):
+            if line.strip() != f"{key}:":
+                continue
+            entries: list[str] = []
+            for follow in lines[index + 1 :]:
+                match = re.match(r'\s+-\s+"([^"]+)"\s*$', follow)
+                if not match:
+                    break
+                entries.append(match.group(1))
+            blocks.append(entries)
+        return blocks
+
+    ignored = path_globs(real, "paths-ignore")
+    included = path_globs(twin, "paths")
+
+    assert ignored, "a11y.yml declares no paths-ignore; this guard is reading nothing"
+    assert included, "a11y-docs-only.yml declares no paths; this guard is reading nothing"
+
+    # Every paths-ignore block in the real scan must be the same set.
+    for block in ignored:
+        assert set(block) == set(ignored[0]), f"a11y.yml's paths-ignore blocks disagree: {ignored}"
+
+    assert set(included[0]) == set(ignored[0]), (
+        "the docs-only twin's `paths` is no longer the exact complement of "
+        f"a11y.yml's `paths-ignore`.\n  twin paths:       {sorted(included[0])}\n"
+        f"  real paths-ignore: {sorted(ignored[0])}\n"
+        "A mismatch either strands the required context with no report, or lets an "
+        "`echo` satisfy the accessibility gate for a change that touches the UI."
+    )
+
+    # And the twin really must be publishing the required context name, or the
+    # complement above is checking a relationship that no longer matters.
+    required = (
+        Path(__file__).resolve().parent.parent / ".github" / "rulesets" / "main-branch.json"
+    ).read_text(encoding="utf-8")
+    context = "axe-core WCAG scan (merge gate)"
+    assert f'"context": "{context}"' in required, f"{context!r} is no longer a required check"
+    assert f"name: {context}" in twin, "the twin no longer publishes the required context"
+    assert f"name: {context}" in real, "the real scan no longer publishes the required context"
