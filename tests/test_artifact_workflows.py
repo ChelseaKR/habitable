@@ -714,7 +714,7 @@ def _move_out_case(
     local_tsa: LocalRfc3161TSA,
     tmp_path: Path,
 ) -> tuple[str, str, str, str]:
-    """Build the synthetic move-out case ADR 0013 describes.
+    """Build the synthetic move-out case ADR 0014 describes.
 
     Returns the issue id, the move-out capture id, the itemization artifact id, and a
     second artifact id (the tenant's own receipt) so endpoint tests have two documents.
@@ -783,7 +783,7 @@ def test_move_out_deposit_record_seals_verifies_and_states_its_limits(
     local_tsa: LocalRfc3161TSA,
     tmp_path: Path,
 ) -> None:
-    """ADR 0013 end to end. A landlord's itemized deduction is sealed as its own
+    """ADR 0014 end to end. A landlord's itemized deduction is sealed as its own
     document on the same evidence spine as any tenant capture, pointed at the condition
     it charges for, and answered by the tenant's own receipt -- and the packet still
     verifies while saying, in the export itself, that none of that decides who is right.

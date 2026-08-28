@@ -78,7 +78,7 @@ def test_profile_expired_compares_calendar_dates() -> None:
 
 
 def test_move_out_deposit_profile_is_maintainer_reviewed_and_neutral() -> None:
-    """The move-out/deposit-dispute record (ADR 0013) ships as a shipped-vocabulary
+    """The move-out/deposit-dispute record (ADR 0014) ships as a shipped-vocabulary
     profile, not a partner-gated one, and its disclosures refuse the two conclusions
     the workflow invites: that the landlord's itemization is accepted, and that a
     condition record settles wear and tear, damage, cost, or what is owed."""

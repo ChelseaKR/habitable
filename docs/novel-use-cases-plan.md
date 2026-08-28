@@ -9,7 +9,7 @@ cloud and not legal advice.
 
 **Implementation status (2026-07-23, reconciled 2026-08-22, extended
 2026-08-26):** the shared N0–N4 primitives and all eleven profile surfaces —
-the original ten, plus `move_out_deposit` (candidate #11, ADR 0013) — are
+the original ten, plus `move_out_deposit` (candidate #11, ADR 0014) — are
 implemented in case schema v3 / packet v4, including CLI, localhost app, encrypted sync, verifier, accessible
 HTML, fixed-question local aggregation, and partner capsules. “External review
 required” profiles remain synthetic-evaluation surfaces only; the named
@@ -17,7 +17,7 @@ human/partner gates below are still open and cannot be completed by code. The
 `Now / Next / Later` section below was left describing this as unbuilt work
 after it shipped; it is corrected in place. Profile review-expiry enforcement
 (ADR 0012) shipped 2026-08-22 and the move-out/deposit-dispute record
-(candidate #11, ADR 0013) shipped 2026-08-26;
+(candidate #11, ADR 0014) shipped 2026-08-26;
 [Beyond the current portfolio](#beyond-the-current-portfolio--year-2-and-year-3-candidates)
 names the rest of the scored candidate set.
 
@@ -385,9 +385,9 @@ effort can actually plan against it.
 
 | Rank | Use case | Primary user job | Value | Fit | Confidence | Effort | Decision |
 | ---: | --- | --- | ---: | ---: | ---: | --- | --- |
-| 11 | Move-out condition & deposit-dispute record | Pair documented move-in/move-out condition with an itemized deduction to dispute a withheld security deposit | 5 | 5 | 4 | M | **Shipped 2026-08-26** as the `move_out_deposit` profile (ADR 0013) |
+| 11 | Move-out condition & deposit-dispute record | Pair documented move-in/move-out condition with an itemized deduction to dispute a withheld security deposit | 5 | 5 | 4 | M | **Shipped 2026-08-26** as the `move_out_deposit` profile (ADR 0014) |
 | 12 | Jurisdiction template growth | Add a second/third `letter.py` jurisdiction framing beyond `generic`/`us_habitability`, dated and expiry-tracked | 4 | 5 | 4 | S–M | **Now: solo-buildable — ADR 0012 makes this safely growable for the first time. Filed as issue #207 and labelled *good first issue*: left for a newcomer on purpose, since a sustained outside contributor is an open workstream-D exit criterion** |
-| 13 | Joint multi-tenant case bundle | Let an organizer present several already-signed individual packets as one navigable building-wide submission, without merging custody chains | 4 | 5 | 3 | M | **Next: prototype presentation-only bundling over existing signed packets** |
+| 13 | Joint multi-tenant case bundle | Let an organizer present several already-signed individual packets as one navigable building-wide submission, without merging custody chains | 4 | 5 | 3 | M | **Shipped 2026-08-27** as `habitable joint` (ADR 0015), to this plan's own sizing: a digest-bound table of contents, no merged custody chain, `packet_version` unchanged |
 | 14 | Protected-activity and landlord-action timeline | Juxtapose a tenant's protected activity (complaint filed, union joined) and a landlord's later action on one neutral chronology | 5 | 3 | 2 | M | **Later: framing decision (ADR) before any code — see caution below** |
 
 Sequencing notes:
@@ -408,17 +408,24 @@ design, per this plan's own fit filter and the "Later" line below.
   `letter.py`'s existing `LetterProfile` registry pattern. Both are natural
   first picks for the *Now* row above precisely because they cost no new
   protocol surface. **#11 shipped 2026-08-26 exactly to that sizing** — the two
-  named additions and nothing else, `packet_version` unchanged at 4 (ADR 0013).
+  named additions and nothing else, `packet_version` unchanged at 4 (ADR 0014).
   Building it surfaced one thing this plan had not: `verify.py` restates the
   artifact/relationship vocabulary rather than importing it, to keep the
   Apache-2.0 subset standalone, and nothing held the two copies equal. Any
   future vocabulary addition — #13's included — must update both sides, and a
   drift guard now fails the gate if one is forgotten.
-- **#13** is presentation over facts that already exist and verify
-  independently — it must not create a new merged-custody artifact (that would
-  reopen the scoped/rehashed-custody-view gate workstream A is still closing).
-  A safe version is closer to a signed table of contents over N already-signed
-  `bundle.json` files than a new packet shape.
+- **#13 shipped 2026-08-27 (ADR 0015) as exactly that safe version.** It is
+  presentation over facts that already exist and verify independently, and it
+  creates no merged-custody artifact, which would have reopened the
+  scoped/rehashed-custody-view gate workstream A is still closing. Each row
+  binds its member by that packet's own `bundle.json` SHA-256, and
+  `habitable joint check` re-derives every recorded claim from the packets, so
+  the index is never a trust root. Building it surfaced the half this plan's
+  phrase "a signed table of contents" had left unexamined: the members are
+  signed, the table of contents is not, and *whose* signature it should carry is
+  a decision rather than an implementation. ADR 0015 defers it explicitly and
+  names the two candidate mechanisms instead of leaving the file silently
+  unauthenticated.
 - **#14 is flagged, not queued, on purpose.** "Retaliation" is a legal
   conclusion, and the fit filter explicitly excludes "automated judgments
   about truth" and "landlord risk scores." A neutral two-column chronology
@@ -428,6 +435,33 @@ design, per this plan's own fit filter and the "Later" line below.
   recorded as an ADR — not a feature branch — before implementation starts,
   specifically choosing the non-inference framing and rejecting the
   scoring/labeling version outright rather than leaving it ambiguous.
+
+## Multiyear sequencing (2026 to 2029)
+
+**Added 2026-08-27.** The table above scores *what* is worth building. This one
+orders it, and separates the two kinds of item that the scores cannot tell
+apart: work an engineer can finish alone, and work that is finished by a person
+who has not been found yet. Mixing them produces a plan that looks stalled when
+it is actually waiting, or one that quietly drops the waiting items because they
+never move. The horizons are `ROADMAP.md`'s and will slip; the ordering and the
+gate column are the parts that matter.
+
+| Phase | Horizon | What | Gate |
+| ---: | --- | --- | --- |
+| 1 | 2026 H2 | **Joint multi-tenant submission index** (#13): a digest-bound table of contents over N already-signed packets, merging no custody chain | None. Shipped 2026-08-27, ADR 0015 |
+| 2 | 2026 H2 to 2027 H1 | **Authenticate the joint index.** ADR 0015 records the index itself as unsigned and defers the choice between an organizer signing key and an RFC 3161 seal over the index | A recorded decision, then engineering. Neither mechanism needs a person outside the project |
+| 3 | 2027 H1 | **Extend the ADR 0011 authority seal to the multi-packet surfaces it named as unfinished**, starting with `campaign export`, whose sub-packets are built without a timestamp authority and therefore carry no seal at all | None. ADR 0011 already made the decision; this applies it |
+| 4 | when a newcomer takes it | **Jurisdiction letter framing growth** (#12) | Doubly gated, and deliberately so: it is reserved as good first issue #207 because a sustained outside contributor is an open workstream-D exit criterion, and any framing it adds is blocked on a **named legal reviewer**. ADR 0013 built the dating and expiry mechanism; writing a `reviewer`/`reviewed_at` pair for a review nobody performed would be a false claim, which is the whole reason the field exists |
+| 5 | after its framing ADR | **Protected-activity and landlord-action chronology** (#14) | A **maintainer decision**, recorded as an ADR, that must precede any code: choose the neutral two-column chronology and reject the scoring or labelling version outright. It is not an implementation question. "Retaliation" is a legal conclusion, and this plan's fit filter excludes automated judgments about truth and landlord risk scores |
+| 6 | as partners arrive | **Promote each `external_review_required` profile to `maintainer_reviewed`** | A **named reviewer or partner per profile**, recorded with a date. Six profiles, six separate people. `docs/recruitment/` holds the briefs; the gate is a partnership problem, not an engineering one |
+| 7 | 2027 to 2028 | **Versioned scoped and rehashed custody views**, restoring issue-scoped and date-scoped exports and issue-subset shares | An **independent cryptographic review** before the CLI and app selectors can be re-enabled, per workstream A. The protocol design is engineering; shipping it behind a self-review is not an option this project takes |
+| 8 | ~2028 | **The v1.0 trust gate**, when the alpha caveat comes off | Four external outcomes, none of them a commit: an independent security and cryptographic review, a recorded human NVDA and VoiceOver pass, at least one completed tenant-union or legal-aid pilot with written outcomes, and a lawyer's read of the "not legal advice" framing |
+
+Phases 1 to 3 are the whole of what a solo effort can finish on its own from
+this portfolio. Everything after them is waiting on a named person, and saying
+so plainly is the point of the table: an item in phases 4 to 8 that appears to
+be making progress without its gate having been met is a warning, not an
+achievement.
 
 ## Now / Next / Later
 
@@ -458,21 +492,26 @@ follows is honest present-tense status, not a build plan.
   gate); these block the alpha caveat regardless of use-case count.
 - Ship the genuinely new, solo-buildable expansion items from
   [Beyond the current portfolio](#beyond-the-current-portfolio--year-2-and-year-3-candidates).
-  Two are done: profile review-expiry enforcement (ADR 0012, 2026-08-22) and
-  the move-out/deposit-dispute record (#11, ADR 0013, 2026-08-26). Of the
-  remainder, #12 is deliberately reserved for a first-time contributor (issue
-  #207), #13 needs a presentation-only prototype first, and #14 is blocked on
-  its own framing ADR.
+  Three are done: profile review-expiry enforcement (ADR 0012, 2026-08-22), the
+  move-out/deposit-dispute record (#11, ADR 0014, 2026-08-26), and the joint
+  multi-tenant submission index (#13, ADR 0015, 2026-08-27). Of the remainder,
+  #12 is deliberately reserved for a first-time contributor (issue #207), and
+  #14 is blocked on its own framing ADR. That leaves no solo-buildable
+  use-case candidate open: what is left in this portfolio is people-gated, and
+  the multiyear sequencing table above says so by name.
 - Keep 20% capacity for scoped-view protocol/security work and 10% for
   unplanned safety fixes, unchanged from the original plan.
 
 ### Next
 
-- Prototype #13 (joint multi-tenant case bundle) as a signed table of contents
-  over N already-signed `bundle.json` files — never a merged custody chain,
-  which would reopen the scoped/rehashed-custody-view gate workstream A is
-  still closing. Take it through the same full definition of done #11 went
-  through: ADR, tests, i18n parity, a11y, threat-model delta, CHANGELOG.
+- Authenticate the joint submission index. #13 shipped its table of contents
+  (ADR 0015) with every member digest-bound and every claim re-derivable, but
+  the index file itself carries no signature and no seal, so a member silently
+  *dropped* from the list is not detectable from the index alone. ADR 0015
+  records this as a decision to make, not a task to schedule, and names the two
+  candidate mechanisms: an organizer signing key (which needs an answer to whose
+  key it is, a question ADR 0011 already declined for producers on safety
+  grounds) or an RFC 3161 seal over the index (which needs no identity at all).
   Jurisdiction template growth (#12) stays available to a newcomer rather than
   being absorbed by the maintainer.
 - As each `external_review_required` profile clears its named gate, promote it
