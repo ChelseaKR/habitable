@@ -18,6 +18,7 @@ import os
 import sys
 import time
 import webbrowser
+from collections.abc import Callable
 from pathlib import Path
 
 from cryptography import x509
@@ -336,6 +337,24 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_campaign_export.add_argument("--include-originals", action="store_true")
     p_campaign_export.add_argument("--no-pdf", action="store_true")
+    p_campaign_export.add_argument(
+        "--no-seal",
+        action="store_true",
+        help="do not ask any authority to countersign the unit packets. They still "
+        "export, but nothing binds each one's contents as a whole: see "
+        "docs/adr/0011-authority-seal-over-the-whole-packet.md",
+    )
+    p_campaign_export.add_argument(
+        "--dev-tsa",
+        action="store_true",
+        help="seal with the offline dev authority (never trusted by a recipient)",
+    )
+    # Sealing is the one part of a campaign export that can touch the network, so
+    # it joins export under the metered-link gate (item R-19). As there, a closed
+    # gate skips the seal rather than refusing the export -- and it is read from
+    # each unit's OWN vault policy, because it is that tenant's link and that
+    # tenant's data allowance being spent.
+    add_metered(p_campaign_export)
     p_campaign_export.set_defaults(func=_cmd_campaign_export)
 
     p_joint = sub.add_parser(
@@ -1268,13 +1287,44 @@ def _cmd_campaign_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _campaign_seal_authority(
+    args: argparse.Namespace, declined: dict[str, str]
+) -> Callable[[Vault], TimestampAuthority | None] | None:
+    """Which authority seals each unit's packet, honouring that unit's own policy.
+
+    ``campaign.py`` promises that a unit's packet is exactly what
+    ``habitable export`` would produce from that vault. Since ADR 0011 that
+    includes an authority seal, so the authority is read per vault, and so is
+    the metered-link gate: it is that tenant's link being spent, not the
+    organizer's. ``declined`` collects the accurate reason for every unit left
+    unsealed here, because ``build_packet`` only ever learns that no authority
+    was supplied and cannot report *why*.
+    """
+    if args.no_seal:
+        return None
+
+    def authority_for(vault: Vault) -> TimestampAuthority | None:
+        tsa = _tsa_for(vault, dev=args.dev_tsa)
+        if isinstance(tsa, Rfc3161HttpTSA) and not _metered_allowed(args, vault):
+            declined[vault.document.case_id] = (
+                "seal skipped: wifi-only mode for this unit, and sealing needs a network "
+                "fetch; re-export with --allow-metered or on Wi-Fi"
+            )
+            return None
+        return tsa
+
+    return authority_for
+
+
 def _cmd_campaign_export(args: argparse.Namespace) -> int:
     vaults = _open_campaign_vaults(args)
+    declined: dict[str, str] = {}
     result = campaign.build_campaign_packet(
         vaults,
         args.out,
         include_originals=args.include_originals,
         make_pdf=not args.no_pdf,
+        seal_authority=_campaign_seal_authority(args, declined),
     )
     locale = _campaign_locale(vaults)
     done = cli_text(
@@ -1287,6 +1337,7 @@ def _cmd_campaign_export(args: argparse.Namespace) -> int:
             f"  · {h.unit}: {unit_result.packet.item_count} item(s), "
             f"{unit_result.packet.timestamped_count} timestamped -> {unit_result.out_dir}"
         )
+        print(f"    {_campaign_seal_note(args, unit_result, declined)}")
     print(f"           manifest: {result.manifest_path}")
     print(f"           index: {result.index_path}")
     return 0
@@ -1403,6 +1454,33 @@ def _load_trusted_certs(paths: list[Path] | None) -> list[x509.Certificate] | No
         except (OSError, ValueError) as exc:
             raise HabitableError(f"could not load trusted certificate {path}: {exc}") from exc
     return certs
+
+
+def _campaign_seal_note(
+    args: argparse.Namespace,
+    unit_result: campaign.UnitPacketResult,
+    declined: dict[str, str],
+) -> str:
+    """What happened to this unit's seal, in the words that are actually true.
+
+    Four different situations produce an unsealed packet and they are not the
+    same fact: the operator switched sealing off, this unit's link is metered,
+    this unit configured no authority, or the authority could not be reached.
+    The first two are only knowable here; the last two come back from
+    ``build_packet`` in the seal's own note.
+    """
+    if args.no_seal:
+        return (
+            "seal declined (--no-seal): nothing binds this packet's contents as a whole, "
+            "so a rewritten copy is indistinguishable from this one"
+        )
+    reason = declined.get(unit_result.health.case_id)
+    if reason is not None:
+        return reason
+    seal = unit_result.packet.seal
+    if seal.sealed:
+        return f"sealed by {seal.authority} at {seal.gen_time}"
+    return seal.note
 
 
 def _joint_seal_tsa(args: argparse.Namespace) -> TimestampAuthority | None:

@@ -147,7 +147,11 @@ This ADR chooses the second.
       backdating assertion, an unparseable date, a date asserted against an
       unsealed index, a malformed sidecar, and a corrupt index that still reports
       its broken seal.
-- [ ] Extend the same treatment to `campaign export`, whose sub-packets are built
-      with no authority and therefore carry no seal at all. Named as unfinished
-      in ADR 0011 and still unfinished; it is a separate surface with its own
-      metered-link policy.
+- [x] Extend the same treatment to `campaign export`, whose sub-packets were
+      built with no authority and therefore carried no seal at all. Named as
+      unfinished in ADR 0011; done as a separate change because it is a separate
+      surface, sealing per vault with that vault's own configured authority under
+      that vault's own metered-link policy. It needed no decision of its own:
+      `campaign.py` already promised a unit's packet is exactly what
+      `habitable export` produces, and since ADR 0011 that promise included a
+      seal.

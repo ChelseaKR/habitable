@@ -453,7 +453,7 @@ gate column are the parts that matter.
 | ---: | --- | --- | --- |
 | 1 | 2026 H2 | **Joint multi-tenant submission index** (#13): a digest-bound table of contents over N already-signed packets, merging no custody chain | None. Shipped 2026-08-27, ADR 0015 |
 | 2 | 2026 H2 | **Authenticate the joint index** | None. Shipped 2026-08-27, ADR 0016: an RFC 3161 seal over the finished index, chosen over an organizer signing key because it needs no identity, which ADR 0011 had already declined to invent |
-| 3 | 2027 H1 | **Extend the ADR 0011 authority seal to the multi-packet surfaces it named as unfinished**, starting with `campaign export`, whose sub-packets are built without a timestamp authority and therefore carry no seal at all | None. ADR 0011 already made the decision; this applies it |
+| 3 | 2026 H2 | **Extend the ADR 0011 authority seal to the multi-packet surfaces it named as unfinished** | None. Shipped 2026-08-27: `campaign export` seals each unit packet with that unit's own configured authority under that unit's own metered-link policy. ADR 0011 had already made the decision; this applied it, so it needed no ADR of its own |
 | 4 | when a newcomer takes it | **Jurisdiction letter framing growth** (#12) | Doubly gated, and deliberately so: it is reserved as good first issue #207 because a sustained outside contributor is an open workstream-D exit criterion, and any framing it adds is blocked on a **named legal reviewer**. ADR 0013 built the dating and expiry mechanism; writing a `reviewer`/`reviewed_at` pair for a review nobody performed would be a false claim, which is the whole reason the field exists |
 | 5 | after its framing ADR | **Protected-activity and landlord-action chronology** (#14) | A **maintainer decision**, recorded as an ADR, that must precede any code: choose the neutral two-column chronology and reject the scoring or labelling version outright. It is not an implementation question. "Retaliation" is a legal conclusion, and this plan's fit filter excludes automated judgments about truth and landlord risk scores |
 | 6 | as partners arrive | **Promote each `external_review_required` profile to `maintainer_reviewed`** | A **named reviewer or partner per profile**, recorded with a date. Six profiles, six separate people. `docs/recruitment/` holds the briefs; the gate is a partnership problem, not an engineering one |
@@ -461,7 +461,7 @@ gate column are the parts that matter.
 | 8 | ~2028 | **The v1.0 trust gate**, when the alpha caveat comes off | Four external outcomes, none of them a commit: an independent security and cryptographic review, a recorded human NVDA and VoiceOver pass, at least one completed tenant-union or legal-aid pilot with written outcomes, and a lawyer's read of the "not legal advice" framing |
 
 Phases 1 to 3 are the whole of what a solo effort can finish on its own from
-this portfolio. Everything after them is waiting on a named person, and saying
+this portfolio, and as of 2026-08-27 all three are done. Everything after them is waiting on a named person, and saying
 so plainly is the point of the table: an item in phases 4 to 8 that appears to
 be making progress without its gate having been met is a warning, not an
 achievement.
@@ -508,15 +508,12 @@ follows is honest present-tense status, not a build plan.
 
 ### Next
 
-- Extend the ADR 0011 authority seal to `campaign export`, the one multi-packet
-  surface ADR 0011 named as unfinished and ADR 0016 left unfinished: its
-  sub-packets are built with no authority passed through, so a combined building
-  packet contains packets that are individually unsealed. Unlike `joint`,
-  `campaign` has vaults and therefore a configured authority and a metered-link
-  policy to honour, which is why it is a separate change rather than a line in
-  ADR 0016.
-- Jurisdiction template growth (#12) stays available to a newcomer rather than
-  being absorbed by the maintainer.
+- Nothing in this portfolio is left that a solo effort can finish alone. Phases
+  1 to 3 of the sequencing table are done; phases 4 to 8 are each waiting on a
+  named person, and the honest next step is recruitment, not code. Jurisdiction
+  template growth (#12) in particular stays available to a newcomer rather than
+  being absorbed by the maintainer, and would still need a named legal reviewer
+  after they finished.
 - As each `external_review_required` profile clears its named gate, promote it
   to `maintainer_reviewed` in an ADR-recorded decision and update
   `docs/capabilities.md`.

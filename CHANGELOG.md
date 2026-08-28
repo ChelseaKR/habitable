@@ -9,6 +9,40 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **`campaign export` seals each unit packet, with that unit's own authority.**
+  ADR 0011 listed `campaign export` among the surfaces it had left unsealed, and
+  the gap was sharper than a missing feature: `campaign.py`'s own docstring
+  promises that "a unit's packet is exactly what `habitable export` already
+  produces", and since ADR 0011 that includes an RFC 3161 token over the whole
+  bundle. Every combined building packet built since then contained packets
+  weaker than the same vault would have exported on its own, and said nothing
+  about it.
+
+  The authority is resolved **per vault**, not per campaign, and so is the
+  metered-link gate: it is that tenant's configured authority and that tenant's
+  link and data allowance, so an organizer's single choice never overrides six
+  tenants' configurations. `--no-seal` and `--dev-tsa` behave exactly as they do
+  for `export`, and `--wifi-only`/`--allow-metered` apply per unit.
+
+  Sealing stays best-effort per unit, which is ADR 0011's own degradation: an
+  unconfigured, unreachable, or metered-gated authority costs that packet its
+  seal, never its existence, and never anybody else's seal. The operator is told
+  which of the four things happened for each unit, because "you passed
+  --no-seal", "this unit's link is metered", "this unit configured no authority"
+  and "the authority could not be reached" are different facts and only the
+  first two are knowable at the call site.
+
+  Seal state is written into **neither the manifest nor the index page**, for
+  the reason ADR 0011 kept it out of `disclosures`: a seal is a file an attacker
+  can delete, so a rendering that announced one would be confidently wrong the
+  moment it was stripped. It is reported to the operator at build time and to
+  the recipient by `habitable verify --require-packet-seal`.
+
+  This needed no ADR of its own: ADR 0011 made the decision and named this
+  surface as unfinished, so this executes it. One existing test now passes
+  `--no-seal`, because `conftest`'s outbound-network guard correctly caught the
+  merge gate newly depending on a real public TSA, exactly as it was written to.
+
 - **A packet dropped from a joint submission is no longer undetectable.** The
   joint index (ADR 0015) recomputes every listed member's digest, which speaks
   only for members still on the list. A submission that arrives with a
