@@ -11,6 +11,7 @@ report a missing packet as an unchanged one.
 from __future__ import annotations
 
 import json
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 
@@ -26,11 +27,13 @@ from habitable.joint import (
     JOINT_INDEX_FILE,
     JOINT_INDEX_HTML,
     JOINT_INDEX_VERSION,
+    JOINT_SIG_FILE,
     build_joint_index,
     check_joint_index,
+    seal_statement,
 )
 from habitable.packet import build_packet
-from habitable.tsa import LocalRfc3161TSA
+from habitable.tsa import DevTSA, LocalRfc3161TSA
 from habitable.vault import Vault
 
 
@@ -184,7 +187,8 @@ class TestHtml:
         assert 'href="4b/packet.html"' in html
         assert result.members[0].bundle_sha256 in html
         assert "merges no chain of custody" in html
-        assert "this index is not" in html
+        assert "carries no signature of its own" in html
+        assert "--require-seal" in html
         assert "does not make them one case" in html
 
     def test_spanish_index_is_spanish(
@@ -467,3 +471,299 @@ class TestCli:
         root = _submission(make_vault, make_jpeg, local_tsa, tmp_path / "submission")
         assert main(["joint", "build", str(root)]) == 1
         capsys.readouterr()
+
+
+class TestSeal:
+    """ADR 0016. Recomputing each member's digest speaks only for members still
+    on the list; a seal over the index bytes is what speaks for the list."""
+
+    def test_a_sealed_index_verifies_and_names_its_authority(
+        self,
+        make_vault: Callable[..., Vault],
+        make_jpeg: Callable[..., Path],
+        local_tsa: LocalRfc3161TSA,
+        tmp_path: Path,
+    ) -> None:
+        root = _submission(make_vault, make_jpeg, local_tsa, tmp_path / "submission")
+        result = build_joint_index(root, trusted_certs=[local_tsa.certificate], tsa=local_tsa)
+
+        assert result.sealed
+        assert result.sig_path == root / JOINT_SIG_FILE
+        sidecar = json.loads((root / JOINT_SIG_FILE).read_text(encoding="utf-8"))
+        assert sidecar["index_sha256"] == sha256_bytes((root / JOINT_INDEX_FILE).read_bytes())
+
+        check = check_joint_index(
+            root / JOINT_INDEX_FILE,
+            trusted_certs=[local_tsa.certificate],
+            require_seal=True,
+        )
+        assert check.ok
+        assert check.seal.ok
+        assert check.seal.tsa_name == local_tsa.name
+        assert local_tsa.name in seal_statement(check.seal)
+
+    def test_a_row_dropped_after_sealing_is_caught(
+        self,
+        make_vault: Callable[..., Vault],
+        make_jpeg: Callable[..., Path],
+        local_tsa: LocalRfc3161TSA,
+        tmp_path: Path,
+    ) -> None:
+        """The gap ADR 0015 named and could not close. Removing a household from
+        the submission leaves every remaining packet valid, every remaining
+        digest correct, and nothing unlisted on disk. Only the seal notices."""
+        root = _submission(make_vault, make_jpeg, local_tsa, tmp_path / "submission")
+        build_joint_index(root, trusted_certs=[local_tsa.certificate], tsa=local_tsa)
+
+        index_path = root / JOINT_INDEX_FILE
+        document = json.loads(index_path.read_text(encoding="utf-8"))
+        document["members"] = [m for m in document["members"] if m["path"] != "4c"]
+        document["member_count"] = len(document["members"])
+        index_path.write_bytes(canonical_json(document))
+        shutil.rmtree(root / "4c")
+
+        check = check_joint_index(index_path, trusted_certs=[local_tsa.certificate])
+
+        # Everything the packets themselves can say still says "fine".
+        assert not check.unlisted
+        assert all(member.digest_matches and member.evidence_ready for member in check.members)
+        # The seal is the only thing that disagrees, and it is enough.
+        assert not check.ok
+        assert not check.seal.verified
+        assert any("does not cover this list of packets" in p for p in check.problems)
+
+    def test_a_row_added_after_sealing_is_caught(
+        self,
+        make_vault: Callable[..., Vault],
+        make_jpeg: Callable[..., Path],
+        local_tsa: LocalRfc3161TSA,
+        tmp_path: Path,
+    ) -> None:
+        root = _submission(make_vault, make_jpeg, local_tsa, tmp_path / "submission")
+        build_joint_index(root, trusted_certs=[local_tsa.certificate], tsa=local_tsa)
+        _submission(make_vault, make_jpeg, local_tsa, root, units=("9z",))
+
+        index_path = root / JOINT_INDEX_FILE
+        document = json.loads(index_path.read_text(encoding="utf-8"))
+        extra = dict(document["members"][0])
+        extra["path"] = "9z"
+        extra["bundle_sha256"] = sha256_bytes((root / "9z" / "bundle.json").read_bytes())
+        document["members"].append(extra)
+        document["member_count"] = len(document["members"])
+        index_path.write_bytes(canonical_json(document))
+
+        check = check_joint_index(index_path, trusted_certs=[local_tsa.certificate])
+
+        assert not check.unlisted  # the attacker listed it, so this check is satisfied
+        assert not check.seal.verified
+        assert not check.ok
+
+    def test_stripping_the_seal_is_a_note_by_default_and_fatal_when_required(
+        self,
+        make_vault: Callable[..., Vault],
+        make_jpeg: Callable[..., Path],
+        local_tsa: LocalRfc3161TSA,
+        tmp_path: Path,
+    ) -> None:
+        """No field inside a file an attacker controls can stop them deleting the
+        sidecar, so an absent seal is a state the recipient asserts about, not a
+        guarantee the format can make on its own."""
+        root = _submission(make_vault, make_jpeg, local_tsa, tmp_path / "submission")
+        build_joint_index(root, trusted_certs=[local_tsa.certificate], tsa=local_tsa)
+        (root / JOINT_SIG_FILE).unlink()
+
+        lenient = check_joint_index(root / JOINT_INDEX_FILE, trusted_certs=[local_tsa.certificate])
+        assert lenient.ok
+        assert not lenient.seal.present
+
+        strict = check_joint_index(
+            root / JOINT_INDEX_FILE,
+            trusted_certs=[local_tsa.certificate],
+            require_seal=True,
+        )
+        assert not strict.ok
+        assert any("no authority seal" in problem for problem in strict.problems)
+
+    def test_a_dev_seal_verifies_but_is_never_trusted(
+        self,
+        make_vault: Callable[..., Vault],
+        make_jpeg: Callable[..., Path],
+        local_tsa: LocalRfc3161TSA,
+        tmp_path: Path,
+    ) -> None:
+        root = _submission(make_vault, make_jpeg, local_tsa, tmp_path / "submission")
+        build_joint_index(root, trusted_certs=[local_tsa.certificate], tsa=DevTSA("dev-tsa"))
+
+        check = check_joint_index(
+            root / JOINT_INDEX_FILE,
+            trusted_certs=[local_tsa.certificate],
+            require_seal=True,
+        )
+        assert check.seal.present and check.seal.verified
+        assert not check.seal.trusted
+        assert not check.ok
+        assert any("does not chain" in problem for problem in check.problems)
+
+    def test_a_seal_minted_after_the_date_you_received_it_is_refused(
+        self,
+        make_vault: Callable[..., Vault],
+        make_jpeg: Callable[..., Path],
+        local_tsa: LocalRfc3161TSA,
+        tmp_path: Path,
+    ) -> None:
+        """An attacker who can reach an authority the recipient anchors can
+        re-seal a rewritten list, but cannot backdate the token."""
+        root = _submission(make_vault, make_jpeg, local_tsa, tmp_path / "submission")
+        build_joint_index(root, trusted_certs=[local_tsa.certificate], tsa=local_tsa)
+
+        stale = check_joint_index(
+            root / JOINT_INDEX_FILE,
+            trusted_certs=[local_tsa.certificate],
+            seal_not_after="2020-01-01",
+        )
+        assert not stale.ok
+        assert any("after the 2020-01-01 you supplied" in p for p in stale.problems)
+
+        # The same assertion, made against the moment the seal was actually
+        # minted, passes. Derived from the token rather than a pinned date, so
+        # this half of the test cannot quietly stop testing anything.
+        fresh = check_joint_index(
+            root / JOINT_INDEX_FILE,
+            trusted_certs=[local_tsa.certificate],
+            seal_not_after=stale.seal.gen_time,
+        )
+        assert fresh.ok
+
+    def test_seal_assertions_fail_closed(
+        self,
+        make_vault: Callable[..., Vault],
+        make_jpeg: Callable[..., Path],
+        local_tsa: LocalRfc3161TSA,
+        tmp_path: Path,
+    ) -> None:
+        root = _submission(make_vault, make_jpeg, local_tsa, tmp_path / "submission")
+        build_joint_index(root, trusted_certs=[local_tsa.certificate], tsa=local_tsa)
+
+        unparseable = check_joint_index(
+            root / JOINT_INDEX_FILE,
+            trusted_certs=[local_tsa.certificate],
+            seal_not_after="last Tuesday",
+        )
+        assert not unparseable.ok
+        assert any("not a valid ISO 8601" in problem for problem in unparseable.problems)
+
+        (root / JOINT_SIG_FILE).unlink()
+        dated_but_unsealed = check_joint_index(
+            root / JOINT_INDEX_FILE,
+            trusted_certs=[local_tsa.certificate],
+            seal_not_after="2020-01-01",
+        )
+        assert not dated_but_unsealed.ok
+        assert any("no authority seal to date" in p for p in dated_but_unsealed.problems)
+
+    def test_a_malformed_sidecar_is_reported_not_crashed(
+        self,
+        make_vault: Callable[..., Vault],
+        make_jpeg: Callable[..., Path],
+        local_tsa: LocalRfc3161TSA,
+        tmp_path: Path,
+    ) -> None:
+        root = _submission(make_vault, make_jpeg, local_tsa, tmp_path / "submission")
+        build_joint_index(root, trusted_certs=[local_tsa.certificate], tsa=local_tsa)
+        (root / JOINT_SIG_FILE).write_text(
+            json.dumps({"index_sha256": "x", "index_seal": {"kind": "rfc3161"}}),
+            encoding="utf-8",
+        )
+
+        check = check_joint_index(root / JOINT_INDEX_FILE, trusted_certs=[local_tsa.certificate])
+
+        assert not check.ok
+        assert check.seal.present and not check.seal.verified
+        assert any("does not cover this list of packets" in p for p in check.problems)
+
+    def test_rebuilding_without_an_authority_removes_the_stale_seal(
+        self,
+        make_vault: Callable[..., Vault],
+        make_jpeg: Callable[..., Path],
+        local_tsa: LocalRfc3161TSA,
+        tmp_path: Path,
+    ) -> None:
+        """A retained token beside bytes it no longer covers is a false claim.
+        The honest place to prevent it is the writer, not the reader."""
+        root = _submission(make_vault, make_jpeg, local_tsa, tmp_path / "submission")
+        build_joint_index(root, trusted_certs=[local_tsa.certificate], tsa=local_tsa)
+        assert (root / JOINT_SIG_FILE).exists()
+
+        again = build_joint_index(root, trusted_certs=[local_tsa.certificate])
+
+        assert not again.sealed
+        assert again.sig_path is None
+        assert not (root / JOINT_SIG_FILE).exists()
+
+    def test_a_corrupt_index_reports_the_broken_seal_too(
+        self,
+        make_vault: Callable[..., Vault],
+        make_jpeg: Callable[..., Path],
+        local_tsa: LocalRfc3161TSA,
+        tmp_path: Path,
+    ) -> None:
+        """An index too broken to parse still has a seal verdict to report. Both
+        problems reach the caller: stopping at the first would hide the fact that
+        the bytes are not the ones an authority countersigned."""
+        root = _submission(make_vault, make_jpeg, local_tsa, tmp_path / "submission")
+        build_joint_index(root, trusted_certs=[local_tsa.certificate], tsa=local_tsa)
+        (root / JOINT_INDEX_FILE).write_bytes(b"{ not json")
+
+        check = check_joint_index(root / JOINT_INDEX_FILE, trusted_certs=[local_tsa.certificate])
+
+        assert not check.ok
+        assert not check.members
+        assert any("not valid JSON" in problem for problem in check.problems)
+        assert any("does not cover this list of packets" in p for p in check.problems)
+
+    def test_cli_seals_with_the_dev_authority_and_refuses_it_under_require_seal(
+        self,
+        make_vault: Callable[..., Vault],
+        make_jpeg: Callable[..., Path],
+        local_tsa: LocalRfc3161TSA,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        root = _submission(make_vault, make_jpeg, local_tsa, tmp_path / "submission")
+        pem = tmp_path / "tsa.pem"
+        pem.write_bytes(local_tsa.certificate.public_bytes(Encoding.PEM))
+
+        assert main(["joint", "build", str(root), "--trusted-cert", str(pem), "--dev-tsa"]) == 0
+        assert "an authority countersigned this list" in capsys.readouterr().out
+
+        assert (
+            main(
+                [
+                    "joint",
+                    "check",
+                    str(root),
+                    "--trusted-cert",
+                    str(pem),
+                    "--require-seal",
+                ]
+            )
+            == 1
+        )
+        assert "does not chain" in capsys.readouterr().out
+
+    def test_cli_reports_that_nothing_sealed_when_no_authority_was_named(
+        self,
+        make_vault: Callable[..., Vault],
+        make_jpeg: Callable[..., Path],
+        local_tsa: LocalRfc3161TSA,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        root = _submission(make_vault, make_jpeg, local_tsa, tmp_path / "submission")
+        pem = tmp_path / "tsa.pem"
+        pem.write_bytes(local_tsa.certificate.public_bytes(Encoding.PEM))
+
+        assert main(["joint", "build", str(root), "--trusted-cert", str(pem)]) == 0
+        out = capsys.readouterr().out
+        assert "no timestamp authority was supplied" in out
+        assert "indistinguishable from this one" in out
