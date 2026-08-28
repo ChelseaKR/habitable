@@ -388,6 +388,54 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "{units, plural, one {# unit} other {# units}} packaged into one "
             "building packet at {out}"
         ),
+        "joint_index_presentation_only": (
+            "This index is presentation only. It merges no chain of custody: every "
+            "packet listed here is still its own record and must be verified on its own."
+        ),
+        "joint_index_unsigned": (
+            "The packets are signed; this index is not. Anyone who can edit this file can "
+            "add or remove a row. What it does show is that no listed packet was swapped: "
+            "`habitable joint check` recomputes every digest below from the packets."
+        ),
+        "joint_index_no_common_cause": (
+            "Listing several households together does not make them one case, and says "
+            "nothing about whether their conditions share a cause."
+        ),
+        "joint_html_title": "Joint submission index",
+        "joint_html_generated": "Index built {at}.",
+        "joint_html_counts": (
+            "{members, plural, one {# packet} other {# packets}} listed, {ready} "
+            "evidence-ready at the time this index was built."
+        ),
+        "joint_html_caption": "Packets in this submission, each verifiable on its own",
+        "joint_col_label": "Unit",
+        "joint_col_packet": "Packet",
+        "joint_col_items": "Items verified",
+        "joint_col_state": "State when indexed",
+        "joint_col_digest": "bundle.json SHA-256",
+        "joint_html_limits": "What this index does not do",
+        "joint_state_ready": "evidence-ready",
+        "joint_state_broken": "integrity check failed",
+        "joint_state_unanchored": "intact, no trusted timestamp anchor",
+        "joint_build_done": (
+            "{members, plural, one {# packet} other {# packets}} indexed at {out} "
+            "({ready} evidence-ready). No chain of custody was merged."
+        ),
+        "joint_check_ok": (
+            "joint index checks out: {members, plural, one {# packet} other {# packets}}, "
+            "every digest unchanged and every packet evidence-ready"
+        ),
+        "joint_check_failed": (
+            "joint index did NOT check out: {matched}/{members} digests unchanged, "
+            "{ready}/{members} evidence-ready, "
+            "{unlisted, plural, one {# packet} other {# packets}} present but unlisted"
+        ),
+        "joint_member_line": "{label} ({path}): {state}",
+        "joint_state_changed": "CHANGED SINCE INDEXING",
+        "joint_state_missing": "MISSING",
+        "joint_unlisted_line": (
+            "present in the submission folder but absent from the index: {path}"
+        ),
         "sync_data_cost": "data: sent {sent}, received {received}",
         "network_data_cost": "network used: sent {sent}, received {received}",
         "status_storage": (
@@ -518,6 +566,58 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         "campaign_export_done": (
             "{units, plural, one {# vivienda empaquetada} "
             "other {# viviendas empaquetadas}} en un solo paquete del edificio en {out}"
+        ),
+        "joint_index_presentation_only": (
+            "Este índice es solo de presentación. No fusiona ninguna cadena de custodia: "
+            "cada paquete de la lista sigue siendo su propio registro y debe verificarse "
+            "por separado."
+        ),
+        "joint_index_unsigned": (
+            "Los paquetes están firmados; este índice no lo está. Cualquiera que pueda "
+            "editar este archivo puede añadir o quitar una fila. Lo que sí demuestra es "
+            "que ningún paquete de la lista fue sustituido: `habitable joint check` "
+            "recalcula cada resumen a partir de los paquetes."
+        ),
+        "joint_index_no_common_cause": (
+            "Reunir varias viviendas en una lista no las convierte en un solo caso, y no "
+            "dice nada sobre si sus condiciones tienen una causa común."
+        ),
+        "joint_html_title": "Índice de presentación conjunta",
+        "joint_html_generated": "Índice creado el {at}.",
+        "joint_html_counts": (
+            "{members, plural, one {# paquete} other {# paquetes}} en la lista, {ready} "
+            "listos como prueba en el momento de crear el índice."
+        ),
+        "joint_html_caption": ("Paquetes de esta presentación, cada uno verificable por separado"),
+        "joint_col_label": "Vivienda",
+        "joint_col_packet": "Paquete",
+        "joint_col_items": "Elementos verificados",
+        "joint_col_state": "Estado al indexar",
+        "joint_col_digest": "SHA-256 de bundle.json",
+        "joint_html_limits": "Lo que este índice no hace",
+        "joint_state_ready": "listo como prueba",
+        "joint_state_broken": "falló la comprobación de integridad",
+        "joint_state_unanchored": "íntegro, sin sello de tiempo de autoridad de confianza",
+        "joint_build_done": (
+            "{members, plural, one {# paquete indexado} other {# paquetes indexados}} en "
+            "{out} ({ready} listos como prueba). No se fusionó ninguna cadena de custodia."
+        ),
+        "joint_check_ok": (
+            "el índice conjunto se comprueba: "
+            "{members, plural, one {# paquete} other {# paquetes}}, "
+            "todos los resúmenes sin cambios y todos los paquetes listos como prueba"
+        ),
+        "joint_check_failed": (
+            "el índice conjunto NO se comprueba: {matched}/{members} resúmenes sin "
+            "cambios, {ready}/{members} listos como prueba, "
+            "{unlisted, plural, one {# paquete presente} other {# paquetes presentes}} "
+            "fuera de la lista"
+        ),
+        "joint_member_line": "{label} ({path}): {state}",
+        "joint_state_changed": "CAMBIÓ DESDE LA INDEXACIÓN",
+        "joint_state_missing": "FALTA",
+        "joint_unlisted_line": (
+            "presente en la carpeta de presentación pero ausente del índice: {path}"
         ),
         "sync_data_cost": "datos: enviados {sent}, recibidos {received}",
         "network_data_cost": "red utilizada: enviados {sent}, recibidos {received}",

@@ -9,6 +9,45 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **An organizer can hand over several tenants' packets as one submission,
+  without merging anything.** `docs/novel-use-cases-plan.md` ranks a joint
+  multi-tenant case bundle as candidate #13 and specifies the only safe shape
+  for it: "closer to a signed table of contents over N already-signed
+  `bundle.json` files than a new packet shape," because a merged custody chain
+  would reopen the scoped and rehashed custody-view gate workstream A is still
+  closing.
+
+  `habitable joint build` writes exactly that, beside packets it never
+  modifies. This is the organizer `campaign` cannot serve: `campaign` rolls up
+  vaults whose keys the organizer holds, and the commoner situation in a union
+  is six households who each exported on their own device and handed over a
+  folder. No key, no vault, and no network is involved.
+
+  Each row binds its member by the SHA-256 of that packet's own `bundle.json`
+  bytes, which is the same digest the member's signature covers and an
+  authority seals. `habitable joint check` then re-derives every recorded claim
+  from the packets themselves: it recomputes the digest and throws away the
+  recorded readiness in favour of a fresh `verify_packet` verdict. A doctored
+  index therefore cannot produce a passing verdict, and a packet directory
+  present beside the index but missing from it is reported and fails the check
+  rather than being absorbed. A submission subdirectory with no `bundle.json`
+  is refused by name, never skipped.
+
+  The index is presentation only and is **not itself signed or sealed**, which
+  it says in its JSON (`index_signed: false`), in its HTML, and in the
+  command's output, alongside two other limits it must not let a reader assume
+  away: it merges no chain of custody, and listing households together says
+  nothing about whether their conditions share a cause. Authenticating the
+  index is deferred to its own decision rather than inherited by assumption;
+  ADR 0015 names the two candidate mechanisms and why neither is free.
+
+  `packet_version` stays 4, `bundle.json` and `bundle.sig.json` are untouched,
+  and `habitable.verify` gains no import: the index carries its own
+  `joint_index_version`, because it is not a packet. Without a `--trusted-cert`
+  anchor no member is evidence-ready and the command exits non-zero, exactly as
+  `habitable verify` does. See
+  `docs/adr/0015-joint-multi-tenant-submission-index.md`.
+
 - **The repair-request letter's jurisdiction wording is now dated, and lapsed
   wording is withheld instead of sent.** `ROADMAP.md` (workstream E) and
   `docs/novel-use-cases-plan.md` (candidate #12) both queue jurisdiction
@@ -193,6 +232,12 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   visible via `--json`; a human saw `integrity: NOT INTACT` with no reason given.
 
 ### Fixed
+
+- **Three references to the move-out and deposit-dispute record cited ADR 0013,
+  which is the letter-framing decision.** The record is ADR 0014. Corrected in
+  `docs/novel-use-cases-plan.md` and in two test docstrings. In a project whose
+  documents are the argument, a citation pointing at the wrong decision is a
+  defect, not a typo.
 
 - **The verifier's copy of the workflow vocabulary can no longer drift from the
   registry.** `verify.py` restates `ARTIFACT_TYPES`, `RELATIONSHIP_TYPES`, and
