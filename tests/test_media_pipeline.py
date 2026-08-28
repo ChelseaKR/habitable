@@ -15,10 +15,13 @@ import json
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import pytest
 
+from habitable.canonical import JSONValue
 from habitable.capture import capture
+from habitable.config import SharingPolicy
 from habitable.media import (
     extract_poster_frame,
     ffmpeg_available,
@@ -210,3 +213,111 @@ def test_ffmpeg_process_failure_refuses_share_cleanly(
 
 def test_ffmpeg_available_is_boolean() -> None:
     assert isinstance(ffmpeg_available(), bool)
+
+
+class TestPacketDisclosureMatchesWhatActuallyHappened:
+    """Issue #211: the packet's headline metadata claim contradicted its own items.
+
+    `packet.py::_disclosures` built the prominent "What this packet discloses"
+    line purely from the configured `SharingPolicy`. Under a deliberate
+    retain-metadata policy it said, of the whole packet:
+
+        shared-copy policy permits embedded metadata, including location, to be
+        retained
+
+    But `media.make_shared_media_copy` runs ffmpeg with `-map_metadata -1`
+    *unconditionally* — the still-image retention policy does not reach it — so
+    every video and audio item in that same packet had all container metadata,
+    GPS included, removed. Each item's own `stripped` field recorded the truth
+    (`"all-container-metadata"`); only the summary a reader actually reads was
+    wrong, inside a signed bundle whose Hard Rule #4 is that it "records its
+    metadata handling".
+
+    The concrete harm runs the surprising way round: a tenant who chose that
+    policy *specifically to keep* a video's embedded GPS as evidence was told by
+    their own packet that they had it.
+
+    Tested against `_disclosures` directly rather than through a real export, so
+    the assertion holds on a machine with no ffmpeg — which is exactly the
+    machine where the video path is least exercised.
+    """
+
+    @staticmethod
+    def _items(*stripped: str) -> list[dict[str, object]]:
+        return [
+            {"record_kind": "capture", "media_type": "video/mp4", "stripped": s, "sensor": None}
+            for s in stripped
+        ]
+
+    @staticmethod
+    def _disclose(items: list[dict[str, object]], policy: SharingPolicy) -> tuple[str, ...]:
+        from habitable.disclosure import scope_statement
+        from habitable.packet import _disclosures
+
+        return _disclosures(
+            cast("list[dict[str, JSONValue]]", items),
+            policy,
+            scope_statement("en", scope_type="unit"),
+            include_originals=False,
+            awaiting=0,
+            total=len(items),
+        )
+
+    def test_retain_policy_does_not_claim_location_kept_in_a_stripped_video(self) -> None:
+        notes = self._disclose(
+            self._items("all-container-metadata"),
+            SharingPolicy(strip_location=False, strip_all_metadata=False),
+        )
+        joined = " ".join(notes)
+        # The retain claim must never stand as a whole-packet statement again. It is
+        # matched as a complete note, because the corrected sentence legitimately
+        # starts with the same words and then scopes itself.
+        assert (
+            "shared-copy policy permits embedded metadata, including location, to be retained"
+            not in notes
+        )
+        assert "retained in still-image shared copies" in joined
+        # ...and the packet must say what actually happened to the video.
+        assert "video" in joined.casefold() or "audio" in joined.casefold()
+        assert "all" in joined.casefold() and "strip" in joined.casefold()
+
+    def test_a_still_only_packet_still_states_the_retain_policy_plainly(self) -> None:
+        """The fix must not over-correct into claiming a strip that did not happen.
+
+        With no video or audio item present, nothing was force-stripped, and the
+        disclosure has to keep saying so — under-claiming disclosure is the same
+        class of error as over-claiming it, pointed the other way.
+        """
+        stills: list[dict[str, object]] = [
+            {
+                "record_kind": "capture",
+                "media_type": "image/jpeg",
+                "stripped": "none",
+                "sensor": None,
+            }
+        ]
+        joined = " ".join(self._disclose(stills, SharingPolicy(False, False)))
+        assert "retained" in joined
+        assert "video" not in joined.casefold()
+
+    def test_the_strip_location_branch_is_scoped_when_video_is_present(self) -> None:
+        """The middle branch already said "still-image", but stopped short.
+
+        It scoped its GPS claim correctly and then added "other embedded metadata
+        may be retained" without scoping *that*, which is the same defect one
+        clause along: for the video item, no other embedded metadata was retained.
+        """
+        joined = " ".join(
+            self._disclose(
+                self._items("all-container-metadata", "gps"),
+                SharingPolicy(strip_location=True, strip_all_metadata=False),
+            )
+        )
+        assert "still-image" in joined
+        assert "video" in joined.casefold() or "audio" in joined.casefold()
+
+    def test_strip_all_policy_is_unchanged(self) -> None:
+        joined = " ".join(
+            self._disclose(self._items("all-container-metadata"), SharingPolicy(True, True))
+        )
+        assert "all embedded metadata stripped from supported shared media" in joined

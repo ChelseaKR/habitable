@@ -953,6 +953,18 @@ def _seal_packet(bundle_hash: str, tsa: TimestampAuthority | None) -> _Seal:
     )
 
 
+#: What ``media.make_shared_media_copy`` records when it force-strips a container.
+#: Matched against the item's own ``stripped`` field rather than re-deriving the
+#: outcome from the media type, so the disclosure can only ever restate what the
+#: signed item record already says (issue #211).
+_FORCED_STRIP_MARKER = "all-container-metadata"
+
+
+def _forced_full_metadata_strip(item: dict[str, JSONValue]) -> bool:
+    stripped = item.get("stripped")
+    return isinstance(stripped, str) and _FORCED_STRIP_MARKER in stripped
+
+
 def _disclosures(
     items: list[dict[str, JSONValue]],
     sharing: SharingPolicy,
@@ -962,23 +974,40 @@ def _disclosures(
     awaiting: int,
     total: int,
 ) -> tuple[str, ...]:
+    # Issue #211: this line is the packet's headline metadata claim, and it used to
+    # be derived from the configured policy alone. `media.make_shared_media_copy`
+    # ignores that policy -- it always remuxes with `-map_metadata -1` -- so under a
+    # retain-metadata policy the packet told its reader that a video's embedded
+    # location had been kept when the same bundle's item record said it was
+    # removed. The claim is now built from what the items report actually
+    # happening, and the policy-derived half is scoped to the media it governs.
+    forced = sum(1 for item in items if _forced_full_metadata_strip(item))
     if sharing.strip_all_metadata:
         metadata = "all embedded metadata stripped from supported shared media"
     elif sharing.strip_location:
         metadata = (
             "EXIF GPS stripped from supported still-image shared copies; "
-            "other embedded metadata may be retained"
+            "other embedded metadata may be retained in those still images"
         )
     else:
         metadata = (
-            "shared-copy policy permits embedded metadata, including location, to be retained"
+            "shared-copy policy permits embedded metadata, including location, to be "
+            "retained in still-image shared copies"
         )
     notes = [
         *scope.lines(),
         f"{len(items)} media item(s) included as shared copies",
         metadata,
-        "custody identities not exported",
     ]
+    if forced and not sharing.strip_all_metadata:
+        # Only worth stating where it *differs* from the policy the reader was just
+        # told about. Under strip_all_metadata the two already agree.
+        notes.append(
+            f"{forced} video/audio item(s) had all container and stream metadata, "
+            "including any embedded location, stripped regardless of that policy: "
+            "the video/audio sanitizer has no retain mode"
+        )
+    notes.append("custody identities not exported")
     data_items = sum(1 for item in items if item.get("sensor") is not None)
     if data_items:
         notes.append(
