@@ -461,10 +461,10 @@ gate column are the parts that matter.
 | 8 | ~2028 | **The v1.0 trust gate**, when the alpha caveat comes off | Four external outcomes, none of them a commit: an independent security and cryptographic review, a recorded human NVDA and VoiceOver pass, at least one completed tenant-union or legal-aid pilot with written outcomes, and a lawyer's read of the "not legal advice" framing |
 
 Phases 1 to 3 are the whole of what a solo effort can finish on its own from
-this portfolio, and as of 2026-08-27 all three are done. Everything after them is waiting on a named person, and saying
-so plainly is the point of the table: an item in phases 4 to 8 that appears to
-be making progress without its gate having been met is a warning, not an
-achievement.
+this portfolio, and as of 2026-08-27 all three are done. Everything after them
+is waiting on a named person, and saying so plainly is the point of the table:
+an item in phases 4 to 8 that appears to be making progress without its gate
+having been met is a warning, not an achievement.
 
 ## Now / Next / Later
 
