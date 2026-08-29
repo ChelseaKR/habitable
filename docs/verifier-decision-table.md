@@ -348,10 +348,18 @@ with no `packet_seal` key simply has no such attestation; that is the pre-seal b
 failure.
 
 **One documented, deliberate difference before you file a bug.** `openssl ts -verify -CAfile`
-performs full X.509 **path validation**: it discovers intermediates, and checks validity periods,
-basic constraints, key usage, and (where configured) revocation. habitable's `--trusted-cert` does
-**not**. It is a *one-hop* check: an anchor is accepted when it **is** the token's signing
-certificate (pinned by fingerprint) or **directly issued** it. The full statement is
+performs full X.509 **path validation**: it discovers intermediates, and checks validity periods
+throughout the path, basic constraints, key usage, and (where configured) revocation. habitable's
+`--trusted-cert` does **not**. It is a *one-hop* check: an anchor is accepted when it **is** the
+token's signing certificate (pinned by fingerprint) or **directly issued** it, **and** the signing
+certificate was inside its own validity period at the token's `genTime`. That last clause is the
+one thing beyond the match that is checked (issue #204): an authority key rotated out years ago
+stops minting trusted tokens, while a token minted while that key was live keeps verifying forever,
+because the comparison is against `genTime` and never against the wall clock. The outcome is
+reported in its own `cert_validity` field (`within` / `expired` / `not-yet-valid` /
+`not-applicable` / `not-checked`), so a recipient can tell "expiry was checked and was fine" from
+"expiry was not checked". Validity is still checked only for the signing certificate, not for
+anchors above it. The full statement is
 `habitable.tsa.ANCHOR_RULE` in code, and it is repeated in
 [`embedding-the-verifier.md`](embedding-the-verifier.md).
 

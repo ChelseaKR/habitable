@@ -7,6 +7,106 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+### Fixed
+
+- **An expired TSA certificate no longer mints indefinitely-trusted timestamps**
+  (#204, split from #121). `_verify_cert_chain` matched an anchor by fingerprint
+  or direct issuance and stopped there, so a certificate that expired years ago
+  went on producing `trusted_chain: True` forever — in the one field a recipient
+  reads to decide whether a timestamp is from who it says. The signing
+  certificate must now have been inside its own validity period at the token's
+  `genTime`. The comparison is against `genTime` and never the wall clock, so a
+  packet minted in 2021 still verifies in 2031 after its authority rotates a key;
+  what stops is an authority minting *new* tokens on a dead certificate.
+
+  The outcome is reported in its own `TimestampInfo.cert_validity` field
+  (`within` / `expired` / `not-yet-valid` / `not-applicable` / `not-checked`)
+  rather than folded silently into `trusted_chain`, because "expiry was checked
+  and was fine" and "expiry was not checked" are different facts. The note for a
+  matched-but-expired anchor says so in those words, so a recipient who supplied
+  exactly the right certificate is not sent off to re-download it. `ANCHOR_RULE`
+  and four documents that stated validity was never consulted are corrected.
+
+- **Corrupt KDF parameters fail as `CryptoError`, not a raw traceback** (#212).
+  `crypto.py` promises in its module docstring that every failure surfaces as
+  `CryptoError`; `KdfParams.from_dict` type-checked `n`/`r`/`p`/`length` and
+  passed them straight to scrypt. Since `cli.main()` catches only
+  `HabitableError`, a bit-rotted keyfile or a courier-damaged recovery blob
+  crashed `habitable key restore` with an unhandled traceback. Three library
+  exceptions escaped, not the one reported: `ValueError`, `OverflowError` (which
+  does *not* subclass `ValueError`), and `MemoryError` — the last a
+  resource-exhaustion vector, since a single flipped digit in `n` can ask scrypt
+  for a terabyte. Parameters are now screened by arithmetic before scrypt sees
+  them, with a memory ceiling derived from the project's own `KDF_PROFILES`.
+
+- **A packet's metadata disclosure no longer contradicts its own item records**
+  (#211). `_disclosures` built the prominent "What this packet discloses" line
+  from the configured `SharingPolicy` alone. But `make_shared_media_copy` always
+  remuxes video and audio with `-map_metadata -1` regardless of policy, so under
+  a deliberate retain-metadata policy the packet told its reader that a video's
+  embedded location had been kept while the same signed bundle's item record said
+  it was removed. The harm runs the surprising way: a tenant who chose that policy
+  specifically to preserve a video's GPS as evidence was told they had it. The
+  disclosure is now derived from the items' own `stripped` fields, and the
+  policy-derived sentence is scoped to still images.
+
+- **`scope_statement` resolves regional locale tags like its siblings** (#210).
+  `habitable init --lang es-MX` produced a Spanish packet whose "Scope of this
+  export" section — the one stating whether the packet covers the whole unit or a
+  single issue — silently reverted to English. Two of `disclosure.py`'s three
+  lookups normalized the tag and the third did an exact-match lookup. All three
+  now share one resolver, since the defect was drift between hand-rolled copies.
+
+- **Keyboard focus no longer lands off-screen while tabbing** (#202). Re-diagnosed
+  before fixing: the report blamed tab order leaking into a stale "underlying Atlas
+  view" and proposed `inert`, which would have deleted real controls from the
+  keyboard path — the app is a single scrolling document with no view switching.
+  The actual cause is `scroll-behavior: smooth`, wanted for the skip link and
+  anchors, also animating the scroll that Tab triggers; the animation is slower
+  than a keypress. At ordinary typing speed 20 focus stops landed outside the
+  viewport with the focus ring painted where nobody could see it (WCAG 2.4.7,
+  2.4.3); with a generous settle, none did. Focus is now snapped into view
+  instantly, leaving anchor navigation smooth.
+
+### Added
+
+- **`habitable issue --category`/`--severity` are validated against a vocabulary**
+  (#206). They accepted arbitrary free text while `timeline --type`/`--source`
+  next door were enum-constrained, so a mistyped category was accepted silently
+  and — with no correction path and export scoping blocked (#203) — rode into the
+  exported packet. `other` remains available with a required `--other-label` /
+  `--severity-detail`, because a closed vocabulary with no escape hatch would
+  force a real condition to be misfiled. Validation is at CLI entry only:
+  categories already stored in a vault are grandfathered and keep loading. The
+  local web app's free-text condition field is unchanged and is documented as a
+  known scope boundary.
+
+- **A third letter framing profile, `ew_disrepair`** (#207), for England and
+  Wales. Presentation-only wording held to the same bar as its two siblings: no
+  statute, no section number, and no jurisdiction-specific deadline. Marked
+  UNREVIEWED in source — no solicitor or advice worker for that jurisdiction has
+  read it.
+
+### Changed
+
+- **Several gates that could not fail were repaired.** A site test guarding the
+  "do not put tenant data in a public issue" warning had never executed a single
+  assertion: it matched a URL that appears nowhere on the site, and iterated a
+  page list that excluded the only page carrying public issue links. Repaired, it
+  immediately found the real gap, and `site/review/index.html` now carries the
+  data boundary its linked issues already state. The `pytest -m a11y` suite —
+  behind a *required* status check — exits 0 when every test skips for want of a
+  browser; that is now a hard failure in CI plus a floor on the selected count.
+  `check_bcp47.py`'s "no tags found" guard was dead code, since one always-populated
+  source ran first; each of its five sources now carries its own floor.
+  `test_format_date_month_abbreviations` asserted only that output was non-empty
+  and contained the year; it now checks the abbreviations. Archive-timestamp trust
+  verdicts were computed and discarded; the note now reports them. Plus a
+  non-emptiness floor on the `aria-describedby` scan, `.NOTPARALLEL:` so
+  `verify`'s documented lock-check ordering survives `make -j`, a lockstep test
+  for the docs-only a11y twin's path list, and a corrected `.pre-commit-config.yaml`
+  comment that claimed a scope equivalence with `make lint` that was never true.
+
 ### Added
 
 - **An organizer can hand over several tenants' packets as one submission,

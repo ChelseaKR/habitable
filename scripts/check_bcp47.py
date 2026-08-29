@@ -90,40 +90,86 @@ def _read(path: Path) -> str:
 
 
 def collect_tags() -> dict[str, set[str]]:
-    """Gather every authored tag, mapping tag -> set of source descriptions."""
-    tags: dict[str, set[str]] = {}
+    """Gather every authored tag, mapping tag -> set of source descriptions.
 
-    def add(tag: str, source: str) -> None:
+    Each of the five sources carries its own floor. The single aggregate
+    ``if not tags`` check this replaced could never fire: source 1 globs
+    ``app/i18n/*.json`` and always yields ``en`` and ``es``, so ``tags`` was
+    non-empty before the guard was reached, and its own error message ("check
+    the source globs") described a failure it was structurally unable to
+    report. Sources 2 and 3 sat behind an unchecked ``if <regex matched>`` and
+    4 and 5 behind zero-iteration ``findall``s, so rewriting ``app/app.js:8``
+    from ``var SUPPORTED = ["en", "es"];`` to an object literal, a renamed
+    constant, or a multi-line array containing a ``]`` in a comment would have
+    silently stopped this gate checking ``SUPPORTED`` at all while it went on
+    printing OK.
+    """
+    tags: dict[str, set[str]] = {}
+    found: dict[str, int] = {}
+
+    def add(tag: str, source: str, *, counter: str) -> None:
         tags.setdefault(tag.strip(), set()).add(source)
+        found[counter] = found.get(counter, 0) + 1
 
     # 1. Locale bundle filenames: app/i18n/<tag>.json
     if not _I18N_DIR.is_dir():
         _fail(f"locale directory not found: {_I18N_DIR.relative_to(_REPO_ROOT)}")
     for bundle in sorted(_I18N_DIR.glob("*.json")):
-        add(bundle.stem, f"catalog filename {bundle.name}")
+        add(bundle.stem, f"catalog filename {bundle.name}", counter="i18n bundle filenames")
 
     # 2 & 3. SUPPORTED = [...] and DEFAULT_LANG = "..." in app/app.js
     app_js = _read(_APP / "app.js")
     supported = re.search(r"SUPPORTED\s*=\s*\[([^\]]*)\]", app_js)
     if supported:
         for tag in re.findall(r"""["']([^"']+)["']""", supported.group(1)):
-            add(tag, "app.js SUPPORTED")
+            add(tag, "app.js SUPPORTED", counter="app.js SUPPORTED")
     default = re.search(r"""DEFAULT_LANG\s*=\s*["']([^"']+)["']""", app_js)
     if default:
-        add(default.group(1), "app.js DEFAULT_LANG")
+        add(default.group(1), "app.js DEFAULT_LANG", counter="app.js DEFAULT_LANG")
 
     # 4 & 5. <html lang="..."> and data-lang="..." in committed HTML.
     for html_path in _HTML_FILES:
         html = _read(html_path)
         rel = html_path.relative_to(_REPO_ROOT)
         for tag in re.findall(r"""<html[^>]*\blang\s*=\s*["']([^"']+)["']""", html):
-            add(tag, f"{rel} <html lang>")
+            add(tag, f"{rel} <html lang>", counter=f"{rel} <html lang>")
         for tag in re.findall(r"""\bdata-lang\s*=\s*["']([^"']+)["']""", html):
-            add(tag, f"{rel} data-lang")
+            add(tag, f"{rel} data-lang", counter="data-lang attributes")
 
-    if not tags:
-        _fail("no authored language tags were found — check the source globs")
+    _require_every_source_reported(found)
     return tags
+
+
+#: Every source this gate claims to read, with the minimum it must yield.
+#:
+#: ``<html lang>`` is per file because each committed HTML surface authors
+#: exactly one and a missing one is a real defect. ``data-lang`` is a single
+#: cross-file floor because only ``app/index.html`` authors those today, and
+#: demanding one per file would fail on a truthful repository.
+def _expected_sources() -> dict[str, int]:
+    expected = {
+        "i18n bundle filenames": 2,  # en + es are both committed
+        "app.js SUPPORTED": 2,
+        "app.js DEFAULT_LANG": 1,
+        "data-lang attributes": 1,
+    }
+    for html_path in _HTML_FILES:
+        expected[f"{html_path.relative_to(_REPO_ROOT)} <html lang>"] = 1
+    return expected
+
+
+def _require_every_source_reported(found: dict[str, int]) -> None:
+    """Fail if any named source went quiet, rather than only if *all* did."""
+    silent = [
+        f"{source} (expected at least {minimum}, found {found.get(source, 0)})"
+        for source, minimum in sorted(_expected_sources().items())
+        if found.get(source, 0) < minimum
+    ]
+    if silent:
+        _fail(
+            "these language-tag sources reported nothing, so this gate is no longer "
+            "checking them:\n  - " + "\n  - ".join(silent)
+        )
 
 
 def validate(tag: str) -> str | None:

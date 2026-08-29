@@ -596,3 +596,42 @@ def test_since_scope_fails_closed_before_any_output(
         build_packet(vault, out, since=since, generated_at="2026-01-04T00:10:00Z")
     assert not out.exists()
     assert vault.custody.to_vault_records() == before_custody
+
+
+def test_every_disclosure_lookup_resolves_a_regional_tag_the_same_way() -> None:
+    """Issue #210: three sibling lookups in `disclosure.py` disagreed on `es-MX`.
+
+    `proof_statement` and `packet_trust_text` normalized (lowercase, strip the
+    region subtag); `scope_statement` did an exact-match `lang in _SCOPE`. So a
+    union running `habitable init --lang es-MX` — which `cli.py` accepts as free
+    text, and which `i18n.normalize_locale` documents as expected input — got a
+    Spanish packet with one English section wedged in the middle of it: "Scope of
+    this export", the section stating whether the packet covers the whole unit or
+    a single issue. That is a distinction a court or inspector reads.
+
+    Pinned across all three functions, not just the one that was wrong, because
+    the defect was drift between siblings and a fix to one of them does not stop
+    the next one drifting.
+    """
+    from habitable.disclosure import packet_trust_text, proof_statement, scope_statement
+
+    spanish_spellings = ("es", "es-MX", "es-ES", "ES", "es_MX", "ES-mx", "es-419")
+    for tag in spanish_spellings:
+        assert proof_statement(tag) == proof_statement("es"), tag
+        assert packet_trust_text(tag) == packet_trust_text("es"), tag
+        assert scope_statement(tag, scope_type="unit") == scope_statement(
+            "es", scope_type="unit"
+        ), f"{tag} resolved to a different scope statement than plain 'es'"
+
+    # An unsupported language still falls back to English in all three, rather
+    # than raising on a packet that has already been signed and handed over.
+    for tag in ("fr", "de-CH", "", "not-a-language"):
+        assert proof_statement(tag) == proof_statement("en"), tag
+        assert packet_trust_text(tag) == packet_trust_text("en"), tag
+        assert scope_statement(tag, scope_type="unit") == scope_statement(
+            "en", scope_type="unit"
+        ), tag
+
+    # And the two languages are genuinely different text, so the assertions above
+    # are not all trivially comparing English to English.
+    assert scope_statement("es", scope_type="unit") != scope_statement("en", scope_type="unit")

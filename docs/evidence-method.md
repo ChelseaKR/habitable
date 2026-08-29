@@ -201,12 +201,21 @@ an RFC 3161 token (`_verify_rfc3161_token`), checks all of:
    trusted directly, otherwise the signer must carry a valid signature from a trusted
    issuer. With no trusted certificates supplied, the chain is reported as **untrusted**
    (signature still validated) rather than failing outright.
+4b. **Certificate validity at `genTime`** — the signing certificate must have been inside
+   its own `notBefore`/`notAfter` window when the token was minted. A matched anchor whose
+   certificate had already expired is **not** trusted (issue #204), and the note says so in
+   those words, so a recipient is not sent off to re-download an anchor they supplied
+   correctly. The comparison is against the token's `genTime`, never the wall clock: a
+   packet minted in 2021 still verifies in 2031 after its authority rotates.
 5. **genTime** — the token's `genTime` is extracted and returned as the proven
    existence bound, normalized to ISO-8601 UTC.
 
-The result is a `TimestampInfo` carrying `gen_time`, the digest, the authority name, and
-a `trusted_chain` flag. When the chain is not trusted, the note is "signature valid;
-signing certificate not chained to a trusted root."
+The result is a `TimestampInfo` carrying `gen_time`, the digest, the authority name, a
+`trusted_chain` flag, and a `cert_validity` string. When the chain is not trusted, the
+note names which outcome occurred: no anchor supplied, an anchor that did not chain, or
+an anchor that matched a certificate which was not live at `genTime`. `cert_validity` is
+reported separately from `trusted_chain` on purpose — one boolean cannot distinguish
+"expiry was checked and was fine" from "expiry was not checked".
 
 ### Non-production dev TSA
 

@@ -1,6 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # habitable — developer entry points. `make verify` reproduces the full CI gate.
 .DEFAULT_GOAL := help
+
+# `verify` documents an ordering invariant it could not previously enforce: lock-check
+# must run before any target that shells `uv run`, because a bare `uv run` silently
+# relocks and would repair the very drift the gate exists to detect. Listing lock-check
+# first only orders a SERIAL make. Under `make -j verify` the prerequisites have no
+# dependencies between them, so `cov` could start alongside or before `lock-check` and
+# quietly defeat the gate. CI runs serial, so this was latent rather than live; it is
+# now structural instead of conventional.
+.NOTPARALLEL:
 .PHONY: help bootstrap install lock-check fmt lint type test cov i18n doc-links markers verify audit a11y integration demo site-sample build repro relay-repro clean
 
 help: ## Show this help

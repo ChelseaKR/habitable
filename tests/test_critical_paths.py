@@ -14,7 +14,7 @@ from __future__ import annotations
 import base64
 import json
 import urllib.request
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -135,6 +135,108 @@ class TestKeyfileRejections:
 
         with pytest.raises(CryptoError, match="expected integer"):
             open_keyfile(self._tampered(mutate), "pw")
+
+
+class TestCorruptKdfParameters:
+    """Issue #212: `crypto.py`'s docstring promises every failure is a `CryptoError`.
+
+    `KdfParams.from_dict` type-checked `n`/`r`/`p`/`length` and stopped there, so
+    values that are integers but not *valid scrypt parameters* went straight into
+    `Scrypt(...)`. `cli.main()` catches only `HabitableError`, so each of these
+    escaped as an unhandled traceback out of `habitable key restore` or an
+    ordinary vault unlock — on exactly the long-lived recovery backups
+    `docs/key-custody-playbook.md` expects to survive years and bit-rot.
+
+    Three distinct library exceptions escaped, not the one the issue named:
+    `ValueError` (n/r/p out of range), `OverflowError` (any negative, which is
+    *not* a `ValueError` subclass, so wrapping `ValueError` alone would still
+    miss it), and `MemoryError` (a cost so large it is a resource-exhaustion
+    vector, not merely a typo).
+    """
+
+    @staticmethod
+    def _keyfile_with_kdf(**overrides: object) -> str:
+        keyfile, _ = create_keyfile("pw")
+        doc: dict[str, object] = json.loads(keyfile)
+        kdf = doc["kdf"]
+        assert isinstance(kdf, dict)
+        kdf.update(overrides)
+        return json.dumps(doc)
+
+    @pytest.mark.parametrize(
+        ("label", "overrides"),
+        [
+            ("n is not a power of two", {"n": 3}),
+            ("n is too small", {"n": 1}),
+            ("n is zero", {"n": 0}),
+            ("n is negative", {"n": -16}),
+            ("r is zero", {"r": 0}),
+            ("r is negative", {"r": -8}),
+            ("p is zero", {"p": 0}),
+            ("p is negative", {"p": -1}),
+            ("length is zero", {"length": 0}),
+            ("length is negative", {"length": -1}),
+        ],
+    )
+    def test_corrupt_parameters_raise_cryptoerror(
+        self, label: str, overrides: dict[str, object]
+    ) -> None:
+        with pytest.raises(CryptoError):
+            open_keyfile(self._keyfile_with_kdf(**overrides), "pw")
+
+    def test_an_absurd_cost_is_refused_without_trying_to_allocate_it(self) -> None:
+        """A corrupted `n` is a denial-of-service vector, not just a wrong answer.
+
+        scrypt's memory cost is ~``128 * n * r`` bytes. A keyfile claiming
+        ``n = 2**40`` asks for a terabyte. It must be refused by inspection, and
+        fast — the failure must not depend on the machine happening to be small
+        enough for the allocation to fail.
+        """
+        import time
+
+        started = time.monotonic()
+        with pytest.raises(CryptoError):
+            open_keyfile(self._keyfile_with_kdf(n=2**40), "pw")
+        with pytest.raises(CryptoError):
+            open_keyfile(self._keyfile_with_kdf(r=2**20, p=2**20), "pw")
+        assert time.monotonic() - started < 5.0, "refused only after attempting the allocation"
+
+    def test_the_recovery_blob_path_is_covered_too(self) -> None:
+        """The path the issue is actually about: a backup handed back by a steward.
+
+        `import_recovery_blob` is what `habitable key restore` calls, and a
+        courier copy that rotted in a drawer for three years is the realistic
+        input. It must fail the same clean, documented way as everything else.
+        """
+        from habitable.crypto import SymmetricKey, export_recovery_blob, import_recovery_blob
+
+        blob = export_recovery_blob(SymmetricKey.generate(), "recovery-pass")
+        doc: dict[str, object] = json.loads(blob)
+        kdf = doc["kdf"]
+        assert isinstance(kdf, dict)
+        kdf["n"] = 3  # a single flipped digit in a stored backup
+        with pytest.raises(CryptoError):
+            import_recovery_blob(json.dumps(doc), "recovery-pass")
+
+    def test_every_shipped_cost_profile_still_opens(self) -> None:
+        """The guard must not be tightened past what this project itself writes.
+
+        Every value in `KDF_PROFILES` has to survive validation, or hardening a
+        vault would lock it. This is the assertion that stops the fix for #212
+        from becoming a worse bug than #212.
+        """
+        from habitable.crypto import KDF_PROFILES, SymmetricKey, harden_keyfile
+
+        dek = SymmetricKey.generate()
+        for profile in KDF_PROFILES:
+            if KDF_PROFILES[profile] > 2**17:
+                continue  # the paranoid profile is ~1 GiB; covered by params-only checks below
+            wrapped = harden_keyfile(dek, "pw", profile=profile)
+            assert open_keyfile(wrapped, "pw")._raw() == dek._raw()
+
+        # The paranoid profile is validated without paying for the derivation.
+        for name, n in KDF_PROFILES.items():
+            KdfParams(salt=b"0" * 16, n=n).validated(), f"{name} must pass validation"
 
 
 # --- vault: fixity failures and corrupt records surface as errors --------------
@@ -549,6 +651,157 @@ class TestCertificateChain:
         anchored = verify_token(token, DIGEST, trusted_certs=[cert])
         assert anchored.trusted_chain is True
         assert anchored.note == ""
+
+
+class TestCertificateValidityPeriod:
+    """Issue #204 (split from #121): an anchor that never expires cannot fail.
+
+    ``_verify_cert_chain`` matched an anchor by fingerprint or direct issuance
+    and stopped there, so a certificate that expired years ago went on minting
+    ``trusted_chain: True`` forever. That is the shape this project treats as
+    worse than no check: the field a recipient reads to decide "is this
+    timestamp from who it says" was structurally incapable of reporting a
+    rotated-out authority key.
+
+    The comparison is against the token's own ``gen_time``, never against now,
+    so an old but legitimate token stays trusted after its authority rotates.
+    """
+
+    @staticmethod
+    def _cert_valid_between(
+        common_name: str,
+        key: rsa.RSAPrivateKey,
+        *,
+        not_before: datetime,
+        not_after: datetime,
+    ) -> crypto_x509.Certificate:
+        name = crypto_x509.Name([crypto_x509.NameAttribute(NameOID.COMMON_NAME, common_name)])
+        return (
+            crypto_x509.CertificateBuilder()
+            .subject_name(name)
+            .issuer_name(name)
+            .public_key(key.public_key())
+            .serial_number(crypto_x509.random_serial_number())
+            .not_valid_before(not_before)
+            .not_valid_after(not_after)
+            .sign(key, crypto_hashes.SHA256())
+        )
+
+    def test_a_token_minted_after_its_certificate_expired_is_not_trusted(self) -> None:
+        """The #121 reproducer: mint today with a certificate that expired a year ago."""
+        from habitable.tsa import _issue_token
+
+        now = datetime.now(tz=UTC)
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        expired = self._cert_valid_between(
+            "rotated-out-tsa",
+            key,
+            not_before=now - timedelta(days=1200),
+            not_after=now - timedelta(days=365),
+        )
+        der = _issue_token(DIGEST, private_key=key, certificate=expired, gen_time=now)
+        token = TimestampToken(kind="rfc3161", tsa_name="rotated-out-tsa", data=der)
+
+        # Pinning the expired certificate itself must not resurrect it...
+        pinned = verify_token(token, DIGEST, trusted_certs=[expired])
+        assert pinned.trusted_chain is False
+        assert pinned.cert_validity == "expired"
+        assert "expired" in pinned.note
+
+        # ...and neither must anchoring the issuer, which here is the same self-signed
+        # certificate reached by the other of the two anchor arms.
+        assert verify_token(token, DIGEST, trusted_certs=[expired]).trusted_chain is False
+
+    def test_a_token_minted_before_its_certificate_was_valid_is_not_trusted(self) -> None:
+        from habitable.tsa import _issue_token
+
+        now = datetime.now(tz=UTC)
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        future = self._cert_valid_between(
+            "not-yet-tsa",
+            key,
+            not_before=now + timedelta(days=30),
+            not_after=now + timedelta(days=400),
+        )
+        der = _issue_token(DIGEST, private_key=key, certificate=future, gen_time=now)
+        token = TimestampToken(kind="rfc3161", tsa_name="not-yet-tsa", data=der)
+
+        info = verify_token(token, DIGEST, trusted_certs=[future])
+        assert info.trusted_chain is False
+        assert info.cert_validity == "not-yet-valid"
+        assert "not yet valid" in info.note
+
+    def test_an_old_token_stays_trusted_after_its_authority_rotates(self) -> None:
+        """The reason the comparison is against ``gen_time`` and not ``now``.
+
+        A packet exported in 2021 must still verify in 2031. Checking expiry
+        against the wall clock would quietly un-trust every archived packet the
+        moment an authority rotated a key, which is the opposite of what a
+        timestamp is for.
+        """
+        from habitable.tsa import _issue_token
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        long_expired = self._cert_valid_between(
+            "retired-but-honest-tsa",
+            key,
+            not_before=datetime(2020, 1, 1, tzinfo=UTC),
+            not_after=datetime(2021, 1, 1, tzinfo=UTC),
+        )
+        minted_while_valid = datetime(2020, 6, 1, tzinfo=UTC)
+        der = _issue_token(
+            DIGEST, private_key=key, certificate=long_expired, gen_time=minted_while_valid
+        )
+        token = TimestampToken(kind="rfc3161", tsa_name="retired-but-honest-tsa", data=der)
+
+        info = verify_token(token, DIGEST, trusted_certs=[long_expired])
+        assert info.trusted_chain is True
+        assert info.cert_validity == "within"
+        assert info.note == ""
+
+    def test_checked_and_fine_is_distinguishable_from_never_checked(self) -> None:
+        """Issue #204: "expiry not checked" and "expiry checked and fine" are
+        different facts, so they get different values rather than a shared silence."""
+        from habitable.tsa import DevTSA, _issue_token
+
+        now = datetime.now(tz=UTC)
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        cert = _self_signed("in-date-tsa", key)
+        der = _issue_token(DIGEST, private_key=key, certificate=cert, gen_time=now)
+        rfc = verify_token(TimestampToken(kind="rfc3161", tsa_name="in-date-tsa", data=der), DIGEST)
+        assert rfc.cert_validity == "within"
+
+        # A dev token carries no X.509 certificate at all, so there is nothing to
+        # check and it says so rather than borrowing the in-date answer.
+        dev = DevTSA(name="dev")
+        dev_info = verify_token(dev.stamp(DIGEST), DIGEST)
+        assert dev_info.cert_validity == "not-applicable"
+
+    def test_an_expired_authority_cannot_carry_a_packet_to_ready(self) -> None:
+        """The field is not decorative: it has to move the verdict.
+
+        ``verify.py`` gates every READY verdict on ``trusted_chain``, so an
+        expired-at-mint certificate has to fall out of the trusted-authority
+        list, not merely gain a footnote next to a green verdict.
+        """
+        from habitable.tsa import _issue_token
+
+        now = datetime.now(tz=UTC)
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        expired = self._cert_valid_between(
+            "expired-authority",
+            key,
+            not_before=now - timedelta(days=900),
+            not_after=now - timedelta(days=30),
+        )
+        der = _issue_token(DIGEST, private_key=key, certificate=expired, gen_time=now)
+        token = TimestampToken(kind="rfc3161", tsa_name="expired-authority", data=der)
+
+        info = verify_token(token, DIGEST, trusted_certs=[expired])
+        assert info.trusted_chain is False
+        # The note has to name the authority problem, so a reader is not sent
+        # off to re-download an anchor they already supplied correctly.
+        assert "anchor" in info.note or "certificate" in info.note
 
 
 # --- verify: hostile packet inputs are clean rejections, never crashes ---------

@@ -124,12 +124,25 @@ def test_images_have_alt_and_no_positive_tabindex() -> None:
 
 
 def test_aria_describedby_targets_exist() -> None:
-    """Any aria-describedby must point at an element that actually exists."""
+    """Any aria-describedby must point at an element that actually exists.
+
+    Every assertion here lives inside a loop over ``re.findall``, so an empty
+    match list is a silent pass. The pattern only recognizes double-quoted
+    attributes, so switching the markup to single quotes -- or moving the
+    attribute to a JS-set property -- would retire this check without a word.
+    The floor below is what makes the loop's silence audible, in the same style
+    as ``test_golden.py`` and ``test_verify_fuzz.py``.
+    """
     html = _INDEX.read_text(encoding="utf-8")
     p = _parse()
     import re
 
-    referenced = re.findall(r'aria-describedby="([^"]+)"', html)
+    referenced = re.findall(r"""aria-describedby=["\']([^"\']+)["\']""", html)
+    assert referenced, (
+        "no aria-describedby attributes were found in app/index.html. Either the "
+        "descriptions were removed, or the markup changed shape and this check is "
+        "now scanning for something that is not there."
+    )
     for group in referenced:
         for ident in group.split():
             assert ident in p.ids, f"aria-describedby points at missing id: {ident}"

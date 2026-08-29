@@ -737,8 +737,32 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
                 else []
             )
             if archives:
-                verify_archive_chain(content_hash, token, archives, trusted_certs=trusted_certs)
-                notes.append(f"archive-timestamped ({len(archives)} link(s))")
+                # `verify_archive_chain` returns a TimestampInfo per link, each with
+                # its own `trusted_chain`, and that return value used to be thrown
+                # away. Integrity was still enforced -- a broken link raises -- but a
+                # chain extended by an authority that anchors to nothing read exactly
+                # like one extended by a trusted authority. The note now says what
+                # was actually checked, matching how the primary token is reported
+                # two lines below and how this project reports the seal and the relay.
+                #
+                # It reports; it does not decide. Whether an untrusted archive link
+                # should hold an item back from READY is a verdict-policy question
+                # for the owner, not something to change quietly inside a note.
+                # The first entry covers the primary token, which is reported on its
+                # own below; slice it off so the count here means archive links.
+                archive_links = verify_archive_chain(
+                    content_hash, token, archives, trusted_certs=trusted_certs
+                )[1:]
+                trusted_links = sum(1 for link in archive_links if link.trusted_chain)
+                note = f"archive-timestamped ({len(archive_links)} link(s)"
+                if trusted_certs:
+                    note += (
+                        f", {trusted_links} of {len(archive_links)} anchored to a "
+                        "supplied certificate"
+                    )
+                else:
+                    note += ", authority trust not assessed: no certificate anchor supplied"
+                notes.append(note + ")")
             # Commit the primary verdict only after every attached archive link has
             # passed. A broken attached archive is an invalid proof, not an ignorable
             # decoration; a valid redundant authority below can still rescue the item.
