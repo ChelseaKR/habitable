@@ -22,7 +22,7 @@ from pathlib import Path
 
 from cryptography import x509
 
-from . import __version__, campaign
+from . import __version__, campaign, joint
 from .artifact import add_relationship, capture_artifact
 from .capsule import build_capsule, import_capsule, verify_capsule
 from .capture import capture, resolve_deferred, retimestamp_all
@@ -31,7 +31,7 @@ from .config import TSAConfig
 from .crypto import KDF_PROFILES, PublicIdentity
 from .errors import HabitableError, SyncError
 from .i18n import DEFAULT_LOCALE, cli_text, format_datetime, language_name, resolve_locale
-from .letter import LetterOptions, build_letter, render_letter_html
+from .letter import LetterOptions, RepairLetter, build_letter, render_letter_html
 from .obslog import configure_logging, enabled_from_env, log_event
 from .packet import build_packet
 from .pairing import accept_pairing_material, create_pairing_material
@@ -337,6 +337,54 @@ def _build_parser() -> argparse.ArgumentParser:
     p_campaign_export.add_argument("--include-originals", action="store_true")
     p_campaign_export.add_argument("--no-pdf", action="store_true")
     p_campaign_export.set_defaults(func=_cmd_campaign_export)
+
+    p_joint = sub.add_parser(
+        "joint",
+        help="index several already-signed packets as one joint submission",
+    )
+    joint_sub = p_joint.add_subparsers(dest="joint_action")
+
+    def add_joint_anchor(p: argparse.ArgumentParser) -> None:
+        p.add_argument(
+            "--trusted-cert",
+            action="append",
+            type=Path,
+            metavar="PEM",
+            help="a trusted RFC 3161 TSA root certificate (PEM); repeatable. Same "
+            "recipient policy `habitable verify` takes. Without one no member can be "
+            "evidence-ready, which is the fail-closed direction, not a bug.",
+        )
+
+    p_joint_build = joint_sub.add_parser(
+        "build",
+        help="write a table of contents over the packet folders in a submission directory",
+    )
+    p_joint_build.add_argument(
+        "submission",
+        type=Path,
+        help="a directory holding one already-exported packet per subdirectory",
+    )
+    add_joint_anchor(p_joint_build)
+    p_joint_build.add_argument(
+        "--lang",
+        choices=("en", "es"),
+        help="language for the written index page (default: English)",
+    )
+    p_joint_build.set_defaults(func=_cmd_joint_build)
+
+    p_joint_check = joint_sub.add_parser(
+        "check",
+        help="re-derive every claim in a joint index from the packets themselves",
+    )
+    p_joint_check.add_argument(
+        "submission",
+        type=Path,
+        help="the submission directory, or the joint_index.json inside it",
+    )
+    add_joint_anchor(p_joint_check)
+    p_joint_check.add_argument("--json", action="store_true", help="emit a structured report")
+    p_joint_check.add_argument("--lang", choices=("en", "es"))
+    p_joint_check.set_defaults(func=_cmd_joint_check)
 
     p_letter = sub.add_parser(
         "letter", help="generate a repair-request letter from the logged evidence"
@@ -1212,6 +1260,37 @@ def _cmd_campaign_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_letter_review_notes(letter: RepairLetter) -> None:
+    """Say what the letter left out, and why, in the language that was asked for.
+
+    ADR 0013. These are operator-facing notes about *provenance*, not letter
+    content: the landlord's copy simply does not carry wording whose review has
+    lapsed. Printing them here is what keeps the withholding from being silent.
+    """
+    locale = resolve_locale(letter.requested_language)
+    if letter.framing_expired_fallback:
+        print(
+            "           "
+            + cli_text(
+                "letter_framing_expired",
+                locale,
+                requested=letter.framing_expired_fallback,
+                used=letter.profile_key,
+            )
+        )
+    if letter.local_law.state == "expired":
+        print(
+            "           "
+            + cli_text(
+                "letter_local_law_expired",
+                locale,
+                expires_at=letter.local_law.expires_at,
+            )
+        )
+    elif letter.local_law.state == "undated":
+        print("           " + cli_text("letter_local_law_undated", locale))
+
+
 def _cmd_letter(args: argparse.Namespace) -> int:
     vault = _open(args)
     options = LetterOptions(
@@ -1229,8 +1308,10 @@ def _cmd_letter(args: argparse.Namespace) -> int:
     html_path = args.out / "letter.html"
     html_path.write_text(render_letter_html(letter), encoding="utf-8")
     print(f"habitable: repair-request letter for {letter.property_address}")
-    print(f"           {len(letter.issues)} issue(s) · framing: {letter.profile_label}")
+    reviewed = f" (reviewed {letter.framing_reviewed_at})" if letter.framing_reviewed_at else ""
+    print(f"           {len(letter.issues)} issue(s) · framing: {letter.profile_label}{reviewed}")
     print(f"           accessible letter written to {html_path}")
+    _print_letter_review_notes(letter)
     if letter.language_limitation:
         # Issue #161: the letter is the one surface that is not bilingual. Say so
         # here, in the language that was asked for, instead of shipping English
@@ -1290,6 +1371,86 @@ def _load_trusted_certs(paths: list[Path] | None) -> list[x509.Certificate] | No
         except (OSError, ValueError) as exc:
             raise HabitableError(f"could not load trusted certificate {path}: {exc}") from exc
     return certs
+
+
+def _joint_index_path(target: Path) -> Path:
+    """Accept either the submission directory or the index file inside it."""
+    return target if target.is_file() else target / joint.JOINT_INDEX_FILE
+
+
+def _cmd_joint_build(args: argparse.Namespace) -> int:
+    locale = args.lang or DEFAULT_LOCALE
+    result = joint.build_joint_index(
+        args.submission,
+        trusted_certs=_load_trusted_certs(args.trusted_cert),
+        language=locale,
+    )
+    print(
+        cli_text(
+            "joint_build_done",
+            locale,
+            members=result.member_count,
+            ready=result.ready_count,
+            out=result.index_path,
+        )
+    )
+    for disclosure in joint.JOINT_DISCLOSURES:
+        print(f"  {cli_text(disclosure, locale)}")
+    # Same contract as `habitable verify`: a zero exit means evidence-ready, and an
+    # index over packets that are not is a true index of an unready submission.
+    return 0 if result.all_ready else 1
+
+
+def _cmd_joint_check(args: argparse.Namespace) -> int:
+    locale = args.lang or DEFAULT_LOCALE
+    check = joint.check_joint_index(
+        _joint_index_path(args.submission),
+        trusted_certs=_load_trusted_certs(args.trusted_cert),
+    )
+    if args.json:
+        print(json.dumps(check.to_json(), indent=2, sort_keys=True))
+        return 0 if check.ok else 1
+    _print_joint_check(check, locale)
+    return 0 if check.ok else 1
+
+
+def _print_joint_check(check: joint.JointCheck, locale: str) -> None:
+    if check.ok:
+        print(cli_text("joint_check_ok", locale, members=len(check.members)))
+    else:
+        print(
+            cli_text(
+                "joint_check_failed",
+                locale,
+                members=len(check.members),
+                matched=check.matched_count,
+                ready=check.ready_count,
+                unlisted=len(check.unlisted),
+            )
+        )
+    for problem in check.problems:
+        print(f"  {problem}")
+    for member in check.members:
+        line = cli_text(
+            "joint_member_line",
+            locale,
+            label=member.label,
+            path=member.path,
+            state=_joint_member_state(member, locale),
+        )
+        print(f"  {line}")
+    for name in check.unlisted:
+        print(f"  {cli_text('joint_unlisted_line', locale, path=name)}")
+
+
+def _joint_member_state(member: joint.MemberCheck, locale: str) -> str:
+    if not member.present:
+        return cli_text("joint_state_missing", locale)
+    if not member.digest_matches:
+        return cli_text("joint_state_changed", locale)
+    if member.evidence_ready:
+        return cli_text("joint_state_ready", locale)
+    return member.status
 
 
 def _cmd_verify(args: argparse.Namespace) -> int:

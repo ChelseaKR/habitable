@@ -255,7 +255,7 @@ def test_app_profile_listing_reports_expiry_and_refuses_selecting_an_expired_one
 
     status = app_server.status()
     profiles = cast(list[dict[str, object]], status["profiles"])
-    assert profiles  # none of the ten built-in profiles expires today
+    assert profiles  # none of the built-in profiles expires today
     assert all(profile["expired"] is False for profile in profiles)
 
     expired = replace(get_profile("repair_delivery"), expires_at="2000-01-01")
