@@ -19,7 +19,7 @@ _CONTAINER_WORKFLOW = (
 _RELEASE_WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "release.yml"
 _DOCKERIGNORE = Path(__file__).resolve().parent.parent / ".dockerignore"
 _RELAY_DOCKERFILE = Path(__file__).resolve().parent.parent / "relay" / "Dockerfile"
-_SETUP_BUILDX_SHA = "bb05f3f5519dd87d3ba754cc423b652a5edd6d2c"
+_SETUP_BUILDX_SHA = "37fe631027851001ddb9b187196cc803df7f5f0e"
 
 # Paths apt and dpkg write that differ between two builds installing the
 # identical package set. Each was found by bisecting a failing `make
