@@ -14,10 +14,24 @@ same checks `.github/workflows/scorecard.yml` runs weekly going forward).
 > measurement. Signed-Releases cannot improve until a new release is actually cut
 > with a signed tag; the existing v0.1.0/v0.2.0 tags remain unsigned historical facts.
 > On the same date, live ruleset `18752848` was reconciled with the committed
-> main-branch policy: PRs and strict current-branch checks are required with no
-> bypass. Approval and code-owner counts remain zero under the explicit
+> main-branch policy: PRs and strict current-branch checks are required.
+> Approval and code-owner counts remain zero under the explicit
 > solo-maintainer waiver in ADR 0006, so Branch-Protection will honestly remain
 > below maximal until a second maintainer can provide a real review.
+>
+> **Correction (2026-08-28).** This note used to end that first sentence with
+> "with no bypass," and that was wrong about both the live state and the intent.
+> Live ruleset `18752848` carries, and keeps, exactly the repository owner's
+> standing bypass (`RepositoryRole` 5, `bypass_mode: always`), deliberately and
+> permanently: an agent once applied a ruleset with no bypass and locked the
+> owner out of their own repository, and restoring access took a sweep across
+> eighteen repositories. An empty `bypass_actors` list is not a stricter gate,
+> it is the lockout. Scorecard scores this as an admin bypass and will not award
+> Branch-Protection full marks for it; that is the honest trade and the number
+> stays honest rather than the configuration being changed to flatter it. The
+> `v*` tag ruleset `18815834` is the separate case: it really does carry no
+> bypass actor, so a released tag cannot be moved by anyone. See the superseding
+> note in ADR 0006.
 >
 > **Measured post-deployment result:** the Scorecard run on merged commit
 > `93b899e` ([Actions run 29170767352](https://github.com/ChelseaKR/habitable/actions/runs/29170767352))

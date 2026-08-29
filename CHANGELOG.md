@@ -410,6 +410,36 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Changed
 
+- **The committed `main` ruleset now records the repository owner's standing
+  bypass, because the live one has always had it and must keep it.**
+  `.github/rulesets/main-branch.json` declared `"bypass_actors": []` while live
+  ruleset `18752848` carried `{"actor_id": 5, "actor_type": "RepositoryRole",
+  "bypass_mode": "always"}` — and the file, its `_comment`, ADR 0006 and the
+  2026-07 scorecard note all argued the empty list was the stricter, correct
+  posture. It is not. It is a lockout waiting to be re-applied: an agent once
+  applied a ruleset with no bypass and locked the owner out of their own
+  repository, and restoring access took a sweep across eighteen repositories.
+  The committed file is what was wrong, so the committed file changed; **no
+  live ruleset or repository setting was touched by this entry.** ADR 0006
+  carries a dated superseding note withdrawing its "no bypass actor, including
+  for the repository owner" clause while leaving its review-count waiver
+  intact, and the scorecard note carries a dated correction saying plainly that
+  Scorecard scores a standing admin bypass down and that the number stays
+  honest rather than the configuration being changed to flatter it.
+
+  The `v*` tag ruleset (`.github/rulesets/release-tags.json`, live ruleset
+  `18815834`) is **unchanged and stays at no bypass actor**: a released tag must
+  not be movable by anyone, owner included. Both JSON `_comment` fields now say
+  the two rulesets differ on purpose and must not be harmonised in either
+  direction.
+
+  `tests/test_release_workflow.py` no longer compares the two sides to each
+  other. The owner's bypass is asserted against the live ruleset and against the
+  committed file **independently**, and any *other* actor is a finding, because
+  a plain equality check would report conformance on the day both sides were
+  emptied together — which is the incident recurring with a green tick on it.
+  That case is now a test, and it must produce two findings rather than zero.
+
 - **Every CI job now installs with `uv sync --locked`, not `uv sync --frozen`**
   (`ci.yml` twice, `a11y.yml`, `release.yml` twice, `tsa-integration.yml`).
   `--frozen` installs from `uv.lock` without reading `pyproject.toml`, so it
