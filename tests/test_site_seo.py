@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 from datetime import date
+from hashlib import sha256
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlparse
@@ -71,10 +72,14 @@ class _LandingParser(HTMLParser):
             self.visible_text_parts.append(data.strip())
 
 
-def _landing() -> _LandingParser:
+def _parse(markup: str) -> _LandingParser:
     parser = _LandingParser()
-    parser.feed((_SITE / "index.html").read_text(encoding="utf-8"))
+    parser.feed(markup)
     return parser
+
+
+def _landing() -> _LandingParser:
+    return _parse((_SITE / "index.html").read_text(encoding="utf-8"))
 
 
 def _meta_values(parser: _LandingParser, attribute: str) -> dict[str, str]:
@@ -172,24 +177,80 @@ def test_structured_data_matches_visible_project_claims() -> None:
     assert "AGPL-3.0" in visible_text
 
 
+# Every published page, in sitemap order: the path it answers on, the date the
+# sitemap tells a crawler it last changed, and the SHA-256 of the bytes that
+# date describes.
+#
+# The digest is here because `lastmod` is the one sitemap field a search engine
+# still reads, and only for as long as it is true. Nothing about a hand-written
+# sitemap notices when a page is edited and its date is not, and this one had
+# gone eleven weeks stale exactly that way. So the date is pinned to the bytes:
+# edit a page and the digest stops matching, and the failure says to move both.
+_PUBLISHED: tuple[tuple[str, str, str], ...] = (
+    ("", "2026-07-23", "86409460d70fe37379a25fd7cc03097170b581f1212ae4e68fc2bbedccff8624"),
+    (
+        "how-it-works/",
+        "2026-08-28",
+        "8db5441de82be7d87480a22f6fc8c6c157618b287c70a06c434da015e3d60a7c",
+    ),
+    (
+        "documentation-checklist/",
+        "2026-08-28",
+        "2ad9d0aea40433da765366c6609c992d4b958edd97f3b3b2416479c2fb107040",
+    ),
+    (
+        "guides/preserve-maintenance-request-records/",
+        "2026-08-28",
+        "12908268e99a65165c182bd8a4c6bb4950ad0410fb120ee99ffc19e75fe76004",
+    ),
+    (
+        "guides/housing-inspection-records/",
+        "2026-08-28",
+        "026779b8b912f51cb7d90f59803595f5a56507ad1aa0bf88720a8677881f6f7b",
+    ),
+    (
+        "tenant-unions/",
+        "2026-08-28",
+        "8101d8f0a67eba6ac4b79a3ccf2f7e180311ef0ce8a4bfb9365a9556ee282f94",
+    ),
+    (
+        "templates/tenant-union-building-condition-survey/",
+        "2026-08-28",
+        "a60ba212a72b342244aa4591028f25a497e4aa3db69080981b311dcf59549426",
+    ),
+    (
+        "legal-aid-reviewers/",
+        "2026-08-28",
+        "f1ac30292a59341d4f62f11820138ca1447c80465563723dbcc9ef6f6d1e8896",
+    ),
+    (
+        "inspectors-code-enforcement/",
+        "2026-08-28",
+        "29a6a9e3ad75df355ec54625ac1b890a04215ae39c6c6669ebfb6ec0e5dc4f86",
+    ),
+    (
+        "trust-limitations/",
+        "2026-08-28",
+        "12fb29a5140acf17dd0a551432d73d26489f34c5a9478a59d859432de323d5fe",
+    ),
+    ("review/", "2026-08-28", "2a5730cde544b5349c0de4bebfa27d7bc4409b8fb92369912a34ed2d8ca56f50"),
+    (
+        "review/changes/",
+        "2026-08-28",
+        "ee38956b23857d12dc77c5e364d99f95df2e27b1b67ea37c8a6fa21cf553448e",
+    ),
+)
+
+
+def _page_file(path: str) -> Path:
+    return _SITE / path / "index.html"
+
+
 def test_sitemap_lists_the_canonical_indexable_pages() -> None:
     sitemap = ElementTree.parse(_SITE / "sitemap.xml")
     namespace = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
     urls = sitemap.findall("sm:url", namespace)
-    expected = [
-        _CANONICAL,
-        f"{_CANONICAL}how-it-works/",
-        f"{_CANONICAL}documentation-checklist/",
-        f"{_CANONICAL}guides/preserve-maintenance-request-records/",
-        f"{_CANONICAL}guides/housing-inspection-records/",
-        f"{_CANONICAL}tenant-unions/",
-        f"{_CANONICAL}templates/tenant-union-building-condition-survey/",
-        f"{_CANONICAL}legal-aid-reviewers/",
-        f"{_CANONICAL}inspectors-code-enforcement/",
-        f"{_CANONICAL}trust-limitations/",
-        f"{_CANONICAL}review/",
-        f"{_CANONICAL}review/changes/",
-    ]
+    expected = [f"{_CANONICAL}{path}" for path, _, _ in _PUBLISHED]
     assert [url.findtext("sm:loc", namespaces=namespace) for url in urls] == expected
 
     for url in urls:
@@ -200,7 +261,67 @@ def test_sitemap_lists_the_canonical_indexable_pages() -> None:
     assert sitemap.findall(".//sm:changefreq", namespace) == []
 
 
-def test_robots_allows_the_pages_base_path_and_advertises_sitemap() -> None:
+def test_every_sitemap_url_resolves_to_a_page_that_was_published() -> None:
+    """A sitemap entry with no page behind it is a 404 handed to a crawler."""
+    for path, _, _ in _PUBLISHED:
+        assert _page_file(path).is_file(), path
+
+
+def test_each_sitemap_date_still_describes_the_bytes_it_was_written_for() -> None:
+    """`lastmod` is only worth publishing while it is true.
+
+    A stale date is not a neutral one: a crawler that has already read a page
+    and is told it has not changed since has been given a reason not to look
+    again. So the date is pinned to a digest of the page it describes.
+    """
+    sitemap = ElementTree.parse(_SITE / "sitemap.xml")
+    namespace = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+    dates = {
+        url.findtext("sm:loc", namespaces=namespace): url.findtext(
+            "sm:lastmod", namespaces=namespace
+        )
+        for url in sitemap.findall("sm:url", namespace)
+    }
+    for path, last_modified, digest in _PUBLISHED:
+        current = sha256(_page_file(path).read_bytes()).hexdigest()
+        assert current == digest, (
+            f"{path or '/'} has changed since its sitemap date was written. "
+            f"Set its lastmod to the date of this change and its digest to "
+            f"{current}."
+        )
+        assert dates[f"{_CANONICAL}{path}"] == last_modified, path
+
+
+def test_no_published_page_is_left_out_of_the_sitemap_without_saying_so() -> None:
+    """A page can be left out of the sitemap. It cannot be left out silently.
+
+    `site/sample-packet/packet.html` was reachable, linked from the homepage,
+    and in neither the sitemap nor a `noindex` -- so a crawler was free to
+    index a synthetic tenancy record as an ordinary page of this site. Either
+    a page is offered for indexing here, or it says it is not for indexing.
+    """
+    listed = {_page_file(path).resolve() for path, _, _ in _PUBLISHED}
+    for page in sorted(_SITE.rglob("*.html")):
+        if page.resolve() in listed:
+            continue
+        parser = _parse(page.read_text(encoding="utf-8"))
+        directive = next(
+            (meta.get("content", "") for meta in parser.meta if meta.get("name") == "robots"),
+            "",
+        )
+        assert "noindex" in directive, (
+            f"{page.relative_to(_SITE)} is published, is not in the sitemap, and "
+            f"does not say it is not for indexing"
+        )
+
+
+def test_robots_allows_everything_and_advertises_the_sitemap() -> None:
+    """It used to allow `/habitable/`, the old GitHub Pages project path.
+
+    That path has not existed since the site moved to its own domain. An
+    `Allow` with no `Disallow` beside it blocks nothing either way, so the line
+    was harmless and wrong, which is the kind of thing that survives longest.
+    """
     lines = {
         line.strip()
         for line in (_SITE / "robots.txt").read_text(encoding="utf-8").splitlines()
@@ -208,9 +329,22 @@ def test_robots_allows_the_pages_base_path_and_advertises_sitemap() -> None:
     }
     assert lines == {
         "User-agent: *",
-        "Allow: /habitable/",
+        "Allow: /",
         f"Sitemap: {_CANONICAL}sitemap.xml",
     }
+
+
+def test_robots_names_no_path_this_site_does_not_serve() -> None:
+    for line in (_SITE / "robots.txt").read_text(encoding="utf-8").splitlines():
+        directive, _, value = line.partition(":")
+        if directive.strip().lower() not in {"allow", "disallow"}:
+            continue
+        path = value.strip()
+        if path in {"", "/"}:
+            continue
+        assert (_SITE / path.lstrip("/")).exists(), (
+            f"robots.txt names {path}, which this site does not serve"
+        )
 
 
 def test_landing_images_reserve_layout_space_without_a_screenshot_gallery() -> None:

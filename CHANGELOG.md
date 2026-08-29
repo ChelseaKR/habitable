@@ -109,6 +109,27 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **The published sample packet said nothing about being indexed, and the
+  sitemap had gone stale.** A technical SEO audit of habitable.chelseakr.com
+  found `site/sample-packet/packet.html` reachable and linked from the
+  homepage, absent from `sitemap.xml`, and carrying no `robots` directive, so
+  a crawler was free to index a synthetic tenancy record as an ordinary page of
+  this site. `docs/research/product-expansion-seo-2026-07-09.md` had called for
+  exactly the opposite and nothing had implemented it.
+
+  Both packet renderers in `src/habitable/htmlpacket.py` now emit
+  `<meta name="robots" content="noindex, nofollow">`. A packet is a record
+  about somebody's home -- rooms, dates, photographs, the conditions they are
+  living in -- and wherever one ends up behind a web server it should not be
+  for a search engine to collect. A `noindex` cannot stop a determined crawler
+  and does not pretend to; it stops the ordinary well-behaved ones, which is
+  the difference between a packet being findable by name and findable at all.
+
+  `tests/test_site_seo.py` gains the check that would have caught it: every
+  `.html` file under `site/` is either offered for indexing in the sitemap or
+  says it is not for indexing. A page can be left out. It cannot be left out
+  silently.
+
 - **An organizer can hand over several tenants' packets as one submission,
   without merging anything.** `docs/novel-use-cases-plan.md` ranks a joint
   multi-tenant case bundle as candidate #13 and specifies the only safe shape
@@ -332,6 +353,31 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   visible via `--json`; a human saw `integrity: NOT INTACT` with no reason given.
 
 ### Fixed
+
+- **`site/robots.txt` allowed a path this site has not served since it moved to
+  its own domain.** The line read `Allow: /habitable/`, left over from the
+  GitHub Pages project path. An `Allow` with no `Disallow` beside it blocks
+  nothing either way, so the line was harmless and wrong, which is the kind of
+  thing that survives longest. It reads `Allow: /` now, and a new check refuses
+  any `Allow`/`Disallow` naming a path the site does not serve.
+
+- **Every `lastmod` in `site/sitemap.xml` was eleven weeks stale.** Ten pages
+  were dated `2026-07-10` and two `2026-07-16`; the files behind them had last
+  changed on `2026-07-23` and `2026-08-21`. The only assertion on those dates
+  was that they were not in the future, so nothing noticed. A stale `lastmod`
+  is not a neutral one: a crawler that has already read a page and is told it
+  has not changed since has been given a reason not to look again. Each date is
+  now pinned to a SHA-256 of the bytes it describes, so editing a page fails the
+  gate until the date moves with it.
+
+- **One `<title>` carried a bare `&`.** `site/review/changes/index.html` wrote
+  `Reviewer Findings & Changes` where every other title on the site writes
+  `&amp;`.
+
+- **`twitter:image:alt` was on the homepage and nowhere else.** The other
+  eleven pages set `twitter:image` with no alternative text for it, so a card
+  rendered from one offered a screen-reader user an unlabelled image. Each now
+  mirrors the `og:image:alt` it already carried.
 
 - **Three references to the move-out and deposit-dispute record cited ADR 0013,
   which is the letter-framing decision.** The record is ADR 0014. Corrected in
