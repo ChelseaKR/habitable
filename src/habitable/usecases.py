@@ -40,6 +40,7 @@ ARTIFACT_TYPES = frozenset(
         "supporting_letter",
         "clinician_letter",
         "expense_receipt",
+        "deduction_itemization",
         "relocation_record",
         "partner_export",
         "other_document",
@@ -57,6 +58,7 @@ RELATIONSHIP_TYPES = frozenset(
         "inspection_finding_for",
         "repair_claim_for",
         "expense_caused_by",
+        "deduction_for",
         "supports",
     }
 )
@@ -106,6 +108,20 @@ RELATIONSHIP_ENDPOINT_KINDS: dict[str, frozenset[tuple[str, str]]] = {
             ("artifact", "artifact"),
             ("artifact", "capture"),
             ("artifact", "timeline"),
+        }
+    ),
+    # Deliberately the same endpoint shape as ``repair_claim_for``: both record
+    # somebody else's *claim about* a documented condition, so both point from
+    # the document (or the timeline entry recording its arrival) at the issue or
+    # the specific capture the claim is made against. A deduction can therefore
+    # never point at another deduction, and never carries a counter-assertion:
+    # the tenant's own rebuttal is a separate record joined with ``supports``.
+    "deduction_for": frozenset(
+        {
+            ("artifact", "issue"),
+            ("artifact", "capture"),
+            ("timeline", "issue"),
+            ("timeline", "capture"),
         }
     ),
     "supports": frozenset(
@@ -176,6 +192,7 @@ def _profile(
     sections: tuple[str, ...],
     disclosures: tuple[str, ...],
     external: bool = False,
+    reviewed_at: str = "2026-07-23",
 ) -> UseCaseProfile:
     unknown_artifacts = set(artifacts) - ARTIFACT_TYPES
     unknown_relationships = set(relationships) - RELATIONSHIP_TYPES
@@ -197,7 +214,7 @@ def _profile(
         disclosures=disclosures,
         review_state="external_review_required" if external else "maintainer_reviewed",
         reviewer="unassigned external reviewer" if external else "Habitable maintainers",
-        reviewed_at="" if external else "2026-07-23",
+        reviewed_at="" if external else reviewed_at,
     )
 
 
@@ -300,6 +317,42 @@ _PROFILES = (
         disclosures=("Arithmetic totals do not establish reimbursement eligibility.",),
     ),
     _profile(
+        "move_out_deposit",
+        "Move-out condition and deposit-dispute record",
+        "Registro de condición de salida y disputa de depósito",
+        "Pair move-in and move-out condition records with an itemized deduction, "
+        "without deciding what is owed.",
+        "Une registros de condición de entrada y salida con una deducción detallada, "
+        "sin determinar lo que se adeuda.",
+        artifacts=(
+            "deduction_itemization",
+            "inspection_report",
+            "landlord_response",
+            "expense_receipt",
+        ),
+        relationships=(
+            "before_of",
+            "after_of",
+            "deduction_for",
+            "documents_condition",
+            "supports",
+        ),
+        sections=(
+            "move_in_condition",
+            "move_out_condition",
+            "deduction_claim",
+            "tenant_records",
+            "proof_limits",
+        ),
+        disclosures=(
+            "An itemized deduction is the landlord's assertion; recording it here "
+            "neither accepts nor rebuts it.",
+            "Condition records do not establish wear and tear, damage, cost, or "
+            "what a deposit is owed.",
+        ),
+        reviewed_at="2026-08-26",
+    ),
+    _profile(
         "building_pattern",
         "Consented building pattern summary",
         "Resumen consentido de patrones del edificio",
@@ -348,7 +401,7 @@ def get_profile(profile_id: str) -> UseCaseProfile:
 def profile_expired(profile: UseCaseProfile, *, today: date | None = None) -> bool:
     """Whether *profile*'s review window has passed.
 
-    A profile with no ``expires_at`` never expires -- none of the ten built-in
+    A profile with no ``expires_at`` never expires -- none of the built-in
     profiles sets one today, so this is presently inert, forward-looking
     infrastructure for the jurisdiction- and community-contributed profiles the
     roadmap's product-expansion workstream plans to add next. ``today`` is

@@ -198,3 +198,115 @@ def test_cli_share_and_receive(tmp_path: Path) -> None:
     )
     received = Vault.open(organizer, "pw")
     assert [i.title for i in received.document.issues()] == ["Mold"]
+
+
+def _vault_with_issue(tmp_path: Path, config_extra: str = "") -> Path:
+    vault = tmp_path / "vault"
+    assert main(["init", str(vault), "--case", "c", "--unit", "4B", "--passphrase", "pw"]) == 0
+    if config_extra:
+        config = vault / "config.toml"
+        config.write_text(
+            config.read_text(encoding="utf-8") + "\n" + config_extra + "\n", encoding="utf-8"
+        )
+    assert (
+        main(
+            [
+                "issue",
+                "--vault",
+                str(vault),
+                "--passphrase",
+                "pw",
+                "--category",
+                "mold",
+                "--title",
+                "Mold",
+            ]
+        )
+        == 0
+    )
+    return vault
+
+
+def test_cli_letter_withholds_expired_local_law_wording_and_says_so(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """ADR 0013: a lapsed citation must not ride out on the tenant's letter."""
+    citation = "Notice under the Example City housing code, section 12-34"
+    vault = _vault_with_issue(
+        tmp_path,
+        "\n".join(
+            [
+                "[letter]",
+                f'header = "{citation}"',
+                'local_law_reviewer = "Example Legal Aid"',
+                'local_law_reviewed_at = "2024-01-01"',
+                'local_law_expires_at = "2025-01-01"',
+            ]
+        ),
+    )
+    out = tmp_path / "letter"
+    assert (
+        main(
+            [
+                "letter",
+                "--vault",
+                str(vault),
+                "--passphrase",
+                "pw",
+                "--out",
+                str(out),
+                "--to",
+                "Landlord",
+                "--from-name",
+                "Tenant",
+                "--no-pdf",
+            ]
+        )
+        == 0
+    )
+    html = (out / "letter.html").read_text(encoding="utf-8")
+    assert citation not in html
+    printed = capsys.readouterr().out
+    assert "2025-01-01" in printed
+    assert "left out of this letter" in printed
+
+
+def test_cli_letter_keeps_current_local_law_wording_silently(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    citation = "Notice under the Example City housing code, section 12-34"
+    vault = _vault_with_issue(
+        tmp_path,
+        "\n".join(
+            [
+                "[letter]",
+                f'header = "{citation}"',
+                'local_law_reviewed_at = "2026-01-01"',
+                'local_law_expires_at = "2999-01-01"',
+            ]
+        ),
+    )
+    out = tmp_path / "letter"
+    assert (
+        main(
+            [
+                "letter",
+                "--vault",
+                str(vault),
+                "--passphrase",
+                "pw",
+                "--out",
+                str(out),
+                "--to",
+                "Landlord",
+                "--from-name",
+                "Tenant",
+                "--no-pdf",
+            ]
+        )
+        == 0
+    )
+    assert citation in (out / "letter.html").read_text(encoding="utf-8")
+    printed = capsys.readouterr().out
+    assert "left out of this letter" not in printed
+    assert "no review date" not in printed
