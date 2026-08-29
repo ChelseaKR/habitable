@@ -44,7 +44,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up Buildx with an archive-capable builder
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
       - name: Build the relay image
         # --no-cache is load-bearing now that the image applies Debian security
         # updates at build time: a cached `apt-get upgrade` layer would let Trivy

@@ -37,7 +37,13 @@ def test_archive_chain_verifies_in_a_packet(
     report = verify_packet(out, trusted_certs=[primary_tsa.certificate, later_tsa.certificate])
     assert report.ok
     notes = [n for item in report.items for n in item.notes]
-    assert any("archive-timestamped (2 link(s))" in n for n in notes)
+    # The per-link trust verdicts `verify_archive_chain` computes used to be
+    # discarded, so a chain extended by an unanchored authority read exactly like
+    # one extended by a trusted authority. The note now reports what it checked.
+    assert any(
+        "archive-timestamped (2 link(s), 2 of 2 anchored to a supplied certificate)" in n
+        for n in notes
+    )
 
 
 def test_archive_chain_anchors_existence_and_detects_tamper(
@@ -111,7 +117,10 @@ def test_retimestamp_threads_redundant_authorities(
     assert report.ok
     item = report.items[0]
     assert {"p", "second"} <= set(item.verified_authorities)
-    assert any("archive-timestamped (2 link(s))" in n for n in item.notes)
+    assert any(
+        "archive-timestamped (2 link(s), 2 of 2 anchored to a supplied certificate)" in n
+        for n in item.notes
+    )
 
 
 def test_retimestamp_cli_flow(

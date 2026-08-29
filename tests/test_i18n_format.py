@@ -166,14 +166,41 @@ class TestFormatDate:
         assert format_date(iso, "es") == "2 ene 2026"
 
     def test_format_date_month_abbreviations(self) -> None:
-        """All 12 months render correctly."""
+        """All 12 months render the right abbreviation, in both locales.
+
+        This assertion used to be ``len(x) > 0`` and ``"2026" in x``, under a
+        docstring claiming the months render correctly. Every month would have
+        had to render as the empty string, or lose the year, for it to notice
+        anything: ``"??? 1, 2026"`` passed it twelve times over. The month name
+        is the entire subject of the test, so the month name is what it now
+        checks -- and the Spanish column is not a copy of the English one, which
+        is the mistake a shared abbreviation table would produce.
+        """
+        expected = {
+            1: ("Jan", "ene"),
+            2: ("Feb", "feb"),
+            3: ("Mar", "mar"),
+            4: ("Apr", "abr"),
+            5: ("May", "may"),
+            6: ("Jun", "jun"),
+            7: ("Jul", "jul"),
+            8: ("Aug", "ago"),
+            9: ("Sep", "sept"),
+            10: ("Oct", "oct"),
+            11: ("Nov", "nov"),
+            12: ("Dec", "dic"),
+        }
         for month in range(1, 13):
             dt = datetime(2026, month, 1, tzinfo=UTC)
-            en_str = format_date(dt, "en")
-            es_str = format_date(dt, "es")
-            assert len(en_str) > 0
-            assert len(es_str) > 0
-            assert "2026" in en_str and "2026" in es_str
+            en_abbr, es_abbr = expected[month]
+            assert format_date(dt, "en") == f"{en_abbr} 1, 2026", f"month {month} in English"
+            assert format_date(dt, "es") == f"1 {es_abbr} 2026", f"month {month} in Spanish"
+
+        # Five of the twelve abbreviations differ between the locales. If a future
+        # refactor collapsed them onto one table, the per-month assertions above
+        # would catch it -- this states the reason out loud so nobody "simplifies"
+        # the table back into a single shared list.
+        assert sum(1 for en, es in expected.values() if en.casefold() != es) == 5
 
 
 class TestFormatDateTime:

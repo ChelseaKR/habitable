@@ -196,3 +196,80 @@ def test_malformed_token_fragment_does_not_abort_shell_boot(served_app: str) -> 
             assert page.locator("#refresh-btn").is_visible()
         finally:
             browser.close()
+
+
+_FOCUS_PROBE = """
+() => {
+  const a = document.activeElement;
+  if (!a || a === document.body || a === document.documentElement) return null;
+  const r = a.getBoundingClientRect();
+  const name = a.id ? '#' + a.id
+    : (typeof a.className === 'string' && a.className ? '.' + a.className.split(' ')[0]
+    : a.tagName.toLowerCase());
+  return {
+    name: name,
+    top: Math.round(r.top),
+    inViewport: r.bottom > 0 && r.top < window.innerHeight
+  };
+}
+"""
+
+
+@pytest.mark.a11y
+def test_tabbing_at_speed_never_leaves_focus_off_screen(served_app: str) -> None:
+    """Issue #202, re-diagnosed: focus must be visible at real typing speed.
+
+    The issue reported focus landing "hundreds of pixels above the viewport" past
+    the export controls and blamed tab order leaking into a stale Atlas view,
+    suggesting `inert` or a focus trap as the remedy. That diagnosis is wrong and
+    the remedy would have been harmful: this app is a single scrolling document
+    with no view switching, so those controls are not stale, and making them inert
+    would delete real controls from the keyboard path.
+
+    The actual cause is `scroll-behavior: smooth` on `html` (styles.css:48). It is
+    wanted for the skip link and in-page anchors, but it also animates the scroll
+    the browser performs when Tab moves focus below the fold, and that animation is
+    slower than a keypress. Measured with a generous 800ms settle between presses,
+    zero stops are off-screen; measured at ordinary keyboard speed, twenty are. The
+    user-visible defect is real (WCAG 2.4.7 Focus Visible, 2.4.3 Focus Order); only
+    the mechanism in the report was not.
+
+    So this test presses Tab at a deliberately *fast* cadence. A slow one would
+    pass against the unfixed page and pin nothing at all -- which is how the
+    defect survived an existing keyboard suite in the first place.
+    """
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except PlaywrightError as exc:
+            pytest.skip(f"Chromium not available: {exc}")
+        try:
+            page = browser.new_page(viewport={"width": 1280, "height": 900})
+            page.goto(served_app, wait_until="networkidle")
+            page.wait_for_timeout(400)
+
+            offscreen: list[tuple[int, str, int]] = []
+            reached: set[str] = set()
+            for press in range(1, 41):
+                page.keyboard.press("Tab")
+                page.wait_for_timeout(30)  # faster than a smooth-scroll animation, on purpose
+                info = page.evaluate(_FOCUS_PROBE)
+                if info is None:
+                    continue  # the browser's own body/chrome stop in the focus cycle
+                reached.add(str(info["name"]))
+                if not info["inViewport"]:
+                    offscreen.append((press, str(info["name"]), int(info["top"])))
+
+            # The walk has to actually get somewhere, or "nothing was off-screen"
+            # would be true of a page that never moved focus at all.
+            assert len(reached) >= 15, f"tab walk only reached {len(reached)} controls: {reached}"
+            assert ".make-copy" in reached, (
+                "the walk never reached the export submit button, so it never "
+                "covered the region issue #202 is about"
+            )
+            assert not offscreen, (
+                "focus left the viewport with no visible focus indicator at "
+                f"{len(offscreen)} stop(s): {offscreen}"
+            )
+        finally:
+            browser.close()

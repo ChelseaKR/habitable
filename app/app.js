@@ -1760,9 +1760,57 @@
     return SUPPORTED.indexOf(nav) !== -1 ? nav : DEFAULT_LANG;
   }
 
+  // Issue #202: keyboard focus was reported landing off-screen with no visible
+  // focus ring. The reported cause -- tab order leaking into a stale "underlying
+  // Atlas view" -- is not what happens; this app is one scrolling document with no
+  // view switching, so there is nothing to make inert and no focus to trap.
+  //
+  // The real cause is `scroll-behavior: smooth` on `html` (styles.css). It is there
+  // for the skip link and in-page anchors, where an animated jump is the point. But
+  // it also animates the scroll the browser performs when Tab moves focus to an
+  // element below the fold, and that animation takes longer than a Tab press. A
+  // keyboard user moving at ordinary speed outruns it, so the focus ring is real,
+  // applied, and painted somewhere they cannot see (WCAG 2.4.7, 2.4.3).
+  //
+  // Focus is snapped into view immediately, leaving anchor navigation smooth. The
+  // "nearest" block keeps an element that is already visible exactly where it is,
+  // so this never yanks the page around under a mouse user.
+  function wireFocusVisibility() {
+    document.addEventListener(
+      "focusin",
+      function (event) {
+        var el = event.target;
+        if (!el || typeof el.getBoundingClientRect !== "function") {
+          return;
+        }
+        if (el === document.body || el === document.documentElement) {
+          return;
+        }
+        var rect = el.getBoundingClientRect();
+        var viewport = window.innerHeight || document.documentElement.clientHeight;
+        if (rect.bottom > 0 && rect.top < viewport) {
+          return; // already visible; leave the scroll position alone
+        }
+        try {
+          el.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
+        } catch (e) {
+          // Older engines reject an options object or the "instant" keyword.
+          // A plain scrollIntoView still beats leaving focus off-screen.
+          try {
+            el.scrollIntoView(false);
+          } catch (e2) {
+            /* nothing further to try; focus order itself is unaffected */
+          }
+        }
+      },
+      true
+    );
+  }
+
   function init() {
     announcer = document.getElementById("announcer");
     captureToken();
+    wireFocusVisibility();
     wireLang();
     wireEntryDialogs();
     wireAtlas();
