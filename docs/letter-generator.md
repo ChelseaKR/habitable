@@ -48,6 +48,13 @@ asserting law it cannot guarantee:
     residential tenancy carries an implied warranty of habitability and a duty to repair
     within a reasonable time after written notice; the specific deadlines, remedies… and
     notice requirements **vary by state and city. Please confirm the rules that apply.**"
+  - **`ew_disrepair`** (#207) — generic England and Wales framing, written to the same bar
+    and no higher. "Residential tenancies in England and Wales generally carry landlord
+    repairing obligations… Which obligations apply, how long is reasonable, and what
+    remedies are available depend on the type of tenancy and on the circumstances. Please
+    confirm the rules that apply to this tenancy." It is dated separately from the two
+    above, and its `reviewer` field records the read that happened (maintainers, no-statute
+    only) and the one that has not: it is **UNREVIEWED** for England and Wales.
 - A test (`test_jurisdiction_profiles_and_fallback`) asserts the built-ins contain no
   section sign (`§`) or `U.S.C` citation, guarding against drift toward false precision.
 
