@@ -67,6 +67,12 @@ _MAX_REFERENCED_FILE_BYTES = 1024 * 1024 * 1024
 # non-crashing error rather than mis-verified.
 SUPPORTED_PACKET_VERSION = 4
 
+# These three tables restate `habitable.usecases`' vocabulary rather than
+# importing it, because the verifier must stay standalone (see this module's
+# docstring and `tests/test_guards.py`). Restating is not free: the two copies
+# can drift, and a term added on only one side means a vault seals evidence its
+# own verifier then rejects. `tests/test_guards.py`
+# (`test_verifier_vocabulary_mirrors_the_use_case_registry`) pins them equal.
 _ARTIFACT_TYPES = {
     "repair_request",
     "delivery_receipt",
@@ -77,6 +83,7 @@ _ARTIFACT_TYPES = {
     "supporting_letter",
     "clinician_letter",
     "expense_receipt",
+    "deduction_itemization",
     "relocation_record",
     "partner_export",
     "other_document",
@@ -91,6 +98,7 @@ _RELATIONSHIP_TYPES = {
     "inspection_finding_for",
     "repair_claim_for",
     "expense_caused_by",
+    "deduction_for",
     "supports",
 }
 _RELATIONSHIP_ENDPOINT_KINDS = {
@@ -131,6 +139,12 @@ _RELATIONSHIP_ENDPOINT_KINDS = {
         ("artifact", "artifact"),
         ("artifact", "capture"),
         ("artifact", "timeline"),
+    },
+    "deduction_for": {
+        ("artifact", "issue"),
+        ("artifact", "capture"),
+        ("timeline", "issue"),
+        ("timeline", "capture"),
     },
     "supports": {
         (source, target)

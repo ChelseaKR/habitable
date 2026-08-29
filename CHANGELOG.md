@@ -9,6 +9,110 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **An organizer can hand over several tenants' packets as one submission,
+  without merging anything.** `docs/novel-use-cases-plan.md` ranks a joint
+  multi-tenant case bundle as candidate #13 and specifies the only safe shape
+  for it: "closer to a signed table of contents over N already-signed
+  `bundle.json` files than a new packet shape," because a merged custody chain
+  would reopen the scoped and rehashed custody-view gate workstream A is still
+  closing.
+
+  `habitable joint build` writes exactly that, beside packets it never
+  modifies. This is the organizer `campaign` cannot serve: `campaign` rolls up
+  vaults whose keys the organizer holds, and the commoner situation in a union
+  is six households who each exported on their own device and handed over a
+  folder. No key, no vault, and no network is involved.
+
+  Each row binds its member by the SHA-256 of that packet's own `bundle.json`
+  bytes, which is the same digest the member's signature covers and an
+  authority seals. `habitable joint check` then re-derives every recorded claim
+  from the packets themselves: it recomputes the digest and throws away the
+  recorded readiness in favour of a fresh `verify_packet` verdict. A doctored
+  index therefore cannot produce a passing verdict, and a packet directory
+  present beside the index but missing from it is reported and fails the check
+  rather than being absorbed. A submission subdirectory with no `bundle.json`
+  is refused by name, never skipped.
+
+  The index is presentation only and is **not itself signed or sealed**, which
+  it says in its JSON (`index_signed: false`), in its HTML, and in the
+  command's output, alongside two other limits it must not let a reader assume
+  away: it merges no chain of custody, and listing households together says
+  nothing about whether their conditions share a cause. Authenticating the
+  index is deferred to its own decision rather than inherited by assumption;
+  ADR 0015 names the two candidate mechanisms and why neither is free.
+
+  `packet_version` stays 4, `bundle.json` and `bundle.sig.json` are untouched,
+  and `habitable.verify` gains no import: the index carries its own
+  `joint_index_version`, because it is not a packet. Without a `--trusted-cert`
+  anchor no member is evidence-ready and the command exits non-zero, exactly as
+  `habitable verify` does. See
+  `docs/adr/0015-joint-multi-tenant-submission-index.md`.
+
+- **The repair-request letter's jurisdiction wording is now dated, and lapsed
+  wording is withheld instead of sent.** `ROADMAP.md` (workstream E) and
+  `docs/novel-use-cases-plan.md` (candidate #12) both queue jurisdiction
+  template growth on the stated precondition that jurisdictions expand "only
+  with dated owners and expiry policy — now enforceable rather than
+  aspirational (ADR 0012)." That precondition was not true here: ADR 0012's
+  machinery lives on `UseCaseProfile`, and `LetterProfile` had no reviewer, no
+  review date, and no expiry at all.
+
+  It matters most on this surface. `docs/letter-generator.md` designates
+  `[letter] header`/`footer` as the home for a **locally verified statutory
+  citation** — correctly, since habitable must not invent law — but that left
+  the one string this project emits that can silently stop being true sitting
+  in an undated field, on the one document that leaves the tenant's control and
+  goes to a landlord under the tenant's name.
+
+  `[letter]` now takes `local_law_reviewer`, `local_law_reviewed_at`, and
+  `local_law_expires_at`. Wording whose review has lapsed is left out of both
+  the HTML and the PDF — they read the same two fields, so they cannot
+  disagree about what was withheld — and `habitable letter` reports what was
+  dropped and what to do about it, in the requested language. Undated wording
+  is still used, and reported as undated, so no existing config breaks.
+  Backdating the letter with `--date` cannot resurrect expired wording.
+  Review dates must be plain `YYYY-MM-DD` days, rejected at config load
+  otherwise.
+
+  `LetterProfile` gains `reviewer`/`reviewed_at`/`expires_at` and a
+  `framing_expired` predicate mirroring `usecases.profile_expired`; an expired
+  framing falls back to `generic` and says so. Both built-in framings are dated
+  and neither expires — they name no statute, so they have no specifics to go
+  stale. No new jurisdiction framing ships: that stays blocked on a named legal
+  reviewer, deliberately, per ADR 0013. No packet, bundle, or verifier change;
+  `packet_version` and `CONFIG_SCHEMA_VERSION` are unmoved. See
+  [ADR 0013](docs/adr/0013-dated-expiring-letter-jurisdiction-framing.md).
+- **A move-out condition and deposit-dispute record (ADR 0014).** A tenant who
+  moves out, has part of their deposit withheld, and receives an itemized
+  statement of deductions could already photograph the unit and seal the
+  statement — but only as an untyped `other_document`, with the link between the
+  charge and the condition it charges for living in a free-text note a recipient
+  has no reason to trust. Two additions to existing vocabularies close that,
+  exactly as `docs/novel-use-cases-plan.md` sized this work: a
+  `deduction_itemization` artifact type, so the landlord's statement is a
+  first-class sealed document on the unchanged capture/custody/timestamp spine,
+  and a `deduction_for` relationship, which runs from that document (or the
+  timeline entry recording its arrival) to the issue or the specific photograph
+  it charges against. A new `move_out_deposit` profile pairs them with the
+  existing `before_of`/`after_of` move-in/move-out comparison and `supports` for
+  the tenant's own receipts.
+
+  The profile decides nothing. Two disclosures travel with every export and are
+  asserted in the rendered handoff, not merely documented: an itemized deduction
+  is the landlord's assertion, and recording it here neither accepts nor rebuts
+  it; condition records do not establish wear and tear, damage, cost, or what a
+  deposit is owed. `deduction_for` cannot connect two documents, so a chain of
+  itemizations can never be presented as though the record joined them, and a
+  packet forged to do it is rejected by a recipient's verifier on both the
+  endpoint rule and the broken commitment.
+
+  `packet_version` stays 4 and every existing packet verifies unchanged. The
+  forward direction is stated rather than papered over: a verifier built before
+  this change does not know the two new terms and will refuse a packet using
+  them, which is the fail-closed direction. Published schema enums
+  (`docs/packet-bundle.schema.json`), the browser app's document-type and
+  relationship pickers, and the EN/ES app labels are updated together.
+
 - **Workflow-profile review expiry is now enforced, not just recorded.** ADR
   0010 gave every use-case profile a `reviewed_at`/`expires_at` pair, and the
   plan that introduced it named the acceptance criterion: "an expired
@@ -128,6 +232,24 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   visible via `--json`; a human saw `integrity: NOT INTACT` with no reason given.
 
 ### Fixed
+
+- **Three references to the move-out and deposit-dispute record cited ADR 0013,
+  which is the letter-framing decision.** The record is ADR 0014. Corrected in
+  `docs/novel-use-cases-plan.md` and in two test docstrings. In a project whose
+  documents are the argument, a citation pointing at the wrong decision is a
+  defect, not a typo.
+
+- **The verifier's copy of the workflow vocabulary can no longer drift from the
+  registry.** `verify.py` restates `ARTIFACT_TYPES`, `RELATIONSHIP_TYPES`, and
+  `RELATIONSHIP_ENDPOINT_KINDS` instead of importing `habitable.usecases`,
+  because the Apache-2.0 verifier subset must stay standalone for embedders —
+  but nothing held the two copies equal. A term added to the registry alone
+  would have let a vault seal evidence that its own verifier then rejects, and an
+  endpoint pair loosened on one side would have left the two disagreeing about
+  what is valid. `tests/test_guards.py` now fails on drift in either direction,
+  and a companion guard pins the browser app's `<option>` lists to the same
+  vocabularies so the app cannot offer a type the engine rejects, or omit one it
+  accepts.
 
 - **The test suite can no longer reach the internet without saying so.** A vault's
   default config names public timestamp authorities, so the moment `export` learned
