@@ -87,6 +87,65 @@ footer = "Prepared with the <your tenant union>. Not legal advice."
 The `header`/`footer` are the right place to put a **locally-verified** statutory citation;
 the generator itself will never invent one.
 
+### Dating that wording, so a lapsed citation cannot ride out
+
+A citation is the one string habitable emits that can quietly stop being true: a statute
+is amended, an ordinance is repealed, and a correctly-verified 2026 citation is simply
+wrong by 2028. The letter is also the one document that leaves the tenant's control and
+lands in a landlord's — and possibly a court's — hands, **under the tenant's name**. So
+the `[letter]` block carries a review record for its own wording
+([ADR 0013](adr/0013-dated-expiring-letter-jurisdiction-framing.md)):
+
+```toml
+[letter]
+header = "Notice under <your state> habitability law, § <verified citation>"
+footer = "Prepared with <your tenant union>. Not legal advice."
+local_law_reviewer = "<person or legal-aid clinic who checked it>"
+local_law_reviewed_at = "2026-08-26"
+local_law_expires_at  = "2027-08-26"
+```
+
+The wording is then in exactly one of four states, and `habitable letter` tells you which:
+
+| State | When | What the letter does |
+| --- | --- | --- |
+| `absent` | no `header`/`footer` set | nothing to say |
+| `undated` | wording set, no review dates | wording is **used**; you are told nothing can say when it stopped being true |
+| `current` | dated, expiry not reached | wording is used, silently |
+| `expired` | on/after `local_law_expires_at` | wording is **left out of the letter**, and you are told what was dropped and why |
+
+Three details are deliberate:
+
+- **Expiry withholds rather than refuses.** The evidence is not stale, only the framing
+  is, and a tenant needing a repair-request letter today cannot fix a lapsed legal review
+  by retrying. The letter still generates, with the built-in framing, which claims less.
+  This is the same direction ADR 0012 chose for an expired packet profile.
+- **The warning is not printed inside the letter.** A paragraph reading "the citation
+  above may no longer be accurate" would hand the landlord's representative the
+  impeachment for free. The note goes to the person generating the document, in the
+  language they asked for, exactly like the English-only note above.
+- **A backdated letter cannot resurrect expired wording.** `--date` is caller-controlled;
+  the expiry is judged against today, never against the letter's own date.
+
+A review date must be a plain `YYYY-MM-DD` calendar day. `2026-8-1`, `20260826`, a full
+timestamp, and fullwidth digits are all rejected when the config loads, rather than
+parsing in one place and not another — which is how a date meant to expire quietly never
+does.
+
+### Built-in framings are dated too, and never expire
+
+Both built-ins now record a `reviewed_at` and a reviewer. Neither sets an expiry, on
+purpose: they name no statute, no deadline, and no remedy, so they have no specifics that
+can go stale, and expiring them would only stop `habitable letter` producing the safe
+fallback on a date. The `framing_expired` enforcement exists anyway, so that the *first*
+dated jurisdiction framing lands on a mechanism that already works — the same sequencing
+ADR 0012 used.
+
+**No third jurisdiction framing ships with this.** Writing one means making
+jurisdiction-specific legal claims, and this project does not do that without a named
+reviewer. See [ADR 0013](adr/0013-dated-expiring-letter-jurisdiction-framing.md),
+"What this does not do".
+
 ## Language: English only, and labelled English
 
 Everything else habitable produces is bilingual (EN/ES). **The letter is not.** Every

@@ -108,8 +108,9 @@ def test_cli_profile_artifact_relationship_and_handoff(
 def test_cli_lists_all_profiles(capsys: object) -> None:
     assert main(["profile", "list"]) == 0
     captured = capsys.readouterr()  # type: ignore[attr-defined]
-    assert captured.out.count("\tv1\t") == 10
+    assert captured.out.count("\tv1\t") == 11
     assert "external review required" in captured.out
+    assert "move_out_deposit\tv1\timplemented" in captured.out
 
 
 def test_cli_profile_list_flags_an_expired_profile(

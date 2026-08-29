@@ -6,18 +6,23 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import replace
+from datetime import date
 from pathlib import Path
 
 import pytest
 
 from habitable.capture import capture
-from habitable.errors import LetterError
+from habitable.config import Config, LetterTemplate
+from habitable.errors import ConfigError, LetterError
 from habitable.letter import (
     PROFILES,
     LetterOptions,
     build_letter,
+    framing_expired,
+    letter_lines,
     render_letter_html,
     resolve_profile,
+    review_local_law,
 )
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
@@ -346,3 +351,256 @@ def test_letter_html_in_a_spanish_configured_vault_passes_axe(
         if v.get("impact") in {"moderate", "serious", "critical"}
     ]
     assert not blocking, [v["id"] for v in blocking]
+
+
+# --- ADR 0013: dated, expiring jurisdiction framing and local-law wording -------
+#
+# The `[letter] header`/`footer` is the documented home for a *locally verified*
+# statutory citation, and it is the one string this project emits that can stop
+# being true on a date nobody is watching: a statute is amended, an ordinance is
+# repealed, and the citation keeps going out on correspondence carrying a
+# tenant's name. These tests pin the fail-closed direction.
+
+_CITATION = "Notice under the Example City housing code, § 12-34"
+_UNION_FOOTER = "Prepared with the Example Tenant Union. Not legal advice."
+
+
+def _local_law_template(
+    *,
+    local_law_reviewer: str = "",
+    local_law_reviewed_at: str = "",
+    local_law_expires_at: str = "",
+) -> LetterTemplate:
+    return LetterTemplate(
+        header=_CITATION,
+        footer=_UNION_FOOTER,
+        local_law_reviewer=local_law_reviewer,
+        local_law_reviewed_at=local_law_reviewed_at,
+        local_law_expires_at=local_law_expires_at,
+    )
+
+
+def test_expired_local_law_wording_is_left_out_of_the_letter(
+    make_vault: Callable[..., Vault],
+) -> None:
+    vault = make_vault()
+    vault.document.add_issue(category="heat", title="No heat", issue_id="i1")
+    letter = build_letter(
+        vault,
+        LetterOptions(),
+        template=_local_law_template(
+            local_law_reviewer="Example Legal Aid",
+            local_law_reviewed_at="2025-01-01",
+            local_law_expires_at="2026-01-01",
+        ),
+        today=date(2026, 8, 26),
+    )
+    assert letter.local_law.state == "expired"
+    assert not letter.local_law.usable
+    # The landlord's copy simply does not carry wording whose review lapsed.
+    assert letter.header == ""
+    assert letter.footer == ""
+    html = render_letter_html(letter)
+    assert _CITATION not in html
+    assert "§ 12-34" not in html
+    # ...and the withholding is never silent.
+    assert "2026-01-01" in letter.local_law_limitation
+    assert "left out of this letter" in letter.local_law_limitation
+
+
+def test_current_local_law_wording_is_kept_and_reported_clean(
+    make_vault: Callable[..., Vault],
+) -> None:
+    vault = make_vault()
+    vault.document.add_issue(category="heat", title="No heat", issue_id="i1")
+    letter = build_letter(
+        vault,
+        LetterOptions(),
+        template=_local_law_template(
+            local_law_reviewer="Example Legal Aid",
+            local_law_reviewed_at="2026-01-01",
+            local_law_expires_at="2027-01-01",
+        ),
+        today=date(2026, 8, 26),
+    )
+    assert letter.local_law.state == "current"
+    assert letter.local_law.usable
+    assert letter.header == _CITATION
+    assert letter.footer == _UNION_FOOTER
+    assert letter.local_law_limitation == ""
+    assert _CITATION in render_letter_html(letter)
+
+
+def test_undated_local_law_wording_is_used_but_reported_as_undated(
+    make_vault: Callable[..., Vault],
+) -> None:
+    # Refusing undated wording would break every config written before the field
+    # existed, so it is used -- and the operator is told nothing can tell them
+    # when it stopped being true.
+    vault = make_vault()
+    vault.document.add_issue(category="heat", title="No heat", issue_id="i1")
+    letter = build_letter(
+        vault, LetterOptions(), template=_local_law_template(), today=date(2026, 8, 26)
+    )
+    assert letter.local_law.state == "undated"
+    assert letter.header == _CITATION
+    assert "no review date" in letter.local_law_limitation
+
+
+def test_a_letter_with_no_local_law_wording_says_nothing_about_it(
+    make_vault: Callable[..., Vault],
+) -> None:
+    vault = make_vault()
+    vault.document.add_issue(category="heat", title="No heat", issue_id="i1")
+    letter = build_letter(vault, LetterOptions(), today=date(2026, 8, 26))
+    assert letter.local_law.state == "absent"
+    assert letter.local_law_limitation == ""
+    assert letter.framing_limitation == ""
+
+
+def test_local_law_expires_at_the_start_of_its_named_day(
+    make_vault: Callable[..., Vault],
+) -> None:
+    # Same calendar-date semantics as ADR 0012's profile expiry: a review expires
+    # at the start of its named day, not partway through it in some timezone.
+    vault = make_vault()
+    vault.document.add_issue(category="heat", title="No heat", issue_id="i1")
+
+    def _state(today: date) -> str:
+        return build_letter(
+            vault,
+            LetterOptions(),
+            template=_local_law_template(local_law_expires_at="2026-08-26"),
+            today=today,
+        ).local_law.state
+
+    assert _state(date(2026, 8, 25)) == "current"
+    assert _state(date(2026, 8, 26)) == "expired"
+    assert _state(date(2026, 8, 27)) == "expired"
+
+
+def test_a_backdated_letter_cannot_resurrect_expired_wording(
+    make_vault: Callable[..., Vault],
+) -> None:
+    # `options.date` is caller-controlled. If the expiry check read it, anyone
+    # could bring lapsed legal wording back by dating the letter into the past.
+    #
+    # `today` is deliberately NOT passed here. Pinning it would make this test
+    # unable to fail for the exact bug it is named after: an implementation that
+    # derived `today` from `options.date` would still be judged against the
+    # pinned date and pass. Left to the real clock, the expiry below is already
+    # in the past and only recedes further, so this is stable, not flaky.
+    vault = make_vault()
+    vault.document.add_issue(category="heat", title="No heat", issue_id="i1")
+    letter = build_letter(
+        vault,
+        LetterOptions(date="2025-06-01"),
+        template=_local_law_template(local_law_expires_at="2026-01-01"),
+    )
+    assert letter.date == "2025-06-01"
+    assert letter.local_law.state == "expired"
+    assert letter.header == ""
+
+
+def test_withheld_wording_is_absent_from_both_renderings(
+    make_vault: Callable[..., Vault],
+) -> None:
+    # The HTML and the PDF read the same two fields, so they cannot disagree
+    # about what was withheld.
+    vault = make_vault()
+    vault.document.add_issue(category="heat", title="No heat", issue_id="i1")
+    letter = build_letter(
+        vault,
+        LetterOptions(),
+        template=_local_law_template(local_law_expires_at="2026-01-01"),
+        today=date(2026, 8, 26),
+    )
+    flat = " ".join(text for _role, text in letter_lines(letter))
+    assert _CITATION not in flat
+    assert _CITATION not in render_letter_html(letter)
+
+
+def test_an_expired_framing_falls_back_to_generic_and_says_so(
+    make_vault: Callable[..., Vault], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # No built-in framing expires today, so pin the enforcement against a
+    # deliberately-expired one: the mechanism must exist before a dated
+    # jurisdiction framing is added, not after.
+    expired = replace(PROFILES["us_habitability"], expires_at="2026-01-01")
+    monkeypatch.setitem(PROFILES, "us_habitability", expired)
+    vault = make_vault()
+    vault.document.add_issue(category="heat", title="No heat", issue_id="i1")
+    letter = build_letter(
+        vault,
+        LetterOptions(jurisdiction="us_habitability"),
+        today=date(2026, 8, 26),
+    )
+    assert letter.profile_key == "generic"
+    assert letter.framing_expired_fallback == "us_habitability"
+    assert letter.framing == PROFILES["generic"].framing
+    assert "us_habitability" in letter.framing_limitation
+
+
+def test_an_unexpired_framing_is_used_unchanged(make_vault: Callable[..., Vault]) -> None:
+    vault = make_vault()
+    vault.document.add_issue(category="heat", title="No heat", issue_id="i1")
+    letter = build_letter(
+        vault, LetterOptions(jurisdiction="us_habitability"), today=date(2026, 8, 26)
+    )
+    assert letter.profile_key == "us_habitability"
+    assert letter.framing_expired_fallback == ""
+    assert letter.framing_limitation == ""
+
+
+def test_every_builtin_framing_is_dated_and_none_expires() -> None:
+    # A framing may not ship without saying when it was last read against the
+    # "asserts no statute" rule. None sets an expiry: a framing that names no
+    # statute has no specifics to go stale, and expiring it would only take the
+    # safe fallback away from a tenant on a date.
+    for profile in PROFILES.values():
+        assert profile.reviewed_at, f"{profile.key} ships undated"
+        assert profile.reviewer
+        assert profile.expires_at == ""
+        assert not framing_expired(profile, today=date(2999, 1, 1))
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "2026-13-45",  # not a real calendar day
+        "20260826",  # accepted by date.fromisoformat, rejected here on purpose
+        "2026-08-26T00:00:00",  # a timestamp, not a calendar day
+        # Fullwidth digits, written as escapes so the linter is not asked to
+        # judge ambiguous glyphs: `\d` matches these, `[0-9]` does not.
+        "\uff12\uff10\uff12\uff16-\uff10\uff18-\uff12\uff16",
+        "not-a-date",
+    ],
+)
+def test_config_refuses_a_review_date_that_is_not_a_plain_calendar_day(bad: str) -> None:
+    # A value that parses in one place but not another is how a date meant to
+    # expire quietly never does.
+    with pytest.raises(ConfigError):
+        LetterTemplate(header=_CITATION, local_law_expires_at=bad)
+    with pytest.raises(ConfigError):
+        LetterTemplate(header=_CITATION, local_law_reviewed_at=bad)
+
+
+def test_config_round_trips_the_local_law_review_block(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(
+        "\n".join(
+            [
+                "[letter]",
+                'header = "Notice under the Example City housing code"',
+                'local_law_reviewer = "Example Legal Aid"',
+                'local_law_reviewed_at = "2026-01-01"',
+                'local_law_expires_at = "2027-01-01"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    letter_config = Config.from_toml(path).letter
+    assert letter_config.local_law_reviewer == "Example Legal Aid"
+    assert letter_config.local_law_reviewed_at == "2026-01-01"
+    assert letter_config.local_law_expires_at == "2027-01-01"
+    assert review_local_law(letter_config, today=date(2026, 8, 26)).state == "current"
