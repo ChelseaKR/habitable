@@ -1,5 +1,5 @@
 {
-  "_comment": "Reviewable source for live repository ruleset 18752848. Applied 2026-07-11: every main update must come through a PR, all required checks must pass against current main, force-push/deletion are blocked, and no actor can bypass. Approval count remains 0 under ADR 0006 while the project has one active maintainer.",
+  "_comment": "Reviewable source for live repository ruleset 18752848. Applied 2026-07-11: every main update must come through a PR, all required checks must pass against current main, and force-push/deletion are blocked. bypass_actors holds exactly the repository owner's standing bypass (RepositoryRole 5, bypass_mode always), deliberately and permanently: an agent once applied a ruleset with no bypass and locked the owner out of their own repository, and restoring access took a sweep across eighteen repositories. An empty list here is not a stricter gate, it is the lockout. The v* tag ruleset in release-tags.json genuinely carries no bypass actor, which is equally deliberate; the two are different on purpose and must not be harmonised in either direction. Approval count remains 0 under ADR 0006 while the project has one active maintainer.",
   "name": "protect-main",
   "target": "branch",
   "enforcement": "active",
@@ -40,5 +40,7 @@
       }
     }
   ],
-  "bypass_actors": []
+  "bypass_actors": [
+    { "actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always" }
+  ]
 }

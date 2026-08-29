@@ -4,9 +4,11 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 _WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "release.yml"
 _WORKFLOWS = Path(__file__).resolve().parent.parent / ".github" / "workflows"
@@ -14,6 +16,18 @@ _MAIN_RULESET = Path(__file__).resolve().parent.parent / ".github" / "rulesets" 
 _TAG_RULESET = Path(__file__).resolve().parent.parent / ".github" / "rulesets" / "release-tags.json"
 _UPLOAD_ARTIFACT_V7_SHA = "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"
 _DOWNLOAD_ARTIFACT_V8_SHA = "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
+
+# The repository owner's standing bypass on the `main` branch ruleset, exactly as
+# GitHub returns it for live ruleset 18752848. It is deliberate and permanent: an
+# agent once applied a ruleset with no bypass and locked the owner out of their
+# own repository, and restoring access took a sweep across eighteen repositories.
+# An empty `bypass_actors` list on the branch ruleset is not a stricter gate — it
+# is the lockout, and the checks below have to read it as a failure.
+#
+# The `v*` tag ruleset (18815834) is the opposite case and equally deliberate: it
+# really does carry no bypass actor, so a released tag cannot be moved by anyone,
+# owner included. The two are not to be harmonised in either direction.
+OWNER_BYPASS = {"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}
 
 
 def _workflow_sections() -> tuple[str, str]:
@@ -130,4 +144,121 @@ def test_committed_main_ruleset_requires_prs_and_current_checks() -> None:
     status_checks = rules["required_status_checks"]["parameters"]
     assert status_checks["strict_required_status_checks_policy"] is True
     assert status_checks["required_status_checks"]
-    assert ruleset["bypass_actors"] == []
+    # Not `== []`. Until 2026-08-28 this asserted an empty list, and the file, the
+    # ADR and the scorecard note that agreed with it were all wrong. Exactly one
+    # actor, and it is the owner's own: a second bypass handed to a team, an app
+    # or another role fails here, and so does the owner's going missing.
+    assert ruleset["bypass_actors"] == [OWNER_BYPASS]
+
+
+def bypass_findings(live: dict[str, Any], committed: dict[str, Any]) -> list[str]:
+    """Every way a branch ruleset's bypass list is wrong, on each side separately.
+
+    Deliberately not `live["bypass_actors"] == committed["bypass_actors"]`. If some
+    future edit put an empty list back into the committed file on a day the owner
+    had also been locked out of the repository, the two sides would agree and an
+    equality check would report conformance on precisely the incident this exists
+    to catch. So the owner's bypass is asserted against each side absolutely, and
+    only *other* actors are compared between them.
+    """
+    findings: list[str] = []
+    live_actors = list(live.get("bypass_actors") or [])
+    committed_actors = list(committed.get("bypass_actors") or [])
+
+    if OWNER_BYPASS not in live_actors:
+        findings.append(
+            "bypass_actors: the repository owner's standing bypass is NOT enforced on "
+            "the live ruleset. An empty or owner-less list is the lockout, not a "
+            "stricter gate."
+        )
+    if OWNER_BYPASS not in committed_actors:
+        findings.append(
+            ".github/rulesets/main-branch.json no longer records the owner's standing "
+            "bypass. Re-applying the file as it stands would lock the owner out; "
+            "restore it rather than re-applying."
+        )
+
+    other_live = [actor for actor in live_actors if actor != OWNER_BYPASS]
+    other_committed = [actor for actor in committed_actors if actor != OWNER_BYPASS]
+    for actor in other_live:
+        if actor not in other_committed:
+            findings.append(f"unreviewed bypass actor enforced and not committed: {actor}")
+    for actor in other_committed:
+        if actor not in other_live:
+            findings.append(f"bypass actor committed and not enforced: {actor}")
+    return findings
+
+
+def _live_main_ruleset(**overrides: Any) -> dict[str, Any]:
+    """Live ruleset 18752848 as `gh api` returns it, offline, plus overrides.
+
+    Read 2026-08-28 from `gh api repos/ChelseaKR/habitable/rulesets/18752848`:
+    `bypass_actors` is exactly `[OWNER_BYPASS]` and `current_user_can_bypass` is
+    `"always"`. Reproduced here rather than fetched so the gate stays offline.
+    """
+    ruleset: dict[str, Any] = copy.deepcopy(json.loads(_MAIN_RULESET.read_text(encoding="utf-8")))
+    ruleset["id"] = 18752848
+    ruleset["bypass_actors"] = [dict(OWNER_BYPASS)]
+    ruleset.update(overrides)
+    return ruleset
+
+
+def test_the_real_live_main_ruleset_conforms() -> None:
+    """The configuration the repository is actually in must read as conformance.
+
+    A check that fails forever against a correct repository is not a stricter
+    check, it is a broken one — which is what the previous `== []` assertion was.
+    """
+    committed = json.loads(_MAIN_RULESET.read_text(encoding="utf-8"))
+    assert bypass_findings(_live_main_ruleset(), committed) == []
+
+
+def test_a_second_bypass_actor_is_reported() -> None:
+    """The threat actually worth guarding: someone other than the owner handed
+    the ability to skip the merge gate."""
+    committed = json.loads(_MAIN_RULESET.read_text(encoding="utf-8"))
+    for extra in (
+        {"actor_id": 4242, "actor_type": "Team", "bypass_mode": "pull_request"},
+        {"actor_id": 99, "actor_type": "Integration", "bypass_mode": "always"},
+        {"actor_id": 2, "actor_type": "RepositoryRole", "bypass_mode": "always"},
+    ):
+        drifted = _live_main_ruleset(bypass_actors=[dict(OWNER_BYPASS), extra])
+        found = bypass_findings(drifted, committed)
+        assert len(found) == 1, found
+        assert "unreviewed bypass actor" in found[0]
+
+
+def test_the_owner_losing_their_live_bypass_is_reported() -> None:
+    """The incident the rule exists for. An empty list coming back from the API
+    is the owner locked out of their own repository."""
+    committed = json.loads(_MAIN_RULESET.read_text(encoding="utf-8"))
+    found = bypass_findings(_live_main_ruleset(bypass_actors=[]), committed)
+    assert len(found) == 1, found
+    assert "NOT enforced" in found[0]
+    assert "lockout" in found[0]
+
+
+def test_both_sides_emptied_together_is_two_findings_not_zero() -> None:
+    """The case a plain equality check would pass with a green tick on it: a tidy
+    revert of the committed file on a day the owner had also been locked out."""
+    committed = dict(
+        json.loads(_MAIN_RULESET.read_text(encoding="utf-8")),
+        bypass_actors=[],
+    )
+    found = bypass_findings(_live_main_ruleset(bypass_actors=[]), committed)
+    assert len(found) == 2, found
+    assert any("NOT enforced" in line for line in found), found
+    assert any("no longer records" in line for line in found), found
+
+
+def test_the_tag_ruleset_is_not_harmonised_with_the_branch_one() -> None:
+    """`release-tags.json` genuinely has no bypass actor and must keep none. The
+    branch ruleset and the tag ruleset differ on purpose, and a later reader
+    "harmonising" them in either direction is the failure this pins down.
+    """
+    tag_ruleset = json.loads(_TAG_RULESET.read_text(encoding="utf-8"))
+    main_ruleset = json.loads(_MAIN_RULESET.read_text(encoding="utf-8"))
+    assert tag_ruleset["bypass_actors"] == []
+    assert main_ruleset["bypass_actors"] == [OWNER_BYPASS]
+    assert "harmonise" in tag_ruleset["_comment"]
+    assert "harmonised" in main_ruleset["_comment"]
