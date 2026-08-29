@@ -88,6 +88,33 @@ class LetterProfile:
 # `U.S.C` in any reader-visible field.
 _BUILTIN_REVIEWED_AT = "2026-08-26"
 
+# The day `ew_disrepair` was written and read end to end against that same
+# "asserts no statute" rule. It is dated separately because it did not exist on
+# the date above, and dating it with the others would claim a read that had not
+# happened yet.
+#
+# This field records that mechanical maintainer read and nothing more. It is NOT
+# a legal review: no solicitor or advice worker has read this wording, which is
+# what the UNREVIEWED note on the profile itself says and continues to say.
+_EW_DISREPAIR_REVIEWED_AT = "2026-08-28"
+
+# ...and `reviewer` says so in the data, rather than leaving the reader to find
+# the comment. `reviewer` is the field that records *who stood behind* the
+# wording, so inheriting the "Habitable maintainers" default here would claim a
+# jurisdiction review that has not happened -- the exact thing #219's dating rule
+# exists to prevent, satisfied by a default instead of by a reviewer.
+#
+# So it names both halves: the read that did happen (maintainers, no-statute
+# only) and the one that has not (England and Wales). `usecases.py` already
+# writes an absent reviewer this way with "unassigned external reviewer".
+#
+# Nothing renders this into a letter -- `RepairLetter.reviewer` is the separate,
+# union-supplied `[letter] local_law_reviewer` -- so this string is read by
+# maintainers and by `test_every_builtin_framing_is_dated_and_none_expires`.
+_EW_DISREPAIR_REVIEWER = (
+    "Habitable maintainers (no-statute read only; UNREVIEWED for England and Wales)"
+)
+
 # Built-in profiles. These intentionally cite no specific statute: they describe
 # commonly-recognized concepts in hedged terms and defer to local confirmation.
 # A union encodes verified, jurisdiction-specific wording in config instead.
@@ -162,6 +189,8 @@ PROFILES: dict[str, LetterProfile] = {
             "not taken legal advice in preparing this letter."
         ),
         cure_period_days=14,
+        reviewer=_EW_DISREPAIR_REVIEWER,
+        reviewed_at=_EW_DISREPAIR_REVIEWED_AT,
     ),
 }
 

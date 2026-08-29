@@ -27,6 +27,7 @@ from habitable.vault import Vault
 
 _GENERATED_AT = "2026-01-02T00:10:00Z"
 _TENANT_FILENAME = "TENANT-PRIVATE-FILENAME-9e21.jpg"
+_A11Y_WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "a11y.yml"
 
 
 def test_packet_ids_do_not_encode_passphrase_derived_material(
@@ -266,17 +267,51 @@ def test_the_accessibility_marker_still_selects_a_real_suite() -> None:
     )
 
 
-def test_the_browser_stack_is_a_failure_in_ci_not_a_skip() -> None:
-    """In CI, a missing browser must fail the gate rather than silently skip it.
+def _browser_installing_job() -> str:
+    """The `a11y.yml` job key whose steps install Chromium on purpose.
 
-    Locally this skips: a contributor fixing a typo should not need Chromium. In
-    CI the browser is installed on purpose by the `a11y` workflow, so its absence
-    means the gate did not run -- and a gate that did not run must not report
-    success. This is the whole difference between "the scan found no violations"
-    and "no scan happened".
+    Derived rather than hard-coded, so renaming the job is caught here instead
+    of turning the guard below into a permanent skip -- which would be this
+    file's own subject matter, a check that cannot fail.
     """
-    if not os.environ.get("CI"):
-        pytest.skip("browser stack is optional outside CI; the CI branch is the gate")
+    text = _A11Y_WORKFLOW.read_text(encoding="utf-8")
+    jobs = text.split("\njobs:\n", 1)
+    assert len(jobs) == 2, "a11y.yml no longer has a jobs: block"
+    current = ""
+    for line in jobs[1].splitlines():
+        key = re.match(r"^  ([A-Za-z0-9_-]+):\s*$", line)
+        if key:
+            current = key.group(1)
+        elif "playwright install" in line:
+            assert current, "a playwright install step outside any job"
+            return current
+    raise AssertionError(
+        "no job in a11y.yml installs Chromium any more; the axe gate cannot be "
+        "running a browser, so the required context it publishes asserts nothing"
+    )
+
+
+def test_the_browser_stack_is_a_failure_in_ci_not_a_skip() -> None:
+    """In the axe job, a missing browser must fail rather than silently skip.
+
+    Locally this skips: a contributor fixing a typo should not need Chromium.
+    The scope is the *job that installs the browser on purpose* and then
+    publishes `axe-core WCAG scan (merge gate)`, not CI at large: the
+    `lint - types - tests` job deliberately installs no browser, so keying on
+    `CI` alone asserted Chromium in a job that never had it and failed the
+    merge gate for the absence it was designed to tolerate.
+
+    Where it does apply, the point stands unchanged: the browser is installed
+    on purpose there, so its absence means the gate did not run -- and a gate
+    that did not run must not report success. That is the whole difference
+    between "the scan found no violations" and "no scan happened".
+    """
+    job = _browser_installing_job()
+    if os.environ.get("GITHUB_JOB") != job:
+        pytest.skip(
+            f"browser stack is asserted in the {job!r} job, which installs it; "
+            "every other run may skip"
+        )
 
     import axe_playwright_python.sync_playwright  # noqa: F401
     from playwright.sync_api import sync_playwright
