@@ -386,7 +386,7 @@ effort can actually plan against it.
 | Rank | Use case | Primary user job | Value | Fit | Confidence | Effort | Decision |
 | ---: | --- | --- | ---: | ---: | ---: | --- | --- |
 | 11 | Move-out condition & deposit-dispute record | Pair documented move-in/move-out condition with an itemized deduction to dispute a withheld security deposit | 5 | 5 | 4 | M | **Shipped 2026-08-26** as the `move_out_deposit` profile (ADR 0014) |
-| 12 | Jurisdiction template growth | Add a second/third `letter.py` jurisdiction framing beyond `generic`/`us_habitability`, dated and expiry-tracked | 4 | 5 | 4 | S–M | **Now: solo-buildable — ADR 0012 makes this safely growable for the first time. Filed as issue #207 and labelled *good first issue*: left for a newcomer on purpose, since a sustained outside contributor is an open workstream-D exit criterion** |
+| 12 | Jurisdiction template growth | Add `letter.py` jurisdiction framings beyond `generic`/`us_habitability`, dated and expiry-tracked | 4 | 5 | 4 | S–M | **Partly shipped.** Issue #207 landed a third framing, `ew_disrepair` (England and Wales), on 2026-08-28. It is held to the same statute-free bar as its two siblings and is marked UNREVIEWED in source: its `reviewer` field records a maintainer no-statute read and nothing more. The engineering half of this candidate is therefore demonstrated rather than theoretical; what stays open is a *reviewed* framing, which is gated on a named legal reviewer for the jurisdiction, and further framings, which remain welcome from a first-time contributor |
 | 13 | Joint multi-tenant case bundle | Let an organizer present several already-signed individual packets as one navigable building-wide submission, without merging custody chains | 4 | 5 | 3 | M | **Shipped 2026-08-27** as `habitable joint` (ADR 0015), to this plan's own sizing: a digest-bound table of contents, no merged custody chain, `packet_version` unchanged |
 | 14 | Protected-activity and landlord-action timeline | Juxtapose a tenant's protected activity (complaint filed, union joined) and a landlord's later action on one neutral chronology | 5 | 3 | 2 | M | **Later: framing decision (ADR) before any code — see caution below** |
 
@@ -454,7 +454,7 @@ gate column are the parts that matter.
 | 1 | 2026 H2 | **Joint multi-tenant submission index** (#13): a digest-bound table of contents over N already-signed packets, merging no custody chain | None. Shipped 2026-08-27, ADR 0015 |
 | 2 | 2026 H2 | **Authenticate the joint index** | None. Shipped 2026-08-27, ADR 0016: an RFC 3161 seal over the finished index, chosen over an organizer signing key because it needs no identity, which ADR 0011 had already declined to invent |
 | 3 | 2026 H2 | **Extend the ADR 0011 authority seal to the multi-packet surfaces it named as unfinished** | None. Shipped 2026-08-27: `campaign export` seals each unit packet with that unit's own configured authority under that unit's own metered-link policy. ADR 0011 had already made the decision; this applied it, so it needed no ADR of its own |
-| 4 | when a newcomer takes it | **Jurisdiction letter framing growth** (#12) | Doubly gated, and deliberately so: it is reserved as good first issue #207 because a sustained outside contributor is an open workstream-D exit criterion, and any framing it adds is blocked on a **named legal reviewer**. ADR 0013 built the dating and expiry mechanism; writing a `reviewer`/`reviewed_at` pair for a review nobody performed would be a false claim, which is the whole reason the field exists |
+| 4 | first framing shipped 2026-08-28; a reviewed one when a reviewer is named | **Jurisdiction letter framing growth** (#12) | Half of the original double gate is gone. Issue #207 shipped `ew_disrepair`, so the engineering path is walked, not hypothetical; further framings stay open to a newcomer, since a sustained outside contributor is an open workstream-D exit criterion. The other half is unchanged and is the binding one: every built-in framing that ships, `ew_disrepair` included, is **UNREVIEWED** for its jurisdiction, and promoting any of them is blocked on a **named legal reviewer**. ADR 0013 built the dating and expiry mechanism; writing a `reviewer`/`reviewed_at` pair for a review nobody performed would be a false claim, which is the whole reason the field exists |
 | 5 | after its framing ADR | **Protected-activity and landlord-action chronology** (#14) | A **maintainer decision**, recorded as an ADR, that must precede any code: choose the neutral two-column chronology and reject the scoring or labelling version outright. It is not an implementation question. "Retaliation" is a legal conclusion, and this plan's fit filter excludes automated judgments about truth and landlord risk scores |
 | 6 | as partners arrive | **Promote each `external_review_required` profile to `maintainer_reviewed`** | A **named reviewer or partner per profile**, recorded with a date. Six profiles, six separate people. `docs/recruitment/` holds the briefs; the gate is a partnership problem, not an engineering one |
 | 7 | 2027 to 2028 | **Versioned scoped and rehashed custody views**, restoring issue-scoped and date-scoped exports and issue-subset shares | An **independent cryptographic review** before the CLI and app selectors can be re-enabled, per workstream A. The protocol design is engineering; shipping it behind a self-review is not an option this project takes |
@@ -498,11 +498,13 @@ follows is honest present-tense status, not a build plan.
   Three are done: profile review-expiry enforcement (ADR 0012, 2026-08-22), the
   move-out/deposit-dispute record (#11, ADR 0014, 2026-08-26), and the joint
   multi-tenant submission index (#13, ADR 0015 and ADR 0016, 2026-08-27). Of the
-  remainder,
-  #12 is deliberately reserved for a first-time contributor (issue #207), and
-  #14 is blocked on its own framing ADR. That leaves no solo-buildable
-  use-case candidate open: what is left in this portfolio is people-gated, and
-  the multiyear sequencing table above says so by name.
+  remainder, #12 shipped its first new framing (`ew_disrepair`, issue #207,
+  2026-08-28) and is now people-gated for the same reason everything else is:
+  that framing, like both of its siblings, is UNREVIEWED for its jurisdiction,
+  and a reviewed one needs a named legal reviewer. #14 is blocked on its own
+  framing ADR. That leaves no solo-buildable use-case candidate open: what is
+  left in this portfolio is people-gated, and the multiyear sequencing table
+  above says so by name.
 - Keep 20% capacity for scoped-view protocol/security work and 10% for
   unplanned safety fixes, unchanged from the original plan.
 
@@ -511,9 +513,11 @@ follows is honest present-tense status, not a build plan.
 - Nothing in this portfolio is left that a solo effort can finish alone. Phases
   1 to 3 of the sequencing table are done; phases 4 to 8 are each waiting on a
   named person, and the honest next step is recruitment, not code. Jurisdiction
-  template growth (#12) in particular stays available to a newcomer rather than
-  being absorbed by the maintainer, and would still need a named legal reviewer
-  after they finished.
+  template growth (#12) is the one that has moved: `ew_disrepair` shipped from
+  issue #207 on 2026-08-28, so the engineering path is demonstrated. Further
+  framings stay available to a newcomer rather than being absorbed by the
+  maintainer, and every one of them — the three that ship today included —
+  still needs a named legal reviewer before it can claim a jurisdiction review.
 - As each `external_review_required` profile clears its named gate, promote it
   to `maintainer_reviewed` in an ADR-recorded decision and update
   `docs/capabilities.md`.

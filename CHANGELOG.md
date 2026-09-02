@@ -89,6 +89,34 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Changed
 
+- **The planning documents stopped reserving work that had already shipped.**
+  #228 corrected `docs/capabilities.md` and `docs/letter-generator.md` when
+  `ew_disrepair` landed, but `ROADMAP.md` and `docs/novel-use-cases-plan.md`
+  were not in that sweep and still described jurisdiction template growth as
+  unstarted: "left open for a first-time contributor (issue #207)", "reserved as
+  good first issue #207", "deliberately reserved for a first-time contributor".
+  The framing had shipped on 2026-08-28 and the issue is closed, so a reader
+  planning contribution was being pointed at finished work. All four claims now
+  say what is true — the engineering path is walked, further framings stay open
+  to a newcomer, and what remains gated on a named legal reviewer is a
+  *reviewed* framing, since all three that ship are UNREVIEWED for their
+  jurisdiction.
+
+  The half of that this project can check mechanically is now checked.
+  `test_current_state_docs_name_every_framing_that_ships` holds every
+  describes-what-ships-today document to a conditional rule: a document that
+  names one built-in framing must name all of them, so a partial list can never
+  read as the complete one. It is conditional on purpose — prose that never
+  enumerates the framings is left alone — and ADRs and this changelog are
+  excluded on purpose, because they are dated records and editing them to
+  mention later work would falsify exactly the property the guard protects.
+  FAIL-BEFORE against the pre-fix plan: `names ['generic', 'us_habitability']
+  but not ['ew_disrepair']`.
+
+  The prose claim about *whether an issue is still open* has no offline check
+  behind it and does not now: that would need the issue tracker. It was found by
+  reading, and this entry says so rather than implying the new guard covers it.
+
 - **Several gates that could not fail were repaired.** A site test guarding the
   "do not put tenant data in a public issue" warning had never executed a single
   assertion: it matched a URL that appears nowhere on the site, and iterated a
