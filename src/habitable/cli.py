@@ -1490,6 +1490,14 @@ def _cmd_joint_check(args: argparse.Namespace) -> int:
         seal = payload["index_seal"]
         if isinstance(seal, dict):
             seal["statement"] = joint.seal_statement(check.seal, locale)
+        # Structured CLI output to the local caller, not a persistent log sink, and
+        # the same shape `verify --json` already emits below. The seal reaches this
+        # payload as a *verdict* -- present/verified/trusted, the authority's name,
+        # the instant -- and never as the token, which stays in `joint_index.sig.json`.
+        # `JointCheck.to_json` has no branch that can reach the token, and
+        # `test_the_check_report_carries_the_seal_verdict_and_not_the_token` asserts
+        # it against a sealed submission rather than leaving that to this comment.
+        # codeql[py/clear-text-logging-sensitive-data]
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if check.ok else 1
     _print_joint_check(check, locale)
