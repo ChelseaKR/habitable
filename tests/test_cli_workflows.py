@@ -152,3 +152,103 @@ def test_cli_status_notes_an_expired_selected_profile(
     assert main(["status", "--vault", str(vault.path), "--passphrase", "test-passphrase"]) == 0
     captured = capsys.readouterr()  # type: ignore[attr-defined]
     assert "review expired 2000-01-01; export falls back to generic" in captured.out
+
+
+class TestIssueFieldVocabularies:
+    """Issue #206: `issue --category`/`--severity` took any string, silently.
+
+    `habitable timeline` constrains `--type` and `--source` to enums with an
+    explicit `other` plus a required label. `habitable issue` constrained
+    nothing, so `--category "typo-category-xyz" --severity "kinda bad i guess"`
+    was accepted, echoed back, and exit 0 -- and because export scoping is
+    blocked (#203 item 3) and there is no correction path (#203 item 2), that
+    typo then rode into the exported packet with no supported way to remove it.
+
+    Entry validation only. Categories already stored in a vault are free text and
+    stay readable; nothing here touches `add_issue`, the custody chain, or the
+    packet format, so old entries are grandfathered and only new CLI entries are
+    checked.
+    """
+
+    @staticmethod
+    def _args(vault: Vault, *extra: str) -> list[str]:
+        return [
+            "issue",
+            "--vault",
+            str(vault.path),
+            "--passphrase",
+            "test-passphrase",
+            *extra,
+        ]
+
+    def test_a_typo_category_is_refused_and_names_the_vocabulary(
+        self, make_vault: Callable[..., Vault], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        vault = make_vault()
+        with pytest.raises(SystemExit) as exc:
+            main(self._args(vault, "--category", "typo-category-xyz"))
+        assert exc.value.code != 0
+        message = capsys.readouterr().err
+        assert "typo-category-xyz" in message
+        # The error has to say what *is* accepted, or it just moves the guesswork.
+        for known in ("heat", "mold", "pests", "water", "electrical", "structural"):
+            assert known in message
+
+    def test_a_typo_severity_is_refused(
+        self, make_vault: Callable[..., Vault], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        vault = make_vault()
+        with pytest.raises(SystemExit) as exc:
+            main(self._args(vault, "--category", "mold", "--severity", "kinda bad i guess"))
+        assert exc.value.code != 0
+        assert "kinda bad i guess" in capsys.readouterr().err
+
+    def test_every_documented_category_is_accepted(self, make_vault: Callable[..., Vault]) -> None:
+        """The six categories README names must all work, or the guard is a trap."""
+        vault = make_vault()
+        for category in ("heat", "mold", "pests", "water", "electrical", "structural"):
+            assert main(self._args(vault, "--category", category)) == 0
+
+    def test_other_needs_a_label_and_works_with_one(
+        self, make_vault: Callable[..., Vault], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The escape hatch stays open, but it has to say what it means.
+
+        A closed vocabulary with no `other` would be worse than free text: a
+        tenant with a real condition outside the six would have to misfile it.
+        """
+        vault = make_vault()
+        assert main(self._args(vault, "--category", "other")) == 2
+        assert "--other-label" in capsys.readouterr().err
+
+        assert main(self._args(vault, "--category", "other", "--other-label", "broken lift")) == 0
+
+    def test_severity_other_needs_a_detail(
+        self, make_vault: Callable[..., Vault], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        vault = make_vault()
+        assert main(self._args(vault, "--category", "mold", "--severity", "other")) == 2
+        assert "--severity-detail" in capsys.readouterr().err
+        assert (
+            main(
+                self._args(
+                    vault,
+                    "--category",
+                    "mold",
+                    "--severity",
+                    "other",
+                    "--severity-detail",
+                    "intermittent but worsening",
+                )
+            )
+            == 0
+        )
+
+    def test_existing_free_text_categories_still_load(
+        self, make_vault: Callable[..., Vault]
+    ) -> None:
+        """Grandfathering: validation is at CLI entry, not in the data model."""
+        vault = make_vault()
+        vault.document.add_issue(category="whatever-was-typed-in-2026", issue_id="old")
+        vault.save()
+        assert main(["status", "--vault", str(vault.path), "--passphrase", "test-passphrase"]) == 0

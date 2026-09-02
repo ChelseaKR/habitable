@@ -7,7 +7,128 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+### Fixed
+
+- **An expired TSA certificate no longer mints indefinitely-trusted timestamps**
+  (#204, split from #121). `_verify_cert_chain` matched an anchor by fingerprint
+  or direct issuance and stopped there, so a certificate that expired years ago
+  went on producing `trusted_chain: True` forever — in the one field a recipient
+  reads to decide whether a timestamp is from who it says. The signing
+  certificate must now have been inside its own validity period at the token's
+  `genTime`. The comparison is against `genTime` and never the wall clock, so a
+  packet minted in 2021 still verifies in 2031 after its authority rotates a key;
+  what stops is an authority minting *new* tokens on a dead certificate.
+
+  The outcome is reported in its own `TimestampInfo.cert_validity` field
+  (`within` / `expired` / `not-yet-valid` / `not-applicable` / `not-checked`)
+  rather than folded silently into `trusted_chain`, because "expiry was checked
+  and was fine" and "expiry was not checked" are different facts. The note for a
+  matched-but-expired anchor says so in those words, so a recipient who supplied
+  exactly the right certificate is not sent off to re-download it. `ANCHOR_RULE`
+  and four documents that stated validity was never consulted are corrected.
+
+- **Corrupt KDF parameters fail as `CryptoError`, not a raw traceback** (#212).
+  `crypto.py` promises in its module docstring that every failure surfaces as
+  `CryptoError`; `KdfParams.from_dict` type-checked `n`/`r`/`p`/`length` and
+  passed them straight to scrypt. Since `cli.main()` catches only
+  `HabitableError`, a bit-rotted keyfile or a courier-damaged recovery blob
+  crashed `habitable key restore` with an unhandled traceback. Three library
+  exceptions escaped, not the one reported: `ValueError`, `OverflowError` (which
+  does *not* subclass `ValueError`), and `MemoryError` — the last a
+  resource-exhaustion vector, since a single flipped digit in `n` can ask scrypt
+  for a terabyte. Parameters are now screened by arithmetic before scrypt sees
+  them, with a memory ceiling derived from the project's own `KDF_PROFILES`.
+
+- **A packet's metadata disclosure no longer contradicts its own item records**
+  (#211). `_disclosures` built the prominent "What this packet discloses" line
+  from the configured `SharingPolicy` alone. But `make_shared_media_copy` always
+  remuxes video and audio with `-map_metadata -1` regardless of policy, so under
+  a deliberate retain-metadata policy the packet told its reader that a video's
+  embedded location had been kept while the same signed bundle's item record said
+  it was removed. The harm runs the surprising way: a tenant who chose that policy
+  specifically to preserve a video's GPS as evidence was told they had it. The
+  disclosure is now derived from the items' own `stripped` fields, and the
+  policy-derived sentence is scoped to still images.
+
+- **`scope_statement` resolves regional locale tags like its siblings** (#210).
+  `habitable init --lang es-MX` produced a Spanish packet whose "Scope of this
+  export" section — the one stating whether the packet covers the whole unit or a
+  single issue — silently reverted to English. Two of `disclosure.py`'s three
+  lookups normalized the tag and the third did an exact-match lookup. All three
+  now share one resolver, since the defect was drift between hand-rolled copies.
+
+- **Keyboard focus no longer lands off-screen while tabbing** (#202). Re-diagnosed
+  before fixing: the report blamed tab order leaking into a stale "underlying Atlas
+  view" and proposed `inert`, which would have deleted real controls from the
+  keyboard path — the app is a single scrolling document with no view switching.
+  The actual cause is `scroll-behavior: smooth`, wanted for the skip link and
+  anchors, also animating the scroll that Tab triggers; the animation is slower
+  than a keypress. At ordinary typing speed 20 focus stops landed outside the
+  viewport with the focus ring painted where nobody could see it (WCAG 2.4.7,
+  2.4.3); with a generous settle, none did. Focus is now snapped into view
+  instantly, leaving anchor navigation smooth.
+
 ### Added
+
+- **`habitable issue --category`/`--severity` are validated against a vocabulary**
+  (#206). They accepted arbitrary free text while `timeline --type`/`--source`
+  next door were enum-constrained, so a mistyped category was accepted silently
+  and — with no correction path and export scoping blocked (#203) — rode into the
+  exported packet. `other` remains available with a required `--other-label` /
+  `--severity-detail`, because a closed vocabulary with no escape hatch would
+  force a real condition to be misfiled. Validation is at CLI entry only:
+  categories already stored in a vault are grandfathered and keep loading. The
+  local web app's free-text condition field is unchanged and is documented as a
+  known scope boundary.
+
+- **A third letter framing profile, `ew_disrepair`** (#207), for England and
+  Wales. Presentation-only wording held to the same bar as its two siblings: no
+  statute, no section number, and no jurisdiction-specific deadline. Marked
+  UNREVIEWED in source — no solicitor or advice worker for that jurisdiction has
+  read it.
+
+### Changed
+
+- **Several gates that could not fail were repaired.** A site test guarding the
+  "do not put tenant data in a public issue" warning had never executed a single
+  assertion: it matched a URL that appears nowhere on the site, and iterated a
+  page list that excluded the only page carrying public issue links. Repaired, it
+  immediately found the real gap, and `site/review/index.html` now carries the
+  data boundary its linked issues already state. The `pytest -m a11y` suite —
+  behind a *required* status check — exits 0 when every test skips for want of a
+  browser; that is now a hard failure in CI plus a floor on the selected count.
+  `check_bcp47.py`'s "no tags found" guard was dead code, since one always-populated
+  source ran first; each of its five sources now carries its own floor.
+  `test_format_date_month_abbreviations` asserted only that output was non-empty
+  and contained the year; it now checks the abbreviations. Archive-timestamp trust
+  verdicts were computed and discarded; the note now reports them. Plus a
+  non-emptiness floor on the `aria-describedby` scan, `.NOTPARALLEL:` so
+  `verify`'s documented lock-check ordering survives `make -j`, a lockstep test
+  for the docs-only a11y twin's path list, and a corrected `.pre-commit-config.yaml`
+  comment that claimed a scope equivalence with `make lint` that was never true.
+
+### Added
+
+- **The published sample packet said nothing about being indexed, and the
+  sitemap had gone stale.** A technical SEO audit of habitable.chelseakr.com
+  found `site/sample-packet/packet.html` reachable and linked from the
+  homepage, absent from `sitemap.xml`, and carrying no `robots` directive, so
+  a crawler was free to index a synthetic tenancy record as an ordinary page of
+  this site. `docs/research/product-expansion-seo-2026-07-09.md` had called for
+  exactly the opposite and nothing had implemented it.
+
+  Both packet renderers in `src/habitable/htmlpacket.py` now emit
+  `<meta name="robots" content="noindex, nofollow">`. A packet is a record
+  about somebody's home -- rooms, dates, photographs, the conditions they are
+  living in -- and wherever one ends up behind a web server it should not be
+  for a search engine to collect. A `noindex` cannot stop a determined crawler
+  and does not pretend to; it stops the ordinary well-behaved ones, which is
+  the difference between a packet being findable by name and findable at all.
+
+  `tests/test_site_seo.py` gains the check that would have caught it: every
+  `.html` file under `site/` is either offered for indexing in the sitemap or
+  says it is not for indexing. A page can be left out. It cannot be left out
+  silently.
 
 - **`campaign export` seals each unit packet, with that unit's own authority.**
   ADR 0011 listed `campaign export` among the surfaces it had left unsealed, and
@@ -104,13 +225,15 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   rather than being absorbed. A submission subdirectory with no `bundle.json`
   is refused by name, never skipped.
 
-  The index is presentation only and is **not itself signed or sealed**, which
+  The index is presentation only and carries **no signature of its own**, which
   it says in its JSON (`index_signed: false`), in its HTML, and in the
   command's output, alongside two other limits it must not let a reader assume
   away: it merges no chain of custody, and listing households together says
-  nothing about whether their conditions share a cause. Authenticating the
-  index is deferred to its own decision rather than inherited by assumption;
-  ADR 0015 names the two candidate mechanisms and why neither is free.
+  nothing about whether their conditions share a cause. ADR 0015 named two
+  candidate mechanisms for authenticating the index itself and deferred the
+  choice between them; ADR 0016 made it later in the same cycle, so this entry
+  is read alongside the authority seal above. As shipped, the index is
+  unsigned, and can be sealed.
 
   `packet_version` stays 4, `bundle.json` and `bundle.sig.json` are untouched,
   and `habitable.verify` gains no import: the index carries its own
@@ -304,6 +427,31 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **`site/robots.txt` allowed a path this site has not served since it moved to
+  its own domain.** The line read `Allow: /habitable/`, left over from the
+  GitHub Pages project path. An `Allow` with no `Disallow` beside it blocks
+  nothing either way, so the line was harmless and wrong, which is the kind of
+  thing that survives longest. It reads `Allow: /` now, and a new check refuses
+  any `Allow`/`Disallow` naming a path the site does not serve.
+
+- **Every `lastmod` in `site/sitemap.xml` was eleven weeks stale.** Ten pages
+  were dated `2026-07-10` and two `2026-07-16`; the files behind them had last
+  changed on `2026-07-23` and `2026-08-21`. The only assertion on those dates
+  was that they were not in the future, so nothing noticed. A stale `lastmod`
+  is not a neutral one: a crawler that has already read a page and is told it
+  has not changed since has been given a reason not to look again. Each date is
+  now pinned to a SHA-256 of the bytes it describes, so editing a page fails the
+  gate until the date moves with it.
+
+- **One `<title>` carried a bare `&`.** `site/review/changes/index.html` wrote
+  `Reviewer Findings & Changes` where every other title on the site writes
+  `&amp;`.
+
+- **`twitter:image:alt` was on the homepage and nowhere else.** The other
+  eleven pages set `twitter:image` with no alternative text for it, so a card
+  rendered from one offered a screen-reader user an unlabelled image. Each now
+  mirrors the `og:image:alt` it already carried.
+
 - **Three references to the move-out and deposit-dispute record cited ADR 0013,
   which is the letter-framing decision.** The record is ADR 0014. Corrected in
   `docs/novel-use-cases-plan.md` and in two test docstrings. In a project whose
@@ -380,6 +528,36 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   green.
 
 ### Changed
+
+- **The committed `main` ruleset now records the repository owner's standing
+  bypass, because the live one has always had it and must keep it.**
+  `.github/rulesets/main-branch.json` declared `"bypass_actors": []` while live
+  ruleset `18752848` carried `{"actor_id": 5, "actor_type": "RepositoryRole",
+  "bypass_mode": "always"}` — and the file, its `_comment`, ADR 0006 and the
+  2026-07 scorecard note all argued the empty list was the stricter, correct
+  posture. It is not. It is a lockout waiting to be re-applied: an agent once
+  applied a ruleset with no bypass and locked the owner out of their own
+  repository, and restoring access took a sweep across eighteen repositories.
+  The committed file is what was wrong, so the committed file changed; **no
+  live ruleset or repository setting was touched by this entry.** ADR 0006
+  carries a dated superseding note withdrawing its "no bypass actor, including
+  for the repository owner" clause while leaving its review-count waiver
+  intact, and the scorecard note carries a dated correction saying plainly that
+  Scorecard scores a standing admin bypass down and that the number stays
+  honest rather than the configuration being changed to flatter it.
+
+  The `v*` tag ruleset (`.github/rulesets/release-tags.json`, live ruleset
+  `18815834`) is **unchanged and stays at no bypass actor**: a released tag must
+  not be movable by anyone, owner included. Both JSON `_comment` fields now say
+  the two rulesets differ on purpose and must not be harmonised in either
+  direction.
+
+  `tests/test_release_workflow.py` no longer compares the two sides to each
+  other. The owner's bypass is asserted against the live ruleset and against the
+  committed file **independently**, and any *other* actor is a finding, because
+  a plain equality check would report conformance on the day both sides were
+  emptied together — which is the incident recurring with a green tick on it.
+  That case is now a test, and it must produce two findings rather than zero.
 
 - **Every CI job now installs with `uv sync --locked`, not `uv sync --frozen`**
   (`ci.yml` twice, `a11y.yml`, `release.yml` twice, `tsa-integration.yml`).

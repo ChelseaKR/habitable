@@ -344,13 +344,56 @@ def test_inline_emphasis_does_not_join_visible_words(slug: str) -> None:
 
 
 def test_public_issue_links_carry_a_visible_privacy_warning() -> None:
-    for slug in _PAGE_META:
-        parser = _parse(_SITE / slug / "index.html")
-        if not any("github.com/ChelseaKR/habitable/issues/new" in href for href in parser.anchors):
-            continue
+    """Any page sending a reader to a public issue tracker must warn them first.
+
+    This guard was previously incapable of failing, for two independent reasons,
+    and had never executed a single one of its assertions:
+
+    1. It matched the href substring ``issues/new``, which appears **nowhere** in
+       ``site/``. The real links are ``issues/121``..``issues/126`` and an
+       ``issues?q=`` filter, so the ``continue`` fired on every iteration.
+    2. It iterated ``_PAGE_META``, a hand-maintained list of nine marketing slugs
+       that does not include ``review`` -- the only page on the site that carries
+       public issue links at all. Even with the substring fixed, the one page that
+       matters was never opened. (``tests/test_site_axe.py`` does list ``review``,
+       so the omission is drift, not scope.)
+
+    Both are now closed by discovering pages from disk instead of from a list, and
+    by matching the issue-tracker URL rather than one route into it. The
+    non-emptiness assertion is the part that keeps it honest: if the links move,
+    are renamed, or the glob stops matching, this fails loudly instead of quietly
+    passing over an empty set -- the same guard style as ``test_golden.py`` and
+    ``test_verify_fuzz.py``.
+
+    The subject matter is why it is worth the care: these links recruit strangers
+    into filing public comments about a tool used to document tenancies.
+    """
+    tracker = "github.com/ChelseaKR/habitable/issues"
+    pages_with_links: list[tuple[Path, _ContentParser]] = []
+    for page in sorted(_SITE.rglob("index.html")):
+        parser = _parse(page)
+        if any(tracker in href for href in parser.anchors):
+            pages_with_links.append((page, parser))
+
+    assert pages_with_links, (
+        f"no site page links to {tracker!r}. Either the public-review links were "
+        "removed, or their URL shape changed and this guard is now checking nothing "
+        "-- which is exactly the state it was in before."
+    )
+
+    for page, parser in pages_with_links:
         visible = " ".join(parser.visible_parts).casefold()
-        assert "public github issue" in visible
-        assert "never include tenant" in visible or "do not include client" in visible
+        where = page.relative_to(_SITE)
+        assert "public github issue" in visible, (
+            f"{where} links to the public issue tracker without saying, in visible "
+            "copy, that the destination is public"
+        )
+        # The data boundary the review-task issues themselves state. A reader who
+        # never opens the issue must still see it before they click through.
+        assert "do not include a real name" in visible, (
+            f"{where} links readers to a public tracker without the visible data "
+            "boundary telling them what must never go into it"
+        )
 
 
 def test_maintenance_request_guide_preserves_the_full_record_without_overclaiming() -> None:

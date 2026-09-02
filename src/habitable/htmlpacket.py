@@ -35,6 +35,15 @@ from .disclosure import (
 
 __all__ = ["render_inspector_html", "render_packet_html"]
 
+#: A packet is a record about somebody's home: rooms, dates, photographs, and
+#: the conditions they are living in. Wherever one is put -- a review host, a
+#: shared folder behind a web server, the sample published on this project's own
+#: GitHub Pages site -- it should not be for a search engine to collect. A
+#: `noindex` cannot stop a determined crawler, and it does not pretend to; what
+#: it does is stop the ordinary, well-behaved ones, which is the difference
+#: between a packet being findable by name and being findable at all.
+_ROBOTS = '<meta name="robots" content="noindex, nofollow">'
+
 _STYLE = """
 :root { color-scheme: light dark; }
 body { max-width: 50rem; margin: 0 auto; padding: 1.5rem;
@@ -91,6 +100,7 @@ def render_packet_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_pat
         "<head>",
         '<meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
+        _ROBOTS,
         f"<title>{escape(title)}</title>",
         f"<style>{_STYLE}</style>",
         "</head>",
@@ -299,6 +309,7 @@ def render_inspector_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_
         "<head>",
         '<meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
+        _ROBOTS,
         f"<title>{escape(title)}</title>",
         f"<style>{_STYLE}</style>",
         "</head>",

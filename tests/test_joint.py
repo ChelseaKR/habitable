@@ -767,3 +767,48 @@ class TestSeal:
         out = capsys.readouterr().out
         assert "no timestamp authority was supplied" in out
         assert "indistinguishable from this one" in out
+
+    def test_the_check_report_carries_the_seal_verdict_and_not_the_token(
+        self,
+        make_vault: Callable[..., Vault],
+        make_jpeg: Callable[..., Path],
+        local_tsa: LocalRfc3161TSA,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """`joint check --json` reports what the seal *establishes*, never its bytes.
+
+        The token lives in `joint_index.sig.json` and stays there. The report is
+        a verdict -- present/verified/trusted, the authority's name, the instant
+        -- and a reader who wants the token reads the sidecar, which is the file
+        that has it.
+
+        Asserted rather than assumed because the separation is load-bearing in
+        two directions. A report that inlined the token would invite treating a
+        pasted verdict as the evidence, when only the sidecar checked against
+        the index bytes is; and this is the code path CodeQL flags as
+        clear-text logging of a secret, so the claim that there is no secret in
+        it should be a test rather than a comment. The token is not secret --
+        an RFC 3161 token is meant to travel with what it seals -- but "not
+        secret" and "not in this payload" are different facts and this pins the
+        second.
+        """
+        root = _submission(make_vault, make_jpeg, local_tsa, tmp_path / "submission")
+        pem = tmp_path / "tsa.pem"
+        pem.write_bytes(local_tsa.certificate.public_bytes(Encoding.PEM))
+        build_joint_index(root, trusted_certs=[local_tsa.certificate], tsa=local_tsa)
+
+        sidecar = json.loads((root / JOINT_SIG_FILE).read_text(encoding="utf-8"))
+        token_b64 = sidecar["index_seal"]["token_b64"]
+        assert token_b64, "the fixture must actually be sealed, or this guard proves nothing"
+
+        assert main(["joint", "check", str(root), "--trusted-cert", str(pem), "--json"]) == 0
+        printed = capsys.readouterr().out
+        report = json.loads(printed)
+
+        # The verdict is there, so this is not passing by reporting nothing.
+        assert report["index_seal"]["verified"] is True
+        assert report["index_seal"]["tsa_name"] == local_tsa.name
+        # The token is not, at any depth, under any key.
+        assert token_b64 not in printed
+        assert "token_b64" not in printed

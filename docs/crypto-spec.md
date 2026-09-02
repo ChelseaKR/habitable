@@ -435,7 +435,9 @@ bounding when that content existed (*upper bound* on creation). Tokens are store
 (`{kind, tsa_name, token_b64}`; `kind ∈ {rfc3161, dev}`). `verify_token` follows the **token's own**
 digest and signature algorithms (SHA-1…SHA-512, RSA-PKCS1v1.5 or ECDSA) rather than assuming
 SHA-256, checks the signature and certificate, and reports `trusted_chain` if the TSA chains to a
-supplied trusted root. **Archive (re-)timestamping** chains a new token over an existing one before a
+supplied trusted root *and* that signing certificate was inside its own validity period at the
+token's `genTime` (issue #204; the validity outcome is reported separately in `cert_validity`, and
+is compared at `genTime` rather than now so old tokens from rotated-out keys keep verifying). **Archive (re-)timestamping** chains a new token over an existing one before a
 TSA cert ages out; `verify_archive_chain` walks it and fails closed on any break. The `dev` token
 kind is a non-production Ed25519 "authority" used only offline for tests/demos and labels itself as
 such. **Multiple-authority redundancy:** a capture may be stamped by several authorities (the default

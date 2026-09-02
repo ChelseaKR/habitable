@@ -83,6 +83,32 @@ KDF_PROFILES: dict[str, int] = {
     "paranoid": 2**20,  # ~1 GiB -- for a device that can spare the time and memory
 }
 
+# Bounds for KDF parameters read back from an untrusted keyfile or recovery blob
+# (issue #212). These are not a new specification: the ceiling is derived from
+# KDF_PROFILES above, at exactly twice the largest profile this project can
+# itself write ("paranoid", 128 * 2**20 * 8 == 1 GiB), so every keyfile habitable
+# has ever produced still opens while a corrupted cost is refused by inspection.
+#
+# The memory bound matters more than the tidiness. scrypt's cost is ~128*n*r
+# bytes, so a single flipped digit in a stored backup turns `habitable key
+# restore` into an out-of-memory kill on a phone. Refusing by arithmetic costs
+# nothing and never allocates.
+_MAX_KDF_MEMORY_BYTES = 2 * 1024**3
+_MAX_KDF_LENGTH = 1024
+# scrypt's own documented constraint, restated here so the failure is ours.
+_MAX_KDF_BLOCK_PRODUCT = 2**30
+
+# Referenced by name rather than as an inline `except (...)`, following the same
+# precaution `tsa.py` documents for `_SIG_HASH_ERRORS`: a formatter that rewrites
+# the tuple to the parenthesis-free PEP 758 form would make this file a
+# SyntaxError on Python < 3.14, and crypto.py is in the Apache-2.0 verifier subset
+# that CI byte-compiles on 3.12 and 3.13 for embedders.
+#
+# All three are needed. scrypt raises `ValueError` for an out-of-range n/r/p,
+# `OverflowError` for a negative one -- which does NOT subclass `ValueError` --
+# and `MemoryError` for a cost too large to allocate (issue #212).
+_KDF_DERIVE_ERRORS = (ValueError, OverflowError, MemoryError)
+
 
 @dataclass(frozen=True, slots=True)
 class KdfParams:
@@ -94,10 +120,55 @@ class KdfParams:
     p: int = 1
     length: int = _KEY_BYTES
 
+    def validated(self) -> KdfParams:
+        """Return self if these are usable scrypt parameters; raise otherwise.
+
+        Type-checking ``n``/``r``/``p``/``length`` as integers is not the same as
+        checking they are *scrypt* parameters, and the gap was reachable from
+        untrusted input: a keyfile off disk, or a recovery blob handed back by a
+        steward or courier (issue #212). Everything here is arithmetic on values
+        already in hand, so an absurd cost is refused without ever being
+        allocated.
+        """
+        if self.n < 2 or self.n & (self.n - 1):
+            raise CryptoError(f"invalid scrypt cost n={self.n!r}: must be a power of two above 1")
+        if self.r < 1:
+            raise CryptoError(f"invalid scrypt block size r={self.r!r}: must be at least 1")
+        if self.p < 1:
+            raise CryptoError(f"invalid scrypt parallelism p={self.p!r}: must be at least 1")
+        if not 1 <= self.length <= _MAX_KDF_LENGTH:
+            raise CryptoError(
+                f"invalid derived-key length {self.length!r}: must be 1..{_MAX_KDF_LENGTH}"
+            )
+        if self.r * self.p >= _MAX_KDF_BLOCK_PRODUCT:
+            raise CryptoError(
+                f"invalid scrypt parameters: r*p must be below {hex(_MAX_KDF_BLOCK_PRODUCT)}"
+            )
+        required = 128 * self.n * self.r
+        if required > _MAX_KDF_MEMORY_BYTES:
+            raise CryptoError(
+                f"scrypt parameters demand {required // 1024**2} MiB, above the "
+                f"{_MAX_KDF_MEMORY_BYTES // 1024**2} MiB ceiling; this keyfile is corrupt"
+            )
+        return self
+
     def derive(self, passphrase: bytes) -> bytes:
-        """Derive a key-encryption key from a passphrase."""
+        """Derive a key-encryption key from a passphrase.
+
+        Validated first, then wrapped: ``from_dict`` already screens parsed
+        parameters, but ``KdfParams`` is constructible directly, and the module
+        docstring's promise that every failure is a :class:`CryptoError` should
+        not depend on which door a caller came through. The ``except`` clause
+        names three types on purpose -- ``OverflowError`` does **not** subclass
+        ``ValueError``, so catching ``ValueError`` alone would still let a
+        negative parameter escape as a raw traceback (issue #212).
+        """
+        self.validated()
         kdf = Scrypt(salt=self.salt, length=self.length, n=self.n, r=self.r, p=self.p)
-        return kdf.derive(passphrase)
+        try:
+            return kdf.derive(passphrase)
+        except _KDF_DERIVE_ERRORS as exc:
+            raise CryptoError(f"key derivation failed: {exc}") from exc
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -119,7 +190,7 @@ class KdfParams:
             r=_as_int(raw, "r"),
             p=_as_int(raw, "p"),
             length=_as_int(raw, "length"),
-        )
+        ).validated()
 
     @classmethod
     def for_profile(cls, profile: str, *, salt: bytes) -> KdfParams:
