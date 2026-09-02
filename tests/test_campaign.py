@@ -195,6 +195,205 @@ class TestCampaignPacket:
         assert len(dirs) == 2  # never collide, even with identical unit labels
 
 
+class TestCampaignSeal:
+    """ADR 0011 named `campaign export` as a surface it had left unsealed.
+
+    `campaign.py`'s own docstring promises a unit's packet is exactly what
+    `habitable export` produces from that vault. Since ADR 0011 that includes an
+    authority seal over the whole bundle, so until now the promise was false in
+    the one way that costs a recipient something.
+    """
+
+    def test_each_unit_packet_is_sealed_by_its_own_vaults_authority(
+        self,
+        make_vault: Callable[..., Vault],
+        make_jpeg: Callable[..., Path],
+        local_tsa: LocalRfc3161TSA,
+        tmp_path: Path,
+    ) -> None:
+        v1 = _ready_vault(make_vault, make_jpeg, local_tsa, name="v1", unit="4B")
+        v2 = _ready_vault(make_vault, make_jpeg, local_tsa, name="v2", unit="4C")
+        second = LocalRfc3161TSA("other-authority")
+        authorities: dict[str, LocalRfc3161TSA] = {"4B": local_tsa, "4C": second}
+
+        result = build_campaign_packet(
+            [(v1.path, v1), (v2.path, v2)],
+            tmp_path / "out",
+            seal_authority=lambda vault: authorities[vault.document.get_meta("unit")],
+        )
+
+        assert result.sealed_count == 2
+        # Per vault, not per campaign: each unit carries the authority ITS vault
+        # named, so an organizer's choice never overrides a tenant's.
+        by_unit = {unit.health.unit: unit.packet.seal for unit in result.units}
+        assert by_unit["4B"].authority == local_tsa.name
+        assert by_unit["4C"].authority == second.name
+
+        for unit_result in result.units:
+            report = verify_packet(
+                unit_result.out_dir,
+                trusted_certs=[local_tsa.certificate, second.certificate],
+                require_packet_seal=True,
+            )
+            assert report.ok
+            assert report.seal.ok
+
+    def test_without_an_authority_every_unit_packet_is_unsealed_and_says_so(
+        self,
+        make_vault: Callable[..., Vault],
+        make_jpeg: Callable[..., Path],
+        local_tsa: LocalRfc3161TSA,
+        tmp_path: Path,
+    ) -> None:
+        """The behaviour before this change, kept as the honest default when no
+        callback is supplied, and now visible rather than silent."""
+        v1 = _ready_vault(make_vault, make_jpeg, local_tsa, name="v1", unit="4B")
+
+        result = build_campaign_packet([(v1.path, v1)], tmp_path / "out")
+
+        assert result.sealed_count == 0
+        assert not result.units[0].packet.seal.sealed
+        assert result.units[0].packet.seal.note
+
+        report = verify_packet(
+            result.units[0].out_dir,
+            trusted_certs=[local_tsa.certificate],
+            require_packet_seal=True,
+        )
+        assert not report.ok
+
+    def test_one_unit_can_fail_to_seal_without_costing_the_others_theirs(
+        self,
+        make_vault: Callable[..., Vault],
+        make_jpeg: Callable[..., Path],
+        local_tsa: LocalRfc3161TSA,
+        tmp_path: Path,
+    ) -> None:
+        """ADR 0011's degradation, per unit: an unreachable authority costs that
+        packet its seal, not its existence, and not anybody else's seal."""
+        v1 = _ready_vault(make_vault, make_jpeg, local_tsa, name="v1", unit="4B")
+        v2 = _ready_vault(make_vault, make_jpeg, local_tsa, name="v2", unit="4C")
+
+        def only_the_first(vault: Vault) -> LocalRfc3161TSA | None:
+            return local_tsa if vault.document.get_meta("unit") == "4B" else None
+
+        result = build_campaign_packet(
+            [(v1.path, v1), (v2.path, v2)], tmp_path / "out", seal_authority=only_the_first
+        )
+
+        assert result.sealed_count == 1
+        by_unit = {unit.health.unit: unit.packet.seal for unit in result.units}
+        assert by_unit["4B"].sealed
+        assert not by_unit["4C"].sealed
+        # Both packets still exist and still verify on their own terms.
+        for unit_result in result.units:
+            assert verify_packet(unit_result.out_dir, trusted_certs=[local_tsa.certificate]).ok
+
+    def test_the_seal_is_reported_to_the_operator_and_written_into_no_artifact(
+        self,
+        make_vault: Callable[..., Vault],
+        make_jpeg: Callable[..., Path],
+        local_tsa: LocalRfc3161TSA,
+        tmp_path: Path,
+    ) -> None:
+        """A seal is a file an attacker can delete, so a manifest or index page
+        that announced one would be confidently wrong the moment it was
+        stripped. It belongs in the operator's terminal, and in `verify`."""
+        v1 = _ready_vault(make_vault, make_jpeg, local_tsa, name="v1", unit="4B")
+
+        result = build_campaign_packet(
+            [(v1.path, v1)], tmp_path / "out", seal_authority=lambda _vault: local_tsa
+        )
+
+        assert result.sealed_count == 1
+        manifest = json.loads(result.manifest_path.read_bytes())
+        keys = set(manifest) | {key for unit in manifest["units"] for key in unit}
+        assert not any("seal" in key for key in keys)
+        assert "seal" not in result.index_path.read_text(encoding="utf-8").lower()
+
+    def test_cli_seals_with_the_dev_authority_and_names_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setenv("HABITABLE_PASSPHRASE", "pw")
+        vault_dir = tmp_path / "unit-4b"
+        assert main(["init", str(vault_dir), "--case", "bldg-4B", "--unit", "4B"]) == 0
+        capsys.readouterr()
+
+        assert (
+            main(
+                [
+                    "campaign",
+                    "export",
+                    "--vault",
+                    str(vault_dir),
+                    "--out",
+                    str(tmp_path / "combined"),
+                    "--no-pdf",
+                    "--dev-tsa",
+                ]
+            )
+            == 0
+        )
+        assert "sealed by dev-tsa at " in capsys.readouterr().out
+
+    def test_cli_no_seal_says_what_that_costs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setenv("HABITABLE_PASSPHRASE", "pw")
+        vault_dir = tmp_path / "unit-4b"
+        assert main(["init", str(vault_dir), "--case", "bldg-4B", "--unit", "4B"]) == 0
+        capsys.readouterr()
+
+        assert (
+            main(
+                [
+                    "campaign",
+                    "export",
+                    "--vault",
+                    str(vault_dir),
+                    "--out",
+                    str(tmp_path / "combined"),
+                    "--no-pdf",
+                    "--no-seal",
+                ]
+            )
+            == 0
+        )
+        out = capsys.readouterr().out
+        assert "seal declined (--no-seal)" in out
+        assert "indistinguishable from this one" in out
+
+    def test_cli_wifi_only_skips_the_seal_and_says_that_is_why(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The reason matters. `build_packet` only ever learns that no authority
+        was supplied, so a message sourced from it would name the wrong cause,
+        and the metered link is that tenant's, read from that tenant's vault."""
+        monkeypatch.setenv("HABITABLE_PASSPHRASE", "pw")
+        vault_dir = tmp_path / "unit-4b"
+        assert main(["init", str(vault_dir), "--case", "bldg-4B", "--unit", "4B"]) == 0
+        capsys.readouterr()
+
+        assert (
+            main(
+                [
+                    "campaign",
+                    "export",
+                    "--vault",
+                    str(vault_dir),
+                    "--out",
+                    str(tmp_path / "combined"),
+                    "--no-pdf",
+                    "--wifi-only",
+                ]
+            )
+            == 0
+        )
+        out = capsys.readouterr().out
+        assert "wifi-only mode for this unit" in out
+        assert "--allow-metered" in out
+
+
 class TestCampaignCli:
     def test_status_and_export_across_two_vaults(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -209,6 +408,12 @@ class TestCampaignCli:
         assert main(["campaign", "status", "--vault", str(v1), "--vault", str(v2)]) == 0
 
         out = tmp_path / "combined"
+        # `--no-seal`, because since ADR 0011 a campaign export seals each unit
+        # packet with that unit's own configured authority, and this vault's
+        # default is a real public TSA. Leaving it out here would make the merge
+        # gate depend on freetsa.org being up, which `conftest`'s outbound-network
+        # guard exists to prevent -- and which is exactly what it caught when
+        # sealing was first threaded through.
         assert (
             main(
                 [
@@ -221,6 +426,7 @@ class TestCampaignCli:
                     "--out",
                     str(out),
                     "--no-pdf",
+                    "--no-seal",
                 ]
             )
             == 0
