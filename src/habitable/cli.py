@@ -373,6 +373,24 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     add_joint_anchor(p_joint_build)
     p_joint_build.add_argument(
+        "--seal-tsa",
+        metavar="URL",
+        help="an RFC 3161 authority to countersign the finished index. Recomputing "
+        "each member's digest proves no LISTED packet was swapped; only a seal over "
+        "the index binds WHICH packets the submission contains. Needs a network fetch.",
+    )
+    p_joint_build.add_argument(
+        "--seal-tsa-name",
+        metavar="NAME",
+        default="joint-index-tsa",
+        help="the name recorded for --seal-tsa (default: joint-index-tsa)",
+    )
+    p_joint_build.add_argument(
+        "--dev-tsa",
+        action="store_true",
+        help="seal with the offline dev authority (never trusted by a recipient)",
+    )
+    p_joint_build.add_argument(
         "--lang",
         choices=("en", "es"),
         help="language for the written index page (default: English)",
@@ -389,6 +407,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="the submission directory, or the joint_index.json inside it",
     )
     add_joint_anchor(p_joint_check)
+    p_joint_check.add_argument(
+        "--require-seal",
+        action="store_true",
+        help="require that an authority countersigned the list of packets itself. "
+        "This is what makes a packet DROPPED from the submission detectable: "
+        "recomputing digests can only speak for packets still on the list.",
+    )
+    p_joint_check.add_argument(
+        "--seal-not-after",
+        metavar="ISO8601",
+        help="reject an index seal minted after this instant, normally the day the "
+        "submission reached you (e.g. 2026-08-27). An honest submission cannot have "
+        "been sealed after it arrived.",
+    )
     p_joint_check.add_argument("--json", action="store_true", help="emit a structured report")
     p_joint_check.add_argument("--lang", choices=("en", "es"))
     p_joint_check.set_defaults(func=_cmd_joint_check)
@@ -1400,6 +1432,21 @@ def _load_trusted_certs(paths: list[Path] | None) -> list[x509.Certificate] | No
     return certs
 
 
+def _joint_seal_tsa(args: argparse.Namespace) -> TimestampAuthority | None:
+    """The authority that will countersign the index, if the operator named one.
+
+    `joint` has no vault to read a configured authority from, so unlike `export`
+    the URL is given on the command line. Nothing is sealed by default: an
+    organizer must ask, because sealing is the one part of this command that
+    touches the network.
+    """
+    if args.dev_tsa:
+        return DevTSA("dev-tsa")
+    if args.seal_tsa:
+        return Rfc3161HttpTSA(args.seal_tsa_name, args.seal_tsa)
+    return None
+
+
 def _joint_index_path(target: Path) -> Path:
     """Accept either the submission directory or the index file inside it."""
     return target if target.is_file() else target / joint.JOINT_INDEX_FILE
@@ -1411,6 +1458,7 @@ def _cmd_joint_build(args: argparse.Namespace) -> int:
         args.submission,
         trusted_certs=_load_trusted_certs(args.trusted_cert),
         language=locale,
+        tsa=_joint_seal_tsa(args),
     )
     print(
         cli_text(
@@ -1421,6 +1469,7 @@ def _cmd_joint_build(args: argparse.Namespace) -> int:
             out=result.index_path,
         )
     )
+    print(f"  {cli_text(result.seal_note, locale)}")
     for disclosure in joint.JOINT_DISCLOSURES:
         print(f"  {cli_text(disclosure, locale)}")
     # Same contract as `habitable verify`: a zero exit means evidence-ready, and an
@@ -1433,9 +1482,23 @@ def _cmd_joint_check(args: argparse.Namespace) -> int:
     check = joint.check_joint_index(
         _joint_index_path(args.submission),
         trusted_certs=_load_trusted_certs(args.trusted_cert),
+        require_seal=args.require_seal,
+        seal_not_after=args.seal_not_after,
     )
     if args.json:
-        print(json.dumps(check.to_json(), indent=2, sort_keys=True))
+        payload = check.to_json()
+        seal = payload["index_seal"]
+        if isinstance(seal, dict):
+            seal["statement"] = joint.seal_statement(check.seal, locale)
+        # Structured CLI output to the local caller, not a persistent log sink, and
+        # the same shape `verify --json` already emits below. The seal reaches this
+        # payload as a *verdict* -- present/verified/trusted, the authority's name,
+        # the instant -- and never as the token, which stays in `joint_index.sig.json`.
+        # `JointCheck.to_json` has no branch that can reach the token, and
+        # `test_the_check_report_carries_the_seal_verdict_and_not_the_token` asserts
+        # it against a sealed submission rather than leaving that to this comment.
+        # codeql[py/clear-text-logging-sensitive-data]
+        print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if check.ok else 1
     _print_joint_check(check, locale)
     return 0 if check.ok else 1
@@ -1455,6 +1518,7 @@ def _print_joint_check(check: joint.JointCheck, locale: str) -> None:
                 unlisted=len(check.unlisted),
             )
         )
+    print(f"  {joint.seal_statement(check.seal, locale)}")
     for problem in check.problems:
         print(f"  {problem}")
     for member in check.members:

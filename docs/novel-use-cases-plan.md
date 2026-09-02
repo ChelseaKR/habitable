@@ -423,9 +423,12 @@ design, per this plan's own fit filter and the "Later" line below.
   the index is never a trust root. Building it surfaced the half this plan's
   phrase "a signed table of contents" had left unexamined: the members are
   signed, the table of contents is not, and *whose* signature it should carry is
-  a decision rather than an implementation. ADR 0015 defers it explicitly and
-  names the two candidate mechanisms instead of leaving the file silently
-  unauthenticated.
+  a decision rather than an implementation. ADR 0015 deferred it explicitly and
+  named the two candidate mechanisms; **ADR 0016 (2026-08-27) settled it** by
+  applying ADR 0011's authority seal to the index, which needs no organizer
+  identity and therefore names nobody. The index still carries no signature of
+  its own; what it carries is a token proving *this list, at this time*, which
+  is what a dropped member defeats and a digest cannot catch.
 - **#14 is flagged, not queued, on purpose.** "Retaliation" is a legal
   conclusion, and the fit filter explicitly excludes "automated judgments
   about truth" and "landlord risk scores." A neutral two-column chronology
@@ -449,7 +452,7 @@ gate column are the parts that matter.
 | Phase | Horizon | What | Gate |
 | ---: | --- | --- | --- |
 | 1 | 2026 H2 | **Joint multi-tenant submission index** (#13): a digest-bound table of contents over N already-signed packets, merging no custody chain | None. Shipped 2026-08-27, ADR 0015 |
-| 2 | 2026 H2 to 2027 H1 | **Authenticate the joint index.** ADR 0015 records the index itself as unsigned and defers the choice between an organizer signing key and an RFC 3161 seal over the index | A recorded decision, then engineering. Neither mechanism needs a person outside the project |
+| 2 | 2026 H2 | **Authenticate the joint index** | None. Shipped 2026-08-27, ADR 0016: an RFC 3161 seal over the finished index, chosen over an organizer signing key because it needs no identity, which ADR 0011 had already declined to invent |
 | 3 | 2027 H1 | **Extend the ADR 0011 authority seal to the multi-packet surfaces it named as unfinished**, starting with `campaign export`, whose sub-packets are built without a timestamp authority and therefore carry no seal at all | None. ADR 0011 already made the decision; this applies it |
 | 4 | when a newcomer takes it | **Jurisdiction letter framing growth** (#12) | Doubly gated, and deliberately so: it is reserved as good first issue #207 because a sustained outside contributor is an open workstream-D exit criterion, and any framing it adds is blocked on a **named legal reviewer**. ADR 0013 built the dating and expiry mechanism; writing a `reviewer`/`reviewed_at` pair for a review nobody performed would be a false claim, which is the whole reason the field exists |
 | 5 | after its framing ADR | **Protected-activity and landlord-action chronology** (#14) | A **maintainer decision**, recorded as an ADR, that must precede any code: choose the neutral two-column chronology and reject the scoring or labelling version outright. It is not an implementation question. "Retaliation" is a legal conclusion, and this plan's fit filter excludes automated judgments about truth and landlord risk scores |
@@ -494,7 +497,8 @@ follows is honest present-tense status, not a build plan.
   [Beyond the current portfolio](#beyond-the-current-portfolio--year-2-and-year-3-candidates).
   Three are done: profile review-expiry enforcement (ADR 0012, 2026-08-22), the
   move-out/deposit-dispute record (#11, ADR 0014, 2026-08-26), and the joint
-  multi-tenant submission index (#13, ADR 0015, 2026-08-27). Of the remainder,
+  multi-tenant submission index (#13, ADR 0015 and ADR 0016, 2026-08-27). Of the
+  remainder,
   #12 is deliberately reserved for a first-time contributor (issue #207), and
   #14 is blocked on its own framing ADR. That leaves no solo-buildable
   use-case candidate open: what is left in this portfolio is people-gated, and
@@ -504,15 +508,14 @@ follows is honest present-tense status, not a build plan.
 
 ### Next
 
-- Authenticate the joint submission index. #13 shipped its table of contents
-  (ADR 0015) with every member digest-bound and every claim re-derivable, but
-  the index file itself carries no signature and no seal, so a member silently
-  *dropped* from the list is not detectable from the index alone. ADR 0015
-  records this as a decision to make, not a task to schedule, and names the two
-  candidate mechanisms: an organizer signing key (which needs an answer to whose
-  key it is, a question ADR 0011 already declined for producers on safety
-  grounds) or an RFC 3161 seal over the index (which needs no identity at all).
-  Jurisdiction template growth (#12) stays available to a newcomer rather than
+- Extend the ADR 0011 authority seal to `campaign export`, the one multi-packet
+  surface ADR 0011 named as unfinished and ADR 0016 left unfinished: its
+  sub-packets are built with no authority passed through, so a combined building
+  packet contains packets that are individually unsealed. Unlike `joint`,
+  `campaign` has vaults and therefore a configured authority and a metered-link
+  policy to honour, which is why it is a separate change rather than a line in
+  ADR 0016.
+- Jurisdiction template growth (#12) stays available to a newcomer rather than
   being absorbed by the maintainer.
 - As each `external_review_required` profile clears its named gate, promote it
   to `maintainer_reviewed` in an ADR-recorded decision and update

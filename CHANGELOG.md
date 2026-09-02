@@ -130,6 +130,43 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   says it is not for indexing. A page can be left out. It cannot be left out
   silently.
 
+- **A packet dropped from a joint submission is no longer undetectable.** The
+  joint index (ADR 0015) recomputes every listed member's digest, which speaks
+  only for members still on the list. A submission that arrives with a
+  household quietly removed leaves every remaining packet valid, every
+  remaining digest correct, and nothing unlisted on disk. For a building-wide
+  submission that is the damaging direction: the packet a landlord would most
+  like missing is the one that is missing.
+
+  `habitable joint build --seal-tsa URL` now asks an authority to countersign
+  the finished index, writing the token to `joint_index.sig.json` in the same
+  record shape `bundle.sig.json` already uses. Removing a row changes the bytes
+  that token covers, and no attacker can mint a replacement.
+
+  This is ADR 0011's mechanism, with its three rules inherited and none of them
+  softened: a present seal is always checked against the index in front of it,
+  an absent seal is reported rather than fatal until the recipient passes
+  `habitable joint check --require-seal`, and every assertion fails closed. A
+  `dev` seal verifies and is never trusted. `--seal-not-after <the day the
+  submission reached you>` catches the one residual an authority cannot help
+  with: an attacker who can reach an anchored authority can re-seal a rewritten
+  list, but cannot backdate the token.
+
+  It was chosen over signing the index with an organizer key, which is the
+  substantive decision: a signature would require inventing an organizer
+  identity, a key, a distribution story, and a name attached to a document that
+  travels to a landlord's lawyer. ADR 0011 already declined that for producers
+  on safety grounds. The index therefore still carries **no signature of its
+  own** and `index_signed` stays `false`; a seal and a signature are different
+  claims and this project has kept them apart since ADR 0008.
+
+  Nothing is sealed by default: sealing is the one part of `joint` that touches
+  the network, and the organizer names the authority. Rebuilding without one
+  deletes a stale sidecar rather than leaving a token beside bytes it no longer
+  covers. `joint_index_version` stays 1, so an index written before this change
+  parses identically and reports an absent seal, which is the truth about it.
+  See `docs/adr/0016-authority-seal-over-the-joint-index.md`.
+
 - **An organizer can hand over several tenants' packets as one submission,
   without merging anything.** `docs/novel-use-cases-plan.md` ranks a joint
   multi-tenant case bundle as candidate #13 and specifies the only safe shape
@@ -154,13 +191,15 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   rather than being absorbed. A submission subdirectory with no `bundle.json`
   is refused by name, never skipped.
 
-  The index is presentation only and is **not itself signed or sealed**, which
+  The index is presentation only and carries **no signature of its own**, which
   it says in its JSON (`index_signed: false`), in its HTML, and in the
   command's output, alongside two other limits it must not let a reader assume
   away: it merges no chain of custody, and listing households together says
-  nothing about whether their conditions share a cause. Authenticating the
-  index is deferred to its own decision rather than inherited by assumption;
-  ADR 0015 names the two candidate mechanisms and why neither is free.
+  nothing about whether their conditions share a cause. ADR 0015 named two
+  candidate mechanisms for authenticating the index itself and deferred the
+  choice between them; ADR 0016 made it later in the same cycle, so this entry
+  is read alongside the authority seal above. As shipped, the index is
+  unsigned, and can be sealed.
 
   `packet_version` stays 4, `bundle.json` and `bundle.sig.json` are untouched,
   and `habitable.verify` gains no import: the index carries its own
