@@ -160,6 +160,54 @@ def test_jurisdiction_profiles_and_fallback() -> None:
         )
 
 
+#: The documents whose job is to describe what ships *today*. A reader consults
+#: these to learn the current state, so naming some built-in framings and not
+#: others is a false claim about the product rather than a formatting slip.
+#:
+#: ADRs and `CHANGELOG.md` are deliberately absent. They are dated records of a
+#: decision or a release as it stood, and editing them to mention work that came
+#: later would falsify the record, which is the opposite of the property this
+#: guard exists to protect. `ROADMAP.md` is absent because it names no framing
+#: key at all; it describes the workstream, not the profile list.
+_CURRENT_STATE_DOCS = (
+    "docs/capabilities.md",
+    "docs/letter-generator.md",
+    "docs/novel-use-cases-plan.md",
+)
+
+
+def test_current_state_docs_name_every_framing_that_ships() -> None:
+    """A doc that names one built-in framing must name all of them.
+
+    `ew_disrepair` shipped from issue #207 while `docs/capabilities.md` still
+    said no framing beyond `generic`/`us_habitability` existed (#228 fixed that
+    one by hand) and `docs/novel-use-cases-plan.md` still described the work as
+    unstarted and reserved. Both were true when written and false once the code
+    changed, which is exactly the drift nobody re-reads a planning document to
+    catch.
+
+    The rule is deliberately conditional rather than a blanket "every doc must
+    list every profile": a document is only held to it once it has chosen to
+    enumerate the framings. That keeps prose that never mentions them free, and
+    makes the failure mode -- a partial list that reads as complete -- the thing
+    that fails.
+    """
+    root = Path(__file__).resolve().parent.parent
+    shipped = sorted(PROFILES)
+    assert len(shipped) >= 3, "guard is only meaningful once a third framing exists"
+
+    for relative in _CURRENT_STATE_DOCS:
+        text = (root / relative).read_text(encoding="utf-8")
+        named = [key for key in shipped if key in text]
+        if not named:
+            continue
+        missing = [key for key in shipped if key not in named]
+        assert not missing, (
+            f"{relative} names built-in letter framings {named} but not {missing}; "
+            "a partial list reads as the complete one"
+        )
+
+
 def test_cure_period_precedence(
     make_vault: Callable[..., Vault], make_jpeg: Callable[..., Path], local_tsa: LocalRfc3161TSA
 ) -> None:
