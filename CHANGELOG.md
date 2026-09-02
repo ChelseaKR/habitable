@@ -191,13 +191,15 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   rather than being absorbed. A submission subdirectory with no `bundle.json`
   is refused by name, never skipped.
 
-  The index is presentation only and is **not itself signed or sealed**, which
+  The index is presentation only and carries **no signature of its own**, which
   it says in its JSON (`index_signed: false`), in its HTML, and in the
   command's output, alongside two other limits it must not let a reader assume
   away: it merges no chain of custody, and listing households together says
-  nothing about whether their conditions share a cause. Authenticating the
-  index is deferred to its own decision rather than inherited by assumption;
-  ADR 0015 names the two candidate mechanisms and why neither is free.
+  nothing about whether their conditions share a cause. ADR 0015 named two
+  candidate mechanisms for authenticating the index itself and deferred the
+  choice between them; ADR 0016 made it later in the same cycle, so this entry
+  is read alongside the authority seal above. As shipped, the index is
+  unsigned, and can be sealed.
 
   `packet_version` stays 4, `bundle.json` and `bundle.sig.json` are untouched,
   and `habitable.verify` gains no import: the index carries its own
