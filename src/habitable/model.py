@@ -43,6 +43,8 @@ from .usecases import (
 )
 
 __all__ = [
+    "ISSUE_CATEGORIES",
+    "ISSUE_SEVERITIES",
     "Artifact",
     "Capture",
     "CaseDocument",
@@ -392,6 +394,50 @@ class EvidenceRelationship:
 
 
 _ISSUE_FIELDS = ("category", "room", "title", "status", "severity", "description")
+
+
+#: The condition categories `habitable issue --category` accepts.
+#:
+#: These are the six README already names, plus an explicit ``other``. A closed
+#: vocabulary with no escape hatch would be worse than free text here: a tenant
+#: with a real condition outside the six would be forced to misfile it, and a
+#: misfiled category is a wrong record rather than an unvalidated one. Mirrors
+#: ``timeline.EVENT_TYPES`` / ``timeline.SOURCES`` (issue #206).
+#:
+#: Validation happens at CLI entry only. ``add_issue`` deliberately does not
+#: enforce this: issues already stored in a vault carry free text and must keep
+#: loading, so old entries are grandfathered and only new ones are checked.
+#:
+#: KNOWN SCOPE BOUNDARY (issue #206 asked for the CLI, and this is the CLI). The
+#: local web app's "Condition" field is a free-text ``<input type="text">``
+#: (``app/index.html``) whose POST reaches ``add_issue`` through
+#: ``appserver.py`` without passing argparse, so the same vault can still gain an
+#: unlisted category through the app. Closing that is a product decision about
+#: what a tenant is allowed to record, not a data-entry cleanup, and it belongs
+#: to whoever owns the app's condition taxonomy -- the existing corpus already
+#: contains ``no_heat``, ``moisture``, ``noise``, ``threat`` and a Spanish
+#: ``moho``, which is evidence that the real vocabulary is wider than these six.
+ISSUE_CATEGORIES = (
+    "heat",
+    "mold",
+    "pests",
+    "water",
+    "electrical",
+    "structural",
+    "other",
+)
+
+#: Severity levels for ``habitable issue --severity``. Ordered least to most
+#: urgent, with the same ``other`` escape hatch. These are habitable's own
+#: operational vocabulary for sorting a tenant's own record; they are not a
+#: legal classification and carry no statutory meaning.
+ISSUE_SEVERITIES = (
+    "low",
+    "moderate",
+    "severe",
+    "emergency",
+    "other",
+)
 
 
 class CaseDocument:

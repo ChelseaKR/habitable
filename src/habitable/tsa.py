@@ -47,6 +47,12 @@ from .errors import TimestampError
 
 __all__ = [
     "ANCHOR_RULE",
+    "CERT_VALIDITY_EXPIRED",
+    "CERT_VALIDITY_NOT_APPLICABLE",
+    "CERT_VALIDITY_NOT_CHECKED",
+    "CERT_VALIDITY_NOT_YET_VALID",
+    "CERT_VALIDITY_STATES",
+    "CERT_VALIDITY_WITHIN",
     "DevTSA",
     "LocalRfc3161TSA",
     "Rfc3161HttpTSA",
@@ -62,6 +68,26 @@ __all__ = [
 _ID_CT_TST_INFO = "tst_info"
 _SHA256 = "sha256"
 
+#: ``TimestampInfo.cert_validity`` values.
+#:
+#: ``"within"`` and ``"not-applicable"`` are both non-findings, but they are not
+#: the same non-finding: the first means the certificate's validity period was
+#: read and ``gen_time`` fell inside it, the second means the token carries no
+#: X.509 certificate to read (the dev authority). ``"not-checked"`` is the
+#: default a caller sees only if a future token kind is added without deciding.
+CERT_VALIDITY_WITHIN = "within"
+CERT_VALIDITY_EXPIRED = "expired"
+CERT_VALIDITY_NOT_YET_VALID = "not-yet-valid"
+CERT_VALIDITY_NOT_APPLICABLE = "not-applicable"
+CERT_VALIDITY_NOT_CHECKED = "not-checked"
+CERT_VALIDITY_STATES = (
+    CERT_VALIDITY_WITHIN,
+    CERT_VALIDITY_EXPIRED,
+    CERT_VALIDITY_NOT_YET_VALID,
+    CERT_VALIDITY_NOT_APPLICABLE,
+    CERT_VALIDITY_NOT_CHECKED,
+)
+
 #: Exactly what ``trusted_certs`` means, in one place, quotable by embedders.
 #:
 #: ``timestamp_authority_trusted`` gates every READY verdict this project emits,
@@ -71,12 +97,21 @@ _SHA256 = "sha256"
 #: issued** that certificate (one hop, signature and issuer/subject names
 #: verified by ``cryptography``, any key type).
 #:
-#: It is **not** X.509 path validation. Not checked, and therefore not claimed:
-#: intermediates are never discovered or walked, so a root two hops above the
-#: responder does not chain; certificate validity periods are not consulted, at
-#: ``gen_time`` or now; basic constraints, key usage, extended key usage
-#: (including ``id-kp-timeStamping``), name constraints, and policy constraints
-#: are not enforced; and no revocation state (CRL/OCSP) is fetched or honoured.
+#: One thing beyond the match **is** checked, and is the reason an anchor can now
+#: fail on a certificate it does match: the signing certificate must have been
+#: inside its own validity period at the token's ``gen_time``. A key rotated out
+#: years ago therefore stops minting trusted tokens, while an old token minted
+#: while its authority was live keeps verifying forever (issue #204). The
+#: outcome is reported in its own ``cert_validity`` field, so "checked and fine"
+#: is distinguishable from "not checked".
+#:
+#: It is still **not** X.509 path validation. Not checked, and therefore not
+#: claimed: intermediates are never discovered or walked, so a root two hops
+#: above the responder does not chain; validity is compared at ``gen_time``
+#: only, never at ``now``, and only for the signing certificate, not for any
+#: anchor above it; basic constraints, key usage, extended key usage (including
+#: ``id-kp-timeStamping``), name constraints, and policy constraints are not
+#: enforced; and no revocation state (CRL/OCSP) is fetched or honoured.
 #:
 #: The practical consequence for anyone anchoring a real authority: supply the
 #: certificate that **issued** the responder certificate, or pin the responder
@@ -89,10 +124,12 @@ _SHA256 = "sha256"
 #: which of the three anchor outcomes occurred.
 ANCHOR_RULE = (
     "A certificate anchor is accepted when it is the token's signing certificate "
-    "(pinned by fingerprint) or the certificate that directly issued it. This is a "
-    "one-hop check, not path building: intermediates are not discovered, and validity "
-    "periods, basic constraints, key usage, name constraints, and revocation are not "
-    "checked. Supply the issuing certificate, not a root above it."
+    "(pinned by fingerprint) or the certificate that directly issued it, and the "
+    "signing certificate was inside its own validity period at the token's genTime. "
+    "This is a one-hop check, not path building: intermediates are not discovered; "
+    "validity is compared at genTime only, never at now, and only for the signing "
+    "certificate; and basic constraints, key usage, name constraints, and revocation "
+    "are not checked. Supply the issuing certificate, not a root above it."
 )
 
 # Referenced by name (not an inline `except (...)`) so the formatter cannot rewrite
@@ -180,6 +217,12 @@ class TimestampInfo:
     digest_hex: str
     trusted_chain: bool
     note: str = ""
+    #: Whether the signing certificate was inside its own validity period at
+    #: ``gen_time`` — one of :data:`CERT_VALIDITY_STATES`. Reported separately
+    #: from ``trusted_chain`` on purpose (issue #204): a recipient has to be
+    #: able to tell "expiry was checked and was fine" from "expiry was not
+    #: checked", and a single boolean cannot say both.
+    cert_validity: str = CERT_VALIDITY_NOT_CHECKED
 
 
 @runtime_checkable
@@ -295,6 +338,9 @@ def _verify_dev_token(token: TimestampToken, digest_hex: str) -> TimestampInfo:
         digest_hex=digest_hex,
         trusted_chain=False,
         note="non-production dev TSA (local key, no trusted certificate chain)",
+        # There is no X.509 certificate here to have a validity period, which is
+        # a different statement from "it was in date" and gets a different value.
+        cert_validity=CERT_VALIDITY_NOT_APPLICABLE,
     )
 
 
@@ -517,14 +563,14 @@ def _verify_rfc3161_token(
         raise TimestampError(f"malformed RFC 3161 token: {exc}") from exc
 
     try:
-        trusted, gen_time = _verify_rfc3161_fields(
+        trusted, gen_time, validity, anchored = _verify_rfc3161_fields(
             signed_data, tst_info, content_der, digest_hex, trusted_certs
         )
     except TimestampError:
         raise
     except Exception as exc:
         raise TimestampError(f"malformed RFC 3161 token: {exc}") from exc
-    note = _anchor_note(trusted, trusted_certs)
+    note = _anchor_note(trusted, trusted_certs, validity=validity, anchored=anchored)
     return TimestampInfo(
         kind=TokenKind.RFC3161.value,
         tsa_name=token.tsa_name,
@@ -532,11 +578,18 @@ def _verify_rfc3161_token(
         digest_hex=digest_hex,
         trusted_chain=trusted,
         note=note,
+        cert_validity=validity,
     )
 
 
-def _anchor_note(trusted: bool, trusted_certs: list[crypto_x509.Certificate] | None) -> str:
-    """Say which of the three anchor outcomes happened, not just "untrusted".
+def _anchor_note(
+    trusted: bool,
+    trusted_certs: list[crypto_x509.Certificate] | None,
+    *,
+    validity: str = CERT_VALIDITY_NOT_CHECKED,
+    anchored: bool = False,
+) -> str:
+    """Say which of the anchor outcomes happened, not just "untrusted".
 
     "No anchor was supplied" and "an anchor was supplied and did not chain" are
     different facts with different next steps, and collapsing them was the
@@ -544,9 +597,28 @@ def _anchor_note(trusted: bool, trusted_certs: list[crypto_x509.Certificate] | N
     root, passed it, and got NOT TRUSTED was told to do the thing they had just
     done, with nothing distinguishing their anchor failing to chain from the
     packet's timestamps not being from who it says.
+
+    Issue #204 adds a fourth outcome with the same requirement. An anchor that
+    matched but was not live at ``gen_time`` must not read as "you supplied the
+    wrong certificate" — the recipient supplied exactly the right one, and the
+    finding is against the authority, not against them.
     """
     if trusted:
         return ""
+    if anchored and validity == CERT_VALIDITY_EXPIRED:
+        return (
+            "signature valid, and the supplied anchor does match this token's signing "
+            "certificate — but that certificate had already expired when the token was "
+            "minted, so it is not evidence of a live authority. Your anchor is not the "
+            "problem; the timestamp is"
+        )
+    if anchored and validity == CERT_VALIDITY_NOT_YET_VALID:
+        return (
+            "signature valid, and the supplied anchor does match this token's signing "
+            "certificate — but that certificate was not yet valid when the token was "
+            "minted, so its genTime and its issuance disagree. Your anchor is not the "
+            "problem; the timestamp is"
+        )
     if not trusted_certs:
         return (
             "signature valid; no certificate anchor was supplied, so authority trust "
@@ -567,8 +639,13 @@ def _verify_rfc3161_fields(
     content_der: bytes,
     digest_hex: str,
     trusted_certs: list[crypto_x509.Certificate] | None,
-) -> tuple[bool, datetime]:
-    """Validate the hostile, nested fields inside an already-decoded token."""
+) -> tuple[bool, datetime, str, bool]:
+    """Validate the hostile, nested fields inside an already-decoded token.
+
+    Returns ``(trusted, gen_time, cert_validity, anchored)``. ``anchored`` is the
+    raw anchor-match result and ``trusted`` is that result *after* the validity
+    gate, so the note can tell a reader which of the two actually failed.
+    """
     imprint = tst_info["message_imprint"]
     if imprint["hash_algorithm"]["algorithm"].native != _SHA256:
         raise TimestampError("token imprint is not SHA-256")
@@ -584,11 +661,36 @@ def _verify_rfc3161_fields(
         raise TimestampError("token does not contain its signing certificate")
 
     _verify_signed_attrs(content_der, signer_info, signer_cert)
-    trusted = _verify_cert_chain(signer_cert, trusted_certs)
     gen_time = tst_info["gen_time"].native
     if not isinstance(gen_time, datetime):
         raise TimestampError("token has no genTime")
-    return trusted, gen_time
+    # genTime is read before the anchor is judged because the anchor decision now
+    # depends on it: a matching certificate that was not live when the token was
+    # minted is not an anchor (issue #204).
+    validity = _cert_validity_at(signer_cert, gen_time)
+    anchored = _verify_cert_chain(signer_cert, trusted_certs)
+    trusted = anchored and validity == CERT_VALIDITY_WITHIN
+    return trusted, gen_time, validity, anchored
+
+
+def _cert_validity_at(cert: crypto_x509.Certificate, gen_time: datetime) -> str:
+    """Whether ``cert`` was inside its own validity period at ``gen_time``.
+
+    Compared against the token's ``gen_time`` and never against the wall clock.
+    Checking against now would un-trust every correctly issued archived packet
+    the moment its authority rotated a key, which inverts what a timestamp is
+    for: a 2021 packet must still verify in 2031.
+
+    ``gen_time`` comes out of ``asn1crypto`` timezone-aware, but it is parsed
+    from an attacker-supplied token, so a naive value is coerced to UTC rather
+    than allowed to raise a ``TypeError`` out of a comparison.
+    """
+    moment = gen_time if gen_time.tzinfo is not None else gen_time.replace(tzinfo=UTC)
+    if moment < cert.not_valid_before_utc:
+        return CERT_VALIDITY_NOT_YET_VALID
+    if moment > cert.not_valid_after_utc:
+        return CERT_VALIDITY_EXPIRED
+    return CERT_VALIDITY_WITHIN
 
 
 def _find_signer_cert(
@@ -652,13 +754,22 @@ def _verify_cert_chain(
     """Whether one supplied anchor **is** the signing certificate or **directly issued** it.
 
     This is deliberately a *one-hop* check, not path building: no intermediate
-    is discovered, no validity period, basic-constraints, key-usage, name
-    constraint, policy, or revocation state is consulted. See
-    :data:`ANCHOR_RULE` for the full statement of what a ``True`` here does and
-    does not mean, and ``docs/verifier-decision-table.md`` §5 for the reviewer
-    view. The rule is not widened silently: widening it would mean this project
-    hand-rolling X.509 path validation inside the one function every READY
-    verdict rests on (issue #159).
+    is discovered, and no basic-constraints, key-usage, name constraint, policy,
+    or revocation state is consulted.
+
+    **This function does not consult validity periods either, and a ``True``
+    here is therefore not on its own a trusted chain.** Its caller,
+    :func:`_verify_rfc3161_fields`, gates this result on
+    :func:`_cert_validity_at` before anything reports ``trusted_chain`` (issue
+    #204). The two are kept apart so the note can say which of them failed:
+    "your anchor did not chain" and "your anchor is right but the authority's
+    certificate was dead when it signed" send a recipient to opposite places.
+
+    See :data:`ANCHOR_RULE` for the full statement of what a trusted verdict does
+    and does not mean, and ``docs/verifier-decision-table.md`` §5 for the
+    reviewer view. The rule is not widened silently: widening it further would
+    mean this project hand-rolling X.509 path validation inside the one function
+    every READY verdict rests on (issue #159).
     """
     if not trusted_certs:
         return False

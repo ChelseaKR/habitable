@@ -358,7 +358,8 @@ def default_config_toml(*, language: str = "en") -> str:
         '# footer = "Prepared by <your tenant union>. Not legal advice."',
         "",
         "# Optional defaults for generated repair-request letters (presentation only).",
-        "# jurisdiction selects a built-in framing profile (generic | us_habitability);",
+        "# jurisdiction selects a built-in framing profile "
+        "(generic | us_habitability | ew_disrepair);",
         "# the built-ins make no statute-specific claim. Override wording you have",
         "# locally confirmed via header/footer. Not legal advice. Example:",
         "# [letter]",

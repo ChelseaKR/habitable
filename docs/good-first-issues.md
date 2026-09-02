@@ -97,6 +97,12 @@ They are framed as *kinds of work that are wanted*, not as numbered issues — t
 maintainer will help you turn one into a scoped issue. Difficulty is a rough
 guide:
 
+> Some of the categories below already have concrete, scoped issues filed and
+> labeled [`good first issue`](https://github.com/ChelseaKR/habitable/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22)
+> on GitHub — each names a suggested shape and a "done when." Pick one of
+> those directly, or read on for the broader map and ask the maintainer to help
+> scope something from it.
+
 - 🟢 **Starter** — mostly self-contained; little of the engine needed.
 - 🟡 **Intermediate** — touches code paths or tests; read the surrounding layer.
 - 🔴 **Deep** — security/crypto/evidence-critical; **not** a first issue, listed

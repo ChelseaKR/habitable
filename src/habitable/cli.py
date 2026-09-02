@@ -32,6 +32,7 @@ from .crypto import KDF_PROFILES, PublicIdentity
 from .errors import HabitableError, SyncError
 from .i18n import DEFAULT_LOCALE, cli_text, format_datetime, language_name, resolve_locale
 from .letter import LetterOptions, RepairLetter, build_letter, render_letter_html
+from .model import ISSUE_CATEGORIES, ISSUE_SEVERITIES
 from .obslog import configure_logging, enabled_from_env, log_event
 from .packet import build_packet
 from .pairing import accept_pairing_material, create_pairing_material
@@ -151,10 +152,16 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_issue = sub.add_parser("issue", help="add an issue to the case")
     add_vault(p_issue)
-    p_issue.add_argument("--category", required=True)
+    # Issue #206: these took arbitrary free text while `timeline --type`/`--source`
+    # next door were enum-constrained, so a mistyped category was accepted silently
+    # and -- with no correction path and export scoping blocked -- rode into the
+    # exported packet. Entry validation only; stored free text stays readable.
+    p_issue.add_argument("--category", required=True, choices=ISSUE_CATEGORIES)
     p_issue.add_argument("--room", default="")
     p_issue.add_argument("--title", default="")
-    p_issue.add_argument("--severity", default="")
+    p_issue.add_argument("--severity", default="", choices=("", *ISSUE_SEVERITIES))
+    p_issue.add_argument("--other-label", default="", help="required with --category other")
+    p_issue.add_argument("--severity-detail", default="", help="required with --severity other")
     p_issue.add_argument("--description", default="")
     p_issue.set_defaults(func=_cmd_issue)
 
@@ -431,7 +438,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_letter.add_argument("--from-name", default="", help="sender name")
     p_letter.add_argument("--from-contact", default="", help="sender phone/email")
     p_letter.add_argument(
-        "--jurisdiction", default="", help="framing profile: generic | us_habitability"
+        "--jurisdiction",
+        default="",
+        help="framing profile: generic | us_habitability | ew_disrepair",
     )
     p_letter.add_argument("--cure-days", type=int, help="repair deadline in days")
     p_letter.add_argument("--date", default="", help="letter date (ISO; default today)")
@@ -816,16 +825,34 @@ def _cmd_id(args: argparse.Namespace) -> int:
 
 
 def _cmd_issue(args: argparse.Namespace) -> int:
+    # `other` is a real answer, not a way around the vocabulary: it has to say what
+    # it means, exactly as `timeline --type other` requires `--other-label`. An
+    # unlabelled `other` is the free-text hole reopened under a different name.
+    if args.category == "other" and not args.other_label.strip():
+        print(
+            "habitable: error: --category other requires --other-label describing the condition",
+            file=sys.stderr,
+        )
+        return 2
+    if args.severity == "other" and not args.severity_detail.strip():
+        print(
+            "habitable: error: --severity other requires --severity-detail",
+            file=sys.stderr,
+        )
+        return 2
+
     vault = _open(args)
+    category = args.other_label.strip() if args.category == "other" else args.category
+    severity = args.severity_detail.strip() if args.severity == "other" else args.severity
     issue_id = vault.document.add_issue(
-        category=args.category,
+        category=category,
         room=args.room,
         title=args.title,
-        severity=args.severity,
+        severity=severity,
         description=args.description,
     )
     vault.save()
-    print(f"habitable: added issue {issue_id} ({args.category})")
+    print(f"habitable: added issue {issue_id} ({category})")
     return 0
 
 

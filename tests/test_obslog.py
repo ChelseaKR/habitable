@@ -197,7 +197,7 @@ def _run_flow(
                 "--passphrase",
                 passphrase,
                 "--category",
-                "plumbing",
+                "water",
                 "--title",
                 title,
             ]

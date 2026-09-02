@@ -31,6 +31,25 @@ __all__ = [
 _DEFAULT_LANG = "en"
 
 
+def _resolve_lang(lang: str, available: Iterable[str]) -> str:
+    """The supported primary subtag of ``lang``, else :data:`_DEFAULT_LANG`.
+
+    One shared resolver rather than three hand-rolled ones. Issue #210: two of
+    this module's three lookups normalized and the third did an exact-match
+    ``in``, so ``habitable init --lang es-MX`` produced a Spanish packet with
+    "Scope of this export" alone reverting to English. The functions had drifted
+    apart precisely because each carried its own copy of the rule.
+
+    Mirrors ``habitable.i18n.normalize_locale`` (underscore and hyphen forms,
+    case-insensitive) but is written locally: this module is rendered into
+    packets and is deliberately free of i18n's runtime, and duplicating four
+    lines beats an import that widens what a renderer pulls in. The behaviours
+    are pinned against each other by test.
+    """
+    primary = lang.replace("_", "-").split("-", 1)[0].strip().lower()
+    return primary if primary in available else _DEFAULT_LANG
+
+
 @dataclass(frozen=True, slots=True)
 class ProofStatement:
     """The localized 'what this proves / what it does not' text for a packet."""
@@ -219,7 +238,7 @@ _TRUST_TEXT: dict[str, PacketTrustText] = {
 
 def proof_statement(lang: str) -> ProofStatement:
     """Return the proof statement for ``lang``, falling back to English."""
-    return _STATEMENTS.get(lang.lower().split("-", 1)[0], _STATEMENTS[_DEFAULT_LANG])
+    return _STATEMENTS[_resolve_lang(lang, _STATEMENTS)]
 
 
 def shared_metadata_may_be_retained(disclosures: Iterable[object]) -> bool:
@@ -261,7 +280,7 @@ def scope_statement(
     ``since`` remain compatibility inputs for rendering previously emitted packets;
     they are not available packet-v3 export modes.
     """
-    resolved = lang if lang in _SCOPE else _DEFAULT_LANG
+    resolved = _resolve_lang(lang, _SCOPE)
     strings = _SCOPE[resolved]
     is_issue_scope = scope_type == "issue" and issue_id
     statement = strings["issue"].format(issue_id=issue_id) if is_issue_scope else strings["unit"]
@@ -313,4 +332,4 @@ _SCOPE: dict[str, dict[str, str]] = {
 
 def packet_trust_text(lang: str) -> PacketTrustText:
     """Return localized human-view trust text, falling back to English."""
-    return _TRUST_TEXT.get(lang.lower().split("-", 1)[0], _TRUST_TEXT[_DEFAULT_LANG])
+    return _TRUST_TEXT[_resolve_lang(lang, _TRUST_TEXT)]
