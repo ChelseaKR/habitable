@@ -19,6 +19,20 @@ _DESCRIPTION = (
     "Habitable Evidence helps tenants and unions document repairs, notices, photos, and "
     "timelines offline—then share a packet anyone can verify."
 )
+# A share card is only a share card at the shape the networks crop to. The site
+# shipped a 2200x3000 portrait screenshot as `og:image`, which LinkedIn, Slack,
+# and X centre-crop to a landscape box: the title and the packet both fell out
+# of frame. 1200x630 is the size every one of them renders whole.
+_SOCIAL_CARD = "img/social-card.png"
+_SOCIAL_CARD_URL = f"{_CANONICAL}{_SOCIAL_CARD}"
+_SOCIAL_CARD_SIZE = (1200, 630)
+
+
+def _png_size(path: Path) -> tuple[int, int]:
+    """Width and height from a PNG IHDR, without a decoder dependency."""
+    header = path.read_bytes()[:24]
+    assert header[:8] == b"\x89PNG\r\n\x1a\n", f"{path} is not a PNG"
+    return int.from_bytes(header[16:20], "big"), int.from_bytes(header[20:24], "big")
 
 
 class _LandingParser(HTMLParser):
@@ -112,24 +126,49 @@ def test_landing_metadata_is_complete_and_consistent() -> None:
         "og:url": _CANONICAL,
         "og:title": _TITLE,
         "og:description": _DESCRIPTION,
-        "og:image": f"{_CANONICAL}img/app-en.png",
+        "og:image": _SOCIAL_CARD_URL,
         "og:image:type": "image/png",
-        "og:image:width": "2200",
-        "og:image:height": "3000",
+        "og:image:width": str(_SOCIAL_CARD_SIZE[0]),
+        "og:image:height": str(_SOCIAL_CARD_SIZE[1]),
     }
     assert open_graph.items() >= expected_open_graph.items()
 
     expected_twitter = {
-        "twitter:card": "summary",
+        "twitter:card": "summary_large_image",
         "twitter:title": _TITLE,
         "twitter:description": _DESCRIPTION,
-        "twitter:image": f"{_CANONICAL}img/app-en.png",
+        "twitter:image": _SOCIAL_CARD_URL,
     }
     assert named.items() >= expected_twitter.items()
 
     favicons = [link for link in parser.links if link.get("rel") == "icon"]
     assert favicons == [{"rel": "icon", "href": "img/icon.svg", "type": "image/svg+xml"}]
     assert (_SITE / favicons[0]["href"]).is_file()
+
+
+def test_every_page_shares_a_landscape_card_that_is_actually_published() -> None:
+    """An `og:image` is a promise about bytes a stranger's machine will fetch.
+
+    Two ways it goes wrong quietly, and both had happened here: the URL can
+    name a file that is not in `site/`, so the share renders blank; or the file
+    can be there at the wrong shape, so the networks crop it and the card that
+    reaches a reader is a slice of a screenshot with the title cut off.
+    """
+    card = _SITE / _SOCIAL_CARD
+    assert card.is_file(), f"{_SOCIAL_CARD} is referenced but not published"
+    assert _png_size(card) == _SOCIAL_CARD_SIZE
+
+    for path, _, _ in _PUBLISHED:
+        parser = _parse(_page_file(path).read_text(encoding="utf-8"))
+        named = _meta_values(parser, "name")
+        open_graph = _meta_values(parser, "property")
+        page = path or "/"
+        assert open_graph["og:title"], page
+        assert open_graph["og:description"], page
+        assert open_graph["og:image"] == _SOCIAL_CARD_URL, page
+        assert open_graph["og:image:alt"], page
+        assert named["twitter:card"] == "summary_large_image", page
+        assert named["twitter:image"] == _SOCIAL_CARD_URL, page
 
 
 def test_structured_data_matches_visible_project_claims() -> None:
@@ -187,57 +226,65 @@ def test_structured_data_matches_visible_project_claims() -> None:
 # gone eleven weeks stale exactly that way. So the date is pinned to the bytes:
 # edit a page and the digest stops matching, and the failure says to move both.
 _PUBLISHED: tuple[tuple[str, str, str], ...] = (
-    ("", "2026-07-23", "86409460d70fe37379a25fd7cc03097170b581f1212ae4e68fc2bbedccff8624"),
+    (
+        "",
+        "2026-09-01",
+        "676c6a85f4a55f64326552f77b9ca9583c694da03d65703ed1dfaefb66b43218",
+    ),
     (
         "how-it-works/",
-        "2026-08-28",
-        "8db5441de82be7d87480a22f6fc8c6c157618b287c70a06c434da015e3d60a7c",
+        "2026-09-01",
+        "64453f5aa76d01ad5d94ecbaa197ff7c478582a55948011607edf6fb202f5561",
     ),
     (
         "documentation-checklist/",
-        "2026-08-28",
-        "2ad9d0aea40433da765366c6609c992d4b958edd97f3b3b2416479c2fb107040",
+        "2026-09-01",
+        "0df61f3bb5268997e1d8e71edc310900bd261186e7d216e3ed00006b6b4a7764",
     ),
     (
         "guides/preserve-maintenance-request-records/",
-        "2026-08-28",
-        "12908268e99a65165c182bd8a4c6bb4950ad0410fb120ee99ffc19e75fe76004",
+        "2026-09-01",
+        "9afc51ef17922e5ea27ae9162535a5be5fdbd470d367f58598da5c29bc2f8424",
     ),
     (
         "guides/housing-inspection-records/",
-        "2026-08-28",
-        "026779b8b912f51cb7d90f59803595f5a56507ad1aa0bf88720a8677881f6f7b",
+        "2026-09-01",
+        "356a276aa0f841f29b2aeb53e0c290eebde22703338e1d3db6df38eaf551cbc9",
     ),
     (
         "tenant-unions/",
-        "2026-08-28",
-        "8101d8f0a67eba6ac4b79a3ccf2f7e180311ef0ce8a4bfb9365a9556ee282f94",
+        "2026-09-01",
+        "0a1d805ae1b455ad701897d4e3751c17b29834c9d1d58800d34a7be8fe211f00",
     ),
     (
         "templates/tenant-union-building-condition-survey/",
-        "2026-08-28",
-        "a60ba212a72b342244aa4591028f25a497e4aa3db69080981b311dcf59549426",
+        "2026-09-01",
+        "c74d777665cb771f64b46696f51a0ad0395ffdb968714cdb119f686362058bfb",
     ),
     (
         "legal-aid-reviewers/",
-        "2026-08-28",
-        "f1ac30292a59341d4f62f11820138ca1447c80465563723dbcc9ef6f6d1e8896",
+        "2026-09-01",
+        "39fd69af675687a909abc30f646c7517b6e20edc9a8f15a21d1889d165f031a7",
     ),
     (
         "inspectors-code-enforcement/",
-        "2026-08-28",
-        "29a6a9e3ad75df355ec54625ac1b890a04215ae39c6c6669ebfb6ec0e5dc4f86",
+        "2026-09-01",
+        "b6cb67fe3dc663f4483bcb3811a16719fa4194090e3d53d153fe0c5ab453bbf3",
     ),
     (
         "trust-limitations/",
-        "2026-08-28",
-        "12fb29a5140acf17dd0a551432d73d26489f34c5a9478a59d859432de323d5fe",
+        "2026-09-01",
+        "12b9d26730b25a6c7ec9f9502392e99bc4e581b587acd85aec642f3892a8b07b",
     ),
-    ("review/", "2026-08-28", "8010076583467d4e4ca0a9e8c7abce17b25b5f5f8f3ca1ce1c5bdaa9c7f73fbc"),
+    (
+        "review/",
+        "2026-09-01",
+        "d1281304b78d1bc1295da22739e30cbfca4db56cd8dad32b5eacd2bb72de870a",
+    ),
     (
         "review/changes/",
-        "2026-08-28",
-        "ee38956b23857d12dc77c5e364d99f95df2e27b1b67ea37c8a6fa21cf553448e",
+        "2026-09-01",
+        "80bd6f2af311fb1244cd9fb12c40e1fc649cfb96912e55552b01c00c2a267826",
     ),
 )
 

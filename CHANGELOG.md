@@ -68,6 +68,27 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   2.4.3); with a generous settle, none did. Focus is now snapped into view
   instantly, leaving anchor navigation smooth.
 
+- **Shared links no longer show a cropped slice of a portrait screenshot.** Every
+  page advertised `img/app-en.png` — 2200×3000 — as its `og:image`, with
+  `twitter:card` set to `summary`. LinkedIn, Slack, and X all fit a share card to
+  a landscape box, so what reached a reader was a centre crop of a phone-shaped
+  screenshot with the project name outside the frame. The site now ships
+  `site/img/social-card.png` at 1200×630, the size all three render whole, and
+  `twitter:card` is `summary_large_image`. The landing page's `og:image:width`,
+  `og:image:height`, and its `ImageObject` are corrected to match the bytes; the
+  screenshots themselves are unchanged and still shown on the page and in the
+  README. `tests/test_site_seo.py` now reads the PNG header, so a card that is
+  missing from `site/` or is not 1200×630 fails the gate rather than failing
+  silently in someone else's feed.
+
+- **The README's live demo and screenshots were below the fold.** The link to
+  <https://habitable.chelseakr.com/> first appeared on line 46 of 584, under the
+  status and provenance prose, and the two screenshots were 100 lines below that
+  — so the two things that show a reader what this is were the last two they
+  reached. Both now sit directly under the H1. Nothing was deleted: the status
+  block, the supply-chain badge, and the "no hosted app" explanation are intact
+  in the same words, just after the demo instead of in front of it.
+
 ### Added
 
 - **`habitable issue --category`/`--severity` are validated against a vocabulary**
