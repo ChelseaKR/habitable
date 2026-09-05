@@ -10,7 +10,7 @@
 # quietly defeat the gate. CI runs serial, so this was latent rather than live; it is
 # now structural instead of conventional.
 .NOTPARALLEL:
-.PHONY: help bootstrap install lock-check fmt lint type test cov i18n i18n-usage doc-links markers readability fuzz verify audit a11y integration demo site-sample build repro relay-repro clean
+.PHONY: help bootstrap install lock-check fmt lint type test cov i18n i18n-usage doc-links markers readability fuzz perf-profile verify audit a11y integration demo site-sample build repro relay-repro clean
 
 # The character class needs the digits. Without them this silently skipped
 # `i18n`, `i18n-usage` and `a11y` -- three documented targets, one of them a merge
@@ -108,6 +108,13 @@ fuzz: ## Replay the OSS-Fuzz harnesses over their committed seed corpora (no Ath
 	# fuzzing needs upstream OSS-Fuzz acceptance, which is not done (issue #256).
 	uv run python fuzz/fuzz_verify_packet.py
 	uv run python fuzz/fuzz_timestamp_token.py
+
+perf-profile: ## Characterise each budgeted local-path operation (reports; never gates — issue #258)
+	# Not in `verify`, for two reasons. Timing on a shared CI runner is not a
+	# measurement, and the one operation this most wants to watch -- scrypt -- is
+	# demonstrably the least load-stable thing in the tree (+38% under load), which
+	# is a recipe for a flaky gate rather than a signal.
+	uv run python scripts/report_perf_profile.py
 
 readability: ## Report the reading grade of the English app copy (reports; never gates — issue #246)
 	# Deliberately NOT part of `verify`. A hard readability threshold would press
