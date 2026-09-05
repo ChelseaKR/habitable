@@ -94,9 +94,12 @@ Worth knowing so you review what a recipient really sees:
   implemented for synthetic evaluation; it is not a legal, medical, inspector, or
   accessibility approval."*
 - `packet.html` — the main accessible rendering a recipient reads — carries the project's
-  standing disclosures but **does not mention the profile at all.** If you think a
-  profile's disclosure needs to reach the recipient, say so; today it reaches them only
-  through the handoff page and `bundle.json`.
+  standing disclosures and, since issue #277, a **Workflow profile** block directly under
+  the cover sheet: the profile's name and summary, the same external-review warning, and
+  the profile's own disclosure sentences. Until that fix those limits reached a recipient
+  only through the handoff page and `bundle.json`, which is backwards — the reader most
+  likely to over-read a packet is the one handed nothing else. The wording of that block is
+  in scope for your review.
 
 ## Seeing it for yourself (about ten minutes, no real data)
 

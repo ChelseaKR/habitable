@@ -33,6 +33,21 @@ def build_handoff_manifest(
     so no section can honestly claim membership. Section-scoped counts return
     when routing does; until then the only counts in this manifest are
     ``counts``, which are bundle-wide and labelled as such.
+
+    Issue #277 put the choice the other way round: either give the sections
+    membership, or stop the profile summaries promising an ordering this manifest
+    does not produce. The summaries were corrected (see the note above
+    ``usecases._PROFILES``), because giving a section members is not a change
+    this module can make. Membership is a *fact about a record*, so recording it
+    means a field on ``Artifact``/``EvidenceRelationship`` -- case schema, sync,
+    packet format, and the verifier -- and deriving it here instead would mean
+    guessing, e.g. that a ``delivery_receipt`` artifact belongs to the "delivery"
+    section. ADR 0010 rejected exactly that when it rejected free-form tags:
+    "typos and inference replace reviewed semantics". Issue #181 is the same
+    lesson learned the expensive way -- v1 of this manifest handed every section
+    the whole bundle's ids, so a packet with no delivery receipt still rendered a
+    populated Delivery section. A section that claims a member it cannot justify
+    is worse than a section that claims none.
     """
     issues = _object_list(bundle.get("issues"))
     items = _object_list(bundle.get("items"))
