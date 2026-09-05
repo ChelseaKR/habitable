@@ -136,6 +136,8 @@ _ADDITIONAL_HONEST_LIMITS: dict[str, str] = {
     "msg_export_done_untrusted": "verdict: authority trust not established",
     "msg_export_done_warn": "verdict: an integrity or timestamp check failed",
     "proof_timestamped": "verdict plus the 'authority trust is checked separately' limit",
+    "record_permanence_help": "states a live limitation: a saved entry cannot be corrected",
+    "record_permanence_next": "says what to do about a mistake habitable cannot fix for you",
     "resolve_help": "privacy claim: only a file fingerprint leaves the device",
     "share_fact_local": "privacy property of the export",
     "share_fact_metadata": "privacy property of shared copies",
@@ -147,6 +149,13 @@ _ADDITIONAL_HONEST_LIMITS: dict[str, str] = {
     "strength_caveat": "says what record strength is NOT — not validity, not admissibility",
 }
 
+#: Deliberately **not** in the list above, on the same reasoning: ``record_permanence_
+#: practice`` ("Want to practise first? Run habitable demo in a terminal."). It is the
+#: way out of the limit ``record_permanence_help`` states, not a limit of its own, and a
+#: plain instruction to run one command is exactly the copy the grade 6-8 target exists
+#: for. ``record_permanence_next`` *is* declared, because it says what habitable cannot
+#: do for a mistake already in the record, not merely which button to press.
+#:
 #: Deliberately **not** in the list above: ``status_unreachable_next`` ("Check that
 #: habitable is still running on this device, then choose 'Try again'."). It is the
 #: recovery step for the limit that ``status_unreachable`` states, not a limit of its

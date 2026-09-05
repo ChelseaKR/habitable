@@ -641,6 +641,24 @@
             <textarea id="ai-description" name="description" rows="3"></textarea>
           </div>
         </fieldset>
+        <!-- Issue #241 / ADR 0017 follow-ups (b) and (c). Custody is append-only and
+             there is no correction path yet, so this is the one place a person learns
+             that BEFORE the record is written and the one place they are told what to
+             do about a mistake already in it. The practice line offers `habitable demo`,
+             which has always existed and was never offered where it is needed. -->
+        <div class="permanence-note">
+          <p data-i18n="record_permanence_help">Once you save this, it joins the record
+            and cannot be edited or deleted. habitable only ever adds to a record; it
+            will not quietly rewrite one. A mistyped room or title stays visible in the
+            exported packet, so check them now.</p>
+          <p data-i18n="record_permanence_next">Already saved a mistake? Leave it there.
+            Do not delete the case or start over: an unbroken record is the thing worth
+            having, and a mistake anyone can see is not a broken record. Tell the person
+            you hand the packet to what the correct detail is.</p>
+          <p data-i18n="record_permanence_practice">Want to practise first? Run habitable
+            demo in a terminal. It walks a whole synthetic case in its own temporary
+            folder and never touches this one.</p>
+        </div>
         <button type="submit" class="dialog-submit"
                 data-i18n="add_issue_submit">Start this repair trail</button>
       </form>

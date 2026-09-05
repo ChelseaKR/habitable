@@ -782,6 +782,19 @@ th {
 }
 .make-copy:hover,
 .dialog-submit:hover { background: var(--carbon-bright); }
+/* Issue #241: the append-only limit and what to do about a mistake, sitting between
+   the last field and the button that makes the record permanent. Deliberately not
+   `.field-help` — this is a limit the reader has to actually read, not the faintest
+   text in the dialog — and deliberately not hideable, for the reason
+   `.strength-caveat` is not: a limit that a state can suppress is not a limit. */
+.permanence-note {
+  margin-block-start: 1rem;
+  padding: .8rem;
+  background: var(--screen);
+  border-inline-start: .35rem solid var(--carbon);
+}
+.permanence-note p { margin: 0; font-size: .82rem; }
+.permanence-note p + p { margin-block-start: .6rem; }
 .result {
   margin-block-start: 1rem;
   padding: 1rem;

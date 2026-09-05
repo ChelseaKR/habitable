@@ -151,7 +151,16 @@ def _build_parser() -> argparse.ArgumentParser:
     add_vault(p_id)
     p_id.set_defaults(func=_cmd_id)
 
-    p_issue = sub.add_parser("issue", help="add an issue to the case")
+    p_issue = sub.add_parser(
+        "issue",
+        help="add an issue to the case",
+        description=(
+            "Add an issue to the case. The record is append-only: an issue cannot be "
+            "edited or deleted afterwards, and habitable will not silently rewrite one, "
+            "so a mistyped value stays visible in the exported packet. To practise "
+            "without marking a real case, run `habitable demo`."
+        ),
+    )
     add_vault(p_issue)
     # Issue #206: these took arbitrary free text while `timeline --type`/`--source`
     # next door were enum-constrained, so a mistyped category was accepted silently
@@ -885,6 +894,14 @@ def _cmd_issue(args: argparse.Namespace) -> int:
     )
     vault.save()
     print(f"habitable: added issue {issue_id} ({category})")
+    # Issue #241 / ADR 0017 follow-ups (b) and (c). The moment the record is written is
+    # the point of pain: this is where a fat-fingered room name becomes permanent, so it
+    # is where the limit gets stated and where `habitable demo` — the practice case that
+    # already exists — is finally offered. Printed after the id so the line
+    # `tests/test_patterns.py` parses stays first.
+    locale = resolve_locale(vault.config.language)
+    print(f"           {cli_text('issue_append_only', locale)}")
+    print(f"           {cli_text('issue_practice_path', locale)}")
     return 0
 
 

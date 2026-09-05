@@ -16,6 +16,9 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 
+import pytest
+
+from habitable.cli import main
 from habitable.packet import _issue_json
 from habitable.vault import Vault
 
@@ -107,4 +110,80 @@ def test_a_stored_field_is_only_mutated_beside_an_append_only_record() -> None:
     assert "_append_timeline_binding" in window, (
         "the recurrence path no longer appends the timeline binding that makes its "
         "status mutation reconstructible by the packet's reader"
+    )
+
+
+def test_adding_an_issue_states_the_limit_and_offers_the_practice_case(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """ADR 0017 follow-ups (b) and (c): the CLI says it at the point of pain.
+
+    Decision 5 keeps `habitable issue correct` unbuilt, and that is right. It left
+    a second gap behind it, which is not a protocol question at all: a person who
+    mistypes a room name gets `added issue ISS-…` and nothing else, and learns that
+    the record is append-only only by hunting for an edit subcommand that does not
+    exist. The ADR separates the two on purpose -- the copy "does not wait for the
+    protocol" -- so the moment the record becomes permanent has to say so.
+
+    `habitable demo` is the other half. It has existed the whole time, writes to its
+    own temporary directory, and was never mentioned anywhere a person deciding
+    whether to type into a real case would see it.
+
+    The `added issue` line stays first because it is the only handle a person -- and
+    `tests/test_patterns.py` -- has on the id that was just written.
+    """
+    vault_path = tmp_path / "vault"
+    assert (
+        main(
+            [
+                "init",
+                str(vault_path),
+                "--case",
+                "case-4B",
+                "--unit",
+                "4B",
+                "--passphrase",
+                "test-passphrase",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "issue",
+                "--vault",
+                str(vault_path),
+                "--passphrase",
+                "test-passphrase",
+                "--category",
+                "mold",
+                "--room",
+                "bathrom",
+            ]
+        )
+        == 0
+    )
+    out = capsys.readouterr().out
+    lines = [line for line in out.splitlines() if line.strip()]
+
+    assert lines[0].startswith("habitable: added issue "), (
+        f"the id line must stay first and parseable; got {lines[0]!r}"
+    )
+    assert "cannot be edited or deleted" in out, (
+        "adding an issue never states the append-only limit, so the only way to "
+        f"learn it is to go looking for a correction path that does not exist; see {_ADR}"
+    )
+    assert "habitable demo" in out, (
+        "the practice case ADR 0017 follow-up (c) names is still not offered where "
+        f"someone about to type into a real case would see it; see {_ADR}"
+    )
+    # The rejected design must not reappear as advice (ADR 0017, "why the cheap
+    # paths were rejected"): the timeline is the dwelling's narrative, not a place
+    # to file case-file bookkeeping.
+    assert "timeline" not in out.casefold(), (
+        f"the CLI now recommends the correction path ADR 0017 rejected: {out!r}"
     )
