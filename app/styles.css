@@ -327,6 +327,21 @@ a { color: var(--carbon); text-underline-offset: .22em; }
   border-inline-start-color: var(--bad);
 }
 
+/* Issue #269: the failed-status state is a state, not a flash. It shares the
+   announcer's error palette but stays put until the status actually loads,
+   because the sentence a reader needs ("nothing below is current") has to still
+   be there when they look up from the numbers it is about. */
+.status-error {
+  margin-block-end: 1rem;
+  padding: .85rem 1rem;
+  color: var(--bad);
+  background: var(--bad-soft);
+  border-inline-start: .35rem solid var(--bad);
+}
+.status-error p { margin: 0 0 .5rem; }
+.status-error-line { font-weight: 700; }
+.status-error .text-button { color: inherit; }
+
 .trail-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -814,6 +829,13 @@ legend {
   inline-size: 1.2rem;
   block-size: 1.2rem;
   margin: .12rem 0 0;
+}
+/* Issue #270: a checkbox's help now lives inside its own grid item, so no
+   reflow can put another control between them. Column 2 lines it up under the
+   label rather than under the box. */
+.field-check > .field-help {
+  grid-column: 2;
+  margin-block-start: 0;
 }
 .link-evidence {
   grid-column: 1 / -1;

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable, Iterator
+from typing import Any
 
 import pytest
 
@@ -273,3 +274,168 @@ def test_tabbing_at_speed_never_leaves_focus_off_screen(served_app: str) -> None
             )
         finally:
             browser.close()
+
+
+# A description is only attached to its control if a *sighted* reader can see
+# that it is. This walks every aria-describedby pair in a real viewport and asks
+# whether anything else the reader would parse as a separate item has landed in
+# the gap between them.
+#
+# "Anything else" is every element that renders words of its own -- text in its
+# own child text nodes, not through a descendant -- plus every form control, so
+# a bare <select> with no text still counts. An element is only interposing when
+# it lies wholly inside the vertical band between the control and its
+# description *and* overlaps the description horizontally: in a multi-column
+# grid the neighbouring column is beside the pair, not between them, and
+# flagging it would make this check noise.
+_DESCRIBEDBY_ADJACENCY = """
+() => {
+  const MIN = 3;  // sub-pixel and sr-only (1x1) boxes are not things a reader sees
+  const visible = (el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width < MIN || r.height < MIN) return false;
+    if (el.checkVisibility && !el.checkVisibility({
+      contentVisibilityAuto: true, opacityProperty: true, visibilityProperty: true
+    })) return false;
+    // A closed <details> still reports boxes for its collapsed contents in
+    // Chromium; only its <summary> is on screen.
+    for (let a = el.parentElement; a; a = a.parentElement) {
+      if (a.tagName === 'DETAILS' && !a.open &&
+          a.firstElementChild && !a.firstElementChild.contains(el)) return false;
+    }
+    return true;
+  };
+  const items = [];
+  document.querySelectorAll('body *').forEach((el) => {
+    if (!visible(el)) return;
+    const ownText = Array.from(el.childNodes)
+      .filter((n) => n.nodeType === Node.TEXT_NODE)
+      .map((n) => n.textContent.trim())
+      .join('');
+    if (!ownText && !/^(input|select|textarea)$/i.test(el.tagName)) return;
+    items.push(el);
+  });
+  const name = (el) => (el.id ? '#' + el.id : el.tagName.toLowerCase())
+    + '[' + (el.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 30) + ']';
+
+  const findings = [];
+  const pairs = [];
+  document.querySelectorAll('[aria-describedby]').forEach((control) => {
+    if (!visible(control)) return;
+    control.getAttribute('aria-describedby').split(/\\s+/).filter(Boolean).forEach((id) => {
+      const description = document.getElementById(id);
+      if (!description || !visible(description)) return;
+      pairs.push(name(control) + ' -> #' + id);
+      const c = control.getBoundingClientRect();
+      const d = description.getBoundingClientRect();
+      const bandTop = Math.min(c.bottom, d.bottom);
+      const bandBottom = Math.max(c.top, d.top);
+      const between = [];
+      items.forEach((other) => {
+        if (other === control || other === description) return;
+        if (other.contains(control) || other.contains(description)) return;
+        if (control.contains(other) || description.contains(other)) return;
+        const r = other.getBoundingClientRect();
+        if (r.top < bandTop - 1 || r.bottom > bandBottom + 1) return;
+        if (r.right <= d.left + 1 || r.left >= d.right - 1) return;
+        between.push(name(other));
+      });
+      if (between.length) {
+        findings.push({
+          control: name(control),
+          description: '#' + id,
+          between: between,
+          gap: Math.round(d.top - c.bottom)
+        });
+      }
+    });
+  });
+  return { pairs: pairs, findings: findings };
+}
+"""
+
+#: The shell shows five described controls on the page itself and one in each of
+#: the capture, timeline and issue dialogs; every dialog is visited, so the walk
+#: measures at least this many pairs. A floor, not an exact count -- adding a
+#: description should not fail this test.
+_MIN_DESCRIBED_PAIRS = 7
+
+#: Every dialog is opened in turn so the controls inside it are measured too.
+#: They overlap each other when opened together, which would make the geometry
+#: meaningless, so each is opened and closed on its own.
+_DIALOGS = ("capture-dialog", "timeline-dialog", "artifact-dialog", "issue-dialog")
+
+
+@pytest.mark.a11y
+@pytest.mark.parametrize("width", [320, 1280])
+def test_every_description_renders_beside_the_control_it_describes(
+    served_app: str, width: int
+) -> None:
+    """Issue #270: at 320px a privacy warning reflowed under the wrong control.
+
+    ``#ex-originals-help`` -- "The originals ... can still hold location and other
+    hidden details, so include them only when the recipient needs them" -- was a
+    *sibling* of the checkbox it describes, two grid items further on. At desktop
+    width the two-column export fieldset happened to stack them; at 320px the grid
+    collapses to one column and the paragraph landed below the "Handoff view"
+    select instead. A sighted reader on a narrow phone therefore read a warning
+    about sending location data to a landlord as advice about choosing a handoff
+    view. ``aria-describedby`` was correct throughout, so screen readers were
+    fine and nothing in the suite went red: the same measurement found
+    ``#st-awaiting-help`` ("your photo is already sealed and safe...") reading as
+    help for "Photos" at every width below 900px.
+
+    The existing ``test_reflows_at_320px_without_horizontal_scroll`` passes on
+    both of those layouts, because nothing overflows -- the string fits, it just
+    lands in the wrong place. So this measures the thing that was actually wrong:
+    for every ``aria-describedby`` pair, in a real viewport, nothing a reader
+    would parse as a separate item may sit between the control and its
+    description. That closes the class rather than pinning the one instance, and
+    it fails on a fix that only moves the paragraph one slot up.
+
+    Both widths are measured: 320px is where the reflow broke it, and 1280px
+    proves the fix did not buy narrow-screen adjacency by breaking the desktop
+    layout it already had.
+    """
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except PlaywrightError as exc:
+            pytest.skip(f"Chromium not available: {exc}")
+        try:
+            page = browser.new_page(viewport={"width": width, "height": 900})
+            page.goto(served_app, wait_until="networkidle")
+            page.wait_for_timeout(400)
+            # The page stays measurable behind an open dialog, so each sweep sees
+            # the shell's own pairs again; key by (control, description) to count
+            # and report each pair once.
+            pairs: set[str] = set()
+            findings: dict[str, dict[str, Any]] = {}
+            sweeps = [None, *_DIALOGS]
+            for dialog in sweeps:
+                if dialog is not None:
+                    page.evaluate(f"() => document.getElementById({dialog!r}).showModal()")
+                    page.wait_for_timeout(150)
+                measured = page.evaluate(_DESCRIBEDBY_ADJACENCY)
+                pairs.update(str(pair) for pair in measured["pairs"])
+                for finding in measured["findings"]:
+                    findings[f"{finding['control']} -> {finding['description']}"] = finding
+                if dialog is not None:
+                    page.evaluate(f"() => document.getElementById({dialog!r}).close()")
+        finally:
+            browser.close()
+
+    # An empty findings list is the pass, so the count is what makes the silence
+    # audible: a markup change that hid every description would otherwise retire
+    # this check without a word (cf. test_aria_describedby_targets_exist).
+    assert len(pairs) >= _MIN_DESCRIBED_PAIRS, (
+        f"only {len(pairs)} visible aria-describedby pairs were measured at "
+        f"{width}px ({sorted(pairs)}), below the floor of {_MIN_DESCRIBED_PAIRS}. "
+        "Either the descriptions were removed or this probe is no longer finding "
+        "the page."
+    )
+    assert not findings, "\n".join(
+        f"{f['control']} is described by {f['description']}, but {f['gap']}px of "
+        f"other content sits between them at {width}px: {f['between']}"
+        for f in findings.values()
+    )

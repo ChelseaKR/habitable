@@ -303,3 +303,47 @@ def test_status_transition_announcement_carries_its_limit() -> None:
     assert "no longer waiting" in en["msg_timestamp_attached"].casefold()
     assert "authority" in en["msg_timestamp_attached"].casefold()
     assert "autoridad" in es["msg_timestamp_attached"].casefold()
+
+
+def test_the_unreachable_status_state_names_what_is_unknown_and_its_own_button() -> None:
+    """Issue #269: "Error" is not what a reader of an evidence tool needs to know.
+
+    When the first ``/api/status`` call fails, every number on the screen is
+    missing rather than zero, and the only honest thing to say is which. So the
+    state's copy has to do three jobs, in both locales: name the thing that could
+    not be reached, say that the values are unknown and not a result, and quote
+    the label of the button that gets the reader out — the same rule
+    ``test_copy_that_tells_you_to_press_a_button_quotes_that_button_s_real_label``
+    applies to the timestamp button, applied to a state that did not exist then.
+
+    ``status_unknown`` is checked against ``status_loading`` because reverting to
+    the placeholder is the precise failure this replaced: a frozen "Loading…"
+    where a custody status belongs is a claim-shaped absence.
+    """
+    en, es = _load(_EN), _load(_ES)
+    keys = (
+        "status_unreachable",
+        "status_unreachable_next",
+        "status_unreachable_retry",
+        "status_unknown",
+    )
+    for bundle, name in ((en, "en"), (es, "es")):
+        for key in keys:
+            assert key in bundle, f"{name}.json has no {key}; the failed status state is mute"
+            assert bundle[key].strip(), f"{name}.{key} is blank"
+        assert bundle["status_unknown"] != bundle["status_loading"], (
+            f"{name}.status_unknown is the loading placeholder again, which is the "
+            "state this replaced"
+        )
+        # The state names its own recovery, so renaming the button fails here.
+        assert bundle["status_unreachable_retry"] in bundle["status_unreachable_next"], (
+            f"{name}.status_unreachable_next does not quote the button it tells the "
+            f"reader to press ({bundle['status_unreachable_retry']!r}): "
+            f"{bundle['status_unreachable_next']!r}"
+        )
+
+    # The honest sentence says what is unknown, not merely that something failed.
+    assert "could not reach" in en["status_unreachable"].casefold(), en["status_unreachable"]
+    assert "not zero" in en["status_unreachable"].casefold(), en["status_unreachable"]
+    assert "no se pudo conectar" in es["status_unreachable"].casefold(), es["status_unreachable"]
+    assert "no es cero" in es["status_unreachable"].casefold(), es["status_unreachable"]

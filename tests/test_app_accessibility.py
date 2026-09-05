@@ -351,3 +351,178 @@ def test_awaiting_to_timestamped_is_announced_once_and_never_on_first_paint(
             )
         finally:
             browser.close()
+
+
+# --- A failed status fetch is a state, not a frozen placeholder (issue #269) ---
+#
+# `app/index.html` ships "Loading…" inside #st-unit, #st-fingerprint and
+# #rail-custody, and `renderStatus()` replaces it once /api/status answers. When
+# the first call fails -- the server stopped, the laptop slept, the connection
+# dropped -- nothing replaced anything: the announcer said "Something went wrong:
+# Failed to fetch" and cleared, and every readout sat at "Loading…" forever with
+# no way back on the screen.
+#
+# In an evidence tool that is worse than a blank page. A reader looking at a
+# placeholder where a custody verdict belongs cannot tell "not loaded" from
+# "nothing to report", and cannot tell an unknown count from zero. The failure
+# has to say what is unknown, in the page, and carry its own recovery.
+
+
+def _bundle(path: Path) -> dict[str, str]:
+    return dict(json.loads(path.read_text(encoding="utf-8")))
+
+
+#: Readouts whose markup fallback is the "Loading…" placeholder, plus the two
+#: whose "—" is indistinguishable from a real zero.
+_STATUS_READOUT_IDS = ("st-unit", "st-fingerprint", "rail-custody", "st-awaiting", "st-custody")
+
+
+@pytest.mark.a11y
+def test_a_failed_status_fetch_says_what_is_unknown_and_offers_a_way_back(
+    make_vault: Callable[..., Vault],
+) -> None:
+    """The route is aborted, which is exactly how issue #269 was found.
+
+    Three things have to be true of the failure, and none of them were:
+
+    1. no readout still claims to be loading, and none of them reads as a number
+       the app does not have. Each says the same explicit unknown, taken from the
+       bundle rather than hard-coded here so a copy pass moves it in one place.
+    2. the page itself carries the honest sentence -- "could not reach the local
+       app server, so nothing below is current" -- and the way back. The
+       announcer is a transient region; it is empty again by the time somebody
+       looks up from the screen, which is why naming the recovery only there was
+       not enough.
+    3. the recovery works: with the route restored, the button in that state
+       re-fetches and the real unit renders. And because the button then
+       disappears, focus is handed to the Refresh control rather than dropped on
+       <body> (WCAG 2.4.3).
+    """
+    playwright_api: Any = pytest.importorskip("playwright.sync_api")
+    english = _bundle(_EN)
+    unknown = english["status_unknown"]
+    loading = english["status_loading"]
+
+    vault = make_vault()
+    vault.document.add_issue(category="mold", room="bath", title="Mold", issue_id="i1")
+    vault.save()
+    reachable = {"yes": False}
+
+    def status_route(route: Any) -> None:
+        if reachable["yes"]:
+            route.continue_()
+        else:
+            route.abort()
+
+    with _served(vault) as url, playwright_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except playwright_api.Error as exc:  # pragma: no cover - environment dependent
+            pytest.skip(f"Chromium not available: {exc}")
+        try:
+            # A service worker re-issues fetches outside the page, so a page-level
+            # route would be bypassed and the "failure" would silently succeed.
+            context = browser.new_context(service_workers="block")
+            context.route("**/api/status", status_route)
+            page = context.new_page()
+            page.goto(url, wait_until="networkidle")
+            page.wait_for_timeout(500)
+
+            still_loading = {
+                readout: page.text_content("#" + readout)
+                for readout in _STATUS_READOUT_IDS
+                if page.text_content("#" + readout) != unknown
+            }
+            assert not still_loading, (
+                f"a failed /api/status left readouts standing at something other "
+                f"than {unknown!r}: {still_loading}. A placeholder where a custody "
+                "status belongs is a claim-shaped absence."
+            )
+            assert loading not in page.text_content("main"), (
+                f"{loading!r} is still on the page after the fetch that would have "
+                "replaced it failed"
+            )
+            # renderStatus() chooses between two help paragraphs here; the one the
+            # markup ships asserts "your photo is already sealed and safe on this
+            # device", which is a claim about the reader's evidence made by an app
+            # that has just said it cannot reach its own server.
+            assert not page.locator("#st-awaiting-help").is_visible(), (
+                "the awaiting-timestamp reassurance is still on screen next to a "
+                "count the app does not have"
+            )
+
+            panel = page.locator("#status-error")
+            assert panel.is_visible(), (
+                "nothing on the page says the status could not be loaded; the only "
+                "notice was the announcement, which is already gone"
+            )
+            panel_text = " ".join((panel.text_content() or "").split())
+            assert english["status_unreachable"] in panel_text, panel_text
+            assert english["status_unreachable_next"] in panel_text, panel_text
+            retry = page.locator("#status-retry")
+            assert retry.is_visible() and retry.is_enabled()
+            assert english["status_unreachable_retry"] in (retry.text_content() or "")
+            # A screen-reader user is told the same sentence, not the browser's
+            # transport error. It goes to the hidden status region (issue #243)
+            # rather than the visible #announcer, which would repeat the panel
+            # verbatim an inch above it.
+            spoken = page.text_content("#status-announcer") or ""
+            assert english["status_unreachable"] in spoken, spoken
+            assert english["status_unreachable_next"] in spoken, spoken
+
+            reachable["yes"] = True
+            retry.click()
+            page.wait_for_function("document.getElementById('st-unit').textContent === '4B'")
+            assert not panel.is_visible(), "the failed state outlived the successful retry"
+            assert page.text_content("#rail-custody") != unknown
+            assert page.evaluate("() => document.activeElement && document.activeElement.id") == (
+                "refresh-btn"
+            ), "hiding the retry button dropped keyboard focus instead of handing it on"
+        finally:
+            browser.close()
+
+
+@pytest.mark.a11y
+def test_the_unreachable_state_is_not_undone_by_switching_language(
+    make_vault: Callable[..., Vault],
+) -> None:
+    """Switching language re-applies the markup's `data-i18n` fallbacks.
+
+    That is what makes this a real regression risk rather than a hypothetical one:
+    `applyTranslations()` writes `status_loading` back into #st-unit, #st-fingerprint
+    and #rail-custody from the bundle, so a reader who reached for the language
+    buttons after a failed fetch -- a plausible thing to try when a screen looks
+    wrong -- would have got "Cargando…" back, and the frozen placeholder with it.
+    The failed state has to be re-asserted in the new language instead.
+    """
+    playwright_api: Any = pytest.importorskip("playwright.sync_api")
+    spanish = _bundle(_APP / "i18n" / "es.json")
+
+    vault = make_vault()
+    vault.save()
+
+    with _served(vault) as url, playwright_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except playwright_api.Error as exc:  # pragma: no cover - environment dependent
+            pytest.skip(f"Chromium not available: {exc}")
+        try:
+            context = browser.new_context(service_workers="block")
+            context.route("**/api/status", lambda route: route.abort())
+            page = context.new_page()
+            page.goto(url, wait_until="networkidle")
+            page.wait_for_timeout(500)
+
+            page.click("#lang-es")
+            page.wait_for_timeout(400)
+
+            for readout in _STATUS_READOUT_IDS:
+                assert page.text_content("#" + readout) == spanish["status_unknown"], (
+                    f"#{readout} did not stay unknown across the language switch: "
+                    f"{page.text_content('#' + readout)!r}"
+                )
+            assert spanish["status_loading"] not in page.text_content("main")
+            panel_text = " ".join((page.text_content("#status-error") or "").split())
+            assert spanish["status_unreachable"] in panel_text, panel_text
+        finally:
+            browser.close()

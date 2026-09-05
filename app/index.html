@@ -73,14 +73,32 @@
       <div class="repair-desk">
         <div id="announcer" class="announcer" role="status" aria-live="polite"
              aria-atomic="true"></div>
-        <!-- Issue #243: the awaiting -> timestamped transition is announced here and
-             not through #announcer. #announcer clears and re-sets its node on a
-             30ms timer for every action result, so a result landing in the same tick
-             would silently swallow the one status change that most affects what the
-             record can prove. This region carries status transitions only; it stays
-             visually hidden because the status grid already shows the numbers. -->
+        <!-- Issues #243, #269: status changes are announced here and not through
+             #announcer. #announcer clears and re-sets its node on a 30ms timer for
+             every action result, so a result landing in the same tick would silently
+             swallow them. This region carries status changes only — the awaiting ->
+             timestamped transition, and a status that could not be loaded at all. It
+             stays visually hidden because the page already shows both to a sighted
+             reader: the status grid for the first, #status-error for the second. -->
         <p id="status-announcer" class="sr-only" role="status" aria-live="polite"
            aria-atomic="true"></p>
+
+        <!-- Issue #269: when the first /api/status call fails, every readout used
+             to sit at its "Loading…" fallback forever and the only notice was an
+             announcement that had already cleared. A placeholder where a custody
+             status belongs is a claim-shaped absence, so the failure is a state
+             the page keeps: it says what is unknown and carries its own way back.
+             Not itself a live region: #status-announcer above speaks the same
+             sentence, and this is the visible half of that one message. -->
+        <div id="status-error" class="status-error" hidden>
+          <p class="status-error-line" data-i18n="status_unreachable">Could not reach the
+            local app server, so nothing below is current. Every value here is unknown, not
+            zero.</p>
+          <p class="status-error-next" data-i18n="status_unreachable_next">Check that
+            habitable is still running on this device, then choose “Try again”.</p>
+          <button type="button" id="status-retry" class="text-button"
+                  data-i18n="status_unreachable_retry">Try again</button>
+        </div>
 
         <header class="trail-header">
           <div class="trail-title">
@@ -190,18 +208,23 @@
               leaves this device</a>
           </header>
 
+          <!-- Issue #270: the waiting-for-timestamp readout is deliberately last.
+               This grid collapses to one column below 680px, and #st-awaiting-help
+               follows the whole grid; with the readout in the middle, the help it
+               describes reflowed under "Photos" and read as an explanation of the
+               photo count on every narrow screen. -->
           <div class="plain-checks">
             <p>
               <span data-i18n="status_custody">Evidence trail</span>
               <strong id="st-custody">—</strong>
             </p>
             <p>
-              <span data-i18n="status_awaiting">Waiting for timestamp token</span>
-              <strong id="st-awaiting" aria-describedby="st-awaiting-help">—</strong>
-            </p>
-            <p>
               <span data-i18n="status_captures">Photos</span>
               <strong id="st-captures">—</strong>
+            </p>
+            <p>
+              <span data-i18n="status_awaiting">Waiting for timestamp token</span>
+              <strong id="st-awaiting" aria-describedby="st-awaiting-help">—</strong>
             </p>
           </div>
           <p class="status-help" id="st-awaiting-help"
@@ -272,23 +295,28 @@
                          custody proof can reveal records outside the selected issue.
                        </p>
                   </div>
+                  <!-- Issue #270: this help lives inside the checkbox's own grid
+                       item, not beside it. As a sibling two slots further on it
+                       tracked the checkbox only while the fieldset stayed two
+                       columns; at 320px the grid collapsed and a warning about
+                       sending location data reflowed under "Handoff view". -->
                   <div class="field-check">
                     <input type="checkbox" id="ex-originals" name="include_originals"
                            aria-describedby="ex-originals-help" />
                     <label for="ex-originals" data-i18n="field_include_originals">
                       Include the sealed original photos
                     </label>
+                    <p class="field-help" id="ex-originals-help"
+                       data-i18n="field_include_originals_help">
+                         The originals are your full-quality photos, kept locked in your vault.
+                         They can still hold location and other hidden details, so include them
+                         only when the recipient needs them.
+                       </p>
                   </div>
                   <div class="field">
                     <label for="ex-profile" data-i18n="field_handoff_profile">Handoff view</label>
                     <select id="ex-profile"></select>
                   </div>
-                  <p class="field-help" id="ex-originals-help"
-                     data-i18n="field_include_originals_help">
-                       The originals are your full-quality photos, kept locked in your vault.
-                       They can still hold location and other hidden details, so include them
-                       only when the recipient needs them.
-                     </p>
                 </fieldset>
                 <button type="submit" class="make-copy" data-i18n="export_submit">Create review copy</button>
               </form>
@@ -376,17 +404,21 @@
             <input type="file" id="cap-file" name="file" accept="image/*"
                    capture="environment" required aria-required="true" />
           </div>
+          <!-- Issue #270: grouped with its checkbox for the same reason as
+               #ex-originals-help. This one happened to survive the 320px reflow
+               by being the last thing in its fieldset; that is luck, not
+               structure, and the next field added after it would have taken it. -->
           <div class="field-check practice-control">
             <input type="checkbox" id="cap-devtsa" name="dev_tsa"
                    aria-describedby="cap-devtsa-help" />
             <label for="cap-devtsa" data-i18n="field_dev_tsa">Use a practice timestamp
               (offline testing)</label>
+            <p class="field-help" id="cap-devtsa-help"
+               data-i18n="field_dev_tsa_help">
+                 For trying out the app without internet. A practice timestamp is untrusted and
+                 never evidence-ready. Leave it off for real evidence.
+               </p>
           </div>
-          <p class="field-help" id="cap-devtsa-help"
-             data-i18n="field_dev_tsa_help">
-               For trying out the app without internet. A practice timestamp is untrusted and
-               never evidence-ready. Leave it off for real evidence.
-             </p>
         </fieldset>
         <button type="submit" class="dialog-submit"
                 data-i18n="capture_submit">Save photo to this condition</button>
@@ -554,7 +586,7 @@
             <label for="ai-category" data-i18n="field_category">Category</label>
             <input type="text" id="ai-category" name="category" required
                    aria-required="true" autocomplete="off" list="ai-category-options"
-                   aria-describedby="ai-category-help" />
+                   autocapitalize="none" aria-describedby="ai-category-help" />
             <datalist id="ai-category-options">
               <option value="heat" label="Heat" data-i18n-label="category_heat"></option>
               <option value="mold" label="Mold" data-i18n-label="category_mold"></option>

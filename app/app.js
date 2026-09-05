@@ -238,6 +238,13 @@
       if (lastStatus) {
         renderStatus(lastStatus);
       }
+      // applyTranslations() has just written the markup's "Loading…" fallbacks
+      // back into #st-unit, #st-fingerprint and #rail-custody. Re-assert the
+      // failed state on top, in the new language, or switching language would
+      // restore the frozen placeholder issue #269 removed.
+      if (statusUnavailable) {
+        showStatusUnavailable();
+      }
       document.title = t("app_title");
     });
   }
@@ -304,24 +311,41 @@
     }, 600);
   }
 
-  // ---- Status transition announcer (issue #243) ----------------------------
+  // ---- Status announcer (issues #243, #269) --------------------------------
   //
-  // "Waiting for a timestamp token" -> "timestamp token attached" is the moment a
-  // capture gains its independent time proof. It happens outside the focus path:
-  // a number in the status grid changes and a screen-reader user is told nothing
-  // about the single state change that most affects what their record can prove.
+  // A second, dedicated polite region rather than a reuse of `announcer`, because
+  // `announce()` empties its node and re-fills it on a 30ms timer; an action
+  // result resolving in the same tick would clear these messages before assistive
+  // tech ever saw them. It carries the two changes to what the record can prove
+  // that happen outside the focus path:
   //
-  // This is a second, dedicated polite region rather than a reuse of `announcer`
-  // because `announce()` empties its node and re-fills it on a 30ms timer; an
-  // action result resolving in the same tick would clear this message before
-  // assistive tech ever saw it.
+  //   * "waiting for a timestamp token" -> "timestamp token attached" (#243): a
+  //     number in the status grid changes and nothing else says so.
+  //   * the status could not be loaded at all (#269).
   //
-  // Only real transitions are announced. `lastProofCounts` stays null until the
-  // first paint has been recorded, so the initial render is silent, and the node
-  // is emptied on any render that did not move the counts, so the same sentence
-  // is never read twice and the next real transition is a change AT can notice.
+  // It stays visually hidden in both cases because the page already shows the
+  // state a sighted reader needs: the grid for the first, the #status-error panel
+  // for the second. Saying it twice on screen is a stutter, not emphasis.
   var statusAnnouncer;
   var lastProofCounts = null;
+
+  // Clear first, then set after a microtask gap: assistive tech is more reliable
+  // when the region is observed empty before the new text lands, and repeating an
+  // identical message (a retry that failed the same way) is still a change.
+  function announceStatusChange(message) {
+    if (!statusAnnouncer) {
+      return;
+    }
+    statusAnnouncer.textContent = "";
+    if (!message) {
+      return;
+    }
+    window.setTimeout(function () {
+      if (statusAnnouncer) {
+        statusAnnouncer.textContent = message;
+      }
+    }, 30);
+  }
 
   function announceProofTransition(timestamped, awaiting) {
     var previous = lastProofCounts;
@@ -329,6 +353,8 @@
     if (!statusAnnouncer) {
       return;
     }
+    // Emptied on any render that did not move the counts, so the same sentence is
+    // never read twice and the next real transition is a change AT can notice.
     statusAnnouncer.textContent = "";
     if (!previous) {
       return; // first paint states the counts; it does not announce them
@@ -341,13 +367,7 @@
       return;
     }
     var moved = gained < released ? gained : released;
-    // Microtask gap, as in announce(): assistive tech is more reliable when the
-    // region is observed empty before the new text lands.
-    window.setTimeout(function () {
-      if (statusAnnouncer) {
-        statusAnnouncer.textContent = fm("msg_timestamp_attached", { count: moved });
-      }
-    }, 30);
+    announceStatusChange(fm("msg_timestamp_attached", { count: moved }));
   }
 
   // ---- API -----------------------------------------------------------------
@@ -446,6 +466,13 @@
     var el = document.getElementById(id);
     if (el) {
       el.textContent = value;
+    }
+  }
+
+  function setHidden(id, hidden) {
+    var el = document.getElementById(id);
+    if (el) {
+      el.hidden = !!hidden;
     }
   }
 
@@ -804,6 +831,72 @@
     var inspector = document.getElementById("atlas-inspector");
     if (inspector) { inspector.open = true; }
     return selected;
+  }
+
+  // ---- Status unavailable (issue #269) -------------------------------------
+  //
+  // A failed /api/status used to announce once and change nothing: every readout
+  // stayed at the markup's "Loading…" fallback, the announcement cleared, and the
+  // page went on presenting placeholders where a custody verdict and two counts
+  // belong. That is worse than a blank screen here. A reader cannot tell "not
+  // loaded" from "nothing to report", or an unknown count from zero, and this is
+  // an app whose whole job is to be exact about what is and is not established --
+  // a frozen placeholder in the evidence-status rail is a claim-shaped absence.
+  //
+  // So the failure states what is unknown, in the page rather than only in the
+  // transient announcer, and offers the way back inside the state itself.
+
+  // Every readout renderStatus() fills from a live /api/status body. Each one is
+  // either a "Loading…" placeholder or an em dash in the markup, and both read as
+  // an answer once the fetch that would have replaced them has failed.
+  var STATUS_READOUTS = [
+    "st-unit",
+    "header-unit",
+    "masthead-unit",
+    "st-fingerprint",
+    "st-issues",
+    "st-captures",
+    "st-timestamped",
+    "st-awaiting",
+    "st-custody",
+    "rail-custody",
+    "rail-stamp",
+    "st-storage",
+    "st-network",
+    "readiness-copy",
+    "readiness-value"
+  ];
+
+  var statusUnavailable = false;
+
+  function showStatusUnavailable() {
+    var unknown = t("status_unknown");
+    for (var i = 0; i < STATUS_READOUTS.length; i++) {
+      setText(STATUS_READOUTS[i], unknown);
+    }
+    // An intact/broken colour is a verdict; there is no verdict to show.
+    var custody = document.getElementById("st-custody");
+    if (custody) { custody.className = ""; }
+    var sealedBar = document.getElementById("storage-sealed");
+    var sharedBar = document.getElementById("storage-shared");
+    if (sealedBar) { sealedBar.style.flexBasis = "0%"; }
+    if (sharedBar) { sharedBar.style.flexBasis = "0%"; }
+    // renderStatus() picks this paragraph, and its unrendered fallback asserts
+    // "your photo is already sealed and safe on this device" -- a claim about the
+    // reader's own evidence, made by an app that has just said it cannot reach its
+    // own server. The neighbouring empty states ("Add a condition ... to begin")
+    // stay: an invitation to act is true either way; this is not.
+    setHidden("st-awaiting-help", true);
+    var panel = document.getElementById("status-error");
+    if (panel) { panel.hidden = false; }
+    statusUnavailable = true;
+  }
+
+  function hideStatusUnavailable() {
+    statusUnavailable = false;
+    setHidden("st-awaiting-help", false);
+    var panel = document.getElementById("status-error");
+    if (panel) { panel.hidden = true; }
   }
 
   function renderStatus(status) {
@@ -1175,11 +1268,19 @@
   function refreshStatus() {
     return apiGet("/api/status").then(
       function (status) {
+        hideStatusUnavailable();
         renderStatus(status);
         return status;
       },
       function (err) {
-        announceError(err);
+        showStatusUnavailable();
+        // The same words the panel carries, rather than announceError()'s
+        // "Something went wrong: Failed to fetch": a browser's transport message
+        // does not tell a tenant that the numbers on screen are missing, not zero.
+        // Into the hidden region, not the visible one -- #status-error is already
+        // saying this on screen, and #announcer would repeat it verbatim an inch
+        // above. It also survives an action result landing in the same tick.
+        announceStatusChange(t("status_unreachable") + " " + t("status_unreachable_next"));
         throw err;
       }
     );
@@ -1788,16 +1889,39 @@
     }
   }
 
-  function wireRefresh() {
-    var btn = document.getElementById("refresh-btn");
+  // Both the header's Refresh and the retry inside the unavailable state (issue
+  // #269) do the same thing; the second exists so the recovery is named where the
+  // failure is read, instead of only in an announcement that has already cleared.
+  function wireRefreshButton(btn) {
     if (!btn) { return; }
     btn.addEventListener("click", function () {
+      // withBusy() disables the button while the request is in flight, and
+      // disabling the focused element drops focus to <body>. For the retry button
+      // that compounds: a successful retry also hides the panel it sits in, so a
+      // keyboard reader would be left with no position at all. Put focus back on
+      // whichever refresh control is still on screen (WCAG 2.4.3).
+      var hadFocus = document.activeElement === btn;
+      var restoreFocus = function () {
+        if (!hadFocus) { return; }
+        if (document.activeElement && document.activeElement !== document.body) { return; }
+        var target = btn.getClientRects().length ? btn : document.getElementById("refresh-btn");
+        if (target && target.getClientRects().length) { target.focus(); }
+      };
       withBusy(btn, function () {
         return refreshStatus().then(function () {
           announce(t("msg_refreshed"), "ok");
         });
-      });
+      }).catch(function () {
+        // refreshStatus() has already rendered the failed state and announced it.
+        // Swallowing here keeps a failed retry from surfacing as an unhandled
+        // rejection, which is all the old code did with it.
+      }).then(restoreFocus);
     });
+  }
+
+  function wireRefresh() {
+    wireRefreshButton(document.getElementById("refresh-btn"));
+    wireRefreshButton(document.getElementById("status-retry"));
   }
 
   function wireResolve() {
