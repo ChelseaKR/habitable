@@ -173,8 +173,11 @@ def build_packet(
     if issue_id is not None or since is not None:
         raise PacketError(
             "scoped packet exports are temporarily blocked: packet v4 carries the complete "
-            "custody chain, which can reveal identifiers outside an issue or date scope; "
-            "export the whole unit until a versioned scoped custody-view format is available"
+            "custody chain, which can reveal identifiers outside an issue or date scope, and "
+            "a truncated chain must never be presented as a complete one. Export the whole "
+            "unit. This is a safety hold, not an unfinished feature: restoring it needs a "
+            "versioned, rehashed custody-view format that binds its own scope, plus "
+            "independent crypto review (issue #262)."
         )
 
     sharing = policy or vault.config.sharing

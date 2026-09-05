@@ -152,8 +152,9 @@ def export_message(
     if capture_ids is not None:
         raise SyncError(
             "scoped sync payloads are temporarily blocked: sync v2 carries the complete "
-            "custody chain; use a full-case message until a versioned scoped custody-view "
-            "protocol is available"
+            "custody chain. Use a full-case message. This is a safety hold, not an "
+            "unfinished feature: restoring it needs a versioned, rehashed custody-view "
+            "format that binds its own scope, plus independent crypto review (issue #262)."
         )
     vault.document.attest_unsigned_fields()
     selected_state = dict(state) if state is not None else vault.document.to_state()

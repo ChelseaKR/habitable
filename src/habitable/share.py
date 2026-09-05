@@ -84,8 +84,10 @@ def export_share(
     if issue_ids is not None:
         raise ShareError(
             "scoped shares are temporarily blocked: sync v2 carries the complete custody "
-            "chain, which can reveal identifiers outside the selected issues; share the "
-            "whole case until a versioned scoped custody-view protocol is available"
+            "chain, which can reveal identifiers outside the selected issues. Share the "
+            "whole case. This is a safety hold, not an unfinished feature: restoring it needs "
+            "a versioned, rehashed custody-view format that binds its own scope, plus "
+            "independent crypto review (issue #262)."
         )
 
     vault.document.attest_unsigned_fields()
