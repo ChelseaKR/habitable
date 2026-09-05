@@ -1,5 +1,15 @@
 # habitable — verifiable habitability documentation for tenant unions, offline and encrypted
 
+**[Live demo — the Unit 4B repair trail and a verifiable sample packet](https://habitable.chelseakr.com/)** — the workflow and what it produces, on synthetic data.
+
+| The local app (English / Español) | An exported, verifiable packet |
+| --- | --- |
+| ![The habitable Unit 4B repair trail showing reported and secured dates, follow-up actions, and the tenant-versus-review copy boundary](site/img/app-en.png) | ![An accessible habitability evidence packet with an issue, a captured photo, and an evidence appendix table](site/img/packet.png) |
+
+The app is bilingual (EN/ES) and has automated axe, keyboard, and reflow coverage; a human
+screen-reader pass remains open. Every export ships an axe-tested `packet.html`, a paginated PDF,
+and a verifiable `bundle.json`.
+
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ChelseaKR/habitable/badge)](https://scorecard.dev/viewer/?uri=github.com/ChelseaKR/habitable)
 — an honest, itemized supply-chain self-assessment; see the dated report at
 [`docs/audits/scorecard-2026-07.md`](docs/audits/scorecard-2026-07.md) for what the current number means and what moves it.
@@ -142,16 +152,6 @@ What that does and does not let through is measured attack by attack in
 [ADR 0011](docs/adr/0011-authority-seal-over-the-whole-packet.md) — including the two residuals it
 does not close: who the producer is, and an adversary who can reach the same authority you trust.
 **No external party has attempted to break a habitable packet.**
-
-## Screenshots
-
-| The local app (English / Español) | An exported, verifiable packet |
-| --- | --- |
-| ![The habitable Unit 4B repair trail showing reported and secured dates, follow-up actions, and the tenant-versus-review copy boundary](site/img/app-en.png) | ![An accessible habitability evidence packet with an issue, a captured photo, and an evidence appendix table](site/img/packet.png) |
-
-The app is bilingual (EN/ES) and has automated axe, keyboard, and reflow coverage; a human
-screen-reader pass remains open. Every export ships an axe-tested `packet.html`, a paginated PDF,
-and a verifiable `bundle.json`.
 
 ---
 

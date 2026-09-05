@@ -201,9 +201,11 @@ def test_content_page_has_unique_consistent_metadata(slug: str) -> None:
     assert open_graph["og:url"] == canonical
     assert open_graph["og:title"] == expected_title
     assert open_graph["og:description"] == expected_description
-    assert open_graph["og:image"].startswith(f"{_BASE}img/")
+    assert open_graph["og:image"] == f"{_BASE}img/social-card.png"
     assert open_graph["og:image:alt"]
-    assert named["twitter:card"] == "summary"
+    # `summary` renders a small square thumbnail; the shared asset is a 1200x630
+    # landscape card, and a portrait screenshot in that slot was being cropped.
+    assert named["twitter:card"] == "summary_large_image"
     assert named["twitter:title"] == expected_title
     assert named["twitter:description"] == expected_description
     assert named["twitter:image"] == open_graph["og:image"]
