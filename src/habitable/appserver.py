@@ -34,7 +34,7 @@ from .artifact import add_relationship, capture_artifact
 from .capture import capture, resolve_deferred
 from .disclosure import proof_statement
 from .errors import HabitableError
-from .model import Capture
+from .model import ISSUE_CATEGORY_ALIASES, Capture
 from .obslog import configure_logging, enabled_from_env, is_configured, log_event
 from .packet import build_packet
 from .private_temp import private_temp_workspace
@@ -272,8 +272,16 @@ class AppServer:
         }
 
     def add_issue(self, body: dict[str, object]) -> dict[str, object]:
+        # The Condition field stays free text on purpose (issue #239) -- a dropdown
+        # would force a real condition into the wrong bucket. What it does not stay
+        # is inconsistent: a synonym of a category that already has a name is
+        # normalised here exactly as `habitable issue --category` normalises it
+        # (issue #240), so the Spanish app's `moho` and the CLI's `mold` are one
+        # category rather than two. Anything else is stored as typed.
+        category = _req_str(body, "category")
+        category = ISSUE_CATEGORY_ALIASES.get(category.strip().lower(), category)
         issue_id = self.vault.document.add_issue(
-            category=_req_str(body, "category"),
+            category=category,
             room=_opt_str(body, "room"),
             title=_opt_str(body, "title"),
             severity=_opt_str(body, "severity"),

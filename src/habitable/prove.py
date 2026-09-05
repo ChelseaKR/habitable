@@ -187,7 +187,7 @@ def prove_no_plaintext(capture_dir: Path | None = None) -> ProveReport:
         accept_pairing_material(bob, pairing)
 
         issue = alice.document.add_issue(
-            category="mold", room="bathroom", title=_MARKER_TITLE, severity="high"
+            category="mold", room="bathroom", title=_MARKER_TITLE, severity="severe"
         )
         alice.document.add_timeline_entry(issue, "observed", _MARKER_NOTE)
         alice.save()

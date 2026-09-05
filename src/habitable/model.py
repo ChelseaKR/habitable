@@ -44,6 +44,7 @@ from .usecases import (
 
 __all__ = [
     "ISSUE_CATEGORIES",
+    "ISSUE_CATEGORY_ALIASES",
     "ISSUE_SEVERITIES",
     "Artifact",
     "Capture",
@@ -408,15 +409,28 @@ _ISSUE_FIELDS = ("category", "room", "title", "status", "severity", "description
 #: enforce this: issues already stored in a vault carry free text and must keep
 #: loading, so old entries are grandfathered and only new ones are checked.
 #:
-#: KNOWN SCOPE BOUNDARY (issue #206 asked for the CLI, and this is the CLI). The
-#: local web app's "Condition" field is a free-text ``<input type="text">``
-#: (``app/index.html``) whose POST reaches ``add_issue`` through
-#: ``appserver.py`` without passing argparse, so the same vault can still gain an
-#: unlisted category through the app. Closing that is a product decision about
-#: what a tenant is allowed to record, not a data-entry cleanup, and it belongs
-#: to whoever owns the app's condition taxonomy -- the existing corpus already
-#: contains ``no_heat``, ``moisture``, ``noise``, ``threat`` and a Spanish
-#: ``moho``, which is evidence that the real vocabulary is wider than these six.
+#: SETTLED (issues #239, #240). #206 left two questions open here and both are
+#: now answered, so this comment records decisions rather than gaps.
+#:
+#: *Are these the right six?* Yes, and they stay six. The corpus #206 surveyed
+#: also held ``no_heat``, ``moisture``, ``moho``, ``plumbing``, ``noise`` and
+#: ``threat``. The first three are the same conditions under other names and are
+#: normalised by ``ISSUE_CATEGORY_ALIASES`` below. The last three are not:
+#: ``plumbing`` names a building system rather than the condition a tenant
+#: observes (which is ``water``), and ``noise`` and ``threat`` are real
+#: complaints that are not habitability *conditions* -- they belong in the
+#: timeline, where a landlord's conduct already has a home, not in a vocabulary
+#: whose members every packet template and letter framing must know how to
+#: present. Adding a seventh category means teaching every one of those surfaces
+#: to render it; ``other`` with a label costs nothing and stays honest.
+#:
+#: *Does the app have to obey it?* Not by narrowing. The app's Condition field
+#: stays free text and now offers this vocabulary through a ``<datalist>``
+#: (``app/index.html``), so the common case normalises itself and a tenant whose
+#: condition is not on the list is still able to name it. A ``<select>`` would
+#: have forced a real condition into the wrong bucket, which is a wrong record
+#: rather than an unvalidated one -- the same reasoning that gave the CLI its
+#: ``other`` escape hatch.
 ISSUE_CATEGORIES = (
     "heat",
     "mold",
@@ -427,10 +441,33 @@ ISSUE_CATEGORIES = (
     "other",
 )
 
+#: Accepted spellings of a category that already has a name (issue #240).
+#:
+#: Every entry is a *synonym*, never a reclassification: each maps a word for a
+#: condition onto the member that means the same condition. ``moho`` is here
+#: because habitable ships a Spanish interface, and a Spanish-speaking tenant
+#: typing their own word for mold should not land in ``other``.
+#:
+#: Normalisation happens at CLI entry, alongside the rest of the validation, and
+#: the command says what it did. Nothing rewrites a stored value: an issue
+#: recorded as ``moisture`` before this existed keeps that string.
+ISSUE_CATEGORY_ALIASES = {
+    "no_heat": "heat",
+    "moisture": "water",
+    "moho": "mold",
+}
+
 #: Severity levels for ``habitable issue --severity``. Ordered least to most
 #: urgent, with the same ``other`` escape hatch. These are habitable's own
 #: operational vocabulary for sorting a tenant's own record; they are not a
 #: legal classification and carry no statutory meaning.
+#:
+#: The app's Urgency menu offers these same four (issue #237). It offered
+#: ``medium``/``high``/``urgent`` until then -- three strings the CLI refuses,
+#: reaching ``add_issue`` through ``appserver.py`` without passing argparse, and
+#: printed verbatim into the packet and the letter. ``other`` is deliberately
+#: not in the menu: it requires a companion detail string to mean anything, and
+#: a dropdown has nowhere to put one.
 ISSUE_SEVERITIES = (
     "low",
     "moderate",

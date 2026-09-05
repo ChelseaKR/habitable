@@ -788,3 +788,31 @@ def test_app_and_cli_report_the_same_awaiting_figure_over_the_same_evidence_set(
     assert cli_main(["status", "--vault", str(vault.path), "--passphrase", "test-passphrase"]) == 0
     out = capsys.readouterr().out
     assert "timestamps: 1/2 present; 1 awaiting" in out
+
+
+def test_the_app_normalises_a_category_synonym_the_same_way_the_cli_does(app: App) -> None:
+    """Issue #240 across issue #239's boundary: one category, not two.
+
+    The Condition field stays free text on purpose -- a dropdown would force a real
+    condition into the wrong bucket -- so the app cannot be made consistent with the
+    CLI by narrowing it. It is made consistent by normalising the same synonyms:
+    `moho` typed into the Spanish interface and `mold` typed into the CLI have to be
+    one category, or a bilingual union's building pattern splits in two.
+
+    Anything that is not a synonym is stored exactly as typed. That is the free-text
+    escape hatch working, not a validation gap.
+    """
+    status, first = _call(app, "POST", "/api/issues", {"category": "moho", "title": "Moho"})
+    assert status == 200
+    status, second = _call(app, "POST", "/api/issues", {"category": "  No_Heat  "})
+    assert status == 200
+    status, third = _call(app, "POST", "/api/issues", {"category": "broken lift"})
+    assert status == 200
+
+    status, state = _call(app, "GET", "/api/status")
+    assert status == 200
+    issues = cast("list[dict[str, object]]", state["issues"])
+    stored = {issue["issue_id"]: issue["category"] for issue in issues}
+    assert stored[first["issue_id"]] == "mold"
+    assert stored[second["issue_id"]] == "heat"
+    assert stored[third["issue_id"]] == "broken lift"

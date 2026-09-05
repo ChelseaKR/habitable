@@ -33,7 +33,7 @@ from .crypto import KDF_PROFILES, PublicIdentity
 from .errors import HabitableError, SyncError
 from .i18n import DEFAULT_LOCALE, cli_text, format_datetime, language_name, resolve_locale
 from .letter import LetterOptions, RepairLetter, build_letter, render_letter_html
-from .model import ISSUE_CATEGORIES, ISSUE_SEVERITIES
+from .model import ISSUE_CATEGORIES, ISSUE_CATEGORY_ALIASES, ISSUE_SEVERITIES
 from .obslog import configure_logging, enabled_from_env, log_event
 from .packet import build_packet
 from .pairing import accept_pairing_material, create_pairing_material
@@ -157,7 +157,9 @@ def _build_parser() -> argparse.ArgumentParser:
     # next door were enum-constrained, so a mistyped category was accepted silently
     # and -- with no correction path and export scoping blocked -- rode into the
     # exported packet. Entry validation only; stored free text stays readable.
-    p_issue.add_argument("--category", required=True, choices=ISSUE_CATEGORIES)
+    p_issue.add_argument(
+        "--category", required=True, choices=(*ISSUE_CATEGORIES, *ISSUE_CATEGORY_ALIASES)
+    )
     p_issue.add_argument("--room", default="")
     p_issue.add_argument("--title", default="")
     p_issue.add_argument("--severity", default="", choices=("", *ISSUE_SEVERITIES))
@@ -272,9 +274,13 @@ def _build_parser() -> argparse.ArgumentParser:
     p_export = sub.add_parser("export", help="assemble a court/inspector evidence packet")
     add_vault(p_export)
     p_export.add_argument("--out", required=True, type=Path, help="output packet directory")
-    p_export.add_argument("--issue", help="reserved: scoped packet exports are temporarily blocked")
     p_export.add_argument(
-        "--since", help="reserved: date-scoped packet exports are temporarily blocked"
+        "--issue",
+        help="reserved: scoped packet exports are held closed for privacy, not unbuilt (#262)",
+    )
+    p_export.add_argument(
+        "--since",
+        help="reserved: date-scoped packet exports are held closed for privacy, not unbuilt (#262)",
     )
     p_export.add_argument("--include-originals", action="store_true")
     p_export.add_argument("--no-pdf", action="store_true")
@@ -471,7 +477,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p_share.add_argument("--peer", required=True, help="organizer public identity (`habitable id`)")
     p_share.add_argument("--out", required=True, type=Path, help="output .share file to write")
     p_share.add_argument(
-        "--issue", action="append", help="reserved: issue-scoped shares are temporarily blocked"
+        "--issue",
+        action="append",
+        help="reserved: issue-scoped shares are held closed for privacy, not unbuilt (#262)",
     )
     p_share.add_argument(
         "--redact-unit",
@@ -861,7 +869,12 @@ def _cmd_issue(args: argparse.Namespace) -> int:
         return 2
 
     vault = _open(args)
-    category = args.other_label.strip() if args.category == "other" else args.category
+    # A synonym is normalised to the member it means (issue #240), and the command
+    # says so rather than silently storing something the operator did not type.
+    canonical = ISSUE_CATEGORY_ALIASES.get(args.category, args.category)
+    if canonical != args.category:
+        print(f"habitable: recording --category {args.category} as {canonical}")
+    category = args.other_label.strip() if canonical == "other" else canonical
     severity = args.severity_detail.strip() if args.severity == "other" else args.severity
     issue_id = vault.document.add_issue(
         category=category,

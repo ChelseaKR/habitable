@@ -252,3 +252,50 @@ class TestIssueFieldVocabularies:
         vault.document.add_issue(category="whatever-was-typed-in-2026", issue_id="old")
         vault.save()
         assert main(["status", "--vault", str(vault.path), "--passphrase", "test-passphrase"]) == 0
+
+    def test_a_synonym_is_normalised_and_the_command_says_so(
+        self, make_vault: Callable[..., Vault], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Issue #240: the corpus #206 surveyed was wider than the vocabulary it set.
+
+        `no_heat`, `moisture` and `moho` are the same conditions under other names,
+        and refusing them taught a tenant that their own word was wrong. They now
+        normalise to the member they mean -- and the command prints what it did,
+        because a record silently storing something the operator did not type is the
+        failure mode the vocabulary existed to prevent.
+        """
+        vault = make_vault()
+        assert main(self._args(vault, "--category", "no_heat")) == 0
+        out = capsys.readouterr().out
+        assert "recording --category no_heat as heat" in out
+        assert "(heat)" in out
+
+        reopened = Vault.open(vault.path, "test-passphrase")
+        assert [issue.category for issue in reopened.document.issues()] == ["heat"]
+
+    def test_the_spanish_word_for_mold_is_not_a_different_category(
+        self, make_vault: Callable[..., Vault]
+    ) -> None:
+        """habitable ships a Spanish interface; `moho` must not land in `other`."""
+        vault = make_vault()
+        assert main(self._args(vault, "--category", "moho")) == 0
+        reopened = Vault.open(vault.path, "test-passphrase")
+        assert [issue.category for issue in reopened.document.issues()] == ["mold"]
+
+    def test_a_distinct_complaint_is_still_refused_rather_than_refiled(
+        self, make_vault: Callable[..., Vault], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The corpus also held `noise`, `threat` and `plumbing`, and those are NOT
+        aliases. `noise` and `threat` are real complaints that are not habitability
+        conditions, and `plumbing` names a building system rather than the condition
+        observed. Mapping any of them onto a near-enough category would refile a
+        tenant's record as something they did not report. They take `other`, which
+        makes them say what they mean."""
+        vault = make_vault()
+        for typed in ("noise", "threat", "plumbing"):
+            with pytest.raises(SystemExit) as exc:
+                main(self._args(vault, "--category", typed))
+            assert exc.value.code != 0
+            capsys.readouterr()
+
+        assert main(self._args(vault, "--category", "other", "--other-label", "noise")) == 0

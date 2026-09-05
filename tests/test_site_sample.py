@@ -120,3 +120,55 @@ def test_public_sample_exports_only_opaque_ids_and_sanitized_media() -> None:
         assert not metadata.has_location
         assert metadata.capture_time is None
         assert not metadata.fields_present
+
+
+def test_every_published_artifact_uses_only_vocabulary_the_cli_accepts() -> None:
+    """Issues #237, #238 and #240, on the artifact strangers actually read.
+
+    `site/sample-packet/` is the synthetic packet the site links and the one
+    review task LA-01 (#122) asks a housing lawyer to cold-read. It was generated
+    with `category="moisture"` and severities `high` and `urgent` -- one category
+    and two severities that `habitable issue` refuses, sitting in the document
+    the project offers as its worked example of a good record.
+
+    Four surfaces had drifted apart in four directions at once: the CLI's enum,
+    the app's Urgency menu, this generator, and `render_app_screenshots.py` --
+    which seeds the app previews shown in the README, and was also seeding
+    `severity="high"`. The guard scans every generator under `scripts/` rather
+    than the one that was wrong, because the defect was drift between siblings
+    and naming one sibling would have left the next one free to drift.
+    """
+    from habitable.model import ISSUE_CATEGORIES, ISSUE_CATEGORY_ALIASES, ISSUE_SEVERITIES
+
+    # `make_golden_packet.py` is deliberately exempt. The golden corpus pins the
+    # packet *format* across versions, not the copy: its severity is arbitrary test
+    # data, and bringing it in line would mean regenerating a committed
+    # backward-compatibility fixture for a cosmetic reason -- or, worse, leaving the
+    # generator and the fixture disagreeing. Format fixtures record what was emitted;
+    # they are not exemplary artifacts and are not shown to anyone as a model record.
+    exempt = {"make_golden_packet.py"}
+    scripts = [
+        path
+        for path in sorted((Path(__file__).resolve().parent.parent / "scripts").glob("*.py"))
+        if path.name not in exempt
+    ]
+    assert scripts, "no scripts found; this guard is reading nothing"
+
+    known = set(ISSUE_CATEGORIES) | set(ISSUE_CATEGORY_ALIASES)
+    seeded_any = False
+    bad: list[str] = []
+    for script in scripts:
+        source = script.read_text(encoding="utf-8")
+        categories = re.findall(r'category="([^"]*)"', source)
+        severities = re.findall(r'severity="([^"]*)"', source)
+        seeded_any = seeded_any or bool(categories or severities)
+        bad += [f"{script.name}: category={c!r}" for c in categories if c not in known]
+        bad += [
+            f"{script.name}: severity={s!r}" for s in severities if s and s not in ISSUE_SEVERITIES
+        ]
+
+    assert seeded_any, "no script seeds a case any more; this guard reads nothing"
+    assert not bad, (
+        "a published artifact is generated with vocabulary `habitable issue` "
+        f"refuses, so it demonstrates values a tenant could not enter: {bad}"
+    )
