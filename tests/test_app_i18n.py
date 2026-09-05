@@ -6,7 +6,10 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -164,4 +167,275 @@ def test_pseudo_locale_expansion_fits_compact_ui() -> None:
         "compact-UI strings exceed the fixed-width sanity cap once pseudo-"
         f"expanded (>{_COMPACT_CAP} chars); shorten them or make the UI wrap: "
         + "; ".join(too_long)
+    )
+
+
+# --- No screen is a dead end (issue #244) -----------------------------------
+
+
+def test_copy_that_tells_you_to_press_a_button_quotes_that_button_s_real_label() -> None:
+    """A next action is only a next action if the control it names exists.
+
+    ``export_awaiting_next`` told the reader to use "Resolve awaiting timestamps"
+    long after R-41 renamed that button to "Add missing timestamp tokens" — and
+    the Spanish still said "Resolver marcas de tiempo pendientes", carrying both
+    the dead label and the ``marca de tiempo`` wording the same pass retired. The
+    screen therefore ended in an instruction to press something that is not on it,
+    which is a dead end wearing the costume of a next step.
+
+    ``test_missing_timestamp_action_copy_is_plain_and_consistent`` above checks the
+    button's own strings; nothing checked the copy that quotes them. This does:
+    every string that points at the resolve button must contain its current label,
+    so renaming the button again fails here instead of shipping a phantom.
+    """
+    en, es = _load(_EN), _load(_ES)
+    for bundle, key in ((en, "resolve_deferred"), (es, "resolve_deferred")):
+        assert bundle[key].strip(), "the resolve button has no label to quote"
+    pointing = ("capture_awaiting_reassure", "export_awaiting_next")
+    for key in pointing:
+        assert en["resolve_deferred"] in en[key], (
+            f"en.{key} points at the timestamp button but does not use its label "
+            f"{en['resolve_deferred']!r}: {en[key]!r}"
+        )
+        assert es["resolve_deferred"] in es[key], (
+            f"es.{key} points at the timestamp button but does not use its label "
+            f"{es['resolve_deferred']!r}: {es[key]!r}"
+        )
+
+
+def test_failed_export_names_a_next_action_without_softening_the_verdict() -> None:
+    """The app's worst outcome was the only one with nowhere to go.
+
+    An export whose integrity or timestamp check fails printed the verdict and
+    stopped: the awaiting and untrusted branches both got a "next step" paragraph,
+    the failure branch got none. R-02's whole point is that a person under threat
+    of retaliation, at midnight, on a phone, abandons the case at exactly that
+    screen.
+
+    The fix is a next action *added to* the verdict, never a softening of it —
+    so this test pins both halves: the new copy must tell the reader not to send
+    the copy, and the verdicts themselves must still say "not evidence-ready".
+    """
+    en, es = _load(_EN), _load(_ES)
+    for bundle in (en, es):
+        assert "export_failed_next" in bundle, "the failed-export state names no next action"
+        assert bundle["export_failed_next"].strip()
+    assert "do not send" in en["export_failed_next"].casefold()
+    assert "no envíes" in es["export_failed_next"].casefold()
+    # The honest limit is untouched by the added next action.
+    assert "not evidence-ready" in en["verify_failed"].casefold()
+    assert "no lista como prueba" in es["verify_failed"].casefold()
+
+
+def test_the_sync_found_nothing_state_does_not_overclaim() -> None:
+    """ "Nothing was missing" is not the same fact as "everything is stamped".
+
+    ``/api/resolve`` walks this device's stamp-later queue only. A capture that
+    arrived in the vault already unstamped is counted in ``awaiting`` but is not in
+    ``deferred``, so the button reports zero while the status grid still shows
+    photos waiting (the asymmetry issue #180 named). The old ``=0`` copy, "No
+    timestamp tokens were missing.", read as a clean bill of health for a vault
+    that may still hold unstamped evidence.
+
+    The replacement is scoped to this device and says plainly that anything still
+    waiting cannot be stamped from here — the "you cannot do this yet, and here is
+    why" answer, which is a valid next action and not a softened one.
+    """
+    en, es = _load(_EN), _load(_ES)
+    zero_en = en["msg_resolved"].split("=0 {", 1)[1].split("}", 1)[0]
+    zero_es = es["msg_resolved"].split("=0 {", 1)[1].split("}", 1)[0]
+    assert "this device" in zero_en.casefold(), zero_en
+    assert "dispositivo" in zero_es.casefold(), zero_es
+    for text in (zero_en, zero_es):
+        assert len(text.split(".")) >= 2, (
+            f"the zero case still stops at one flat sentence: {text!r}"
+        )
+
+
+def test_recoverable_failures_and_empty_lists_say_what_to_do() -> None:
+    """A file that would not read, and a link list with nothing in it.
+
+    ``error_file_read`` said only "Could not read the selected file." — true, and
+    no help: try again? try a different file? was anything saved? And the "Related
+    captures" listbox rendered with zero options and zero words when the chosen
+    condition had no photos yet, which reads as a broken control rather than an
+    empty one.
+    """
+    en, es = _load(_EN), _load(_ES)
+    for bundle in (en, es):
+        assert "link_no_captures" in bundle, "the empty capture-link list explains nothing"
+        assert bundle["link_no_captures"].strip()
+    assert "again" in en["error_file_read"].casefold(), en["error_file_read"]
+    assert "otra vez" in es["error_file_read"].casefold(), es["error_file_read"]
+    # Nothing was written, and saying so is the difference between a retry and a fear.
+    assert "nothing was saved" in en["error_file_read"].casefold()
+    assert "no se guardó nada" in es["error_file_read"].casefold()
+
+
+def test_empty_states_point_at_controls_the_app_actually_shows() -> None:
+    """ "Add a capture" named a button the interface does not have.
+
+    The entry dock, the capture dialog heading and the markup's own fallback text
+    all call it a *photo*; only ``readiness_empty`` still said *capture*, which is
+    model vocabulary the plain-language pass deliberately kept in the CLI and the
+    packet but not on a button. An empty state that names a control by a word that
+    appears nowhere on screen sends the reader looking for something that is not
+    there.
+    """
+    en, es = _load(_EN), _load(_ES)
+    assert en["capture_heading"].casefold() in en["readiness_empty"].casefold(), (
+        f"readiness_empty must name the control the app shows "
+        f"({en['capture_heading']!r}): {en['readiness_empty']!r}"
+    )
+    assert es["capture_heading"].casefold() in es["readiness_empty"].casefold(), (
+        f"readiness_empty must name the control the app shows "
+        f"({es['capture_heading']!r}): {es['readiness_empty']!r}"
+    )
+
+
+def test_status_transition_announcement_carries_its_limit() -> None:
+    """The awaiting -> timestamped announcement (issue #243) ships in both locales.
+
+    Good news in this app never travels alone: a token attached is not a token
+    verified, and the sentence a screen-reader user hears has to say so, exactly
+    as the visible ``status_timestamped_help`` does.
+    """
+    en, es = _load(_EN), _load(_ES)
+    for bundle in (en, es):
+        assert "msg_timestamp_attached" in bundle, "the status transition has nothing to say"
+    assert "no longer waiting" in en["msg_timestamp_attached"].casefold()
+    assert "authority" in en["msg_timestamp_attached"].casefold()
+    assert "autoridad" in es["msg_timestamp_attached"].casefold()
+
+
+def test_the_unreachable_status_state_names_what_is_unknown_and_its_own_button() -> None:
+    """Issue #269: "Error" is not what a reader of an evidence tool needs to know.
+
+    When the first ``/api/status`` call fails, every number on the screen is
+    missing rather than zero, and the only honest thing to say is which. So the
+    state's copy has to do three jobs, in both locales: name the thing that could
+    not be reached, say that the values are unknown and not a result, and quote
+    the label of the button that gets the reader out — the same rule
+    ``test_copy_that_tells_you_to_press_a_button_quotes_that_button_s_real_label``
+    applies to the timestamp button, applied to a state that did not exist then.
+
+    ``status_unknown`` is checked against ``status_loading`` because reverting to
+    the placeholder is the precise failure this replaced: a frozen "Loading…"
+    where a custody status belongs is a claim-shaped absence.
+    """
+    en, es = _load(_EN), _load(_ES)
+    keys = (
+        "status_unreachable",
+        "status_unreachable_next",
+        "status_unreachable_retry",
+        "status_unknown",
+    )
+    for bundle, name in ((en, "en"), (es, "es")):
+        for key in keys:
+            assert key in bundle, f"{name}.json has no {key}; the failed status state is mute"
+            assert bundle[key].strip(), f"{name}.{key} is blank"
+        assert bundle["status_unknown"] != bundle["status_loading"], (
+            f"{name}.status_unknown is the loading placeholder again, which is the "
+            "state this replaced"
+        )
+        # The state names its own recovery, so renaming the button fails here.
+        assert bundle["status_unreachable_retry"] in bundle["status_unreachable_next"], (
+            f"{name}.status_unreachable_next does not quote the button it tells the "
+            f"reader to press ({bundle['status_unreachable_retry']!r}): "
+            f"{bundle['status_unreachable_next']!r}"
+        )
+
+    # The honest sentence says what is unknown, not merely that something failed.
+    assert "could not reach" in en["status_unreachable"].casefold(), en["status_unreachable"]
+    assert "not zero" in en["status_unreachable"].casefold(), en["status_unreachable"]
+    assert "no se pudo conectar" in es["status_unreachable"].casefold(), es["status_unreachable"]
+    assert "no es cero" in es["status_unreachable"].casefold(), es["status_unreachable"]
+
+
+# --- issue #274: a limit nobody can read is not a limit -----------------------------
+
+_ROOT = Path(__file__).resolve().parent.parent
+_READABILITY = _ROOT / "scripts" / "report_readability.py"
+_KEY_USAGE = _ROOT / "scripts" / "report_i18n_key_usage.py"
+
+#: The honest-limits set is resolved from ``docs/localization-guide.md``'s
+#: legally-sensitive table plus ``report_readability.py``'s annotated additions. It
+#: held 30 keys when this gate was written. The floor exists because the assertion
+#: below passes trivially on an empty set: a guide parser that stopped matching, or
+#: a renamed section heading, would resolve nothing and this gate would go quiet
+#: while reporting success -- the exact shape of check this repo has shipped before
+#: and does not want again.
+_MIN_HONEST_LIMITS = 20
+
+#: Likewise for the other side of the intersection: the usage report must have
+#: actually read the bundle. A scan that resolved no keys would report nothing
+#: unreferenced, which also passes.
+_MIN_SCANNED_KEYS = 200
+
+
+def _script_json(script: Path) -> dict[str, Any]:
+    """Run one of the report scripts and return its ``--json`` payload."""
+    result = subprocess.run(
+        [sys.executable, str(script), "--json"],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    assert result.returncode == 0, f"{script.name} failed:\n{result.stdout}\n{result.stderr}"
+    payload: dict[str, Any] = json.loads(result.stdout)
+    return payload
+
+
+def test_every_honest_limits_string_has_a_rendering_path() -> None:
+    """A string that says what habitable cannot prove must reach a screen.
+
+    Issue #274. Four of them did not: ``strength_caveat`` -- the disclaimer for the
+    record-strength claim, saying it is not token validity, not authority trust, not
+    admissibility -- and the three ``share_fact_*`` disclosure facts for the export.
+    Three separate systems asserted they were fine, and all three were checks on the
+    *bundle*: parity found them in both locales, the plain-language review approved
+    their wording, and the readability report scored them in the honest-limits corpus
+    and published that grade as a measured property of the app's copy. Nothing
+    checked that a limitation reaches a reader, so the published number described a
+    corpus that was partly invisible.
+
+    This gates rather than reports, which is the one place it differs from
+    ``scripts/report_i18n_key_usage.py``'s general backlog (#271). An ordinary dead
+    string is a translator's wasted afternoon. An unrendered limitation is a tenant
+    reading a strength claim with nothing next to it saying what the claim is not,
+    and that is not a backlog item.
+
+    The two halves come from the two scripts that already compute them, rather than
+    a third copy of either list here: adding a row to the guide's legally-sensitive
+    table, or wiring up a string, is enough to move a key between the buckets. If a
+    string genuinely should not render, it has to leave the honest-limits
+    declaration in the same change -- which is what makes this gate a decision point
+    rather than an obstacle.
+    """
+    limits = _script_json(_READABILITY)["honest_limits_keys"]
+    usage = _script_json(_KEY_USAGE)
+    unreferenced = usage["unreferenced"]
+    assert isinstance(limits, list) and isinstance(unreferenced, list)
+
+    assert len(limits) >= _MIN_HONEST_LIMITS, (
+        f"only {len(limits)} honest-limits keys were resolved ({sorted(limits)}), "
+        f"below the floor of {_MIN_HONEST_LIMITS}. The set is read from "
+        "docs/localization-guide.md's legally-sensitive table and "
+        "scripts/report_readability.py's additions; one of those stopped being "
+        "found, and this gate is now checking almost nothing."
+    )
+    assert usage["total_keys"] >= _MIN_SCANNED_KEYS, (
+        f"the key-usage scan saw only {usage['total_keys']} keys; it is not reading "
+        "the app bundle, so 'nothing unreferenced' means nothing"
+    )
+
+    stranded = sorted(set(limits) & set(unreferenced))
+    assert not stranded, (
+        "these strings state what habitable cannot prove, and no rendering path "
+        f"reaches them, so no reader will ever see one: {stranded}.\n"
+        "Wire each one up, or -- if it genuinely should not render -- delete it "
+        "from app/i18n/*.json AND from the honest-limits declaration it is named "
+        "in (docs/localization-guide.md's legally-sensitive table, or "
+        "_ADDITIONAL_HONEST_LIMITS in scripts/report_readability.py), in the same "
+        "change, so the readability corpus stops counting a string nobody reads."
     )

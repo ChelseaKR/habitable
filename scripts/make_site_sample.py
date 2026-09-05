@@ -136,11 +136,11 @@ def _build_sample(work: Path) -> Path:
         ),
     )
 
-    moisture = vault.document.add_issue(
-        category="moisture",
+    water = vault.document.add_issue(
+        category="water",
         room="bathroom",
         title="Recurring ceiling leak and mold-like spotting",
-        severity="high",
+        severity="severe",
         description=(
             "Synthetic scenario: staining returned after rain and spread across the ceiling."
         ),
@@ -149,18 +149,18 @@ def _build_sample(work: Path) -> Path:
         category="heat",
         room="bedroom",
         title="No heat overnight",
-        severity="urgent",
+        severity="emergency",
         description="Synthetic scenario: the room remained cold while the heater was set to warm.",
     )
     vault.save()
 
     tsa = LocalRfc3161TSA("sample-offline-rfc3161", time_source=lambda: _FIXED_EPOCH)
-    ceiling_capture = capture(vault, ceiling, issue_id=moisture, tsa=tsa)
-    wall_capture = capture(vault, wall, issue_id=moisture, tsa=tsa)
+    ceiling_capture = capture(vault, ceiling, issue_id=water, tsa=tsa)
+    wall_capture = capture(vault, wall, issue_id=water, tsa=tsa)
     thermostat_capture = capture(vault, thermostat, issue_id=heat, tsa=tsa)
 
     vault.add_timeline_event(
-        moisture,
+        water,
         event_type="condition_observed",
         text="Synthetic tenant observed new staining after rainfall.",
         occurred_at="2026-01-02",
@@ -168,14 +168,14 @@ def _build_sample(work: Path) -> Path:
         capture_ids=(ceiling_capture.capture_id, wall_capture.capture_id),
     )
     notice_id = vault.add_timeline_event(
-        moisture,
+        water,
         event_type="notice_sent",
         text="Synthetic repair request sent to the property manager.",
         occurred_at="2026-01-02",
         source="message",
     )
     vault.add_timeline_event(
-        moisture,
+        water,
         event_type="delivery_confirmed",
         text="Synthetic portal displayed a delivery confirmation.",
         occurred_at="2026-01-02",

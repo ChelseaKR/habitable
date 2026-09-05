@@ -1,0 +1,89 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# The network half of issue #273. `make verify` is offline, so the strongest check
+# this project can make against pointing a volunteer at finished work cannot live in
+# the merge gate: it needs the tracker.
+#
+# Three times a document here has advertised work that was already done, and the
+# most expensive of them (#254) was four "Claim task" links on the public review
+# page landing on closed issues holding somebody else's completed answer. That page
+# is the front door for exactly the outside contributors workstream D says the
+# project needs, so it converted worst at the point it looked most alive.
+#
+# This job resolves every `github.com/<owner>/<repo>/issues/<N>` link in `docs/` and
+# `site/` against the GitHub API and fails when one that is *presented as claimable*
+# points at a CLOSED issue. It deliberately does not fail on a closed issue cited as
+# a record: the review page links four closed threads on purpose, as the record of a
+# completed run, and a guard that went red on the page #254 had just fixed would be
+# worse than no guard. `scripts/check_stale_invitations.py` holds that distinction
+# and `tests/test_stale_invitations.py` pins it in both directions.
+#
+# Shape follows `tsa-integration.yml`, the repository's precedent for a scheduled,
+# network-gated job: weekly cron plus manual dispatch, a hard job failure as the
+# report (GitHub's own scheduled-run failure notification is the delivery channel),
+# and nothing required of a pull request. The install follows `i18n.yml` instead of
+# tsa-integration's `uv sync`, because the checker is standard-library only and the
+# runner's own python3 is the whole dependency list.
+name: stale-invitations
+
+on:
+  schedule:
+    - cron: "51 6 * * 1" # weekly, Monday 06:51 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: closed issues offered as claimable work
+    # GitHub disables scheduled workflows on forks that go quiet, but not
+    # immediately, and a fork's GITHUB_TOKEN is scoped to the fork -- whose tracker
+    # holds none of the issue numbers these documents cite, so every citation would
+    # 404 and the fork's owner would be emailed weekly about the upstream project's
+    # prose. The schedule therefore runs on the canonical repository only. A fork
+    # that genuinely wants the answer can still dispatch it by hand: the checker
+    # reads the owner and repository out of each link rather than from
+    # `github.repository`, so it asks the tracker the documents actually name.
+    if: github.repository == 'ChelseaKR/habitable' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read # to read the open/closed state of every cited issue
+    steps:
+      # P1-3 (SEC-04): audit-mode egress monitoring; see ci.yml's Harden Runner step
+      # for the telemetry trade-off note. Worth more here than on an offline job --
+      # this is one of the few workflows that deliberately talks to the network.
+      - name: Harden Runner (audit mode)
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Resolve every cited issue and fail on a closed one offered as claimable
+        env:
+          # Interpolated into `env:`, never into the script body: nothing a document
+          # or a branch name contains can reach this shell (zizmor template-injection).
+          # The token buys the authenticated rate limit and nothing else -- these
+          # issues are public and readable without it.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPORT: stale-invitations.txt
+        shell: bash
+        # `--states` is NOT passed, and must never be: it is the seam the test suite
+        # injects a fake tracker through, and a scheduled job that grades its own
+        # homework is the always-green this repository keeps deleting. The step is
+        # otherwise a bare invocation on purpose -- the decision logic belongs in the
+        # checker, where `tests/test_stale_invitations.py` can prove it fails.
+        run: |
+          set -euo pipefail
+          status=0
+          python3 scripts/check_stale_invitations.py --mode resolve | tee "$REPORT" || status=$?
+          {
+            echo "## Issue links resolved against the tracker"
+            echo
+            echo '```'
+            cat "$REPORT"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"

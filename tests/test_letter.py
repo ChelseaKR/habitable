@@ -167,8 +167,18 @@ def test_jurisdiction_profiles_and_fallback() -> None:
 #: ADRs and `CHANGELOG.md` are deliberately absent. They are dated records of a
 #: decision or a release as it stood, and editing them to mention work that came
 #: later would falsify the record, which is the opposite of the property this
-#: guard exists to protect. `ROADMAP.md` is absent because it names no framing
-#: key at all; it describes the workstream, not the profile list.
+#: guard exists to protect.
+#:
+#: `ROADMAP.md` is absent for a reason that had to be corrected: an earlier version
+#: of this comment said it "names no framing key at all", and that is false --
+#: it names `ew_disrepair` in two places and names neither of its siblings, which is
+#: exactly the partial-list-reading-as-complete shape this guard exists to catch.
+#: The exclusion still stands, on the honest ground: the roadmap is a horizons
+#: document that dates and attributes each mention to the work that shipped it,
+#: rather than a describes-what-ships-today list. Holding it to completeness would
+#: force every horizon row naming one framing to enumerate all of them. What guards
+#: the roadmap instead is `tests/test_stale_invitations.py`, which is about
+#: reserving work rather than enumerating it.
 _CURRENT_STATE_DOCS = (
     "docs/capabilities.md",
     "docs/letter-generator.md",

@@ -9,6 +9,114 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **Four strings stating what habitable cannot prove reached nobody** (#274) —
+  and the diagnosis was wrong until it was checked. `strength_caveat` was filed as
+  the disclaimer for a badge that renders without it; the badge was not rendering
+  at all, because `strengthBadge()` had no caller. The interface rebuild removed
+  the call site and the caveat markup together and orphaned the function, which
+  looked live to the key-usage report only because a literal `fm()` call sits
+  inside it. Meanwhile `/api/status` had been shipping `record_strength` per issue
+  the whole time and `strength.py`'s docstring states the contract — *never render
+  a level without the caveat nearby*. All four now render, and a **gating** test
+  requires the honest-limits set and the unreferenced set to be disjoint.
+
+- **Every action that disabled its own control stranded keyboard focus on
+  `<body>`** (#275). Measured against the pre-change tree, four did: relationship,
+  handoff profile, export, and add-missing-timestamps. `withBusy()` now restores
+  focus, but only when the control held it, focus has since fallen to `<body>`,
+  and the control is still there — because a mouse user who never had focus on it
+  must not be given it, and a validation handler's own `field.focus()` has a
+  better claim.
+
+- **Three fuzz properties were executed and could not fail** (#256, #257).
+  `fuzz_timestamp_token.py` reached its accept branch **zero** times across 17
+  seeds and 200,000 random inputs, so a verifier patched to manufacture authority
+  trust passed it. One property was doubly dead — `info.digest_hex != DIGEST` can
+  never hold, because both verifiers echo the requested digest back. And every
+  bundle-mutation assertion was carried entirely by `signature_ok`, so deleting
+  the whole v3/v4 structural dispatch left the suite green.
+
+  Now: 37 seeds produce 6 accepts and 200,000 random inputs produce 16,638; a
+  rewrite-and-re-sign mode runs 2054 rewrites across every committed position for
+  **0 accepted**, against **948 accepted** with the dispatch deleted. Where a
+  claim could not be made true it was withdrawn instead — 276 of 896 blind
+  mutations are legitimately undetectable under the open policy, so those two
+  tests are documented as crash tests with the numbers.
+
+  The OSS-Fuzz target would also have died on startup: `compile_python_fuzzer` is
+  PyInstaller, which bundles modules and not data. Verified on a real compiled
+  binary run from outside any checkout.
+
+- **A failed first status fetch left the app at "Loading…" forever** (#269). The
+  announcer said "Something went wrong: Failed to fetch" and then the unit, the
+  custody rail and the awaiting count sat frozen with no way back. In an evidence
+  tool that is worse than a blank screen: a placeholder where a custody status
+  belongs is a claim-shaped absence, and a reader cannot tell "not loaded" from
+  "nothing to report". Every readout now says *Unknown*, a panel says the local
+  server could not be reached and that each value is unknown **rather than zero**,
+  and it carries its own retry. The awaiting-timestamp help is hidden in that
+  state, because it asserts "Your photo is already sealed and safe on this device"
+  — a claim about the reader's evidence, made by an app that has just said it
+  cannot reach its own server.
+
+- **At 320px a privacy warning rendered under the wrong control** (#270). The help
+  for "Include the sealed original photos" — which warns that originals can still
+  carry location data — reflowed below the handoff-view select, so a sighted
+  reader saw it as advice about a different control. `aria-describedby` was
+  correct, so screen readers were unaffected and the existing reflow test passed:
+  nothing overflowed, the text simply landed in the wrong place. The audit found
+  one more the issue had not named, and the guard generalises past both — it walks
+  every described control in a real viewport and fails on interposition, so there
+  is no pixel threshold to tune.
+
+- **Four guards an adversarial review proved could not fail.** Each was planted
+  with the exact defect it names and passed. A phone keyboard's sentence case
+  defeated the category vocabulary — `Moho` normalised to `mold` while `Mold`
+  stayed `Mold`, opening a second bucket in the likelier direction; the alias
+  guard could not detect the reclassification its own docstring forbids
+  (`{"leak": "structural"}` passed the whole suite); the published-artifact guard
+  accepted alias spellings the generators never store; and the CI twin dropped an
+  unterminated final path, leaving it unchecked. All four now fail on their
+  counterexample.
+
+- **Three surfaces disagreed about what a severity is, and the packet printed
+  whichever one wrote the record** (#237, #238). `ISSUE_SEVERITIES` is
+  `low/moderate/severe/emergency/other` and `--severity` has been constrained to
+  it since #206 — but the local web app's Urgency menu offered `medium`, `high`
+  and `urgent`, and its POST reaches `add_issue` through `appserver.py` without
+  passing argparse. So the three strings the CLI refuses were exactly the three
+  the app wrote, and `htmlpacket.py`, `pdf.py` and `letter.py` render the stored
+  value verbatim into the document a court or an inspector reads. Two tenants in
+  the same building, one on each surface, produced packets whose urgency fields
+  could not be compared.
+
+  The same divergence had reached both of the project's own worked examples.
+  `demo.py` and `prove.py` seeded `severity="high"` — the first command the
+  README, `CONTRIBUTING.md` and the good-first-issue guide all tell a newcomer to
+  run modelled a value its own CLI refuses. And `scripts/make_site_sample.py`
+  seeded `category="moisture"` with severities `high` and `urgent`, so the
+  synthetic packet published on the site — the one review task LA-01 (#122) asks
+  a housing lawyer to cold-read — demonstrated one category and two severities a
+  tenant could not have entered.
+
+  A fourth surface turned up while fixing the third: `scripts/render_app_screenshots.py`,
+  which renders the app previews shown in the README, seeded `severity="high"`
+  too — and hard-coded the filename of one sample photo, so regenerating the
+  sample silently broke the screenshot render (capture ids are per-case-salted
+  digests and every regeneration renames every file). It now takes whichever
+  sealed sample photo is there.
+
+  The app now offers the model's four; `other` is deliberately absent from the
+  menu, because it means nothing without the companion detail string the CLI
+  requires and a `<select>` has nowhere to collect one. Guards in
+  `tests/test_guards.py` and `tests/test_site_sample.py` fail if any generator
+  drifts again — the second scans *every* script under `scripts/` rather than the
+  one that was wrong, because the defect was drift between siblings and naming a
+  sibling leaves the next one free to drift. `make_golden_packet.py` is exempt on
+  the record: the golden corpus pins the packet format, not the copy, and
+  regenerating a backward-compatibility fixture for a cosmetic reason would be
+  the worse trade. FAIL-BEFORE: 5 surfaces wrong / PASS-AFTER: all green.
+
 - **An expired TSA certificate no longer mints indefinitely-trusted timestamps**
   (#204, split from #121). `_verify_cert_chain` matched an anchor by fingerprint
   or direct issuance and stopped there, so a certificate that expired years ago
@@ -91,6 +199,210 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **The moment a capture gains its independent time proof is announced to
+  assistive technology** (#243). The status text changed and a screen-reader user
+  was told nothing — about the single transition that most affects what a record
+  can prove. A dedicated `role="status"` live region now announces it, kept
+  separate from the general announcer on purpose: that one empties and refills
+  its node on a 30 ms timer for every action result, so an action resolving in the
+  same tick would have swallowed this message. It fires only when the timestamped
+  count rose *and* the awaiting count fell — a capture that arrives already
+  stamped is a new capture, not a transition — stays silent on first paint, and
+  clears itself so the sentence is never read twice.
+
+  The test says plainly what it does and does not prove: the region exists and
+  updates. Whether the announcement is *useful* is what the human screen-reader
+  pass (#126) is for, and this does not close it.
+
+- **Every empty and error state in the app was audited, and the dead ends named a
+  next action** (#244). Twenty states were walked; six were genuine dead ends and
+  three of those were worse than silent:
+
+  - The **export-failed** branch had no next step at all. The awaiting and
+    untrusted branches each got one; the app's worst outcome got none. It now says
+    "Do not send this copy", that the sealed originals on the device are unchanged,
+    and what to open next.
+  - "Add missing timestamp tokens" reported "No timestamp tokens were missing"
+    while the count above still showed photos waiting — the `/api/resolve` queue is
+    per-device, so a capture synced in without a token is in `awaiting` but not
+    `deferred` (the #180 asymmetry, resurfacing as copy). It now scopes the claim
+    to this device and says why the other photos cannot be stamped here.
+  - The "Related photos" listbox rendered **zero options and zero words** when the
+    condition had no photos.
+
+  Two strings quoted controls that no longer exist: `readiness_empty` told the
+  reader to "Add a capture" when every button says *Photo*, and
+  `export_awaiting_next` quoted a button renamed by R-41 — in Spanish, still
+  carrying the retired `marca de tiempo` wording. Four states were deliberately
+  left, each for a stated reason, including the blocked issue-scoped export, which
+  is an honest limit rather than a dead end.
+
+- **The 320px Spanish text-expansion check was performed, and passed** (#249).
+  Item 5 of the plain-language review's *What remains*. Driven in a real 320×900
+  viewport in both locales: the two longest help strings run 16–17% longer in
+  Spanish and cost at most one line, with `scrollWidth == clientWidth` throughout.
+  A negative result, recorded — and nothing was shortened, so no limitation was
+  weakened to make a layout fit.
+
+- **A report of which app strings have no rendering path, and the removal of 41
+  that had none** (#271). Parity requires every locale to carry every key, so each
+  unreachable string was work a translator had to do for something nobody would
+  read — and #250 asks for a third language, so the bill was about to be paid
+  again. 48 of 289 were unreachable; the bundle is now 248 and the unreferenced
+  share is 3%. Almost all were residue of a design that was *replaced* rather than
+  never built.
+
+  Seven are deliberately kept. Four are honest-limits strings that are simply not
+  rendered (#274) — including `strength_caveat`, the disclaimer for the
+  record-strength claim. The interface rebuild dropped the per-condition strength
+  line and this caveat together and left the function that built them orphaned, so
+  a computed, shipped assessment reached no one and its caveat qualified nothing.
+  Deleting it would have closed the ticket by discarding a capability rather than
+  fixing a rendering bug. Three more are defined twice,
+  here and in the CLI catalogue, with deliberately different casing for two
+  surfaces — an open decision, not a duplicate.
+
+  The report states what it **cannot** see as well as what it can, because the
+  route that matters is the one a naive scan misses: `app.js` builds
+  `"event_" + type` and `"source_" + source`, covering 15 keys that are live only
+  because the markup happens to name them too.
+
+- **Category synonyms normalise instead of being refused** (#240). The corpus
+  #206 surveyed was wider than the vocabulary it set: `no_heat`, `moisture` and
+  `moho` are the same conditions under other names, and refusing them taught a
+  tenant that their own word was wrong — `moho` in particular, since habitable
+  ships a Spanish interface. They now map to the member they mean at CLI entry and
+  in the app's POST path, and the CLI prints what it did, because a record silently
+  storing something the operator did not type is the failure mode the vocabulary
+  existed to prevent. Nothing rewrites a stored value.
+
+  The two paths are close but deliberately not identical, and an adversarial review
+  caught the first version claiming they were. The app additionally folds case and
+  surrounding space before the lookup, because a mobile keyboard defaults to
+  sentence case: the first cut folded only for the *alias* lookup, so `Moho` became
+  `mold` while `Mold` stayed `Mold`, and a tenant typing "mold" on the phone this
+  tool is built for opened a second bucket beside `mold` — the split this change set
+  out to close, surviving in the likelier direction. `app/index.html` now also sets
+  `autocapitalize="none"` on the field. Argparse's `choices` stays case-sensitive,
+  so the CLI still refuses `Mold`; the surfaces agree on what a category *is*, not
+  on what they accept as input.
+
+  The corpus also held `plumbing`, `noise` and `threat`, and those are **not**
+  aliases: `plumbing` names a building system rather than the condition observed,
+  and `noise` and `threat` are real complaints that are not habitability
+  conditions. Mapping any of them onto a near-enough category would refile a
+  tenant's record as something they did not report, so they still take `other`
+  with a label. The vocabulary stays six, and `model.py` now records that as a
+  decision rather than an open question.
+
+- **The app's Condition field suggests the vocabulary without closing it**
+  (#239). #206 left the app's free-text `<input>` as a documented scope boundary.
+  It stays free text — a `<select>` would force a real condition into the wrong
+  bucket, and a wrong record is worse than an unvalidated one — but it now offers
+  the six categories through a `<datalist>`, so the common case normalises itself
+  while a tenant whose condition is not on the list can still name it. The
+  option's `value` is the stored category and is never translated; the `label`
+  the tenant reads is, through a new `data-i18n-label` pass in
+  `applyTranslations()`.
+
+- **Fuzz harnesses for the verifier subset, and the OSS-Fuzz project config**
+  (#256, new `fuzz/`). Two `TestOneInput` targets — `verify_packet` with the
+  fuzzer's bytes planted in the bundle, the signature, or a media file, and
+  `verify_token` / `TimestampToken.from_dict` — each asserting the real contract:
+  only the one named error type, never `structurally_intact` on planted bytes,
+  and with no anchor supplied, `trusted_chain` never True. Both run **with or
+  without Atheris**, using a hand-rolled input splitter rather than
+  `FuzzedDataProvider`, so a corpus entry reproduces identically in either
+  environment; `make fuzz` replays their committed seeds. Two anti-rot tests keep
+  every harness wired into the build and its seed corpus runnable.
+
+  **What is not done, stated plainly:** the project is not submitted to and not
+  accepted by OSS-Fuzz, so nothing is running continuously — that needs a
+  maintainer PR against `google/oss-fuzz` naming a primary contact. The Scorecard
+  Fuzzing row is therefore **not** edited: the check looks for membership in
+  fuzzing infrastructure, not for the presence of harnesses, so 0/10 is still
+  true, and that file is a dated snapshot whose value is in not being retro-edited.
+  `file_github_issue: false` is set so findings route through `SECURITY.md` rather
+  than a public tracker.
+
+- **A stateful hostile-input harness over packets and tokens** (#257, the E17
+  remainder). The single-shot property targets generate one hostile input and
+  assert the verifier reports exactly one named error. They structurally cannot
+  find the defect where each operation is individually sound and the *composition*
+  is not — the shape of both #163 and #204. `HostilePacketSequences` drives a live
+  copy of the v4 golden packet through 11 rules in three classes: meaning-preserving
+  (re-canonicalise, archive re-timestamp, append custody, re-sign with a fresh key),
+  unrepairable (byte flips, retargeted digests, stripped tokens, reordered custody),
+  and the one honest limit (truncation, which the chain proves only as a prefix).
+  Every bundle-editing rule draws a `resign` boolean, because re-signing is exactly
+  the individually-sound operation that must never launder a contradiction.
+
+  Each step verifies twice — open policy, and with the producer key pinned — and a
+  deliberate break of the FIX-05 pin check is caught only by the pinned pass, with
+  the minimal counterexample `resign_with_a_fresh_producer_key()`. Neither existing
+  fuzz module catches it; neither supplies a pin. Held at 400 examples × 12 steps
+  with no counterexample and **no security finding**; the merge gate runs 30 × 8 in
+  ~2.5s. (An earlier draft called that "13× the gate budget", which is the
+  `max_examples` ratio alone; by the module's own definition of cost —
+  `max_examples × stateful_step_count × 2` verifications — it is 20×.)
+
+  The harness found a real composition defect on its first run — in its own model,
+  which is worth recording rather than tidying away. It produced "append a custody
+  event, then truncate the chain": the two cancel, the exported bytes come back,
+  and the original signature is valid over them again. The model's boolean flags
+  said otherwise. It now reads state back from the bytes instead of remembering it.
+
+- **The reading-level target is measured instead of asserted** (#246,
+  `make readability`). `docs/audits/plain-language-review.md` stated a grade 6–8
+  target and applied it by judgment; no score had ever been computed, which is
+  exactly the kind of unverified claim this project refuses to make about anything
+  else. `scripts/report_readability.py` scores the *rendered* English copy — ICU
+  plurals resolved to one branch, placeholders replaced with a numeral — in three
+  buckets. **Ordinary UI prose reads at Flesch–Kincaid 5.7**, at or below target.
+
+  The honest-limits strings score 10.6 and are reported on their own line, never
+  as a target, and the set is read from `docs/localization-guide.md` rather than
+  copied into the script, so adding a row there is enough to exempt a string —
+  whatever its length, including the short blunt verdicts. (That last clause was
+  not true when first written: the fragment test ran before the sensitive test, so
+  six declared strings under six words, `verify_failed` among them, were diverted
+  into the unscored bucket and never reached the row that watches them.) It
+  **reports and never gates**, deliberately: a threshold would apply its pressure
+  hardest to the sentences stating what habitable cannot prove, and the cheapest
+  way to pass would be to soften them. The review document now says so, and says
+  that the honest-limits row going *down* is a regression even though the number
+  improved. Spanish is not scored — Flesch–Kincaid is an English formula, and a
+  wrong number wearing a right number's clothes is worse than none; it is recorded
+  as the open Spanish item instead.
+
+- **A desktop packaging spike, with the opposite answer to the mobile one**
+  (#259, `docs/research/desktop-packaging-spike.md`). Briefcase 0.4.4 produced a
+  macOS `.app` carrying `cryptography`, `pillow`, `reportlab` and `piexif` — the
+  exact stack that has no mobile path at all — so desktop is not blocked by the
+  thing that blocks phones. Two specific obstacles were found and both are
+  named: the **universal2 default fails**, because `cryptography` 50.0.1 ships
+  four macOS wheels and all four are `arm64` (an Intel-Mac build means compiling
+  it from source with a Rust toolchain); and the support package used was Python
+  3.12 while this project requires ≥3.14, which is the cheap next check rather
+  than a solved question. What the spike does *not* show is stated as plainly:
+  habitable itself was not packaged, the bundle was never launched, and Windows
+  and Linux were not attempted.
+
+- **ADR 0017: corrections and edit history need one append-only change log**
+  (#241, #261). Two issues that arrived separately turn out to be one question —
+  the case's own edit history is not recoverable — and the ADR settles it against
+  four facts verified in the tree rather than assumed. The load-bearing one:
+  `update_issue()` already exists and already stamps every write with signed
+  per-field provenance, but **that provenance never leaves the device**, so a
+  `habitable issue correct` built on it would be a silent edit in every artifact
+  a court reads. The ADR therefore refuses the cheap version, records why each
+  tempting shortcut was rejected (a timeline `other` entry puts case-file
+  bookkeeping into the dwelling's chronology; widening `EVENT_TYPES` is a format
+  break wearing a one-line change's costume), and states the rule an
+  implementation must satisfy: a stored field may be mutated only alongside an
+  append-only record, exported with the packet, that says it was. Two guards in
+  `tests/test_record_corrections.py` pin the facts the argument rests on.
+
 - **`habitable issue --category`/`--severity` are validated against a vocabulary**
   (#206). They accepted arbitrary free text while `timeline --type`/`--source`
   next door were enum-constrained, so a mistyped category was accepted silently
@@ -99,8 +411,9 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   `--severity-detail`, because a closed vocabulary with no escape hatch would
   force a real condition to be misfiled. Validation is at CLI entry only:
   categories already stored in a vault are grandfathered and keep loading. The
-  local web app's free-text condition field is unchanged and is documented as a
-  known scope boundary.
+  local web app's free-text condition field was left unchanged and documented as
+  a known scope boundary; that boundary is closed further down this release
+  (#237, #239, #240).
 
 - **A third letter framing profile, `ew_disrepair`** (#207), for England and
   Wales. Presentation-only wording held to the same bar as its two siblings: no
@@ -109,6 +422,121 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   read it.
 
 ### Changed
+
+- **A fuzz assertion that could never fail** (found while implementing #257).
+  `tests/test_verify_fuzz.py`'s `_verify_must_not_crash_or_accept` asserted
+  `not report.ok` — but `ok` aliases `evidence_ready`, which requires a supplied
+  trust root the golden corpus deliberately ships without, so `test_golden.py`
+  asserts `not report.ok` for a *pristine* fixture too. The "never accept on
+  tamper" half of the project's headline fuzz guard was therefore vacuous across
+  the whole corpus; only the crash invariant was doing work. It now asserts
+  against `structurally_intact`, and the reasoning is in the module docstring.
+
+- **The docs-only accessibility twin asserts instead of assuming** (#255).
+  `a11y-docs-only.yml` published an unconditional green under the *required*
+  context `axe-core WCAG scan (merge gate)` with nothing but an `echo`. Its own
+  comment claimed the real scan "finishing later, its result governs" — an
+  assumption about job duration, not an invariant, and a re-run of the twin alone
+  or a cancelled scan left a green that had asserted nothing on a PR that did
+  touch the UI. The twin now collects the PR's changed files and fails unless
+  every path is one it may answer for, cross-checking the API list against
+  `changed_files` so neither the 3000-file cap nor a stale re-run payload can lie
+  to it.
+
+  Because the assertion is a pure function of the file list, `tests/test_guards.py`
+  **extracts that script from the YAML and executes it** — the proof the old step
+  could never offer — including against an empty list, so a vacuous pass is itself
+  a failure. Three lists are now held in lockstep: the real scan's `paths-ignore`,
+  the twin's `paths`, and the twin's own globs. *Behaviour change worth knowing:*
+  on a mixed docs+code PR the twin now goes red, and the real scan normally
+  overwrites it. The worst case has inverted from "a green that checked nothing"
+  to "a blocked merge a human clears". The required-checks topology is untouched;
+  that remains an owner decision.
+
+- **The app shipped two English copies of itself, and the weaker one was the
+  offline rendering** (#268). Every `data-i18n` element carries fallback text that
+  `app.js` overwrites once the bundle loads; 26 of 167 no longer matched
+  `en.json`, and not randomly — the markup held the wording from *before* the
+  plain-language review (R-41/R-04) and the bundle held the reviewed wording.
+  `wireLang()`'s failure path keeps the current language, so a reader whose fetch
+  failed got the copy the review had already rejected: "Device fingerprint" for
+  "Device ID", "Chain of custody" for "Evidence trail".
+
+  Several divergences weakened an honest-limits string outright.
+  `field_dev_tsa_help` lost "never evidence-ready. Leave it off for real
+  evidence." `resolve_help` lost "Authority trust is checked separately."
+  `export_scope_help` lost the entire reason the export is blocked. Softening what
+  habitable cannot prove is the one thing this copy is never allowed to do, and
+  there was a reachable rendering path that did it. All 26 now match, and
+  `tests/test_app_fallback_parity.py` closes the class — plus a second guard that
+  every `data-i18n-*` hook in the markup is one `applyTranslations()` actually
+  reads, since a hook the script ignores renders English to every Spanish reader
+  while looking translated in review.
+
+- **The review page stopped inviting people to claim tasks they cannot claim**
+  (#254). `site/review/index.html` advertised six bounded review tasks and told a
+  visitor to claim one on GitHub; four of those six links landed on **closed**
+  issues holding somebody else's completed answer, while the page's own "open
+  task list" filter returned two. The recruitment funnel converted worst exactly
+  where it looked most alive — and this is the front door for the outside
+  contributors workstream D says the project needs.
+
+  The cause was structural, not a stale link: the six tasks are **repeatable by
+  design** — a second reviewer on different hardware, with different assistive
+  technology, is a different result, not a duplicate — and one issue per task
+  cannot model that, because the first completion closes it. Each task now opens
+  a new `review-task` issue form with that task preselected, so every run gets
+  its own thread; the four completed runs stay closed and are linked as records
+  rather than claims. A guard in `tests/test_site_review.py` fails if any task
+  link becomes a bare `/issues/<number>` again, and checks each prefill value
+  against the form's own option list so the page and the form cannot drift apart.
+  FAIL-BEFORE 3 failed / PASS-AFTER 12 passed.
+
+- **The performance budget's stated tolerance band was wrong, and its biggest
+  operation is not in it** (#258). The document said ceilings sit "roughly 15–30×"
+  above measured latency; measured, 8.8× to 78×. And vault unlock — scrypt,
+  re-derived on every unlock — costs 228 ms by default against a 31.4 ms total for
+  everything the budget does cover, with no row and no ceiling (#280). Budget
+  numbers and the 10× scalar are unchanged, because a slowdown factor is a ratio
+  between two machines and only one was measured.
+
+- **`scripts/` is under the lint and type gates, by directory rather than by list**
+  (#272). `make lint` named individual files, so 8 of 11 scripts were unchecked —
+  including the three that run on every PR as `make i18n`, and the generators whose
+  output is published. A new script was unlinted by default and its author had to
+  know to add themselves to a list they had probably never read; PR #213 from an
+  outside contributor carries an unused import that CI would never have reported.
+  Six findings that were hiding behind the enumeration are cleared. `make help` was
+  also hiding merge gates: its grep had no digits, so `i18n` and `a11y` never
+  appeared in the only list of runnable targets this project publishes.
+
+- **A guard against inviting contributors to claim finished work** (#273), offline
+  in the merge gate and weekly against the tracker, plus a ROADMAP reconciliation
+  so the document that was one of the three offenders is not left stale while the
+  guard lands. The classification problem is the substance: telling a *record* from
+  an *invitation* by surrounding sentence fails on this repo's own corrected prose,
+  so the signal is the link text alone.
+
+- **The blocked scoping paths say they are a safety hold, not an unfinished
+  feature** (#242). `export --issue`/`--since` and `share --issue` fail closed
+  because packet v4 and sync v2 carry the complete custody chain, which can
+  reveal identifiers outside the requested scope — but "temporarily blocked" read
+  like something half-built, so an organizer hitting it could not tell whether to
+  wait, work around it, or file a bug. All three refusals (`packet.py`,
+  `share.py`, `sync.py`) and the three `--help` strings now name the reason, say
+  a truncated chain must never be presented as a complete one, and point at the
+  restoration work and its independent-review gate (#262). The behaviour is
+  unchanged; only the explanation is.
+
+- **The mobile packaging spike carries a dated re-check** (#260). The 2026-07-09
+  spike turned on one fact — whether `cryptography` publishes a mobile wheel — and
+  that fact has an expiry date. Re-queried 2026-09-04 by the same method:
+  `cryptography` 50.0.1 still ships no `ios_*` or `android_*` wheel, a full PyPI
+  major version after 49.0.0, so the unblock condition has not arrived. The gap
+  is now more precisely located, which is the part worth knowing: `pillow` — the
+  softer dependency — is no longer the obstacle on iOS, and `cryptography` alone
+  is, on both platforms. The re-check method is recorded so the next one is the
+  same measurement.
 
 - **The planning documents stopped reserving work that had already shipped.**
   #228 corrected `docs/capabilities.md` and `docs/letter-generator.md` when

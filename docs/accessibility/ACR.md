@@ -186,7 +186,7 @@ emitted. That gap is tracked work and affects several rows below.
 | **2.3.1 Three Flashes or Below Threshold** (A) | Not Applicable (PDF); Not Evaluated (app) | No flashing content in the PDF. |
 | **2.4.1 Bypass Blocks** (A) | Not Evaluated (app) | The app's skip link and landmarks have automated structural and keyboard coverage; human AT review remains open. N/A to the PDF. |
 | **2.4.2 Page Titled** (A) | Not Evaluated (app); Supports (PDF) | **PDF current:** the document title metadata is set (e.g. "habitability evidence packet — unit 4B"), so assistive tech announces a meaningful title. |
-| **2.4.3 Focus Order** (A) | Not Evaluated (app) | Automated tests cover primary-control order and dialog focus return; human AT review of the complete Repair Trail remains open. N/A to the static PDF. |
+| **2.4.3 Focus Order** (A) | Not Evaluated (app) | Automated tests cover primary-control order and dialog focus return, and that no action which disables its own control leaves focus on `<body>` (#275); human AT review of the complete Repair Trail remains open. N/A to the static PDF. |
 | **2.4.4 Link Purpose (In Context)** (A) | Not Evaluated (app) | App target. The PDF has no hyperlinks. |
 | **2.5.1 Pointer Gestures** (A) | Not Evaluated (app) | App target: no reliance on multipoint/path-based gestures; capture works without precise pointer control. N/A to the PDF. |
 | **2.5.2 Pointer Cancellation** (A) | Not Evaluated (app) | App target. N/A to the PDF. |

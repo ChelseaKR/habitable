@@ -34,7 +34,7 @@ from .artifact import add_relationship, capture_artifact
 from .capture import capture, resolve_deferred
 from .disclosure import proof_statement
 from .errors import HabitableError
-from .model import Capture
+from .model import ISSUE_CATEGORIES, ISSUE_CATEGORY_ALIASES, Capture
 from .obslog import configure_logging, enabled_from_env, is_configured, log_event
 from .packet import build_packet
 from .private_temp import private_temp_workspace
@@ -272,8 +272,34 @@ class AppServer:
         }
 
     def add_issue(self, body: dict[str, object]) -> dict[str, object]:
+        # The Condition field stays free text on purpose (issue #239) -- a dropdown
+        # would force a real condition into the wrong bucket. What it does not stay
+        # is inconsistent: a word that names a category habitable already has is
+        # stored as that category, so the Spanish app's `moho` and the CLI's `mold`
+        # are one category rather than two.
+        #
+        # Case and surrounding space are folded BEFORE that lookup, and the folded
+        # form is what gets stored when it names a known category. The first cut of
+        # this folded only for the alias lookup and stored the raw string otherwise,
+        # which made the alias path more robust than the identity path: `Moho`
+        # normalised to `mold` while `Mold` stayed `Mold`. On iOS and Android the
+        # keyboard's default is sentence case, so a tenant typing "mold" on the
+        # phone this tool is meant for stored a second `Mold` bucket beside `mold`
+        # -- the exact split issue #240 set out to close, surviving in the likelier
+        # direction.
+        #
+        # Anything the vocabulary does not know is stored as the tenant wrote it,
+        # minus surrounding space. Their words, their capitalisation.
+        typed = _req_str(body, "category").strip()
+        folded = typed.lower()
+        if folded in ISSUE_CATEGORY_ALIASES:
+            category = ISSUE_CATEGORY_ALIASES[folded]
+        elif folded in ISSUE_CATEGORIES:
+            category = folded
+        else:
+            category = typed
         issue_id = self.vault.document.add_issue(
-            category=_req_str(body, "category"),
+            category=category,
             room=_opt_str(body, "room"),
             title=_opt_str(body, "title"),
             severity=_opt_str(body, "severity"),

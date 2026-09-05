@@ -278,8 +278,8 @@ _PUBLISHED: tuple[tuple[str, str, str], ...] = (
     ),
     (
         "review/",
-        "2026-09-01",
-        "d1281304b78d1bc1295da22739e30cbfca4db56cd8dad32b5eacd2bb72de870a",
+        "2026-09-04",
+        "e991e270df193b7aa0847e29d37a43556ab9b5a0b908591f7d629c4eabd01354",
     ),
     (
         "review/changes/",

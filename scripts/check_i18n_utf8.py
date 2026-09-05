@@ -30,6 +30,7 @@ Exit codes:
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -37,23 +38,86 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 # A NUL byte marks a blob as binary (git's own text/binary heuristic).
 _NUL = b"\x00"
+
+# Bound to a name, not written as an inline `except (...)`, so `ruff format` under
+# this project's `target-version = "py314"` cannot rewrite it to the PEP 758
+# parenthesis-free form. That form is a SyntaxError on Python < 3.14, and CI runs
+# this gate with the runner's bare `python3` while `make i18n` runs it under uv's
+# 3.14 -- so the rewrite passed locally and failed in the merge gate. `tsa.py`
+# documents the same precaution for `_SIG_HASH_ERRORS`.
+_READ_ERRORS = (OSError, FileNotFoundError)
 # Known-binary file extensions: skipped outright. Some binaries (e.g. this repo's
 # sample PDF) carry no NUL byte, so extension is the reliable signal for them.
 _BINARY_SUFFIXES = frozenset(
     {
-        ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".icns",
-        ".woff", ".woff2", ".ttf", ".otf", ".eot", ".wasm", ".mp3", ".mp4", ".mov",
-        ".avi", ".webm", ".ogg", ".whl", ".tar", ".gz", ".tgz", ".zip", ".bz2",
-        ".xz", ".7z", ".pyc", ".pyo", ".so", ".dylib", ".dll", ".exe", ".bin",
+        ".pdf",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".webp",
+        ".bmp",
+        ".ico",
+        ".icns",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".otf",
+        ".eot",
+        ".wasm",
+        ".mp3",
+        ".mp4",
+        ".mov",
+        ".avi",
+        ".webm",
+        ".ogg",
+        ".whl",
+        ".tar",
+        ".gz",
+        ".tgz",
+        ".zip",
+        ".bz2",
+        ".xz",
+        ".7z",
+        ".pyc",
+        ".pyo",
+        ".so",
+        ".dylib",
+        ".dll",
+        ".exe",
+        ".bin",
     }
 )
+
+
+def _git() -> str:
+    """The absolute path to git, resolved on PATH before exec rather than at it.
+
+    S607 objects to handing ``subprocess`` a bare ``"git"``. Be honest about what
+    resolving it buys: ``shutil.which`` searches the same PATH the OS would have
+    searched, so this is not a security boundary and a hostile PATH still wins.
+    What it does buy is an explicit value that can be printed in a failure, and
+    consistency -- ``scripts/check_reproducible_build.py`` runs this same
+    ``git ls-files -z`` through the same resolve-first shape, and two merge gates
+    shelling the same command two different ways is the thing worth avoiding.
+
+    A missing git is raised as FileNotFoundError, which is what a bare exec would
+    have raised, so the caller's handler still turns it into the documented exit
+    code 2 instead of an unhandled traceback.
+    """
+    resolved = shutil.which("git")
+    if resolved is None:
+        raise FileNotFoundError("git not found on PATH")
+    return resolved
 
 
 def _tracked_files() -> list[Path]:
     """Return every git-tracked path, NUL-delimited so odd names are safe."""
     try:
-        out = subprocess.run(
-            ["git", "ls-files", "-z"],
+        # S603 is not applicable: no shell, the executable is resolved above and
+        # every argument is a constant. Nothing here is caller-supplied.
+        out = subprocess.run(  # noqa: S603 - resolved git path and constant arguments
+            [_git(), "ls-files", "-z"],
             cwd=_REPO_ROOT,
             capture_output=True,
             check=True,
@@ -73,7 +137,7 @@ def check_utf8() -> int:
             continue  # known binary asset — not a text file
         try:
             data = path.read_bytes()
-        except (OSError, FileNotFoundError):
+        except _READ_ERRORS:
             # A tracked-but-absent path (e.g. a submodule gitlink) is not text.
             continue
         if _NUL in data:

@@ -124,12 +124,29 @@ warn_unreachable = true
 warn_redundant_casts = true
 disallow_any_generics = true
 no_implicit_reexport = true
-files = ["src", "tests"]
+# `scripts` is in the type gate for the same reason it is now in the ruff gate
+# (issue #272): several of these are merge gates themselves -- the three i18n
+# checks run on every PR -- and a generator whose output is a published
+# artifact should not be the least-checked code in the repository. It passes
+# under `strict = true` today with no suppressions, so this costs nothing but
+# keeps it that way.
+files = ["src", "tests", "scripts", "fuzz"]
 mypy_path = "contrib"
 
 [[tool.mypy.overrides]]
-module = ["piexif.*", "reportlab.*", "PIL.*", "asn1crypto.*", "axe_playwright_python.*"]
+module = ["piexif.*", "reportlab.*", "PIL.*", "asn1crypto.*", "axe_playwright_python.*", "atheris.*"]
 ignore_missing_imports = true
+
+# The fuzz harnesses import `atheris` when OSS-Fuzz provides it and fall back to a
+# plain runner when it is absent, which is what makes a corpus entry reproduce
+# identically in both environments. The `# type: ignore[assignment]` on that
+# fallback is unused *here*, where atheris is missing and therefore Any -- and
+# needed wherever it is installed and typed. Warning on it would force the
+# harnesses to be correct for exactly one of the two environments they exist to
+# span.
+[[tool.mypy.overrides]]
+module = ["fuzz.*", "fuzz_verify_packet", "fuzz_timestamp_token"]
+warn_unused_ignores = false
 
 [tool.pytest.ini_options]
 minversion = "8.0"

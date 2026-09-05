@@ -26,6 +26,16 @@ packet's proof actually rests on — the primitive-level targets named in
    drops `trusted_chain` to `False`, a fail-closed direction that is pinned
    executably rather than claimed away.
 
+5. **Sequences, not single shots** — E17's remaining half (issue #257): a
+   `RuleBasedStateMachine` over a real packet, applying meaning-preserving
+   operations (archive re-timestamp, append a custody event, re-sign) and
+   unrepairable ones (media edits, retargeted digests, forged archive links,
+   stripped tokens, rewritten timeline text, reordered custody) in any order,
+   and checking a model after every step. The four sets of targets
+   above generate one hostile input and assert one verdict; they cannot, in
+   principle, find the defect where each operation is individually sound and the
+   composition is not — which is the shape #163 and #204 both had.
+
 Everything here is offline and synthetic: the local RFC 3161 issuer and the dev
 TSA, never a network authority and never real tenant data.
 """
@@ -34,21 +44,23 @@ from __future__ import annotations
 
 import base64
 import json
+import shutil
 import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.x509 import Certificate
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
+from hypothesis.stateful import RuleBasedStateMachine, invariant, precondition, rule
 
 from habitable.canonical import _CHUNK, JSONValue, canonical_json, sha256_bytes, sha256_file
 from habitable.crypto import Identity, SymmetricKey, open_sealed, seal_to
-from habitable.errors import CryptoError, CustodyError, TimestampError
+from habitable.errors import CryptoError, CustodyError, TimestampError, VerificationError
 from habitable.evidence import GENESIS_PREV_HASH, CustodyAction, CustodyEntry, CustodyLog
 from habitable.tsa import (
     DevTSA,
@@ -59,6 +71,7 @@ from habitable.tsa import (
     verify_archive_chain,
     verify_token,
 )
+from habitable.verify import SUPPORTED_PACKET_VERSION, VerificationReport, verify_packet
 
 # The same fixed instant `tests/conftest.py` uses, so anything printed by a failing
 # example is reproducible. Declared locally because `tests/` is not a package.
@@ -828,3 +841,502 @@ class TestArchiveChain:
     def test_reordering_links_breaks_the_chain(self) -> None:
         with pytest.raises(TimestampError):
             verify_archive_chain(_DIGEST, _RFC_TOKEN, [_ARCHIVES[1], _ARCHIVES[0], _ARCHIVES[2]])
+
+
+# =============================================================================
+# 5. A stateful machine: the defects a single-shot target structurally cannot find
+# =============================================================================
+
+_GOLDEN_PACKET = Path(__file__).resolve().parent / "golden" / f"packet-v{SUPPORTED_PACKET_VERSION}"
+_PRISTINE_BYTES = (_GOLDEN_PACKET / "bundle.json").read_bytes()
+_PRISTINE_BUNDLE: dict[str, Any] = json.loads(_PRISTINE_BYTES)
+_PRISTINE_HEAD: str = _PRISTINE_BUNDLE["custody_proof"]["head_hash"]
+_PRISTINE_CUSTODY: list[Any] = _PRISTINE_BUNDLE["custody_proof"]["entries"]
+_PRISTINE_MEDIA = {
+    path.name: path.read_bytes() for path in sorted((_GOLDEN_PACKET / "media").iterdir())
+}
+
+# The key the golden packet was really signed with, held out of band the way a
+# recipient who has seen a previous packet from this producer would hold it.
+_PINNED_PRODUCER_KEY: str = json.loads(
+    (_GOLDEN_PACKET / "bundle.sig.json").read_text(encoding="utf-8")
+)["sign_public"]
+
+# Bounded draws over the fixture's own shape, as everywhere else in this module:
+# an index into a collection comes from that collection's range, never from an
+# unbounded integer reduced with `%`, so a failing example shrinks to the index
+# it actually used.
+_ITEM_INDEX = st.sampled_from(range(len(_PRISTINE_BUNDLE["items"])))
+_TIMELINE_INDEX = st.sampled_from(range(len(_PRISTINE_BUNDLE["timeline"])))
+_MEDIA_NAMES = sorted(path.name for path in (_GOLDEN_PACKET / "media").iterdir())
+_MEDIA_NAME = st.sampled_from(_MEDIA_NAMES)
+_MEDIA_BYTE = st.integers(
+    min_value=0,
+    max_value=min((_GOLDEN_PACKET / "media" / name).stat().st_size for name in _MEDIA_NAMES) - 1,
+)
+
+# The machine's own authority. It can mint real RFC 3161 tokens, so it can do
+# both halves of the archival story: extend a proof forward honestly, and forge
+# a link over bytes no authority ever saw.
+_MACHINE_TSA = LocalRfc3161TSA("prop-stateful", time_source=lambda: FIXED_EPOCH_SECONDS)
+
+# The five contradictions the machine can commit, drawn as one value rather than
+# spread over five rules; `contradict_something_a_proof_already_fixed` says why.
+_CONTRADICTIONS = st.sampled_from(
+    [
+        "shared media",
+        "an item's digest",
+        "an item's timestamp token",
+        "a timeline entry's text",
+        "the custody order",
+    ]
+)
+
+
+def test_the_exported_bundle_is_already_canonical() -> None:
+    """Re-encoding the golden bundle must return the exported bytes.
+
+    This was a rule inside the machine below, and it was the wrong shape for one:
+    it changed nothing, so a third of the machine's steps went on re-asserting a
+    property of a *fixture*, in states where it had already been asserted seven
+    times. It is a property of the export, it is true or false before the machine
+    starts, and one assertion states it.
+
+    Why it matters: if the exported bytes were not canonical, every hash and
+    signature over them would be a claim about one particular serialisation
+    rather than about the content -- and a recipient who re-encoded before
+    hashing, as any independent implementation might, would get a different
+    answer and no way to tell which of them was wrong.
+    """
+    assert canonical_json(_PRISTINE_BUNDLE) == _PRISTINE_BYTES
+
+
+class HostilePacketSequences(RuleBasedStateMachine):
+    """Sequences of operations on a real packet, checked against a model after each.
+
+    The single-shot targets above and in `tests/test_verify_fuzz.py` generate one
+    hostile input and assert one verdict. They cannot, in principle, find the
+    defect where every operation is individually sound and the *composition* is
+    not — which is the shape of this project's two most serious findings so far:
+    the `have` manifest validated one line after the CRDT merge (#163), and an
+    anchor check that never consulted certificate validity (#204). Both needed a
+    sequence: a state reached legitimately, then an operation that was fine in
+    isolation.
+
+    So this machine holds a working copy of the newest golden packet and applies
+    operations to it. Three kinds:
+
+    * **Meaning-preserving** — extend an item's archive-timestamp chain
+      (RFC 4998), append a later custody event, re-sign. None of these change
+      what the packet asserts about the evidence.
+    * **Unrepairable** — flip a byte of shared media, retarget an item's digest,
+      attach an archive link over bytes no authority stamped, strip an item's
+      token, rewrite a timeline entry's text under its own commitment, reorder
+      the custody chain. Each contradicts something a *timestamp authority*, a
+      media digest, or a custody-bound commitment already fixed, so no amount of
+      producer-side repair can make it verify again.
+    * **The honest limit** — truncate the custody chain. A hash-linked chain
+      proves a prefix, so the shortened chain still verifies standalone; the
+      head hash moves, which is exactly why it is committed separately.
+
+    Every bundle-editing rule draws whether to re-sign -- all but the truncation
+    below, which always does, and says why -- because that is the composition
+    that matters: re-signing is individually sound (a packet's signature carries
+    its own verifying key, FIX-05), and the model asserts it can never launder a
+    contradiction. When a tampered packet has a *valid* signature, the invariant
+    additionally demands that `signature_ok` really is True — otherwise the
+    rejection would be the signature's doing and the anchor checks would be
+    getting credit for work they did not do.
+
+    Each step is verified twice, under both trust policies the verifier offers:
+    open (the signature is self-attesting) and with the producer key pinned. That
+    is where the limit and its mitigation are pinned together — an operation the
+    open policy tolerates because the producer could legitimately have done it is
+    exactly one the pin refuses.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.packet = _SCRATCH / "stateful-packet"
+        if self.packet.exists():
+            shutil.rmtree(self.packet)
+        shutil.copytree(_GOLDEN_PACKET, self.packet)
+        #: A field inside the bundle was made to contradict something a timestamp
+        #: authority or a custody-bound commitment already fixed. Held as history
+        #: rather than derived, because no rule here can put such a field back --
+        #: the read-back checks below cover everything that *can* be undone.
+        self.unrepairable = False
+        #: `bundle.sig.json` now carries a key the original producer never used.
+        self.producer_key_replaced = False
+        #: The bundle bytes the signature on disk actually covers. Not a boolean
+        #: "is the signature stale": appending a custody entry and then dropping
+        #: it again restores the exported bytes exactly, and the *original*
+        #: signature is valid over them once more. This machine found that
+        #: two-step composition in its own model on its first run -- which is
+        #: precisely the class of thing it exists to find, so it is recorded
+        #: here rather than quietly repaired.
+        self.signed_bytes = _PRISTINE_BYTES
+        #: the custody chain no longer walks, so it cannot be rebuilt or extended.
+        self.custody_broken = False
+        #: archive links added so far. Every link is re-verified on every later
+        #: step, so an uncapped chain makes the machine's cost quadratic in the
+        #: step count for no new coverage -- `TestArchiveChain` above already
+        #: sweeps depth 1..3 exhaustively. Three is enough to interleave an
+        #: honest link, a forged one, and a repair.
+        self.archive_links = 0
+
+    # --- reading and writing the working packet ------------------------------
+
+    def _read(self) -> dict[str, Any]:
+        return cast("dict[str, Any]", json.loads((self.packet / "bundle.json").read_bytes()))
+
+    def _write(self, bundle: Mapping[str, Any], *, resign: bool) -> None:
+        (self.packet / "bundle.json").write_bytes(canonical_json(cast("JSONValue", bundle)))
+        if resign:
+            self._resign()
+
+    # --- what is true of the packet right now, read back rather than remembered
+
+    def _bundle_bytes(self) -> bytes:
+        return (self.packet / "bundle.json").read_bytes()
+
+    def _signature_is_fresh(self) -> bool:
+        return self.signed_bytes == self._bundle_bytes()
+
+    def _bundle_is_the_exported_one(self) -> bool:
+        return self._bundle_bytes() == _PRISTINE_BYTES
+
+    def _media_is_the_exported_media(self) -> bool:
+        return all(
+            (self.packet / "media" / name).read_bytes() == payload
+            for name, payload in _PRISTINE_MEDIA.items()
+        )
+
+    def _exported_custody_is_still_a_prefix(self) -> bool:
+        """Whether every entry the producer exported is still there, in order.
+
+        Not a length comparison: dropping three entries and appending three more
+        leaves the length alone while the exported chain is gone, and appending
+        one then dropping it leaves a longer chain that is nonetheless exactly
+        what was exported.
+        """
+        entries: list[Any] = self._read()["custody_proof"]["entries"]
+        return bool(entries[: len(_PRISTINE_CUSTODY)] == _PRISTINE_CUSTODY)
+
+    def _contradicted(self) -> bool:
+        return self.unrepairable or not self._media_is_the_exported_media()
+
+    def _resign(self) -> None:
+        """Sign the bundle on disk with a freshly generated producer key.
+
+        This is the whole of FIX-05 in four lines: `signature_ok` takes its
+        verifying key from the signature file itself, so anyone who rewrites a
+        bundle can also re-sign it. The open policy therefore cannot tell this
+        from the real producer, and is not asked to; the pinned policy can, and
+        this machine asserts it always does.
+        """
+        digest = sha256_bytes((self.packet / "bundle.json").read_bytes())
+        identity = Identity.generate()
+        public = identity.public()
+        record: dict[str, JSONValue] = {
+            "bundle_sha256": digest,
+            "producer_fingerprint": public.fingerprint,
+            "sign_public": base64.b64encode(public.sign_public).decode("ascii"),
+            "signature": base64.b64encode(identity.sign(digest.encode("ascii"))).decode("ascii"),
+        }
+        (self.packet / "bundle.sig.json").write_bytes(canonical_json(record))
+        self.producer_key_replaced = True
+        self.signed_bytes = self._bundle_bytes()
+
+    # --- meaning-preserving operations ---------------------------------------
+
+    @rule(index=_ITEM_INDEX, forged=st.booleans(), resign=st.booleans())
+    @precondition(lambda self: self.archive_links < 3)
+    def add_an_archive_link(self, index: int, forged: bool, resign: bool) -> None:
+        """RFC 4998 archival, told honestly or dishonestly on one draw.
+
+        Honest: stamp the newest token so the proof outlives the key that made
+        it. Forged: attach a real token, from a real authority, over bytes that
+        are not this token -- the operation that looks identical in a listing and
+        proves nothing about the chain it claims to extend.
+
+        One rule rather than two because each mints an RSA signature and leaves
+        behind a link every later step re-verifies, and as two rules of six they
+        took a fifth of the machine's steps -- for a pair of operations
+        `TestArchiveChain` above already sweeps exhaustively at depths one to
+        three. What is wanted here is the composition, an honest link and a
+        forged one and a repair in some order, and one drawn boolean expresses
+        that as well as two rules did.
+        """
+        bundle = self._read()
+        item = bundle["items"][index]
+        links = list(item.get("archive_timestamps") or [])
+        if forged:
+            links.append(_MACHINE_TSA.stamp(sha256_bytes(b"bytes no link ever carried")).to_dict())
+        else:
+            newest = links[-1] if links else item.get("timestamp")
+            if newest is None:  # the token was stripped; there is nothing to carry forward
+                return
+            links.append(retimestamp(TimestampToken.from_dict(newest), _MACHINE_TSA).to_dict())
+        item["archive_timestamps"] = links
+        self.archive_links += 1
+        self._write(bundle, resign=resign)
+        self.unrepairable = self.unrepairable or forged
+
+    @rule(resign=st.booleans())
+    def append_a_later_custody_event(self, resign: bool) -> None:
+        """Handling did not stop when the packet was exported; the chain can grow.
+
+        Guarded from the inside rather than by a `@precondition`, and so is the
+        truncation rule below. Hypothesis picks a rule by filtering a
+        `sampled_from` over all of them, gives up after a bounded number of
+        rejections, and throws the whole example away when it does: with four of
+        the six rules this machine had gated that way, 12 of 42 generated
+        examples were being discarded as "unable to satisfy". A step that returns
+        early once the chain is broken costs one step; a discarded example costs
+        eight of them.
+        """
+        if self.custody_broken:
+            return  # the chain no longer walks, so it cannot be extended
+        bundle = self._read()
+        log = CustodyLog.from_records(bundle["custody_proof"]["entries"])
+        log.append(
+            CustodyAction.VIEWED,
+            "cap-stateful-machine",
+            actor="reviewer",
+            hlc=f"{len(log):06d}-machine",
+        )
+        bundle["custody_proof"] = log.integrity_proof()
+        self._write(bundle, resign=resign)
+
+    @rule()
+    def resign_with_a_fresh_producer_key(self) -> None:
+        self._resign()
+
+    # --- operations no re-signing can repair ---------------------------------
+
+    @rule(
+        contradiction=_CONTRADICTIONS,
+        index=_ITEM_INDEX,
+        digest_field=st.sampled_from(["content_hash", "shared_hash"]),
+        entry=_TIMELINE_INDEX,
+        media=_MEDIA_NAME,
+        position=_MEDIA_BYTE,
+        value=_VALUE,
+        resign=st.booleans(),
+    )
+    def contradict_something_a_proof_already_fixed(
+        self,
+        contradiction: str,
+        index: int,
+        digest_field: str,
+        entry: int,
+        media: str,
+        position: int,
+        value: int,
+        resign: bool,
+    ) -> None:
+        """Do one of five things no producer-side repair can undo.
+
+        One rule with a drawn operation, not five rules, and the reason is a
+        budget one. ``unrepairable`` is an absorbing state: once it is set, every
+        later step asserts the same easy branch of the invariant ("still not
+        accepted"), so a second contradiction on top of the first buys nothing.
+        As five separate rules these were five of eleven draws, and the machine
+        spent 56% of its invariant checks inside that absorbing state -- while
+        the one branch nothing else in this repository covers, the custody
+        truncation limit below, was reached in 2% of them. Collapsing them to one
+        draw leaves every operation reachable, in the same combinations, and
+        moves the budget to the steps where acceptance is still in doubt.
+
+        Each operation contradicts something a *timestamp authority*, a media
+        digest, or a custody-bound commitment has already fixed:
+
+        * **shared media** -- flip a byte of a file an item's ``shared_hash``
+          covers.
+        * **an item's digest** -- point a signed item at content the authority's
+          token never covered.
+        * **an item's timestamp token** -- strip the anchor; removing it is not a
+          way to pass, because an unanchored item is not a verified one.
+        * **a timeline entry's text** -- change what the tenant said happened,
+          leaving the commitment that bound the old text behind.
+        * **the custody order** -- swap two entries, which breaks the hash chain
+          rather than rewriting it.
+        """
+        if contradiction == "shared media":
+            path = self.packet / "media" / media
+            raw = bytearray(path.read_bytes())
+            raw[position] = value if raw[position] != value else value ^ 0xFF
+            path.write_bytes(bytes(raw))
+            self.unrepairable = True
+            return
+
+        bundle = self._read()
+        if contradiction == "an item's digest":
+            bundle["items"][index][digest_field] = sha256_bytes(
+                f"substituted:{digest_field}:{index}".encode()
+            )
+        elif contradiction == "an item's timestamp token":
+            if "timestamp" not in bundle["items"][index]:
+                return  # already stripped; there is nothing left to remove
+            del bundle["items"][index]["timestamp"]
+        elif contradiction == "a timeline entry's text":
+            record = bundle["timeline"][entry]
+            record["text"] = f"{record.get('text', '')} (rewritten after the fact)"
+        elif contradiction == "the custody order":
+            entries = bundle["custody_proof"]["entries"]
+            if len(entries) < 2 or self.custody_broken:
+                return
+            entries[0], entries[1] = entries[1], entries[0]
+            self.custody_broken = True
+        else:  # a label with no branch would silently do nothing, which is the
+            # defect class this whole module exists to catch.
+            raise AssertionError(f"no operation implements the contradiction {contradiction!r}")
+        self._write(bundle, resign=resign)
+        self.unrepairable = True
+
+    # --- the honest limit ----------------------------------------------------
+
+    @rule()
+    def truncate_the_custody_chain(self) -> None:
+        """Drop the newest entry, and re-sign: the prefix still verifies, and the head moves.
+
+        This is the limit `test_suffix_truncation_is_invisible_to_the_chain_but_
+        moves_the_head` pins on a bare chain, carried up to a whole packet. The
+        verifier may still accept — until enough is gone that some other signed
+        structure loses the entry that bound it — and that is not a defect, it is
+        why the head hash is committed outside the chain and why a recipient who
+        pinned the producer key is told about it. The invariant below asserts both
+        halves: the head always moves, and the pinned policy always refuses.
+        """
+        if self.custody_broken:
+            return  # a chain that no longer walks has no verifiable prefix to keep
+        bundle = self._read()
+        records = bundle["custody_proof"]["entries"]
+        if len(records) < 2:
+            return
+        shortened = CustodyLog.from_records(records[:-1])
+        assert shortened.verify().ok, "a truncated prefix must still verify on its own"
+        proof = shortened.integrity_proof()
+        assert proof["head_hash"] != bundle["custody_proof"]["head_hash"], (
+            "dropping an entry left the head hash unchanged, so the separately "
+            "committed head would no longer detect truncation at all"
+        )
+        bundle["custody_proof"] = proof
+        # Always re-signed, unlike every other edit here, and for two reasons.
+        # A truncation the signature already refuses is not the limit this rule
+        # exists to state -- "a bundle edited after signing must not verify" is
+        # asserted by every other rule's unsigned draw. And an unparameterised
+        # rule is one hypothesis reaches far more often: with a `resign` draw
+        # this rule took 7.4% of steps and its branch of the invariant 2.3% of
+        # checks, which is not enough to call a limit pinned.
+        self._write(bundle, resign=True)
+
+    # --- the model -----------------------------------------------------------
+
+    def _verdict(self, *, pin: str | None) -> tuple[bool, VerificationReport | None]:
+        """Accepted-or-not under one trust policy, and never a leaked exception."""
+        try:
+            report = verify_packet(self.packet, expected_producer_key=pin)
+        except VerificationError:
+            return False, None
+        except Exception as exc:  # a non-habitable exception type is the failure
+            raise AssertionError(f"verify_packet leaked {type(exc).__name__}: {exc}") from exc
+        accepted = (
+            report.structurally_intact
+            and report.signature_ok
+            and report.custody_ok
+            and bool(report.items)
+            and report.cryptographically_verified_items == len(report.items)
+        )
+        return accepted, report
+
+    @invariant()
+    def the_verifier_never_contradicts_the_model(self) -> None:
+        """Acceptance is a function of what was done, not of the order it was done in.
+
+        "Accepted" is the predicate `tests/test_golden.py` uses for a packet with
+        no trust root supplied: structurally intact, signature and custody good,
+        and every item cryptographically verified. Deliberately *not*
+        `report.ok` — that is `evidence_ready`, which also requires a trusted
+        anchor the golden corpus does not ship, so it is False for a pristine
+        packet too and would make "never accepted a tampered packet" vacuously
+        true for every state this machine can reach.
+        """
+        open_accepted, open_report = self._verdict(pin=None)
+        pinned_accepted, _ = self._verdict(pin=_PINNED_PRODUCER_KEY)
+
+        if self._contradicted():
+            assert not open_accepted, (
+                "the verifier accepted a packet contradicting something a timestamp "
+                "authority, a media digest, or a custody-bound commitment already "
+                f"fixed, after: {self._state()}"
+            )
+            if self._signature_is_fresh():
+                assert open_report is not None and open_report.signature_ok, (
+                    "the rejection came from the signature, not from the anchor "
+                    "checks — a re-signed packet must be refused on its content"
+                )
+        elif not self._signature_is_fresh():
+            assert not open_accepted, "a bundle edited after signing must not verify"
+            assert open_report is not None and not open_report.signature_ok
+        elif not self._exported_custody_is_still_a_prefix():
+            # The prefix limit: acceptance is genuinely not determined here — it
+            # depends on whether a dropped entry still bound something else — but
+            # the head a recipient pinned or a seal covered always moves.
+            assert self._read()["custody_proof"]["head_hash"] != _PRISTINE_HEAD, (
+                "custody entries were dropped without moving the declared head hash"
+            )
+        else:
+            assert open_accepted, (
+                f"meaning-preserving operations lost an accepted packet, after: {self._state()}"
+            )
+
+        # The pin is the recipient-side answer to every producer-side rewrite:
+        # it refuses anything whose bytes or whose signing key are not the ones
+        # the producer actually exported, the truncation above included.
+        untouched = (
+            not self._contradicted()
+            and self._bundle_is_the_exported_one()
+            and not self.producer_key_replaced
+        )
+        assert pinned_accepted is untouched, (
+            f"with the producer key pinned, accepted={pinned_accepted} but the packet "
+            f"was {'untouched' if untouched else 'rewritten'}, after: {self._state()}"
+        )
+
+    def _state(self) -> str:
+        return (
+            f"contradicted={self._contradicted()} "
+            f"bundle_is_exported={self._bundle_is_the_exported_one()} "
+            f"signature_fresh={self._signature_is_fresh()} "
+            f"producer_key_replaced={self.producer_key_replaced} "
+            f"custody_broken={self.custody_broken} "
+            f"exported_custody_prefix={self._exported_custody_is_still_a_prefix()}"
+        )
+
+
+# Budget. Every step verifies the whole packet twice — once per trust policy —
+# so the cost is `max_examples x stateful_step_count x 2` verifications, and the
+# archive-link cap above keeps each of those from growing with the step count.
+# Eight steps stays: it is the shortest sequence that can interleave a tamper, a
+# repair and a second tamper, which is the shape this machine exists to find.
+#
+# Twenty-four examples rather than thirty, because a step is not a fixed price.
+# Verifying a packet that is already contradicted is *cheap* — a mismatched media
+# digest short-circuits the item checks that dominate the profile — so the more
+# of its budget the machine spends in states where acceptance is still in doubt,
+# the more each step costs. That is the trade this rule set was rebalanced to
+# make, and it was measured rather than assumed. Interleaved runs of the old rule
+# set at 30 x 8 against this one at 24 x 8: 5.66s vs 4.47s per run, and the
+# custody-truncation branch of the invariant — the tightest claim here, and the
+# only one nothing else in this repository covers — reached 2.9% of checks (7.7
+# per run) before and 15.5% (33.7 per run) after. Cheaper *and* four times the
+# coverage of the branch that needed it.
+#
+# Hunt with a raised count and `--hypothesis-seed=random` locally, not in the
+# merge gate.
+HostilePacketSequences.TestCase.settings = settings(
+    max_examples=24, stateful_step_count=8, deadline=None
+)
+TestHostilePacketSequences = HostilePacketSequences.TestCase

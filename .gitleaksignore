@@ -46,3 +46,36 @@ fecb126250590a097de19d01256d777db296a213:site/sample-packet/bundle.json:generic-
 #     a secret; it grants nothing.
 # Same rule, same cause, and same review as the packet-v3 entry above.
 d4771afeaf9e628c1d63432d4cc2cface8121803:tests/golden/packet-v4/bundle.json:generic-api-key:1
+
+# Sample-packet regeneration for the vocabulary fix (#237/#240). `make site-sample`
+# rebuilds site/sample-packet from synthetic data, so the one-line canonical JSON
+# is new content in a new commit and every prior fingerprint for this file goes
+# stale — the allowlist is commit-scoped by design. Gitleaks reports four matches
+# under this one exact commit/file/rule/line fingerprint.
+# Verified 2026-09-05 by the method the entries above state: each high-entropy
+# value base64-decodes to an ASN.1 SEQUENCE whose CMS content type is
+# `signed_data` — three RFC 3161 timestamp tokens of 1379/1380/1380 bytes from the
+# bundled DevTSA. None is a credential.
+46b86c46c7637f55f3256dd93a0e04acb62a7ae8:site/sample-packet/bundle.json:generic-api-key:1
+
+# fuzz/fuzz_timestamp_token.py:159 unpacks two module constants from a helper
+# call — the right-hand side is a function that reads the committed golden fixture
+# at run time, so there is no value on that line at all. Gitleaks' generic-api-key
+# heuristic fires on one variable name containing "TOKEN"; nothing there can leak.
+#
+# This comment deliberately describes that line instead of quoting it. The first
+# version reproduced the assignment verbatim and tripped the identical heuristic
+# *inside this file*, turning the explanation of a false positive into a new one —
+# which is its own evidence for how shallow the match is.
+# Verified 2026-09-05 by parsing the module and listing every string literal of 32
+# characters or more: all fourteen are docstrings or error messages. The file
+# contains no credential literal of any kind.
+a3767cc974568a3936914b4e4b810ae6062e2228:fuzz/fuzz_timestamp_token.py:generic-api-key:159
+
+# Commit ee32736f's version of THIS file quoted the line above verbatim while
+# explaining why it is a false positive, which tripped the identical heuristic at
+# line 61. The quote is gone from the working tree (see the entry above), but
+# gitleaks scans history, so the commit that carried it stays findable. There is
+# nothing to rotate: the "secret" is a variable name inside a comment about a
+# variable name. Verified 2026-09-05.
+ee32736f5451aa70d8624a03b4fb5444e49ac5bf:.gitleaksignore:generic-api-key:61

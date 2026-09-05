@@ -39,7 +39,7 @@ def run_demo() -> int:
     print("1. created an encrypted vault for unit 4B")
 
     issue = vault.document.add_issue(
-        category="mold", room="bathroom", title="Black mold on bathroom ceiling", severity="high"
+        category="mold", room="bathroom", title="Black mold on bathroom ceiling", severity="severe"
     )
     vault.add_timeline_event(
         issue,

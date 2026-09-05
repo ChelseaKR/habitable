@@ -272,6 +272,35 @@ a { color: var(--carbon); text-underline-offset: .22em; }
   color: var(--muted);
   font-size: .72rem;
 }
+/* Issue #274: the per-condition record-strength counts. Deliberately plain text and
+   deliberately not colour-banded: the bands (minimal / developing / strong) would be
+   carried by colour alone, and the counts already say the same thing in words. */
+.issue-strength {
+  margin: 0;
+  padding: 0 .15rem .7rem;
+  color: var(--muted);
+  font: .7rem/1.35 var(--data);
+}
+/* The strength line is a sibling of the button, not a child of it (its counts must
+   not join the button's accessible name), so the selected card's highlight has to be
+   continued onto it by hand or the row appears to end mid-card. */
+.issue-select[aria-pressed="true"] + .issue-strength {
+  padding-inline: .65rem;
+  background: var(--white);
+  box-shadow: inset .35rem 0 0 var(--carbon);
+}
+[dir="rtl"] .issue-select[aria-pressed="true"] + .issue-strength {
+  box-shadow: inset -.35rem 0 0 var(--carbon);
+}
+/* The one caveat for every strength line above it. Never softened, never hidden while
+   a strength line is on screen -- see habitable.strength's module docstring. */
+.strength-caveat {
+  margin: .8rem 0 0;
+  padding-block-start: .7rem;
+  border-block-start: 1px solid #d4b338;
+  color: var(--muted);
+  font-size: .72rem;
+}
 .new-condition {
   inline-size: 100%;
   display: flex;
@@ -326,6 +355,21 @@ a { color: var(--carbon); text-underline-offset: .22em; }
   background: var(--bad-soft);
   border-inline-start-color: var(--bad);
 }
+
+/* Issue #269: the failed-status state is a state, not a flash. It shares the
+   announcer's error palette but stays put until the status actually loads,
+   because the sentence a reader needs ("nothing below is current") has to still
+   be there when they look up from the numbers it is about. */
+.status-error {
+  margin-block-end: 1rem;
+  padding: .85rem 1rem;
+  color: var(--bad);
+  background: var(--bad-soft);
+  border-inline-start: .35rem solid var(--bad);
+}
+.status-error p { margin: 0 0 .5rem; }
+.status-error-line { font-weight: 700; }
+.status-error .text-button { color: inherit; }
 
 .trail-header {
   display: grid;
@@ -718,8 +762,14 @@ th {
   margin: .1rem 0 .8rem;
   font: 800 1.35rem/1.05 var(--utility);
 }
-.kept-side ul { margin: 0; padding-inline-start: 1.1rem; font-size: .84rem; }
-.kept-side li + li { margin-block-start: .45rem; }
+.kept-side ul,
+.share-facts { margin: 0; padding-inline-start: 1.1rem; font-size: .84rem; }
+.kept-side li + li,
+.share-facts li + li { margin-block-start: .45rem; }
+/* Issue #274: the export's disclosure facts. Same weight as the kept-side list --
+   what leaves is stated as plainly as what stays -- and above the form, so the
+   scope and the metadata rule are read before the controls that act on them. */
+.share-facts { margin-block-end: 1.1rem; }
 .leaving-side fieldset { grid-template-columns: 1fr 1fr; }
 .make-copy,
 .dialog-submit {
@@ -814,6 +864,13 @@ legend {
   inline-size: 1.2rem;
   block-size: 1.2rem;
   margin: .12rem 0 0;
+}
+/* Issue #270: a checkbox's help now lives inside its own grid item, so no
+   reflow can put another control between them. Column 2 lines it up under the
+   label rather than under the box. */
+.field-check > .field-help {
+  grid-column: 2;
+  margin-block-start: 0;
 }
 .link-evidence {
   grid-column: 1 / -1;

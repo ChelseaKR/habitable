@@ -10,11 +10,18 @@
 # quietly defeat the gate. CI runs serial, so this was latent rather than live; it is
 # now structural instead of conventional.
 .NOTPARALLEL:
-.PHONY: help bootstrap install lock-check fmt lint type test cov i18n doc-links markers verify audit a11y integration demo site-sample build repro relay-repro clean
+.PHONY: help bootstrap install lock-check fmt lint type test cov i18n i18n-usage doc-links markers readability fuzz perf-profile verify audit a11y integration demo site-sample build repro relay-repro clean
 
+# The character class needs the digits. Without them this silently skipped
+# `i18n`, `i18n-usage` and `a11y` -- three documented targets, one of them a merge
+# gate -- so the only list of what you can run here omitted them and said nothing.
+# (Kept out of the recipe: a comment inside one is echoed, and five lines of
+# rationale ahead of the help text would defeat the point of the help text.)
+# Width is 12 because that is the longest target name; at 10 the longer names
+# pushed their own descriptions out of the column.
 help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
-		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
+		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
 bootstrap: ## One-command setup from a bare machine (installs uv if missing, then syncs)
 	bash scripts/bootstrap.sh
@@ -34,13 +41,24 @@ lock-check: ## CQ-09: fail if uv.lock has drifted from pyproject.toml
 	# That is why `verify` lists this target first, and why CI runs it before `uv sync`.
 	uv lock --check
 
+# Every path here is a DIRECTORY on purpose. This used to name three script files
+# individually, which left 8 of the 11 files in scripts/ -- including the three
+# i18n gates that run on every merge -- neither linted nor formatted, and made a
+# newly added script unchecked by default unless its author knew to add it to a
+# list they had probably never read (issue #272). A directory cannot go stale,
+# because there is nothing to keep up to date. Resist adding a file here.
+#
+# One variable, not four copies: `fmt` and `lint` must cover the same surface, or
+# `fmt` leaves behind exactly the findings `lint` then fails on.
+RUFF_PATHS := src tests fuzz scripts
+
 fmt: ## Auto-format and auto-fix
-	uv run ruff format src tests scripts/check_doc_links.py scripts/check_reproducible_build.py
-	uv run ruff check --fix src tests scripts/check_doc_links.py scripts/check_reproducible_build.py
+	uv run ruff format $(RUFF_PATHS)
+	uv run ruff check --fix $(RUFF_PATHS)
 
 lint: ## Lint (no changes)
-	uv run ruff format --check src tests scripts/check_doc_links.py scripts/check_reproducible_build.py
-	uv run ruff check src tests scripts/check_doc_links.py scripts/check_reproducible_build.py
+	uv run ruff format --check $(RUFF_PATHS)
+	uv run ruff check $(RUFF_PATHS)
 
 type: ## Strict type-check
 	uv run mypy
@@ -84,18 +102,44 @@ i18n: ## Mechanical i18n gates: UTF-8 (G1), BCP 47 validity (G3), EN/ES key-pari
 	uv run python scripts/check_bcp47.py
 	uv run python scripts/check_i18n_parity.py
 
+fuzz: ## Replay the OSS-Fuzz harnesses over their committed seed corpora (no Atheris needed)
+	# The harnesses run with or without Atheris on purpose, so a corpus entry
+	# reproduces identically either way. This is the local smoke test; continuous
+	# fuzzing needs upstream OSS-Fuzz acceptance, which is not done (issue #256).
+	uv run python fuzz/fuzz_verify_packet.py
+	uv run python fuzz/fuzz_timestamp_token.py
+
+perf-profile: ## Characterise each budgeted local-path operation (reports; never gates — issue #258)
+	# Not in `verify`, for two reasons. Timing on a shared CI runner is not a
+	# measurement, and the one operation this most wants to watch -- scrypt -- is
+	# demonstrably the least load-stable thing in the tree (+38% under load), which
+	# is a recipe for a flaky gate rather than a signal.
+	uv run python scripts/report_perf_profile.py
+
+readability: ## Report the reading grade of the English app copy (reports; never gates — issue #246)
+	# Deliberately NOT part of `verify`. A hard readability threshold would press
+	# hardest on the honest-limits strings -- the ones stating what habitable cannot
+	# prove -- and those must stay blunt. The script holds them out of the headline
+	# number and prints them separately for exactly that reason.
+	uv run python scripts/report_readability.py
+
+i18n-usage: ## Report app i18n keys with no rendering path (reports; never gates — issue #271)
+	# Deliberately NOT part of `verify`, like `readability`. The backlog it finds
+	# predates it; a red build on every unrelated branch would not help clear it.
+	uv run python scripts/report_i18n_key_usage.py
+
 doc-links: ## Validate local Markdown links and capability-ledger evidence paths
 	uv run python scripts/check_doc_links.py
 
 markers: ## No bare TODO/FIXME/HACK (must reference an issue, e.g. TODO(#142)); no un-issued noqa/type:ignore
-	@bad=$$(grep -rnE '(TODO|FIXME|HACK)' --include='*.py' --include='*.js' src tests app scripts 2>/dev/null \
+	@bad=$$(grep -rnE '(TODO|FIXME|HACK)' --include='*.py' --include='*.js' src tests app scripts fuzz 2>/dev/null \
 		| grep -vE '\(#[0-9]+\)' || true); \
 	if [ -n "$$bad" ]; then \
 		echo "$$bad"; \
 		echo "error: bare TODO/FIXME/HACK without a linked issue, e.g. TODO(#142)"; \
 		exit 1; \
 	fi
-	@bad=$$(grep -rnE '# ?noqa|# ?type: ?ignore' --include='*.py' src tests scripts 2>/dev/null \
+	@bad=$$(grep -rnE '# ?noqa|# ?type: ?ignore' --include='*.py' src tests scripts fuzz 2>/dev/null \
 		| grep -vE '# ?noqa: ?[A-Z]+[0-9]|# ?type: ?ignore\[' || true); \
 	if [ -n "$$bad" ]; then \
 		echo "$$bad"; \

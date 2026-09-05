@@ -16,7 +16,21 @@ from habitable.vault import Vault
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "site" / "img"
-SYNTHETIC_PHOTO = ROOT / "site" / "sample-packet" / "media" / "cap-ae643da894ad9b22.jpg"
+_SAMPLE_MEDIA = ROOT / "site" / "sample-packet" / "media"
+
+
+def _synthetic_photo() -> Path:
+    """Any sealed sample photo will do; the filename must not be pinned.
+
+    Capture ids are per-case-salted digests, so every regeneration of
+    `site/sample-packet/` renames every file under `media/`. This script used to
+    name one of them, which meant `make site-sample` silently broke the
+    screenshot render until someone next ran it.
+    """
+    photos = sorted(_SAMPLE_MEDIA.glob("*.jpg"))
+    if not photos:
+        raise SystemExit(f"no sample photo in {_SAMPLE_MEDIA}; run `make site-sample` first")
+    return photos[0]
 
 
 def _synthetic_vault(path: Path) -> Vault:
@@ -31,12 +45,12 @@ def _synthetic_vault(path: Path) -> Vault:
         room="bathroom",
         title="Black mold on bathroom ceiling",
         issue_id="sample-condition",
-        severity="high",
+        severity="severe",
         description="Synthetic condition used only for interface review.",
     )
     capture(
         vault,
-        SYNTHETIC_PHOTO,
+        _synthetic_photo(),
         issue_id=issue_id,
         tsa=DevTSA(name="synthetic-preview"),
         source_name="bathroom-ceiling.jpg",

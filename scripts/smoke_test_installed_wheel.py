@@ -16,9 +16,7 @@ from habitable.vault import Vault
 def main() -> None:
     """Install-time smoke: open a vault and fetch the packaged app shell."""
     with TemporaryDirectory() as tmp:
-        vault = Vault.create(
-            Path(tmp) / "vault", "test-passphrase", case_id="wheel-smoke"
-        )
+        vault = Vault.create(Path(tmp) / "vault", "test-passphrase", case_id="wheel-smoke")
         server = make_app_server("127.0.0.1", 0, vault, tsa=None)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()

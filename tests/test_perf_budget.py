@@ -6,18 +6,27 @@ Makes the README's "latency budgets for the local path are asserted in CI" true 
 closes the roadmap's *Low-end-device performance* item. The full rationale — the
 reference low-end device, the slowdown model, the tolerance band, and why network TSA
 latency is deliberately excluded — lives in ``docs/performance-budget.md``. The budget
-constants here MIRROR that document; keep the two in sync.
+constants here MIRROR that document, and ``test_document_table_matches_the_constants``
+enforces that rather than leaving it to a comment nobody re-reads.
 
 These tests are intentionally NOT marked ``integration``, so they run under
 ``make test`` (``pytest -m "not integration"``) and hence in CI. They use best-of-N with
-``time.perf_counter`` and generous ceilings (>=5x local headroom), so noise can only make
-a run slower and the minimum stays a robust lower bound — the budget catches an
-order-of-magnitude regression, never a few percent of jitter.
+``time.perf_counter`` and generous ceilings (a measured 8.8x-78x of local headroom), so
+noise can only make a run slower and the minimum stays a robust lower bound — the budget
+catches an order-of-magnitude regression, never a few percent of jitter.
+
+The ceilings here stay COARSE on purpose. ``scripts/report_perf_profile.py`` characterises
+these same operations in much finer detail — throughput against streaming bandwidth,
+size-scaling exponents, allocation intensity, contention sensitivity — and it deliberately
+reports rather than gates, because CI runners are shared and noisy and a tight threshold
+over a timing measurement produces red builds that carry no information about the change
+under review. Nothing in this module should grow to depend on it (issue #258).
 """
 
 from __future__ import annotations
 
 import math
+import re
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -48,6 +57,17 @@ DEVICE_BUDGET_MS: dict[str, float] = {
 # enough that best-of-N stays well under a second per op.
 PAYLOAD_MB = 4
 PAYLOAD_SIZE = PAYLOAD_MB * 1024 * 1024
+
+BUDGET_DOC = Path(__file__).resolve().parent.parent / "docs" / "performance-budget.md"
+
+# One row of the budget table, keyed by the `Test constant` column so the match is on an
+# identifier rather than on a prose label somebody will reword. Trailing `ms` and the
+# thousands-free integers are what the document actually writes.
+_BUDGET_ROW = re.compile(
+    r"^\|[^|]+\|\s*`(?P<key>\w+)`\s*\|[^|]*\|[^|]*\|"
+    r"\s*(?P<device>[\d.]+) ms\s*\|\s*(?P<ci>[\d.]+) ms\s*\|",
+    re.MULTILINE,
+)
 
 
 def _ci_budget_ms(op: str) -> float:
@@ -169,3 +189,42 @@ def test_packet_assembly_within_budget(
         f"packet assembly took {elapsed:.2f} ms "
         f"(CI budget {_ci_budget_ms('packet_assembly'):.0f} ms)"
     )
+
+
+def test_document_table_matches_the_constants() -> None:
+    """The budget table in the document and ``DEVICE_BUDGET_MS`` say the same thing.
+
+    Until now the only thing keeping them together was a comment in this module's docstring
+    asking a future editor to "keep the two in sync". That is the arrangement under which a
+    document starts quoting a ceiling CI stopped enforcing — and this budget is *published
+    reasoning*, not just a threshold: the document tells a reader what latency a tenant on a
+    slow phone is promised, and derives it from the number this module divides by. A drifted
+    row would not fail anything; it would simply be a claim in a repository that is not
+    true, which is the exact failure mode `scripts/check_doc_links.py` and the marker gate
+    exist to prevent elsewhere.
+
+    Cheap and deterministic on purpose: a regex over one Markdown file, no timing, no
+    fixtures, nothing that varies with the machine. It runs in the same gate as the timing
+    assertions above without adding anything to their cost or their flakiness (issue #258).
+    """
+    table = {
+        match["key"]: (float(match["device"]), float(match["ci"]))
+        for match in _BUDGET_ROW.finditer(BUDGET_DOC.read_text(encoding="utf-8"))
+    }
+    assert table, (
+        f"no budget rows parsed out of {BUDGET_DOC.name}; the table's `Test constant` "
+        "column is how this test finds them, so a reformat that drops it must not pass"
+    )
+    assert table.keys() == DEVICE_BUDGET_MS.keys(), (
+        f"the budget table in {BUDGET_DOC.name} covers {sorted(table)}, "
+        f"but DEVICE_BUDGET_MS covers {sorted(DEVICE_BUDGET_MS)}"
+    )
+    for key, (device_ms, ci_ms) in table.items():
+        assert device_ms == DEVICE_BUDGET_MS[key], (
+            f"{BUDGET_DOC.name} promises a {device_ms:.0f} ms device budget for {key}, "
+            f"but DEVICE_BUDGET_MS says {DEVICE_BUDGET_MS[key]:.0f} ms"
+        )
+        assert ci_ms == _ci_budget_ms(key), (
+            f"{BUDGET_DOC.name} states a {ci_ms:.0f} ms CI ceiling for {key}, but "
+            f"device_budget / LOW_END_SLOWDOWN is {_ci_budget_ms(key):.0f} ms"
+        )

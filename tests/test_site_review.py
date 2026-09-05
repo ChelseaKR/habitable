@@ -9,7 +9,7 @@ import re
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import cast
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import pytest
 
@@ -17,6 +17,21 @@ _SITE = Path(__file__).resolve().parent.parent / "site"
 _REVIEW = _SITE / "review" / "index.html"
 _CHANGES = _SITE / "review" / "changes" / "index.html"
 _CANONICAL = "https://habitable.chelseakr.com/review/"
+_FORM = Path(__file__).resolve().parent.parent / ".github" / "ISSUE_TEMPLATE" / "review-task.yml"
+_ISSUE_FORM = "https://github.com/ChelseaKR/habitable/issues/new"
+# Which dropdown option each row of the ledger must preselect. A link that opens
+# the form with the wrong task is as useless as one that opens a closed issue.
+_TASK_OPTION_CODES = {
+    "task-organizer": "OR-01",
+    "task-legal": "LA-01",
+    "task-keyboard": "AX-01",
+    "task-screen-reader": "AX-02",
+    "task-threat-model": "SE-01",
+    "task-verifier": "SE-02",
+}
+# Runs that are finished. They are linked as a record of what a complete answer
+# looks like -- never as a claimable task, because they are closed.
+_COMPLETED_RUNS = ("121", "122", "123", "125")
 
 
 class _ReviewParser(HTMLParser):
@@ -28,9 +43,11 @@ class _ReviewParser(HTMLParser):
         self.json_ld: list[str] = []
         self.slide_count = 0
         self.task_count = 0
+        self.task_links: list[tuple[str, str]] = []
         self.form_count = 0
         self.input_types: list[str] = []
         self.visible: list[str] = []
+        self._task_row: str | None = None
         self._in_body = False
         self._ignored_depth = 0
         self._json_parts: list[str] | None = None
@@ -60,8 +77,14 @@ class _ReviewParser(HTMLParser):
             self.slide_count += 1
         if values.get("id", "").startswith("task-"):
             self.task_count += 1
+            if tag == "li":
+                self._task_row = values["id"]
+        if tag == "a" and self._task_row is not None:
+            self.task_links.append((self._task_row, values.get("href", "")))
 
     def handle_endtag(self, tag: str) -> None:
+        if tag == "li":
+            self._task_row = None
         if tag == "body":
             self._in_body = False
         elif tag in {"script", "style"}:
@@ -85,6 +108,32 @@ def _parse(path: Path = _REVIEW) -> _ReviewParser:
 
 def _text(path: Path = _REVIEW) -> str:
     return re.sub(r"\s+", " ", " ".join(_parse(path).visible)).strip()
+
+
+def _task_form_options() -> list[str]:
+    """The `task` dropdown's options, read straight out of the issue form.
+
+    Deliberately a line reader rather than a YAML parse: the runtime has no YAML
+    library, and the point here is only to compare the six option strings the
+    page encodes into its links against the six the form will actually offer.
+    The length assertion at the call site is what keeps a shape change loud.
+    """
+    options: list[str] = []
+    in_task = in_options = False
+    for line in _FORM.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped == "id: task":
+            in_task = True
+        elif in_task and stripped == "options:":
+            in_options = True
+        elif in_options:
+            if not stripped.startswith("- "):
+                break
+            option = stripped[2:].strip()
+            if len(option) > 1 and option[0] == option[-1] and option[0] in "\"'":
+                option = option[1:-1]
+            options.append(option)
+    return options
 
 
 def test_review_page_has_complete_metadata_and_structured_scope() -> None:
@@ -140,12 +189,78 @@ def test_six_tasks_name_effort_and_expected_output() -> None:
         assert effort in body
 
 
+def test_every_task_link_opens_the_form_with_its_own_task_preselected() -> None:
+    """A task that is repeatable by design cannot be modelled as one issue.
+
+    The six rows used to link to six fixed issues, and four of those were closed
+    by whoever ran the task first -- so the page's front door handed the next
+    reviewer someone else's finished thread. A second keyboard walk on other
+    hardware is a result, not a duplicate, so each row now opens the `review-task`
+    issue form with its own task preselected and every run gets its own issue.
+
+    Both halves are checked because both fail silently in production. A bare
+    `/issues/<number>` link goes stale the moment that issue closes, and GitHub
+    drops a prefill without complaint unless the query value matches the dropdown
+    option exactly -- so the option strings are read out of the form itself rather
+    than trusted from a hand-copied constant.
+    """
+    options = _task_form_options()
+    assert len(options) == 6, f"expected six task options in {_FORM.name}, got {options}"
+    assert _FORM.is_file()
+
+    parser = _parse()
+    links = dict(parser.task_links)
+    assert len(parser.task_links) == len(links) == 6, parser.task_links
+    assert links.keys() == _TASK_OPTION_CODES.keys()
+
+    for row, href in sorted(links.items()):
+        assert not re.search(r"/issues/\d+(?:[/?#]|$)", href), (
+            f"{row} links to one fixed issue ({href}). These tasks are repeatable, "
+            "so a single issue closes the moment the first reviewer answers it."
+        )
+        parsed = urlparse(href)
+        assert f"{parsed.scheme}://{parsed.netloc}{parsed.path}" == _ISSUE_FORM, row
+        query = parse_qs(parsed.query)
+        assert query["template"] == [_FORM.name], row
+        (preselected,) = query["task"]
+        assert preselected in options, (
+            f"{row} prefills {preselected!r}, which is not one of the form's options. "
+            "GitHub silently ignores a prefill that does not match an option exactly."
+        )
+        assert preselected.startswith(f"{_TASK_OPTION_CODES[row]} "), (
+            f"{row} preselects {preselected!r}, which is a different task"
+        )
+
+    assert len(set(links.values())) == 6
+
+
+def test_completed_runs_are_linked_as_a_record_not_as_a_claim() -> None:
+    """Four runs are done. Their threads stay linked, and stay out of the ledger."""
+    parser = _parse()
+    hrefs = {link.get("href", "") for link in parser.links}
+    claimable = {href for _, href in parser.task_links}
+    for number in _COMPLETED_RUNS:
+        completed = f"https://github.com/ChelseaKR/habitable/issues/{number}"
+        assert completed in hrefs, f"the finished run #{number} is no longer linked"
+        assert completed not in claimable, (
+            f"#{number} is closed and is offered in the task ledger as claimable"
+        )
+    assert "finished run" in _text()
+
+
 def test_feedback_routes_are_separate_and_accept_no_evidence() -> None:
     parser = _parse()
     body = _text()
     hrefs = {link.get("href", "") for link in parser.links}
     assert "https://github.com/ChelseaKR/habitable/discussions/127" in hrefs
-    assert any("issues?q=" in href for href in hrefs)
+    task_list = next(href for href in hrefs if "issues?q=" in href)
+    assert "label%3Areview-task" in task_list
+    # The page offers six tasks. `is:open` returned only the two nobody had
+    # answered yet, so the list disagreed with the page that linked to it.
+    assert "is%3Aopen" not in task_list, (
+        f"the public task list filters to open issues only ({task_list}), which "
+        "hides every task that has already been run once"
+    )
     assert "mailto:ckellyreif@gmail.com?subject=%5Bhabitable%20organization%20review%5D" in hrefs
     assert "https://github.com/ChelseaKR/habitable/security/advisories/new" in hrefs
     assert "No evidence uploads anywhere" in body

@@ -1,10 +1,24 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # CICD-§11h twin of a11y.yml. "axe-core WCAG scan (merge gate)" is a REQUIRED
 # status check; a docs-only PR skipped by a11y.yml's paths-ignore would
-# otherwise hang "Expected — waiting for status". This same-named, always-green
-# job reports the context instead. The `paths` list below must stay the exact
-# complement of a11y.yml's `paths-ignore` list. On a PR touching both docs and
-# code the real scan also runs and, finishing later, its result governs.
+# otherwise hang "Expected — waiting for status". This same-named job reports
+# the context instead. The `paths` list below must stay the exact complement of
+# a11y.yml's `paths-ignore` list.
+#
+# Issue #255: this job used to be a bare `echo`, i.e. an unconditional green
+# under a required context name, and the file claimed the real scan "finishing
+# later, its result governs" on a mixed docs+code PR. Both workflows publish the
+# same context and GitHub keeps the most recent report, so that was an
+# assumption about job duration, not an invariant: re-run this job alone after a
+# failed scan, or have the real scan cancelled by concurrency, and an
+# echo that asserted nothing became the last word on a PR that did touch the UI.
+#
+# The twin now asserts instead of assuming. It fetches the PR's own changed-file
+# set and fails unless every path is one this workflow is entitled to answer
+# for. A twin that runs when it should not now goes RED, so the worst case is a
+# blocked merge a human clears rather than a green that checked nothing. On a
+# mixed PR both jobs still run and the last report still wins — the difference
+# is that the twin's report is no longer safe to overwrite the real scan with.
 name: a11y-docs-only
 
 on:
@@ -25,6 +39,96 @@ jobs:
   axe:
     name: axe-core WCAG scan (merge gate)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # to read this PR's changed-file list
     steps:
-      - name: Report success for a docs-only change
-        run: echo "Docs-only change — no UI surface affected; the axe-core scan is satisfied by the twin job (CICD-STANDARD §11h)."
+      # P1-3 (SEC-04): audit-mode egress monitoring; see ci.yml's Harden Runner
+      # step for the telemetry trade-off note.
+      - name: Harden Runner (audit mode)
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Collect the changed file set
+        env:
+          # Interpolated into `env:`, never into the script body: a branch or
+          # title cannot reach the shell this way (zizmor template-injection).
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          DECLARED_CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
+          CHANGED_FILES: changed-files.txt
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" \
+            --jq '.[].filename' > "$CHANGED_FILES"
+          collected=$(wc -l < "$CHANGED_FILES" | tr -d ' ')
+          echo "collected $collected path(s); the event payload declared $DECLARED_CHANGED_FILES"
+          # Two ways this disagrees, both of which must fail closed rather than
+          # let a partial list decide a required accessibility context:
+          #   * the pulls/files endpoint truncates at 3000 files;
+          #   * this is a re-run of an older event whose payload predates commits
+          #     the API can already see -- exactly the re-run path that made the
+          #     old unconditional green reachable (#255).
+          if [ "$collected" != "$DECLARED_CHANGED_FILES" ]; then
+            echo "::error::changed-file list ($collected) disagrees with the pull request event payload ($DECLARED_CHANGED_FILES); refusing to decide the accessibility gate on a list that may be incomplete"
+            exit 1
+          fi
+      - name: Fail unless every changed path is docs-only
+        env:
+          CHANGED_FILES: changed-files.txt
+        shell: bash
+        # tests/test_guards.py extracts this script verbatim and runs it against
+        # a planted code path, so the gate is proven able to fail rather than
+        # assumed to be. Keep it a pure function of $CHANGED_FILES and the globs
+        # below -- no `gh`, no network, no repository checkout.
+        run: |
+          set -euo pipefail
+
+          # The exact complement of a11y.yml's `paths-ignore`, and the same set
+          # as this workflow's own `paths:`. All three are pinned together by
+          # tests/test_guards.py; changing one alone fails the merge gate.
+          docs_only_globs=(
+            "**.md"
+            "docs/**"
+            "LICENSE"
+          )
+
+          if [ ! -s "$CHANGED_FILES" ]; then
+            echo "::error::no changed paths were collected, so nothing was checked; a green here would assert exactly what the bare echo used to (#255)"
+            exit 1
+          fi
+
+          offenders=""
+          while IFS= read -r file || [ -n "$file" ]; do
+            [ -n "$file" ] || continue
+            matched=""
+            for glob in "${docs_only_globs[@]}"; do
+              # GitHub's `**` spans directory separators; inside [[ ]] a single
+              # `*` already matches `/`, so this is the same set, not a widening.
+              pattern="${glob//\*\*/\*}"
+              if [[ "$file" == $pattern ]]; then
+                matched="yes"
+                break
+              fi
+            done
+            if [ -z "$matched" ]; then
+              offenders="${offenders}${file}"$'\n'
+            fi
+          done < "$CHANGED_FILES"
+          # `read` returns non-zero on a final line with no trailing newline and the
+          # loop exits with that line unexamined. `gh --jq` always terminates lines,
+          # and step 1's count check would disagree with `changed_files` and fail
+          # closed if it did not -- so this is latent rather than live. It is still
+          # the one input shape the extracted-script test cannot see, because that
+          # test writes trailing newlines, and an unchecked path here is the whole
+          # defect this job exists to prevent.
+
+          if [ -n "$offenders" ]; then
+            echo "::error::this pull request changes paths outside the docs-only set, so only the real axe-core scan may answer for it; the twin refuses to report green"
+            printf '%s' "$offenders" | sed 's/^/  /'
+            exit 1
+          fi
+
+          echo "Docs-only change confirmed against the pull request's own file list — no UI surface affected; the axe-core scan is satisfied by the twin job (CICD-STANDARD §11h)."
