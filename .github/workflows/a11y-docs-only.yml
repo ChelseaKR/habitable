@@ -101,7 +101,7 @@ jobs:
           fi
 
           offenders=""
-          while IFS= read -r file; do
+          while IFS= read -r file || [ -n "$file" ]; do
             [ -n "$file" ] || continue
             matched=""
             for glob in "${docs_only_globs[@]}"; do
@@ -117,6 +117,13 @@ jobs:
               offenders="${offenders}${file}"$'\n'
             fi
           done < "$CHANGED_FILES"
+          # `read` returns non-zero on a final line with no trailing newline and the
+          # loop exits with that line unexamined. `gh --jq` always terminates lines,
+          # and step 1's count check would disagree with `changed_files` and fail
+          # closed if it did not -- so this is latent rather than live. It is still
+          # the one input shape the extracted-script test cannot see, because that
+          # test writes trailing newlines, and an unchecked path here is the whole
+          # defect this job exists to prevent.
 
           if [ -n "$offenders" ]; then
             echo "::error::this pull request changes paths outside the docs-only set, so only the real axe-core scan may answer for it; the twin refuses to report green"

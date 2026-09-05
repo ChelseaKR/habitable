@@ -637,6 +637,25 @@ def test_category_aliases_are_synonyms_and_never_a_reclassification() -> None:
     from habitable.model import ISSUE_CATEGORIES, ISSUE_CATEGORY_ALIASES
 
     assert ISSUE_CATEGORY_ALIASES, "the alias table is empty; this guard reads nothing"
+
+    # The structural rules below are necessary and nowhere near sufficient: an
+    # adversarial review showed that `{"leak": "structural", "cockroaches":
+    # "structural"}` satisfies every one of them and passes the whole suite --
+    # precisely the silent refiling this docstring says is forbidden. Whether a word
+    # is a *synonym* of a category or a *different complaint* is a judgement no
+    # assertion can make, so the table itself is pinned. Changing it then has to edit
+    # this literal, and the reviewer of that diff is the check.
+    assert ISSUE_CATEGORY_ALIASES == {
+        "no_heat": "heat",
+        "moisture": "water",
+        "moho": "mold",
+    }, (
+        "the alias table changed. Every entry must be a word for the SAME condition "
+        "as its target, never a near-enough category: mapping `noise` or `leak` onto "
+        "`structural` refiles a tenant's record as something they did not report. If "
+        "the new entry really is a synonym, update this literal and say why in the "
+        "commit; if it is a distinct complaint, it belongs in `other` with a label."
+    )
     for alias, target in ISSUE_CATEGORY_ALIASES.items():
         assert target in ISSUE_CATEGORIES, (
             f"{alias} normalises to {target}, which is not a category"

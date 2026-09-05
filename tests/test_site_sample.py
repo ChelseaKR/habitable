@@ -138,7 +138,7 @@ def test_every_published_artifact_uses_only_vocabulary_the_cli_accepts() -> None
     than the one that was wrong, because the defect was drift between siblings
     and naming one sibling would have left the next one free to drift.
     """
-    from habitable.model import ISSUE_CATEGORIES, ISSUE_CATEGORY_ALIASES, ISSUE_SEVERITIES
+    from habitable.model import ISSUE_CATEGORIES, ISSUE_SEVERITIES
 
     # `make_golden_packet.py` is deliberately exempt. The golden corpus pins the
     # packet *format* across versions, not the copy: its severity is arbitrary test
@@ -154,7 +154,13 @@ def test_every_published_artifact_uses_only_vocabulary_the_cli_accepts() -> None
     ]
     assert scripts, "no scripts found; this guard is reading nothing"
 
-    known = set(ISSUE_CATEGORIES) | set(ISSUE_CATEGORY_ALIASES)
+    # Aliases are deliberately NOT accepted here. They are normalised at CLI and app
+    # entry, but these generators call `add_issue` directly -- so a seed of
+    # `category="moisture"` is stored verbatim as `moisture`, a string the CLI takes
+    # as input and never stores. The first cut of this guard allowed alias spellings,
+    # which would have let the published sample keep demonstrating `Category:
+    # moisture` to the housing lawyer reading it for review task LA-01.
+    known = set(ISSUE_CATEGORIES)
     seeded_any = False
     bad: list[str] = []
     for script in scripts:

@@ -790,23 +790,40 @@ def test_app_and_cli_report_the_same_awaiting_figure_over_the_same_evidence_set(
     assert "timestamps: 1/2 present; 1 awaiting" in out
 
 
-def test_the_app_normalises_a_category_synonym_the_same_way_the_cli_does(app: App) -> None:
+def test_the_app_folds_case_and_space_before_the_vocabulary_lookup(app: App) -> None:
     """Issue #240 across issue #239's boundary: one category, not two.
 
     The Condition field stays free text on purpose -- a dropdown would force a real
     condition into the wrong bucket -- so the app cannot be made consistent with the
-    CLI by narrowing it. It is made consistent by normalising the same synonyms:
-    `moho` typed into the Spanish interface and `mold` typed into the CLI have to be
-    one category, or a bilingual union's building pattern splits in two.
+    CLI by narrowing it. It is made consistent by resolving what the tenant typed
+    against the vocabulary: `moho` typed into the Spanish interface and `mold` typed
+    into the CLI have to be one category, or a bilingual union's building pattern
+    splits in two.
 
-    Anything that is not a synonym is stored exactly as typed. That is the free-text
-    escape hatch working, not a validation gap.
+    The first cut folded case only for the *alias* lookup, which made the alias path
+    more robust than the identity path: `Moho` became `mold` while `Mold` stayed
+    `Mold`. iOS and Android default their keyboards to sentence case, so a tenant
+    typing "mold" on the phone this tool is built for opened a second `Mold` bucket
+    beside `mold` -- the split this issue set out to close, surviving in the likelier
+    direction. This test's previous name claimed the app normalised "the same way the
+    CLI does", which its own body disproved: the CLI rejects `No_Heat` outright.
+
+    Anything the vocabulary does not know is stored as the tenant wrote it, minus
+    surrounding space. That is the free-text escape hatch working, not a gap.
     """
     status, first = _call(app, "POST", "/api/issues", {"category": "moho", "title": "Moho"})
     assert status == 200
     status, second = _call(app, "POST", "/api/issues", {"category": "  No_Heat  "})
     assert status == 200
     status, third = _call(app, "POST", "/api/issues", {"category": "broken lift"})
+    assert status == 200
+    # What a phone keyboard actually sends.
+    status, fourth = _call(app, "POST", "/api/issues", {"category": "Mold"})
+    assert status == 200
+    status, fifth = _call(app, "POST", "/api/issues", {"category": "  mold  "})
+    assert status == 200
+    # ... and a free-text condition keeps the tenant's own capitalisation.
+    status, sixth = _call(app, "POST", "/api/issues", {"category": "Broken Lift"})
     assert status == 200
 
     status, state = _call(app, "GET", "/api/status")
@@ -816,3 +833,8 @@ def test_the_app_normalises_a_category_synonym_the_same_way_the_cli_does(app: Ap
     assert stored[first["issue_id"]] == "mold"
     assert stored[second["issue_id"]] == "heat"
     assert stored[third["issue_id"]] == "broken lift"
+    assert stored[fourth["issue_id"]] == "mold", (
+        "a sentence-case phone keyboard opened a second bucket"
+    )
+    assert stored[fifth["issue_id"]] == "mold"
+    assert stored[sixth["issue_id"]] == "Broken Lift"
