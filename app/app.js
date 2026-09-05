@@ -1018,6 +1018,11 @@
   function renderIssues(issues) {
     var list = document.getElementById("issues-list");
     var empty = document.getElementById("issues-empty");
+    // Issue #274: the caveat is shown exactly when a record-strength claim is on
+    // screen, and hidden only when none is. Tied to the list rather than to any one
+    // row so it cannot drift out of step with the rows: if a row can appear, the
+    // caveat is already there.
+    var caveat = document.getElementById("strength-caveat");
     if (!list) {
       return;
     }
@@ -1026,6 +1031,9 @@
       if (empty) {
         empty.hidden = false;
       }
+      if (caveat) {
+        caveat.hidden = true;
+      }
       return;
     }
     if (empty) {
@@ -1033,6 +1041,9 @@
     }
     for (var i = 0; i < issues.length; i++) {
       list.appendChild(issueItem(issues[i], i));
+    }
+    if (caveat) {
+      caveat.hidden = false;
     }
   }
 
@@ -1089,35 +1100,40 @@
       if (lastStatus) { renderAtlas(lastStatus); }
     });
     li.appendChild(select);
-    return li;
-  }
-
-  function badge(text, extraClass) {
-    var li = document.createElement("li");
-    var span = document.createElement("span");
-    span.className = extraClass ? "badge " + extraClass : "badge";
-    span.textContent = text;
-    li.appendChild(span);
+    // Outside the button on purpose: inside it, the counts would be appended to
+    // every issue button's accessible name, so a screen-reader user tabbing the
+    // list would hear the whole breakdown before reaching the next condition.
+    if (issue.record_strength) {
+      li.appendChild(issueStrength(issue.record_strength));
+    }
     return li;
   }
 
   // Decomposed documentation coverage: facts, never a composite legal score.
-  function strengthBadge(rs) {
-    var level = rs.level || "minimal";
-    var timestamped = (rs.strong_count || 0) + (rs.developing_count || 0);
-    var label = formatNumber(timestamped) + "/" + formatNumber(rs.item_count || 0) + " " +
-      t("status_timestamped").toLocaleLowerCase(lang);
-    var li = badge(label, "strength-" + level);
-    var span = li.firstChild;
-    if (span) {
-      span.title = fm("strength_detail", {
-        strong: rs.strong_count || 0,
-        developing: rs.developing_count || 0,
-        minimal: rs.minimal_count || 0,
-        timeline: rs.timeline_entries || 0
-      });
-    }
-    return li;
+  //
+  // Issue #274: this used to render a compact "n/m timestamped" chip whose level
+  // (minimal / developing / strong) rode on a CSS class alone and whose breakdown
+  // rode on a `title`. Both carried the substance somewhere a keyboard or
+  // screen-reader user never reaches, and neither said the things
+  // `strength_caveat` promises the reader are being weighed. The counts are the
+  // claim, so the counts are the visible text: `strength_detail` names the three
+  // token-presence bands and the corroborating timeline entries outright, which is
+  // exactly what the caveat beneath the list qualifies.
+  //
+  // No level word: `strength_level_minimal` / `_developing` / `_strong` are also
+  // defined in src/habitable/i18n.py for CLI output, and which copy is canonical is
+  // an open #271 decision. Rendering one here would settle that question by
+  // accident, so the band stays out of the app until it is settled on purpose.
+  function issueStrength(rs) {
+    var line = document.createElement("p");
+    line.className = "issue-strength";
+    line.textContent = fm("strength_detail", {
+      strong: rs.strong_count || 0,
+      developing: rs.developing_count || 0,
+      minimal: rs.minimal_count || 0,
+      timeline: rs.timeline_entries || 0
+    });
+    return line;
   }
 
   function populateIssueSelects(issues) {
@@ -1288,17 +1304,65 @@
 
   // ---- Form helpers --------------------------------------------------------
 
+  // Issue #275. The contract, in one place so that no call site has to remember it:
+  //
+  //   While `fn` is in flight the button is genuinely `disabled` -- inert, not
+  //   merely labelled inert. When `fn` settles the button is re-enabled and, if it
+  //   held focus at the moment it was disabled and focus has since fallen to
+  //   <body>, focus is put back on it.
+  //
+  // Why `disabled` and not `aria-disabled` with a guarded handler. `aria-disabled`
+  // keeps the element focusable throughout, which avoids the focus loss instead of
+  // repairing it -- but it leaves the control genuinely clickable, so every path
+  // that reaches it has to re-check the busy flag: the submit handlers here read and
+  // validate their fields before `withBusy` is ever called, and Enter inside a text
+  // field submits the form without touching the button at all. Each of those is a
+  // call site remembering something, which is the thing this contract exists to
+  // stop, and the failure mode is a duplicate evidence record rather than a
+  // cosmetic one. An inert control cannot produce one.
+  //
+  // Three conditions, each doing work:
+  //
+  // * `hadFocus` -- only a control that *lost* focus gets it back. A form submitted
+  //   with Enter from a text field, or clicked by a mouse on a platform that does
+  //   not focus buttons on click, never lost anything, and moving focus to a button
+  //   the reader was not on would be a worse defect than the one being fixed.
+  // * still on <body> -- something else may have claimed focus in the meantime and
+  //   have a better claim: a validation handler calling `field.focus()`, or a modal
+  //   dialog opened by the result. Whoever moved focus deliberately wins.
+  // * still rendered -- the button may have been removed, or hidden with the panel
+  //   it lived in (the #status-retry case). Focus stays where it is; moving it to
+  //   some arbitrary survivor is worse than leaving it at <body>, and choosing a
+  //   sensible replacement is a judgement only the call site can make. See
+  //   wireRefreshButton(), which makes exactly that judgement for its own button.
+  //
+  // Ordering is load-bearing: this restores focus *before* the caller's own `.then`
+  // runs. The dialog forms close their dialog there, and a native <dialog> returns
+  // focus to whatever held it before `showModal()` -- so the submit button is
+  // focused inside the still-open dialog, the dialog closes, and focus lands back on
+  // the control that opened it. Restoring afterwards would focus a button inside a
+  // closed dialog instead.
   function withBusy(button, fn) {
+    var hadFocus = false;
     if (button) {
+      hadFocus = document.activeElement === button;
       button.disabled = true;
+    }
+    function release() {
+      if (!button) { return; }
+      button.disabled = false;
+      if (!hadFocus) { return; }
+      if (document.activeElement && document.activeElement !== document.body) { return; }
+      if (!button.isConnected || !button.getClientRects().length) { return; }
+      button.focus();
     }
     return fn().then(
       function (v) {
-        if (button) { button.disabled = false; }
+        release();
         return v;
       },
       function (e) {
-        if (button) { button.disabled = false; }
+        release();
         throw e;
       }
     );
@@ -1895,11 +1959,14 @@
   function wireRefreshButton(btn) {
     if (!btn) { return; }
     btn.addEventListener("click", function () {
-      // withBusy() disables the button while the request is in flight, and
-      // disabling the focused element drops focus to <body>. For the retry button
-      // that compounds: a successful retry also hides the panel it sits in, so a
-      // keyboard reader would be left with no position at all. Put focus back on
-      // whichever refresh control is still on screen (WCAG 2.4.3).
+      // withBusy() now restores focus to the button it disabled whenever that
+      // button is still on screen (issue #275), so what is left here is the case it
+      // deliberately declines to guess at: a successful retry hides the panel this
+      // button sits in, and a control with no client rects cannot be focused. That
+      // leaves a keyboard reader with no position at all, so this call site makes
+      // the judgement withBusy() cannot -- fall back to the other refresh control,
+      // which does the same job and is still on screen (WCAG 2.4.3). When withBusy()
+      // has already restored focus, the activeElement check below returns early.
       var hadFocus = document.activeElement === btn;
       var restoreFocus = function () {
         if (!hadFocus) { return; }

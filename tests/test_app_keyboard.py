@@ -11,8 +11,10 @@ width with no horizontal scrolling (WCAG 2.1.1, 2.4.3, 1.4.10). The screen-reade
 
 from __future__ import annotations
 
+import re
 import threading
 from collections.abc import Callable, Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -438,4 +440,196 @@ def test_every_description_renders_beside_the_control_it_describes(
         f"{f['control']} is described by {f['description']}, but {f['gap']}px of "
         f"other content sits between them at {width}px: {f['between']}"
         for f in findings.values()
+    )
+
+
+# --- issue #275: no action may drop focus to <body> --------------------------------
+
+#: `withBusy(btn, ...)` call sites in `app/app.js`. Pinned rather than derived so
+#: that adding a tenth action fails here and the author has to come back and add it
+#: to `_BUSY_ACTIONS` below. A floor on the walk alone would not catch that: nine
+#: covered actions clears a floor of nine whether or not a tenth exists.
+_WITHBUSY_CALL_SITES = 9
+
+#: One entry in the walk per call site. `wireRefreshButton()` is a single call site
+#: serving two buttons; the second (`#status-retry`) exists only inside the
+#: failed-status panel, and `tests/test_app_accessibility.py` builds that panel and
+#: asserts on its focus hand-off directly, so the walk drives `#refresh-btn` for it.
+_BUSY_ACTION_COUNT = _WITHBUSY_CALL_SITES
+
+_APP_SCRIPT = Path(__file__).resolve().parent.parent / "app" / "app.js"
+
+
+def _prepare_add_issue(page: Any, photo: Path) -> None:
+    page.click('[data-open-dialog="issue-dialog"]')
+    page.fill("#ai-category", "mold")
+
+
+def _prepare_capture(page: Any, photo: Path) -> None:
+    page.click('[data-open-dialog="capture-dialog"]')
+    page.set_input_files("#cap-file", str(photo))
+
+
+def _prepare_timeline(page: Any, photo: Path) -> None:
+    page.click('[data-open-dialog="timeline-dialog"]')
+    page.select_option("#tl-type", "inspection")
+    page.select_option("#tl-source", "firsthand")
+    page.fill("#tl-occurred", "2026-01-02")
+    page.fill("#tl-text", "The inspector visited and photographed the wall.")
+
+
+def _prepare_artifact(page: Any, photo: Path) -> None:
+    page.click('[data-open-dialog="artifact-dialog"]')
+    page.set_input_files("#art-file", str(photo))
+    page.fill("#art-title", "Notice")
+    page.fill("#art-source", "Landlord")
+    page.fill("#art-date", "2026-01-02")
+
+
+def _prepare_relationship(page: Any, photo: Path) -> None:
+    page.click("details.advanced-tools > summary")
+    page.fill("#rel-source", "aaaaaaaa")
+    page.fill("#rel-target", "bbbbbbbb")
+
+
+def _prepare_advanced(page: Any, photo: Path) -> None:
+    page.click("details.advanced-tools > summary")
+
+
+def _prepare_nothing(page: Any, photo: Path) -> None:
+    return None
+
+
+#: Every action in the app that goes through `withBusy()`: a name, the setup it needs
+#: to get past its own validation (an action that fails validation returns before
+#: `withBusy()` is reached and would prove nothing), the control that starts it, and
+#: whether focus must come back to that control specifically.
+#:
+#: The last flag is the difference between "focus survived" and "the contract holds".
+#: For the five controls that are still on screen afterwards, `withBusy()` owes the
+#: reader that exact control back. The four dialog submits are the case it declines:
+#: their button is inside a dialog that the success handler closes, so a native
+#: <dialog> hands focus to whatever opened it -- correct, and not `withBusy()`'s doing,
+#: so they are held to the weaker "not <body>" only.
+_BUSY_ACTIONS: tuple[tuple[str, Any, str, bool], ...] = (
+    ("add issue", _prepare_add_issue, '#add-issue-form button[type="submit"]', False),
+    ("capture", _prepare_capture, '#capture-form button[type="submit"]', False),
+    ("timeline entry", _prepare_timeline, '#timeline-form button[type="submit"]', False),
+    ("artifact", _prepare_artifact, '#artifact-form button[type="submit"]', False),
+    ("relationship", _prepare_relationship, '#relationship-form button[type="submit"]', True),
+    ("handoff profile", _prepare_advanced, '#profile-form button[type="submit"]', True),
+    ("export", _prepare_nothing, '#export-form button[type="submit"]', True),
+    ("add missing timestamps", _prepare_nothing, "#resolve-btn", True),
+    ("refresh", _prepare_nothing, "#refresh-btn", True),
+)
+
+
+def test_the_focus_walk_covers_every_withbusy_call_site() -> None:
+    """A new `withBusy()` call site must be added to the walk, not silently skipped.
+
+    The browser walk below can only prove the actions it drives. If someone wires a
+    tenth action and does not list it, the walk still passes -- so the count of call
+    sites in the script is pinned here, and gaining or losing one fails until a
+    person decides which list is wrong.
+    """
+    script = _APP_SCRIPT.read_text(encoding="utf-8")
+    # Any `withBusy(<identifier>, ...)`: the declaration is excluded by the lookbehind,
+    # and the prose references in the comments carry no argument, so neither inflates
+    # the count. Matching on the argument shape rather than the literal name `btn`
+    # keeps a renamed variable from reading as a deleted call site.
+    sites = re.findall(r"(?<!function )\bwithBusy\(\s*[A-Za-z_$][\w$]*\s*,", script)
+    assert len(sites) == _WITHBUSY_CALL_SITES, (
+        f"app/app.js has {len(sites)} withBusy(...) call sites, not "
+        f"{_WITHBUSY_CALL_SITES}. Add the new action to _BUSY_ACTIONS below (or "
+        "remove the retired one) and update this count -- an action nobody drives "
+        "is an action nobody has proved keeps focus."
+    )
+    assert len(_BUSY_ACTIONS) == _BUSY_ACTION_COUNT, (
+        f"_BUSY_ACTIONS drives {len(_BUSY_ACTIONS)} actions, not {_BUSY_ACTION_COUNT}"
+    )
+
+
+@pytest.mark.a11y
+def test_no_action_leaves_keyboard_focus_on_the_document_body(
+    make_vault: Callable[..., Vault], make_jpeg: Callable[..., Path]
+) -> None:
+    """Issue #275: `withBusy()` disabled the focused button and dropped focus.
+
+    A disabled element cannot hold focus, so every submit in the app left the
+    reader at `<body>` -- the next Tab restarted from the top of the page, mid-task
+    (WCAG 2.4.3). #269 repaired the two Refresh buttons at their own call site; the
+    contract now lives in `withBusy()` itself, so this drives *every* action that
+    goes through it rather than the two that were noticed.
+
+    Each action is keyboard-driven -- focus the control, press Enter -- because that
+    is the reader who loses something. A mouse user on a platform that does not
+    focus buttons on click never held focus, and `withBusy()` deliberately does not
+    move focus for them.
+    """
+    vault = make_vault()
+    vault.document.add_issue(category="mold", room="bath", title="Mold", issue_id="i1")
+    vault.save()
+    photo = make_jpeg()
+    server = make_app_server("127.0.0.1", 0, vault)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    url = f"http://127.0.0.1:{port}/#token={server.session_token}"
+
+    landed: dict[str, str] = {}
+    not_returned: list[str] = []
+    try:
+        with sync_playwright() as p:
+            try:
+                browser = p.chromium.launch()
+            except PlaywrightError as exc:
+                pytest.skip(f"Chromium not available: {exc}")
+            try:
+                for name, prepare, selector, returns_to_control in _BUSY_ACTIONS:
+                    page = browser.new_page()
+                    page.goto(url, wait_until="networkidle")
+                    page.wait_for_function(
+                        "() => document.getElementById('st-unit').textContent === '4B'"
+                    )
+                    prepare(page, photo)
+                    control = page.locator(selector).first
+                    control.focus()
+                    assert page.evaluate(_ACTIVE), f"{name}: nothing was focused before Enter"
+                    page.keyboard.press("Enter")
+                    # Every one of these announces something, success or failure, so
+                    # a non-empty announcer means the round trip really completed --
+                    # a fixed sleep would let a slow action pass while still in
+                    # flight, with the button not yet re-enabled.
+                    page.wait_for_function(
+                        "() => document.getElementById('announcer').textContent.trim() !== ''"
+                    )
+                    landed[name] = page.evaluate(_ACTIVE) or "BODY"
+                    if returns_to_control and not control.evaluate(
+                        "(el) => el === document.activeElement && !el.disabled"
+                    ):
+                        not_returned.append(name)
+                    page.close()
+            finally:
+                browser.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+    # The floor is what makes an empty sweep audible: if every action silently
+    # failed to run, `landed` would be short and the assertions below would be
+    # passing on nothing at all.
+    assert len(landed) == _BUSY_ACTION_COUNT, (
+        f"only {len(landed)} of {_BUSY_ACTION_COUNT} actions were driven: {sorted(landed)}"
+    )
+    stranded = sorted(name for name, active in landed.items() if active in {"BODY", "body"})
+    assert not stranded, (
+        "these actions dropped keyboard focus to <body>, so the reader's next Tab "
+        f"restarts from the top of the page (WCAG 2.4.3): {stranded}. "
+        f"Where focus landed: {landed}"
+    )
+    assert not not_returned, (
+        "these controls were still on screen and re-enabled afterwards, so "
+        "withBusy() owed the reader that control back and did not hand it over: "
+        f"{sorted(not_returned)}. Where focus landed: {landed}"
     )

@@ -101,8 +101,18 @@ def test_real_app_yields_a_count_from_a_populated_corpus() -> None:
     assert payload["reached_by_markup"] >= 100
     assert payload["reached_by_literal_call"] >= 50
 
+    # The ceiling catches the opposite failure -- a broken scan declaring the whole
+    # bundle unreferenced and inviting someone to delete it.
+    #
+    # There is deliberately NO lower bound. An earlier version asserted `0 < dead`
+    # as its anti-vacuity check, which encoded "this project always has dead keys"
+    # into the suite: clearing the backlog completely would have failed the test
+    # that exists to help clear it, and the agent wiring up the last four keys in
+    # #274 had to work around it. Emptiness is the goal, not the alarm. The three
+    # floors above are what prove the scan actually ran on a populated corpus,
+    # which is the property that assertion was reaching for.
     dead = len(payload["unreferenced"]) + len(payload["server_duplicates"])
-    assert 0 < dead < payload["total_keys"] // 2
+    assert dead < payload["total_keys"] // 2
 
 
 def test_the_dynamic_route_is_really_exercised_by_the_real_app() -> None:

@@ -526,3 +526,132 @@ def test_the_unreachable_state_is_not_undone_by_switching_language(
             assert spanish["status_unreachable"] in panel_text, panel_text
         finally:
             browser.close()
+
+
+# --- issue #274: the limits have to reach the screen, not just the bundle ----------
+
+#: The three disclosure facts about an export. `tests/test_app_i18n.py` gates that
+#: every honest-limits key has a *rendering path*; this and the test below it prove
+#: that the four #274 strings actually render, in a browser, in the words the bundle
+#: carries. A reference is not a reader. (`strength_caveat`, the fourth, is asserted
+#: in the test below, where its pairing with the claim it qualifies is the point.)
+_LIMITS_ON_SCREEN = ("share_fact_scope", "share_fact_metadata", "share_fact_local")
+
+
+@pytest.mark.a11y
+def test_the_export_disclosure_facts_are_on_screen(make_vault: Callable[..., Vault]) -> None:
+    """What leaves the device is stated where the reader chooses to send it.
+
+    `share_fact_scope`, `share_fact_metadata` and `share_fact_local` existed in both
+    locales, were reviewed for plain language, and were counted in the readability
+    report's honest-limits corpus -- while no markup and no script named them, so the
+    export panel offered its controls with none of the three facts about scope,
+    metadata or locality beside them (#274).
+    """
+    playwright_api: Any = pytest.importorskip("playwright.sync_api")
+    english = json.loads(_EN.read_text(encoding="utf-8"))
+
+    vault = make_vault()
+    vault.document.add_issue(category="mold", room="bath", title="Mold", issue_id="i1")
+    vault.save()
+    with _served(vault) as url, playwright_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except playwright_api.Error as exc:
+            pytest.skip(f"Chromium not available: {exc}")
+        try:
+            page = browser.new_page()
+            page.goto(url, wait_until="networkidle")
+            page.wait_for_function("() => document.getElementById('st-unit').textContent === '4B'")
+            # Counted before it is read: a missing element would otherwise spend the
+            # full locator timeout and report itself as a flake rather than as the
+            # defect, which is that the facts are not there.
+            present = page.locator("#share .share-facts").count()
+            facts = (
+                " ".join((page.text_content("#share .share-facts") or "").split())
+                if present
+                else ""
+            )
+        finally:
+            browser.close()
+
+    assert present, "the export panel has no disclosure-facts list at all"
+
+    for key in _LIMITS_ON_SCREEN:
+        assert english[key] in facts, (
+            f"{key} is not on screen in the export panel. Its words are "
+            f"{english[key]!r}; the panel reads {facts!r}"
+        )
+
+
+@pytest.mark.a11y
+def test_a_record_strength_claim_never_appears_without_its_caveat(
+    make_vault: Callable[..., Vault],
+) -> None:
+    """The claim and the caveat appear together, or neither appears (#274).
+
+    `src/habitable/strength.py` states the contract its callers owe it: "never render
+    a level without it nearby". The app rendered neither -- the interface rebuild
+    dropped the per-condition strength line and the caveat markup together and left
+    the function that built them orphaned -- so `strength_caveat` said what record
+    strength is *not* to nobody at all.
+
+    Both directions are measured, because only one of them is the defect and only
+    both together are the invariant: with a condition on screen the caveat must be
+    visible beside the strength lines, and with none it must be gone rather than
+    left explaining a claim that is not being made.
+    """
+    playwright_api: Any = pytest.importorskip("playwright.sync_api")
+    english = json.loads(_EN.read_text(encoding="utf-8"))
+
+    empty = make_vault("empty")
+    empty.save()
+    populated = make_vault("populated")
+    populated.document.add_issue(category="mold", room="bath", title="Mold", issue_id="i1")
+    populated.save()
+
+    measured: dict[str, dict[str, Any]] = {}
+    with playwright_api.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except playwright_api.Error as exc:
+            pytest.skip(f"Chromium not available: {exc}")
+        try:
+            for name, vault in (("empty", empty), ("populated", populated)):
+                with _served(vault) as url:
+                    page = browser.new_page()
+                    page.goto(url, wait_until="networkidle")
+                    page.wait_for_function(
+                        "() => document.getElementById('st-unit').textContent !== ''"
+                    )
+                    caveat = page.locator("#strength-caveat")
+                    # Counted before it is read, so a caveat that is absent fails on
+                    # the assertion below instead of on a locator timeout.
+                    exists = caveat.count()
+                    measured[name] = {
+                        "claims": page.locator(".issue-strength").count(),
+                        "caveat_present": bool(exists),
+                        "caveat_visible": bool(exists) and caveat.is_visible(),
+                        "caveat_text": (
+                            " ".join((caveat.text_content() or "").split()) if exists else ""
+                        ),
+                    }
+                    page.close()
+        finally:
+            browser.close()
+
+    assert measured["populated"]["claims"] >= 1, (
+        "no record-strength line rendered for a unit that has a condition, so this "
+        "test is asserting the caveat accompanies nothing"
+    )
+    assert measured["populated"]["caveat_visible"], (
+        f"a record-strength claim is on screen with no caveat beside it: {measured['populated']}"
+    )
+    assert measured["populated"]["caveat_text"] == english["strength_caveat"], (
+        "the caveat on screen is not the words the bundle carries -- it must not be "
+        f"shortened to fit: {measured['populated']['caveat_text']!r}"
+    )
+    assert measured["empty"]["claims"] == 0, measured["empty"]
+    assert not measured["empty"]["caveat_visible"], (
+        f"the caveat is qualifying a claim the page is not making: {measured['empty']}"
+    )

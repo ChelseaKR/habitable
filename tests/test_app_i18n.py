@@ -6,7 +6,10 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -347,3 +350,92 @@ def test_the_unreachable_status_state_names_what_is_unknown_and_its_own_button()
     assert "not zero" in en["status_unreachable"].casefold(), en["status_unreachable"]
     assert "no se pudo conectar" in es["status_unreachable"].casefold(), es["status_unreachable"]
     assert "no es cero" in es["status_unreachable"].casefold(), es["status_unreachable"]
+
+
+# --- issue #274: a limit nobody can read is not a limit -----------------------------
+
+_ROOT = Path(__file__).resolve().parent.parent
+_READABILITY = _ROOT / "scripts" / "report_readability.py"
+_KEY_USAGE = _ROOT / "scripts" / "report_i18n_key_usage.py"
+
+#: The honest-limits set is resolved from ``docs/localization-guide.md``'s
+#: legally-sensitive table plus ``report_readability.py``'s annotated additions. It
+#: held 30 keys when this gate was written. The floor exists because the assertion
+#: below passes trivially on an empty set: a guide parser that stopped matching, or
+#: a renamed section heading, would resolve nothing and this gate would go quiet
+#: while reporting success -- the exact shape of check this repo has shipped before
+#: and does not want again.
+_MIN_HONEST_LIMITS = 20
+
+#: Likewise for the other side of the intersection: the usage report must have
+#: actually read the bundle. A scan that resolved no keys would report nothing
+#: unreferenced, which also passes.
+_MIN_SCANNED_KEYS = 200
+
+
+def _script_json(script: Path) -> dict[str, Any]:
+    """Run one of the report scripts and return its ``--json`` payload."""
+    result = subprocess.run(
+        [sys.executable, str(script), "--json"],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    assert result.returncode == 0, f"{script.name} failed:\n{result.stdout}\n{result.stderr}"
+    payload: dict[str, Any] = json.loads(result.stdout)
+    return payload
+
+
+def test_every_honest_limits_string_has_a_rendering_path() -> None:
+    """A string that says what habitable cannot prove must reach a screen.
+
+    Issue #274. Four of them did not: ``strength_caveat`` -- the disclaimer for the
+    record-strength claim, saying it is not token validity, not authority trust, not
+    admissibility -- and the three ``share_fact_*`` disclosure facts for the export.
+    Three separate systems asserted they were fine, and all three were checks on the
+    *bundle*: parity found them in both locales, the plain-language review approved
+    their wording, and the readability report scored them in the honest-limits corpus
+    and published that grade as a measured property of the app's copy. Nothing
+    checked that a limitation reaches a reader, so the published number described a
+    corpus that was partly invisible.
+
+    This gates rather than reports, which is the one place it differs from
+    ``scripts/report_i18n_key_usage.py``'s general backlog (#271). An ordinary dead
+    string is a translator's wasted afternoon. An unrendered limitation is a tenant
+    reading a strength claim with nothing next to it saying what the claim is not,
+    and that is not a backlog item.
+
+    The two halves come from the two scripts that already compute them, rather than
+    a third copy of either list here: adding a row to the guide's legally-sensitive
+    table, or wiring up a string, is enough to move a key between the buckets. If a
+    string genuinely should not render, it has to leave the honest-limits
+    declaration in the same change -- which is what makes this gate a decision point
+    rather than an obstacle.
+    """
+    limits = _script_json(_READABILITY)["honest_limits_keys"]
+    usage = _script_json(_KEY_USAGE)
+    unreferenced = usage["unreferenced"]
+    assert isinstance(limits, list) and isinstance(unreferenced, list)
+
+    assert len(limits) >= _MIN_HONEST_LIMITS, (
+        f"only {len(limits)} honest-limits keys were resolved ({sorted(limits)}), "
+        f"below the floor of {_MIN_HONEST_LIMITS}. The set is read from "
+        "docs/localization-guide.md's legally-sensitive table and "
+        "scripts/report_readability.py's additions; one of those stopped being "
+        "found, and this gate is now checking almost nothing."
+    )
+    assert usage["total_keys"] >= _MIN_SCANNED_KEYS, (
+        f"the key-usage scan saw only {usage['total_keys']} keys; it is not reading "
+        "the app bundle, so 'nothing unreferenced' means nothing"
+    )
+
+    stranded = sorted(set(limits) & set(unreferenced))
+    assert not stranded, (
+        "these strings state what habitable cannot prove, and no rendering path "
+        f"reaches them, so no reader will ever see one: {stranded}.\n"
+        "Wire each one up, or -- if it genuinely should not render -- delete it "
+        "from app/i18n/*.json AND from the honest-limits declaration it is named "
+        "in (docs/localization-guide.md's legally-sensitive table, or "
+        "_ADDITIONAL_HONEST_LIMITS in scripts/report_readability.py), in the same "
+        "change, so the readability corpus stops counting a string nobody reads."
+    )

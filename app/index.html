@@ -58,6 +58,16 @@
         <p id="issues-empty" class="empty-note" hidden data-i18n="issues_empty_next">No
           conditions yet. Add the first condition to begin.</p>
         <ul id="issues-list" class="issues-list"></ul>
+        <!-- Issue #274: habitable.strength's module contract is "never render a level
+             without it nearby". Every per-condition strength line in the list above is
+             one claim of the same kind, so the caveat sits once beneath the list rather
+             than being repeated on each row. It is hidden with the list, and only with
+             the list: a caveat is owed wherever the claim appears, so the only state
+             that may hide it is the one where no claim is on screen. -->
+        <p id="strength-caveat" class="strength-caveat" hidden
+           data-i18n="strength_caveat">Record strength reflects token presence, custody,
+          and corroborating timeline — not token validity, authority trust, a legal
+          judgment, or admissibility.</p>
         <button type="button" class="new-condition" data-open-dialog="issue-dialog">
           <span aria-hidden="true">＋</span>
           <span data-i18n="add_issue_heading">Add a condition</span>
@@ -283,6 +293,17 @@
             <div class="leaving-side">
               <p class="copy-label" data-i18n="share_kicker">Controlled disclosure</p>
               <h3 id="export-h" data-i18n="export_heading">Choose what leaves this device</h3>
+              <!-- Issue #274: the three disclosure facts about an export — its scope,
+                   what it strips, and where it is made. They answer the questions the
+                   form's controls raise before the controls are reached, which is why
+                   they sit above the form and not beside the submit button. Mirrors
+                   the kept-side list: what stays, then what goes. -->
+              <ul class="share-facts">
+                <li data-i18n="share_fact_scope">The current packet includes the whole unit.</li>
+                <li data-i18n="share_fact_metadata">Shared copies remove photo metadata by
+                  default.</li>
+                <li data-i18n="share_fact_local">The export is created on this device.</li>
+              </ul>
               <form id="export-form" novalidate>
                 <fieldset>
                   <legend data-i18n="export_legend">Export options</legend>
