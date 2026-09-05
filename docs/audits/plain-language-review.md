@@ -29,7 +29,7 @@ pass applies it to the in-app strings and the setup guide.
 - **Reading-level target:** roughly **US grade 6–8** for ordinary UI copy and the
   setup guide. Short sentences, everyday words, one action per step, a calm and
   reassuring register. **Measured, not asserted** — the English bundle currently
-  scores **Flesch–Kincaid grade 5.6** on ordinary UI prose; see
+  scores **Flesch–Kincaid grade 5.7** on ordinary UI prose; see
   [*Measured score*](#measured-score) below for the method, the honest-limits
   number, and what to do when it drifts.
 - **Method:** read every user-facing string in both bundles and every line of the
@@ -67,22 +67,36 @@ timestamps waiting". Regenerate the numbers below with:
 uv run python scripts/report_readability.py
 ```
 
-Snapshot of `app/i18n/en.json` (285 keys) on 2026-09-04:
+Snapshot of `app/i18n/en.json` (248 keys) on 2026-09-04:
 
 | Corpus | Strings | Flesch–Kincaid | Reading ease | SMOG |
 | --- | ---: | ---: | ---: | ---: |
-| **Ordinary UI prose** — what the grade 6–8 target is about | 57 | **5.6** | 66.7 | 8.6 |
-| **Honest-limits strings** — reported, never a target | 23 | 11.0 | 33.9 | 11.8 |
-| Every string pooled — depressed by one-word labels | 285 | 7.9 | 46.0 | 8.6 |
+| **Ordinary UI prose** — what the grade 6–8 target is about | 50 | **5.7** | 65.3 | 8.7 |
+| **Honest-limits strings** — reported, never a target | 30 | 10.6 | 35.3 | 11.3 |
+| Every string pooled — depressed by short labels | 248 | 8.0 | 45.6 | 8.7 |
 
-Ordinary UI prose reads at **grade 5.6**, at or below the stated target. Read
+Every figure in that table is pasted from the script's output. The point of the
+script is that these numbers are computed rather than asserted, so re-run it and
+paste again; never adjust a cell by hand to match what a sentence nearby claims.
+
+Ordinary UI prose reads at **grade 5.7**, at or below the stated target. Read
 that as "about grade 6," not as three significant figures: English syllable
 counting is heuristic without a pronunciation dictionary, and the heuristic
 over-counts compounds — it hears three syllables in "timestamp," which is
-everywhere in this bundle — so the reported grade is a slight over-estimate. The
-205 one-word labels ("Heat", "Refresh") are counted but not scored; a grade level
-for a button is noise, and pooling hundreds of them flatters the average, which
-is why the pooled row is there but is not the headline.
+everywhere in this bundle — so the reported grade is a slight over-estimate.
+
+The third row of the report — 168 strings — is counted but not scored. It is
+**not** a pile of one-word labels, though describing it that way is convenient
+and an earlier draft of this document did. The rule is in the code: a string is
+scored as prose when it runs to at least `_PROSE_MIN_WORDS` (6) words **or** ends
+with terminal punctuation, and everything else is a label or fragment. Today that
+is 52 one-word strings ("Heat", "Refresh") and 116 of two to five words, not one
+of which is a sentence — "Add a condition", "Save document to this condition",
+"The complete local custody record". They are held out because a Flesch–Kincaid
+grade for a phrase with no sentence in it is arithmetic rather than a
+measurement, and because pooling a hundred and sixty-eight of them flatters the
+average. That is the honest justification; "they are only buttons" is not, since
+116 of the 168 are not.
 
 **This reports; it does not gate.** `make verify` does not fail on a readability
 number, deliberately. A hard threshold would press hardest on exactly the
@@ -91,10 +105,31 @@ warning. The honest-limits strings — the keys in
 [`localization-guide.md` §"Legally-sensitive strings"](../localization-guide.md)
 plus the limit-stating strings named with their reasons in the script's
 `_ADDITIONAL_HONEST_LIMITS` — are therefore scored on their own row and held out
-of the headline number. They sit at grade 11.4 **on purpose**: "not
+of the headline number. They sit at grade 10.6 **on purpose**: "not
 evidence-ready" and "this does not decide admissibility" are dense because they
 are precise. If a threshold is ever added, that printed list is the exemption
 list it must honour.
+
+**Declaring a string is enough, whatever its length.** The exemption is applied
+before the string's shape is looked at, so a five-word verdict — `verify_failed`
+("Integrity NOT intact · not evidence-ready"), `custody_intact`, `custody_broken`
+— lands on the honest-limits row instead of being filed away unscored as a
+fragment. It did not work that way at first: the shape test ran first, six
+declared keys fell into the labels bucket, and the report printed one total for
+the row and a different one for the exemption list beneath it. Those two numbers
+now agree by construction, and `tests/test_readability_report.py` pins that they
+do. This matters more than it looks: the strings under the most pressure to be
+softened are short, blunt and load-bearing, and they are precisely the ones the
+old ordering dropped from the row that exists to watch them.
+
+Fixing it moved the honest-limits row from 11.0 to **10.6**, and this document's
+own rule says to check why before being pleased. Nothing was softened. Six short
+verdicts joined the row from the unscored labels bucket, and a short verdict
+pulls a words-per-sentence formula down without being one word gentler; a
+seventh, `status_unreachable`, joined it from ordinary prose because it was newly
+declared. The headline Flesch–Kincaid grade is **5.7** before and after — moving
+one 19-word string out of 51 shifted ordinary reading ease from 65.7 to 65.3 and
+left its SMOG grade at 8.7, and nothing else moved at all.
 
 **When the score drifts.** Re-run the script whenever UI strings change (the same
 instruction this whole review ends on) and update the table above.
@@ -108,17 +143,35 @@ instruction this whole review ends on) and update the table above.
   outranks their grade level, always.
 - *A new string states a limit, a warning, a privacy property, or a verdict:* add
   it to the guide's table (or to `_ADDITIONAL_HONEST_LIMITS` with a reason) so it
-  is scored on the honest-limits row rather than dragging ordinary prose.
+  is scored on the honest-limits row rather than dragging ordinary prose. Length
+  is irrelevant: a two-word verdict belongs there as much as a paragraph does.
+  The string that *recovers* from a limit is not itself a limit, though —
+  `status_unreachable` ("Every value here is unknown, not zero") is declared,
+  while `status_unreachable_next` ("Check that habitable is still running on this
+  device…") is not, and stays inside the number the grade 6–8 target watches,
+  which is where a recovery instruction should be.
 
 **Spanish is not scored.** Flesch–Kincaid and SMOG are English formulas; running
 them over `app/i18n/es.json` would produce a wrong number wearing a right
 number's clothes. Spanish needs a Spanish formula (Fernández Huerta / INFLESZ),
 which is its own piece of work — see item 2 of *What remains*.
 
-`tests/test_readability_report.py` keeps the script honest: it pins that a number
-is still produced from a populated corpus, that ICU plurals are rendered to one
-branch, that the honest-limits keys are read from the localization guide rather
-than a private copy, and that deliberately unreadable copy still exits 0.
+`tests/test_readability_report.py` keeps the script honest, and its centre is a
+hand-counted fixture: 25 words, 5 sentences, 40 syllables, 6 polysyllables, whose
+expected scores (Flesch–Kincaid **5.2**, reading ease **66.4**, SMOG **9.4**) are
+worked out from the published formulas inside the test, arithmetic shown. No
+coefficient, constant or counting rule can move without a failure. The first
+version of that suite asserted only bands (`0 < grade < 20`) and relations, which
+a coefficient wrong by a factor of ten passes exactly as happily as a right one —
+a suite of bands re-asserts the target in a new place rather than checking the
+arithmetic under it. The assertions against the **real** bundle stay deliberately
+wide, so that rewording a button never breaks them, and cover the rest: that a
+number is still produced from a populated corpus, that ICU plurals are rendered
+to one branch (the branches in the fixture have different lengths, so the word
+count says which one was read), that the honest-limits keys are read from the
+localization guide rather than a private copy and only from its legally-sensitive
+section, that a declared string is exempt whatever its length, and that
+deliberately unreadable copy still exits 0.
 
 ## Terms changed and why
 

@@ -37,9 +37,18 @@ the whole bundle would be dominated by one-word button labels:
   admissibility" are dense because they are precise, and the precision is the
   whole point. They are scored on their own line so that nobody can ever improve
   the headline number by softening a limitation.
-* **labels and fragments** — "Heat", "Refresh", "Language". Counted, never
-  scored: a grade level for a one-word button is noise, and pooling hundreds of
-  them flatters the average.
+* **labels and fragments** — every remaining string shorter than
+  ``_PROSE_MIN_WORDS`` words that does not end a sentence. Most are one-word
+  buttons ("Heat", "Refresh", "Language"), but the bucket also holds short
+  headings and imperative labels ("Start this repair trail"). Counted, never
+  scored: a grade level for a phrase with no sentence in it is arithmetic rather
+  than a measurement, and pooling hundreds of them flatters the average.
+
+A string declared legally sensitive is bucketed as an honest limit **before** its
+shape is considered, so that "Integrity NOT intact · not evidence-ready" is
+scored on the honest-limits row rather than disappearing into fragments for being
+five words long. Declaring a string is therefore sufficient to exempt it,
+whatever its length — which is what the audit document promises.
 
 Why it reports instead of gating
 --------------------------------
@@ -133,9 +142,18 @@ _ADDITIONAL_HONEST_LIMITS: dict[str, str] = {
     "share_fact_scope": "scope property: the packet covers the whole unit",
     "status_awaiting_help": "says validity and authority trust are separate checks",
     "status_timestamped_help": "says the recipient must still verify token and authority",
+    "status_unreachable": "says every value shown is unknown, not zero, when the server is down",
     "storage_doubling_note": "states the by-design storage cost rather than reassuring",
     "strength_caveat": "says what record strength is NOT — not validity, not admissibility",
 }
+
+#: Deliberately **not** in the list above: ``status_unreachable_next`` ("Check that
+#: habitable is still running on this device, then choose 'Try again'."). It is the
+#: recovery step for the limit that ``status_unreachable`` states, not a limit of its
+#: own — it makes no claim about what habitable can or cannot establish. Leaving it in
+#: the ordinary bucket is the conservative call: a recovery instruction is exactly the
+#: copy the grade 6-8 target exists for, and exempting it would quietly lift it out of
+#: the number that target watches.
 
 _GUIDE_SECTION = "## Legally-sensitive strings"
 _GUIDE_KEY = re.compile(r"`([a-z][a-z0-9_]*)`")
@@ -433,11 +451,19 @@ def build_report(bundle_path: Path, guide_path: Path) -> Report:
     ordinary: list[Rendered] = []
     honest_limits: list[Rendered] = []
     fragments: list[Rendered] = []
+    # The order of these three tests is load-bearing, not incidental. Testing shape
+    # first would divert every declared honest-limits string shorter than
+    # _PROSE_MIN_WORDS into the unscored fragments bucket — "Integrity NOT intact ·
+    # not evidence-ready" is five words — so the strings under the most pressure to
+    # be softened would be the ones quietly dropped from the row that watches them,
+    # and the printed exemption count would not match the row it describes. Declaring
+    # a string sensitive therefore wins over its shape, unconditionally: adding a row
+    # to the guide is sufficient to exempt it, which is what the audit promises.
     for item in rendered:
-        if not item.is_prose:
-            fragments.append(item)
-        elif item.key in sensitive:
+        if item.key in sensitive:
             honest_limits.append(item)
+        elif not item.is_prose:
+            fragments.append(item)
         else:
             ordinary.append(item)
 
@@ -545,7 +571,7 @@ def format_report(report: Report) -> str:
     lines.append("")
     lines.extend(
         _metrics_lines(
-            "Every string pooled — depressed by one-word labels, do not quote it alone:",
+            "Every string pooled — depressed by short labels, do not quote it alone:",
             measure(report.everything),
         )
     )
