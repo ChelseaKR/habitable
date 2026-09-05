@@ -137,7 +137,7 @@ Targets for a small volunteer/solo effort, updated after **v0.4.0 (2026-08-16)**
 | **v0.2** | shipped June 2026 | Assurance groundwork | Verifier fuzzing; archive/re-timestamping; provenance; security/reviewer handoff materials | — |
 | **v0.3.0** | shipped 2026-07-23 (CHANGELOG-recorded; folded into the v0.4.0 tag below rather than tagged on its own) | Use-case foundation | Roadmap drain / novel-use-cases plan; bounded public review hub | N0–N4 primitives and all ten use-case profiles shipped (§E) |
 | **v0.4.0** | shipped & tagged 2026-08-16 | Packet-seal & release hygiene | Whole-packet RFC 3161 seal (ADR 0011); `--expected-producer-key`; `uv sync --locked` lockfile gate | Consent-record withdrawal semantics for local aggregation (N4) |
-| **Unreleased** | now (2026-08-26) | — | — | Profile review-expiry enforcement (ADR 0012): selection refuses an expired profile, export falls back and discloses rather than presenting stale guidance. Dated, expiring **letter** jurisdiction framing (ADR 0013): lapsed union-supplied local-law wording is withheld from the letter instead of sent, closing the stated precondition for jurisdiction template growth. Move-out/deposit-dispute record (ADR 0014): the `move_out_deposit` profile, a `deduction_itemization` artifact type, and a `deduction_for` relationship, with a drift guard pinning the verifier's restated vocabulary to the registry. Joint multi-tenant submission index (ADR 0015): an organizer holding several tenants' already-signed packets, and no keys to any of them, can write one digest-bound table of contents whose every claim `habitable joint check` re-derives from the packets, merging no custody chain. An authority seal over that index (ADR 0016), applying ADR 0011's mechanism to the list itself so a packet dropped from a submission stops being undetectable. `campaign export` now seals each unit packet with that unit's own authority, closing the last multi-packet surface ADR 0011 named as unsealed |
+| **Unreleased** | now (2026-09-04) | — | The 2026-09-04 batch is assurance and honesty work, not new capability: §E17's stateful hostile-input harness plus in-repo OSS-Fuzz *configuration* — harnesses and project files, **not** OSS-Fuzz membership (workstream A); a desktop packaging *spike* that reached a macOS `.app`, and a dated mobile re-check confirming the block holds — neither is a product build (workstream C); a measured English readability score replacing an asserted target, an announced proof transition, and a dead-end audit — none of which touches the human screen-reader pass (workstream B); one shared condition and urgency vocabulary across CLI and app; and ADR 0017, which settles the correction/edit-history design and deliberately ships nothing. See `CHANGELOG.md` | Profile review-expiry enforcement (ADR 0012): selection refuses an expired profile, export falls back and discloses rather than presenting stale guidance. Dated, expiring **letter** jurisdiction framing (ADR 0013): lapsed union-supplied local-law wording is withheld from the letter instead of sent, closing the stated precondition for jurisdiction template growth. Move-out/deposit-dispute record (ADR 0014): the `move_out_deposit` profile, a `deduction_itemization` artifact type, and a `deduction_for` relationship, with a drift guard pinning the verifier's restated vocabulary to the registry. Joint multi-tenant submission index (ADR 0015): an organizer holding several tenants' already-signed packets, and no keys to any of them, can write one digest-bound table of contents whose every claim `habitable joint check` re-derives from the packets, merging no custody chain. An authority seal over that index (ADR 0016), applying ADR 0011's mechanism to the list itself so a packet dropped from a submission stops being undetectable. `campaign export` now seals each unit packet with that unit's own authority, closing the last multi-packet surface ADR 0011 named as unsealed. The 2026-09-04 batch added nothing here |
 | **v0.5 (beta)** | mid/late 2027 | Pilot-ready | Security/crypto audit underway; recorded AT pass; 1–2 union/legal-aid pilots running; multi-device + recovery UX; one-click desktop packaging (the native-mobile spike is already done — see workstream C — and blocked on upstream `cryptography` mobile wheels, not on this) | Solo-buildable Now items from *Beyond the current portfolio*: the move-out/deposit-dispute record shipped early (2026-08-26, ADR 0014); jurisdiction template growth is past its engineering precondition and has shipped its first new framing (`ew_disrepair`, issue #207, 2026-08-28), which is UNREVIEWED for its jurisdiction; further framings stay open to a first-time contributor, and a *reviewed* framing is still gated on a named legal reviewer; named reviewer/partner secured for at least one of the six `external_review_required` profiles; the joint multi-tenant case bundle is no longer a prototype item (shipped 2026-08-27, ADR 0015) |
 | **v1.0** | ~2028 | Trustworthy | The [v1.0 gate](#the-v10-gate-when-alpha-comes-off) met; "alpha" caveat removed | At least one `external_review_required` profile promoted to `maintainer_reviewed` on a recorded review |
 | **v2.x+** | beyond | Reach & resilience | More languages/jurisdictions; metadata-resistant sync; broader interop; shared governance | Remaining partner-gated profiles as partners arrive; protected-activity timeline only after its framing ADR; jurisdiction/language growth using the now-enforced expiry mechanism |
@@ -186,7 +186,21 @@ Packet-integrity claims live here; this work gets the most scrutiny.
   the chain); an RFC 3161 CMS wrapper legitimately carries bytes outside its signature;
   and an anchored `trusted_chain` is *losable* — editing the embedded certificate
   breaks the anchor match, the fail-closed direction. §E17's stateful harness over
-  hostile packet/token input is still open, as is OSS-Fuzz integration — a separate
+  hostile packet/token input now ships too: `HostilePacketSequences` drives a live copy
+  of the v4 golden packet through meaning-preserving, unrepairable, and known-limit
+  rules, verifying each step twice — open policy and with the producer key pinned —
+  because the defects it exists to find are the ones where every single operation is
+  sound and only the composition is not. It runs in the merge gate and has produced no
+  security finding.
+- **OSS-Fuzz integration.** *Objective:* the verification-subset harnesses run
+  continuously against someone else's corpus, not only against committed seeds. *State:*
+  the harnesses, their seed corpora, the merge-gate replay, and the OSS-Fuzz project
+  configuration are in-repo under [`fuzz/`](fuzz/README.md) — but the project is **not
+  submitted to and not accepted by** OSS-Fuzz, so nothing is running continuously.
+  *Exit:* a maintainer pull request against `google/oss-fuzz` naming a primary contact;
+  a person, not an engineering gap. Until it lands, OpenSSF Scorecard's Fuzzing check
+  reports 0/10 whatever is in that directory, because it looks for membership in
+  fuzzing infrastructure rather than for harnesses. This remains an
   ecosystem/discoverability improvement, not missing in-repo adversarial coverage.
 - *Shipped:* **Signed releases + build provenance (SLSA).** Tagged releases must
   resolve to reviewed `main` history, carry an allowed SSH signature, match the
@@ -263,8 +277,30 @@ Packet-integrity claims live here; this work gets the most scrutiny.
   changed, and what remains for a native-speaker / stressed-user pass — is at
   `docs/audits/plain-language-review.md`. The final action-first
   `resolve_*`/Spanish timestamp-term cleanup and guard shipped in the 2026-07-22
-  roadmap drain. *Remaining (documented there):* a native-speaker ES review, a
-  measured readability score, and a cognitive walk-through.
+  roadmap drain. The grade target is no longer merely asserted: `make readability`
+  (`scripts/report_readability.py`) scores the *rendered* English copy, and ordinary UI
+  prose measures **Flesch–Kincaid 5.6**, at or below the 6–8 target. It reports and
+  never gates, deliberately — the honest-limits strings score 11.0, are reported on
+  their own line, and a threshold would have pressed hardest on the sentences saying
+  what habitable cannot prove. *Remaining (documented there):* a native-speaker ES
+  review, a **Spanish** readability score (unscored on purpose: Flesch–Kincaid is an
+  English formula and Spanish needs a Spanish-appropriate one), and a cognitive
+  walk-through.
+- *Shipped:* **The proof transition is announced, and no state is a silent dead end.**
+  A dedicated `role="status"` live region announces the awaiting→timestamped moment —
+  the single transition that most affects what a record can prove — kept separate from
+  the general announcer so a same-tick action result cannot swallow it. Separately,
+  twenty reachable app states were walked for dead ends; the export-*failed* branch,
+  the per-device resolve message, and an empty "Related photos" listbox now name a next
+  action, two strings quoting controls that no longer exist were corrected, and four
+  states were deliberately left with a stated reason each (including the blocked
+  issue-scoped export, an honest limit rather than a dead end). The 320px Spanish
+  text-expansion check named in the plain-language review's *What remains* was also
+  performed and **passed** (2026-09-04): the two longest help strings run 16–17% longer
+  in Spanish, cost at most one line, and nothing was shortened, so no limitation was
+  weakened to fit a layout. What these do **not** do: the test proves the live region
+  exists and updates, not that the announcement is *useful*. The recorded human
+  screen-reader pass above is untouched and stays open.
 - *Shipped:* **Low-end-device performance budget.** A documented latency budget for the
   local path — per-operation targets for content hashing, seal/store, custody append,
   CRDT merge, and packet assembly — tied to a reference low-end device modeled as ~10×
@@ -293,8 +329,25 @@ Packet-integrity claims live here; this work gets the most scrutiny.
   build, but no APK or reproducible build recipe is committed. Packaging habitable has no
   off-the-shelf path until current `cryptography` mobile wheels exist or the project takes on a
   reviewed cross-build. The product build remains not shipped; this closes only the research spike.
+  *Re-checked 2026-09-04:* the spike turns on one fact with an expiry date, so it was
+  re-queried by the same method — `cryptography` 50.0.1 still publishes no `ios_*` or
+  `android_*` wheel, a full major version after the 49.0.0 the spike measured, so the
+  unblock condition has not arrived. The gap is now more precisely located: `pillow` is
+  no longer the obstacle on iOS, and `cryptography` alone is, on both platforms.
 - **Desktop packaging.** *Objective:* a one-click desktop app for organizers. *Exit:* a
   packaged build (e.g. Briefcase/Tauri) that launches the app with no terminal.
+  *Spike done (2026-09-04):* see
+  [`docs/research/desktop-packaging-spike.md`](docs/research/desktop-packaging-spike.md) —
+  and it answers the mobile spike's question the other way. Briefcase 0.4.4 produced a
+  macOS arm64 `.app` carrying `cryptography`, `pillow`, `reportlab` and `piexif`, so
+  desktop is **not** blocked by what blocks phones. Two named obstacles remain: the
+  universal2 (Intel-compatible) default fails, because `cryptography` publishes
+  arm64-only macOS wheels, and the support package used was Python 3.12 while this
+  project requires ≥3.14 — the cheap next check, not a settled question. What the spike
+  does not show, and what keeps the exit criterion open: habitable itself was not
+  packaged (the bundle is a Toga hello-world carrying habitable's `requires`), the
+  bundle was never launched, Windows and Linux were not attempted, and there is no
+  signing, notarisation, or reproducible recipe. The product build remains not shipped.
 - *Partial:* **Multi-device & key lifecycle UX.** Authenticated case-bound
   pairing, passphrase hardening, DEK rotation, recovery blobs, M-of-N social
   recovery, CLI round trips, and organizer documentation ship. *Remaining exit:*
@@ -302,9 +355,20 @@ Packet-integrity claims live here; this work gets the most scrutiny.
   restore drills; recovery limits remain clearly communicated.
 - *Partial:* **Merge/conflict surfacing.** Authenticated per-field provenance and
   a CLI view identify the winning current value's device and time. A complete
-  edit/conflict history is not shipped because the state-based CRDT does not
-  retain overwritten values; it needs a versioned append-only change-log design
-  and organizer validation before an app review view can claim completeness.
+  edit/conflict history is still **not shipped** because the state-based CRDT does
+  not retain overwritten values. What changed is that the design is now settled
+  rather than open: [ADR 0017](docs/adr/0017-corrections-and-edit-history-need-one-append-only-change-log.md)
+  (2026-09-04) folds this together with the missing correction path (#241, #261) —
+  they are one gap seen from two directions, the case's own edit history not being
+  recoverable — and decides it is a versioned, append-only change log that must reach
+  the packet, and therefore `packet_version` 5 with golden fixtures, a migration note,
+  and a verifier that understands the record. The ADR **ships nothing**: it explicitly
+  refuses the cheap version, because `update_issue()`'s signed per-field provenance
+  never leaves the device, so a correction built on it today would be a silent edit in
+  every artifact a court reads. Both issues stay open, and the typo still reaches the
+  packet. *Remaining exit:* the implementing ADR (retention bound, threat model,
+  migration) and then organizer validation, before an app review view can claim
+  completeness.
 - *Shipped, opt-in:* **Metadata-resistant sync (relay).** `PaddingTransport`
   buckets sizes and posts fixed real-plus-decoy batches, hiding exact size and
   real-message count within a batch. The threat model and observability matrix
