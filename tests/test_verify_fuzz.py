@@ -5,9 +5,24 @@ and never crash on hostile input.
 
 Two invariants over random mutations of a valid packet:
   1. **Never accept on tamper** — any change to the signed bundle or to a media
-     file yields a report with ``ok == False`` (or a handled ``VerificationError``).
+     file yields a report that is not ``structurally_intact`` (or a handled
+     ``VerificationError``).
   2. **Never crash** — the only exception the verifier may raise is
      ``VerificationError``; anything else (KeyError, TypeError, …) is a bug.
+
+Why invariant 1 is stated against ``structurally_intact``
+---------------------------------------------------------
+It used to be stated against ``report.ok``, and could therefore never fail.
+``ok`` is a fail-closed alias for ``evidence_ready``, which also requires every
+item's timestamp authority to chain to a *supplied* trust root — and the golden
+corpus deliberately ships no trust root, precisely so the fixtures prove format
+compatibility rather than a trust policy (`tests/test_golden.py` asserts
+``not report.ok`` for a **pristine** fixture). So "the verifier accepted a
+tampered packet" was an assertion about a value that is False before any tamper,
+across the whole corpus: the crash invariant was doing all the work and the
+accept invariant was decoration. ``structurally_intact`` is the predicate that
+actually moves — signature, custody, and per-item media checks — and it is what
+`tests/test_golden.py` asserts is True for a pristine fixture.
 
 Every committed golden packet, not just the oldest
 --------------------------------------------------
@@ -23,12 +38,15 @@ the structural mutation reaches *nested* objects rather than only top-level keys
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import shutil
 import tempfile
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
+import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -70,7 +88,9 @@ def _verify_must_not_crash_or_accept(fixture: _Fixture) -> None:
         raise AssertionError(
             f"{fixture.name}: verifier crashed with {type(exc).__name__}: {exc}"
         ) from exc
-    assert not report.ok, f"{fixture.name}: verifier accepted a tampered packet"
+    assert not report.structurally_intact, (
+        f"{fixture.name}: verifier reported a structurally intact packet after a tamper"
+    )
 
 
 @settings(max_examples=200, deadline=None)
@@ -160,3 +180,69 @@ def test_the_corpus_being_fuzzed_includes_the_current_format() -> None:
     assert current["use_case_profile"], "current-version fixture has no profile to fuzz"
     assert current["handoff_views"], "current-version fixture has no handoff view to fuzz"
     assert any(item.get("record_kind") == "artifact" for item in current["items"])
+
+
+# --- the out-of-tree fuzz harnesses must keep working ---------------------------
+
+_FUZZ_DIR = Path(__file__).resolve().parent.parent / "fuzz"
+
+
+def _harness(name: str) -> ModuleType:
+    """Import one `fuzz/` harness by path.
+
+    `fuzz/` is not a package and is deliberately not on `sys.path`: the harnesses
+    are standalone files OSS-Fuzz compiles one at a time, and making them
+    importable as a package would let them quietly grow shared state that only
+    exists in this repository and not in the fuzzing image.
+    """
+    path = _FUZZ_DIR / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None and spec.loader is not None, f"cannot load {path}"
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("name", ["fuzz_verify_packet", "fuzz_timestamp_token"])
+def test_the_oss_fuzz_harnesses_still_run_their_own_seed_corpus(name: str) -> None:
+    """An out-of-tree fuzz target that nothing exercises rots (issue #256).
+
+    The harnesses in `fuzz/` are built by OSS-Fuzz, not by this repository, so
+    nothing here would otherwise notice when a rename in `habitable.verify`, a
+    changed exception type, or a moved golden fixture stops them importing. The
+    first anyone would hear of it is a build failure in someone else's
+    infrastructure, weeks later, having fuzzed nothing in the meantime.
+
+    So the merge gate runs each harness's own seed corpus through its
+    `TestOneInput`. That is not fuzzing -- it is a handful of inputs and it finds
+    nothing new -- but it does prove the target imports, that its entry point
+    still has the shape libFuzzer calls, and that the properties it asserts still
+    hold on the inputs chosen to reach each branch.
+    """
+    module = _harness(name)
+    corpus = list(module.seed_corpus())
+    assert len(corpus) >= 8, f"{name} ships a seed corpus too small to reach its branches"
+    for payload in corpus:
+        module.TestOneInput(payload)
+
+
+def test_every_harness_in_the_fuzz_directory_is_wired_into_the_build() -> None:
+    """A harness OSS-Fuzz never compiles is a file, not a fuzz target.
+
+    `fuzz/oss-fuzz/build.sh` globs `fuzz/fuzz_*.py`, so this pins the naming
+    convention that glob depends on, and pins that the two harnesses this
+    repository claims to have are the two that are actually there. A harness
+    added as `verify_fuzzer.py` would be silently skipped by the build and
+    silently missing from the corpus, while the README went on describing it.
+    """
+    harnesses = sorted(path.name for path in _FUZZ_DIR.glob("*.py"))
+    assert harnesses == ["fuzz_timestamp_token.py", "fuzz_verify_packet.py"], (
+        f"fuzz/ holds {harnesses}; every harness must be named fuzz_*.py so "
+        "fuzz/oss-fuzz/build.sh's glob compiles it, and the set must match what "
+        "fuzz/README.md and this test describe"
+    )
+
+    build = (_FUZZ_DIR / "oss-fuzz" / "build.sh").read_text(encoding="utf-8")
+    assert "fuzz/fuzz_*.py" in build, "the build script no longer globs the harnesses"
+    assert "compile_python_fuzzer" in build, "the build script no longer compiles anything"
+    assert "seed_corpus" in build, "the build script no longer materialises the seed corpora"

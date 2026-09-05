@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: Apache-2.0
+# The OSS-Fuzz project definition for habitable's verification subset (issue #256).
+#
+# This file is not read from here. OSS-Fuzz builds from its own repository: the
+# upstream copy lives at `projects/habitable/project.yaml` in
+# https://github.com/google/oss-fuzz, and this is the reviewable source for it,
+# kept next to the harnesses it configures so the two cannot drift apart
+# unnoticed the way a config living only in someone else's repository would.
+homepage: "https://github.com/ChelseaKR/habitable"
+main_repo: "https://github.com/ChelseaKR/habitable"
+language: python
+# Findings must reach the maintainer through the private path in SECURITY.md.
+# `file_github_issue: false` keeps OSS-Fuzz from opening a public issue on this
+# repository when a bug's disclosure deadline lapses: anything found in
+# acceptance logic here is a security finding about evidence a tenant may be
+# relying on in a housing dispute, and this project does not learn about those
+# from a public tracker.
+file_github_issue: false
+primary_contact: "ckellyreif@gmail.com"
+auto_ccs:
+  - "ckellyreif@gmail.com"
+sanitizers:
+  - address
+  - undefined
+fuzzing_engines:
+  - libfuzzer
+architectures:
+  - x86_64

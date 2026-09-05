@@ -10,7 +10,7 @@
 # quietly defeat the gate. CI runs serial, so this was latent rather than live; it is
 # now structural instead of conventional.
 .NOTPARALLEL:
-.PHONY: help bootstrap install lock-check fmt lint type test cov i18n doc-links markers verify audit a11y integration demo site-sample build repro relay-repro clean
+.PHONY: help bootstrap install lock-check fmt lint type test cov i18n doc-links markers readability fuzz verify audit a11y integration demo site-sample build repro relay-repro clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -35,12 +35,12 @@ lock-check: ## CQ-09: fail if uv.lock has drifted from pyproject.toml
 	uv lock --check
 
 fmt: ## Auto-format and auto-fix
-	uv run ruff format src tests scripts/check_doc_links.py scripts/check_reproducible_build.py
-	uv run ruff check --fix src tests scripts/check_doc_links.py scripts/check_reproducible_build.py
+	uv run ruff format src tests fuzz scripts/check_doc_links.py scripts/check_reproducible_build.py scripts/report_readability.py
+	uv run ruff check --fix src tests fuzz scripts/check_doc_links.py scripts/check_reproducible_build.py scripts/report_readability.py
 
 lint: ## Lint (no changes)
-	uv run ruff format --check src tests scripts/check_doc_links.py scripts/check_reproducible_build.py
-	uv run ruff check src tests scripts/check_doc_links.py scripts/check_reproducible_build.py
+	uv run ruff format --check src tests fuzz scripts/check_doc_links.py scripts/check_reproducible_build.py scripts/report_readability.py
+	uv run ruff check src tests fuzz scripts/check_doc_links.py scripts/check_reproducible_build.py scripts/report_readability.py
 
 type: ## Strict type-check
 	uv run mypy
@@ -84,18 +84,32 @@ i18n: ## Mechanical i18n gates: UTF-8 (G1), BCP 47 validity (G3), EN/ES key-pari
 	uv run python scripts/check_bcp47.py
 	uv run python scripts/check_i18n_parity.py
 
+fuzz: ## Replay the OSS-Fuzz harnesses over their committed seed corpora (no Atheris needed)
+	# The harnesses run with or without Atheris on purpose, so a corpus entry
+	# reproduces identically either way. This is the local smoke test; continuous
+	# fuzzing needs upstream OSS-Fuzz acceptance, which is not done (issue #256).
+	uv run python fuzz/fuzz_verify_packet.py
+	uv run python fuzz/fuzz_timestamp_token.py
+
+readability: ## Report the reading grade of the English app copy (reports; never gates — issue #246)
+	# Deliberately NOT part of `verify`. A hard readability threshold would press
+	# hardest on the honest-limits strings -- the ones stating what habitable cannot
+	# prove -- and those must stay blunt. The script holds them out of the headline
+	# number and prints them separately for exactly that reason.
+	uv run python scripts/report_readability.py
+
 doc-links: ## Validate local Markdown links and capability-ledger evidence paths
 	uv run python scripts/check_doc_links.py
 
 markers: ## No bare TODO/FIXME/HACK (must reference an issue, e.g. TODO(#142)); no un-issued noqa/type:ignore
-	@bad=$$(grep -rnE '(TODO|FIXME|HACK)' --include='*.py' --include='*.js' src tests app scripts 2>/dev/null \
+	@bad=$$(grep -rnE '(TODO|FIXME|HACK)' --include='*.py' --include='*.js' src tests app scripts fuzz 2>/dev/null \
 		| grep -vE '\(#[0-9]+\)' || true); \
 	if [ -n "$$bad" ]; then \
 		echo "$$bad"; \
 		echo "error: bare TODO/FIXME/HACK without a linked issue, e.g. TODO(#142)"; \
 		exit 1; \
 	fi
-	@bad=$$(grep -rnE '# ?noqa|# ?type: ?ignore' --include='*.py' src tests scripts 2>/dev/null \
+	@bad=$$(grep -rnE '# ?noqa|# ?type: ?ignore' --include='*.py' src tests scripts fuzz 2>/dev/null \
 		| grep -vE '# ?noqa: ?[A-Z]+[0-9]|# ?type: ?ignore\[' || true); \
 	if [ -n "$$bad" ]; then \
 		echo "$$bad"; \
