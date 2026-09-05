@@ -718,3 +718,47 @@ def test_browser_tests_never_ask_the_page_to_eval_a_string() -> None:
         "evaluates with `eval` and the app's own Content-Security-Policy forbids. "
         "Write them as `() => …` instead.\n  " + "\n  ".join(offenders)
     )
+
+
+def test_scripts_parse_on_the_oldest_interpreter_ci_uses() -> None:
+    """`make i18n` runs these under uv's 3.14; the merge gate runs them with the
+    runner's bare `python3`. Those are different interpreters, and only one of them
+    is exercised locally.
+
+    `ruff format` under this project's `target-version = "py314"` rewrites
+    `except (A, B):` into the PEP 758 parenthesis-free form, which is a SyntaxError
+    before 3.14. So bringing `scripts/` under the formatter (#272) rewrote a handler
+    in `check_i18n_utf8.py`, `make i18n` stayed green on 3.14, and the merge gate
+    failed in six seconds on a syntax error. A second copy was already latent in
+    `report_i18n_key_usage.py`, waiting for the first workflow to run it.
+
+    `tsa.py` has documented this precaution for the verifier subset since
+    `_SIG_HASH_ERRORS`, and `test_verifier_subset_avoids_py314_only_except_syntax`
+    guards it there. `scripts/` had the same exposure and no guard, which is why
+    this exists: the fix is to bind the tuple to a name the formatter will not
+    touch.
+
+    Compiling with a real older interpreter would be better than parsing with an
+    AST rule, but no such interpreter is guaranteed present here -- CI's
+    `verifier-portability` job does the real thing for the subset that ships to
+    embedders. This catches the one syntax difference that has actually bitten.
+    """
+    scripts = sorted((Path(__file__).resolve().parent.parent / "scripts").glob("*.py"))
+    assert len(scripts) >= 8, f"only {len(scripts)} scripts found; this guard is reading nothing"
+
+    offenders: list[str] = []
+    for path in scripts:
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            stripped = line.strip()
+            if not stripped.startswith("except "):
+                continue
+            clause = stripped[len("except ") :].split(" as ")[0].rstrip(":").strip()
+            if "," in clause and not clause.startswith("("):
+                offenders.append(f"{path.name}:{number}: except {clause}:")
+
+    assert not offenders, (
+        "these handlers use the PEP 758 parenthesis-free form, which is a "
+        "SyntaxError on the `python3` the i18n merge gate runs. Bind the tuple to a "
+        "module-level name instead, so `ruff format` cannot rewrite it -- see "
+        "`_SIG_HASH_ERRORS` in tsa.py.\n  " + "\n  ".join(offenders)
+    )

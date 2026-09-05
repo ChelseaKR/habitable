@@ -143,6 +143,14 @@ class ReportError(Exception):
     """Operator error: something the report needs could not be read."""
 
 
+# Bound to a name so `ruff format` under `target-version = "py314"` cannot rewrite
+# it to the PEP 758 parenthesis-free form, which is a SyntaxError on Python < 3.14.
+# This script runs under uv today, but `check_i18n_utf8.py` shipped exactly this
+# rewrite and broke the merge gate, which runs the i18n scripts with the runner's
+# bare `python3`. Same precaution as `tsa.py`'s `_SIG_HASH_ERRORS`.
+_LITERAL_ERRORS = (ValueError, TypeError, SyntaxError)
+
+
 def _first_group(match: re.Match[str], groups: Iterable[int]) -> str | None:
     """The first non-None alternative of a quoted-string match.
 
@@ -313,7 +321,7 @@ def _locale_entries(catalogue: ast.Dict, locale: str) -> dict[str, str]:
                 continue
             try:
                 value = ast.literal_eval(value_node)
-            except ValueError, TypeError, SyntaxError:
+            except _LITERAL_ERRORS:
                 continue
             if isinstance(value, str):
                 entries[str(key_node.value)] = value

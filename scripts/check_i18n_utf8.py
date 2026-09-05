@@ -38,6 +38,14 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 # A NUL byte marks a blob as binary (git's own text/binary heuristic).
 _NUL = b"\x00"
+
+# Bound to a name, not written as an inline `except (...)`, so `ruff format` under
+# this project's `target-version = "py314"` cannot rewrite it to the PEP 758
+# parenthesis-free form. That form is a SyntaxError on Python < 3.14, and CI runs
+# this gate with the runner's bare `python3` while `make i18n` runs it under uv's
+# 3.14 -- so the rewrite passed locally and failed in the merge gate. `tsa.py`
+# documents the same precaution for `_SIG_HASH_ERRORS`.
+_READ_ERRORS = (OSError, FileNotFoundError)
 # Known-binary file extensions: skipped outright. Some binaries (e.g. this repo's
 # sample PDF) carry no NUL byte, so extension is the reliable signal for them.
 _BINARY_SUFFIXES = frozenset(
@@ -129,7 +137,7 @@ def check_utf8() -> int:
             continue  # known binary asset — not a text file
         try:
             data = path.read_bytes()
-        except OSError, FileNotFoundError:
+        except _READ_ERRORS:
             # A tracked-but-absent path (e.g. a submodule gitlink) is not text.
             continue
         if _NUL in data:
