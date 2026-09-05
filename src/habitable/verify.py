@@ -669,6 +669,7 @@ def verify_packet(
             )
         )
 
+    problems.extend(_verify_timestamp_authorities(bundle, custody))
     if bundle.get("packet_version") in {3, 4}:
         problems.extend(_verify_v3_timeline(bundle, custody))
     if bundle.get("packet_version") == 4:
@@ -1919,9 +1920,91 @@ def _verify_custody(bundle: Mapping[str, JSONValue]) -> tuple[bool, int, Custody
         result = custody.verify()
     except Exception:
         return False, len(records), CustodyLog([])
-    declared_head = proof.get("head_hash")
-    head_ok = declared_head == result.head_hash
-    return (result.ok and head_ok), result.length, custody
+    # The declared summary must match what the entries actually are -- BOTH
+    # halves of it. The head alone was checked here until issue #278: `sync.py`
+    # has always refused a proof whose declared `length` disagreed with its
+    # entries ("source custody proof summary does not match its entries"), while
+    # this verifier recomputed the length, returned the recomputed value, and let
+    # the declared one through unread -- the number `bundleview` then renders to a
+    # human. Two readers of the same structure held it to two standards, and the
+    # weaker one was the standalone verifier. `result.length` was already in hand.
+    #
+    # `type(...) is int` rather than `isinstance`: `True == 1` in Python, so a
+    # boolean would otherwise be allowed to spell a one-entry chain. A missing or
+    # wrong-typed `length` fails closed for the same reason a missing head does --
+    # an absent summary is not a matching summary.
+    declared_length = proof.get("length")
+    summary_ok = proof.get("head_hash") == result.head_hash and (
+        type(declared_length) is int and declared_length == result.length
+    )
+    return (result.ok and summary_ok), result.length, custody
+
+
+def _custody_authorities(custody: CustodyLog) -> dict[str, set[str]]:
+    """Map item_id -> {authority names the custody chain commits for that item}.
+
+    Every path that stores a primary timestamp token also appends a
+    ``timestamped`` custody entry naming the authority in its ``tsa`` detail
+    (``capture._stamp_and_record``, ``artifact._timestamp``). That detail is
+    hashed into the entry, and the entry into the chain, so it is a second,
+    independently addressable statement of the same fact the item record makes.
+    """
+    authorities: dict[str, set[str]] = {}
+    for entry in custody.entries:
+        if entry.action == "timestamped":
+            name = entry.details.get("tsa", "")
+            if name:
+                authorities.setdefault(entry.item_id, set()).add(name)
+    return authorities
+
+
+def _verify_timestamp_authorities(
+    bundle: Mapping[str, JSONValue], custody: CustodyLog
+) -> list[str]:
+    """Cross-check each item's *displayed* authority name against custody (issue #281).
+
+    ``items[*].timestamp.tsa_name`` is the sentence a recipient quotes -- "this
+    token is from FreeTSA" -- and until this check nothing bound it. The token's
+    signature, its imprint and its certificate chain were all verified, and the
+    label sitting beside them was copied straight through into the verdict
+    (:attr:`ItemVerdict.tsa_name`) and into every renderer. A rewriter who
+    re-signs could relabel the authority with nothing cryptographic moving.
+
+    What this does and does not prove. The label is a producer-configured
+    nickname, not the authority's identity: the identity a recipient can actually
+    rely on is the signing certificate, reached by supplying ``trusted_certs``.
+    So this is a *consistency* check between two statements the same bundle
+    makes, not an attestation of who signed -- it refuses a packet whose own
+    custody chain contradicts the name it displays. It sits inside the
+    self-attesting-signature residual (``docs/tamper-challenge.md`` §4) exactly
+    as the custody bindings above it do.
+
+    Scope, deliberately. Only the **primary** token is checked, and only when the
+    chain commits at least one authority for that item. Timestamp material can
+    reach a vault without a custody entry of its own -- ``sync`` imports a peer's
+    primary, additional and archive tokens and appends no ``timestamped`` entry --
+    so an item with nothing committed has nothing to be checked against, and
+    demanding one would fail honest packets rather than dishonest ones.
+    """
+    attested = _custody_authorities(custody)
+    problems: list[str] = []
+    for raw_item in _list(bundle, "items"):
+        if not isinstance(raw_item, dict):
+            continue  # already reported as a malformed item by the caller
+        token = raw_item.get("timestamp")
+        if not isinstance(token, dict):
+            continue
+        capture_id = _s(raw_item, "capture_id")
+        committed = attested.get(capture_id)
+        if not committed:
+            continue
+        declared = _s(token, "tsa_name")
+        if declared not in committed:
+            problems.append(
+                f"item {capture_id or '<missing>'}: the timestamp names authority "
+                f"{declared or '<missing>'!r}, which no custody entry attests"
+            )
+    return problems
 
 
 def _sharing_bindings(custody: CustodyLog) -> dict[str, set[tuple[str, str]]]:

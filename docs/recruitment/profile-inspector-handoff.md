@@ -27,7 +27,8 @@ question is entirely about your side of the counter.
 Verbatim from [`src/habitable/usecases.py`](../../src/habitable/usecases.py):
 
 - **Name:** "Inspector handoff" (Spanish: "Entrega para inspección")
-- **Summary:** *"Organize room, condition, chronology, and support for an inspector."*
+- **Summary:** *"Record room, condition, chronology, and support, and name the reading
+  order an inspector expects."*
 - **Document types it declares:** `inspection_report`, `repair_request`, `delivery_receipt`
 - **Relationship types it declares:** `inspection_finding_for`, `documents_condition`,
   `supports`
@@ -52,7 +53,8 @@ nothing filed under them** — and the disclosures. Here is the real rendered te
 two-photo demo case, complete:
 
 > **Inspector handoff**
-> Organize room, condition, chronology, and support for an inspector.
+> Record room, condition, chronology, and support, and name the reading order an inspector
+> expects.
 > **External review required.** This workflow is implemented for synthetic evaluation; it
 > is not a legal, medical, inspector, or accessibility approval.
 > **This handoff as a whole** — 2 evidence item(s), of which 0 document(s), across 1
@@ -67,7 +69,10 @@ two-photo demo case, complete:
 > inspector finding or code determination.
 
 The evidence itself is in the packet's main page (`packet.html`) and in the signed
-`bundle.json` — which, note, do not mention the profile at all. Behind those headings, the
+`bundle.json`. `packet.html` now opens with the same profile block — the name, the summary,
+the external-review warning, and the disclosure sentence — directly under its cover sheet,
+so a recipient handed only the packet reads the limits too (issue #277); before that fix it
+did not mention the profile at all. Behind those headings, the
 tenant's own record uses a free-text **room** field, a short condition vocabulary (heat,
 mold, pests, water, electrical, structural, and an "other" escape hatch), and a severity
 scale (low, moderate, severe, emergency, other) that the code describes as habitable's own

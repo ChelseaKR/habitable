@@ -218,6 +218,20 @@ def _profile(
     )
 
 
+#: A summary is packet-visible prose -- it is signed into ``use_case_profile``,
+#: repeated in every handoff manifest, and (since issue #277) rendered in
+#: ``packet.html`` -- so it may only claim what the shipped code actually does.
+#:
+#: The verbs are therefore deliberate. "Connect", "Pair", and "Join" name typed
+#: ``EvidenceRelationship`` records, which really are written, verified, and
+#: rendered. "Record" and "Preserve" name the artifact and capture logs. What no
+#: summary may say is that habitable *sorts* records: ``handoff_sections`` is a
+#: reading order for a recipient and nothing in the case model records which
+#: record belongs to which section, so the manifest writes
+#: ``section_membership: "not_recorded"`` and each section carries its id and
+#: nothing else (see ``handoff.build_handoff_manifest``, and issue #181, which
+#: removed an earlier rendering that faked it). Two summaries opened with
+#: "Organize"/"Organiza" and were corrected under issue #277 for exactly that.
 _PROFILES = (
     _profile(
         "repair_delivery",
@@ -245,8 +259,10 @@ _PROFILES = (
         "inspector_handoff",
         "Inspector handoff",
         "Entrega para inspección",
-        "Organize room, condition, chronology, and support for an inspector.",
-        "Organiza habitación, condición, cronología y respaldo para una inspección.",
+        "Record room, condition, chronology, and support, and name the reading "
+        "order an inspector expects.",
+        "Registra habitación, condición, cronología y respaldo, y nombra el orden "
+        "de lectura que espera una inspección.",
         artifacts=("inspection_report", "repair_request", "delivery_receipt"),
         relationships=("inspection_finding_for", "documents_condition", "supports"),
         sections=("rooms", "conditions", "chronology", "supporting_artifacts"),
@@ -309,8 +325,8 @@ _PROFILES = (
         "displacement_expense",
         "Temporary displacement and expense log",
         "Registro de desplazamiento y gastos",
-        "Organize relocation events and supporting receipts after an unsafe-unit event.",
-        "Organiza desplazamiento y recibos después de un evento de vivienda insegura.",
+        "Record relocation events and supporting receipts after an unsafe-unit event.",
+        "Registra desplazamiento y recibos después de un evento de vivienda insegura.",
         artifacts=("expense_receipt", "relocation_record", "other_document"),
         relationships=("expense_caused_by", "supports"),
         sections=("event", "relocation", "expenses", "return"),

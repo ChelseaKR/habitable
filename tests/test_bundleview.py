@@ -94,6 +94,24 @@ def test_integrity_summary_collects_attestations_and_custody() -> None:
     assert row.custody_head == "cafef00d"
 
 
+def test_custody_length_is_counted_from_the_entries_not_taken_on_trust() -> None:
+    """The rendered figure has to be one the verifier also checks (issue #278).
+
+    ``custody_proof.length`` used to be read straight out of the proof and shown
+    to a reader while `habitable.verify` ignored it entirely. It is checked there
+    now, and counted here: a proof that carries its entries is rendered from them,
+    so the number on a cover sheet cannot disagree with the number a verifier
+    walked. A summary-only proof still falls back to the declared value -- there
+    is nothing else to count -- which is the shape `_bundle` above exercises.
+    """
+    bundle = _bundle()
+    proof = bundle["custody_proof"]
+    assert isinstance(proof, dict)
+    proof["entries"] = [{"seq": 1}, {"seq": 2}]  # two entries beside a declared six
+    assert cover_sheet(bundle).custody_length == 2
+    assert integrity_summary(bundle).custody_length == 2
+
+
 def test_views_tolerate_an_empty_or_awaiting_bundle() -> None:
     bundle: dict[str, JSONValue] = {
         "items": [{"capture_id": "c1", "issue_id": "i1", "content_hash": "x", "captured_at": ""}],

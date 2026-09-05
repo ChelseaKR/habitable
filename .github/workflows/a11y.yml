@@ -3,10 +3,24 @@ name: a11y
 
 # CICD-§11h: the axe gate installs Chromium and drives a browser — the most
 # expensive job on the PR path — and its inputs are the app templates and
-# site/**, never prose. Docs-only changes skip it; because the job is a
-# REQUIRED status check, a11y-docs-only.yml provides the same-named
-# always-green twin so docs-only PRs still report the context and stay
-# mergeable. Keep both paths-ignore lists and the twin's paths in lockstep.
+# site/**, never prose. So a docs-only change should not pay for it.
+#
+# It used to skip via `paths-ignore`, with a same-named always-green twin in
+# a11y-docs-only.yml reporting the REQUIRED context so docs-only PRs stayed
+# mergeable. Issue #255 made that twin assert instead of assuming, and doing so
+# exposed the deeper problem: the arrangement rested on "both publish the same
+# context and the later report governs", which is **false**. Under the Checks
+# API two check runs with the same name from different workflows are two
+# entries, not one that overwrites the other. A mixed docs+code PR therefore
+# carried a permanent failing entry under a required name and could only be
+# merged with an owner bypass — which is what happened to #282, and what blocked
+# #284.
+#
+# So the path filter moved from the workflow to inside the job. This workflow now
+# runs on every pull request and reports the required context exactly once. The
+# decision about whether to actually drive a browser is made in a step, from the
+# pull request's own changed-file list, and a docs-only change still costs no
+# Chromium install.
 on:
   push:
     branches: [main]
@@ -15,10 +29,6 @@ on:
       - "docs/**"
       - "LICENSE"
   pull_request:
-    paths-ignore:
-      - "**.md"
-      - "docs/**"
-      - "LICENSE"
   workflow_dispatch:
 
 permissions:
@@ -32,6 +42,9 @@ jobs:
   axe:
     name: axe-core WCAG scan (merge gate)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # to read this pull request's changed-file list
     steps:
       # P1-3 (SEC-04): audit-mode egress monitoring; see ci.yml's Harden Runner
       # step for the telemetry trade-off note.
@@ -39,16 +52,52 @@ jobs:
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
+      - name: Decide whether this change can touch a UI surface
+        id: scope
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          DECLARED_CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
+        shell: bash
+        # Fails closed in every direction. A list that disagrees with the event
+        # payload, or an empty list, runs the scan rather than skipping it — the
+        # opposite of the bare `echo` this replaces, which asserted nothing and
+        # said everything was fine.
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" \
+            --jq '.[].filename' > changed-files.txt
+          collected=$(wc -l < changed-files.txt | tr -d ' ')
+          echo "collected $collected path(s); payload declared $DECLARED_CHANGED_FILES"
+          if [ "$collected" != "$DECLARED_CHANGED_FILES" ] || [ ! -s changed-files.txt ]; then
+            echo "::notice::changed-file list is incomplete or empty; running the full scan"
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          docs_only=true
+          while IFS= read -r file || [ -n "$file" ]; do
+            [ -n "$file" ] || continue
+            case "$file" in
+              *.md|docs/*|LICENSE) ;;
+              *) docs_only=false; echo "not docs-only: $file" ;;
+            esac
+          done < changed-files.txt
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
       - name: Checkout
+        if: steps.scope.outputs.docs_only != 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Install uv (pinned)
+        if: steps.scope.outputs.docs_only != 'true'
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           version: "0.11.19"
           enable-cache: true
       - name: Lockfile drift (CQ-09)
+        if: steps.scope.outputs.docs_only != 'true'
         # Must precede `uv sync` and any `uv run`: a bare `uv run` silently relocks,
         # repairing the very drift a later check would look for. The sync below asks
         # for `--locked`, not `--frozen`; `--frozen` installs from uv.lock without
@@ -56,11 +105,21 @@ jobs:
         # drifted lock.
         run: uv lock --check
       - name: Sync environment (Python 3.14, locked)
+        if: steps.scope.outputs.docs_only != 'true'
         run: uv sync --locked
       - name: Install Chromium for Playwright
+        if: steps.scope.outputs.docs_only != 'true'
         run: uv run playwright install --with-deps chromium
       - name: Run the axe-core accessibility gate
+        if: steps.scope.outputs.docs_only != 'true'
         # Gates the two conformant surfaces: the local app and packet.html — the
         # accessible rendering of an evidence packet (ADR 0004). A WCAG violation in
         # either fails the build. The PDF is a print convenience and makes no PDF/UA claim.
         run: uv run pytest -m a11y -q
+      - name: Docs-only change, scan not required
+        if: steps.scope.outputs.docs_only == 'true'
+        run: |
+          echo "Every changed path is prose or a licence file, so no UI surface can"
+          echo "have moved and the axe scan has nothing to assert about this change."
+          echo "This job still reports the required context — once — so the pull"
+          echo "request is not left waiting on a check that never arrives."

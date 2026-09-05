@@ -13,10 +13,8 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
-import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -327,225 +325,65 @@ def test_the_browser_stack_is_a_failure_in_ci_not_a_skip() -> None:
             browser.close()
 
 
-# --- the docs-only a11y twin must stay a true complement ------------------------
-
-
-def test_the_a11y_docs_only_twin_matches_the_real_scans_ignore_list() -> None:
-    """`a11y-docs-only.yml` reports a REQUIRED context with nothing but an `echo`.
-
-    That is deliberate (CICD-STANDARD §11h): the real axe scan skips docs-only PRs
-    via `paths-ignore`, and a required context that never reports leaves a PR stuck
-    on "Expected — waiting for status". The twin publishes the same context name so
-    docs-only PRs stay mergeable.
-
-    Both files say in prose that the twin's `paths` "must stay the exact complement"
-    of the real scan's `paths-ignore`, and until now nothing enforced it. If the real
-    scan's ignore list grew an entry the twin did not, a PR touching only that path
-    would skip the real scan *and* the twin, and the required context would never
-    report. If the twin's list grew an entry the real scan did not ignore, an
-    `echo` would satisfy the accessibility gate for a change that really does touch
-    the UI.
-
-    The topology is still the owner's call (issue #255 weighed a single conditional
-    job against this), so on a PR touching both docs and code both jobs still run,
-    both report to the same context, and GitHub still resolves it to whichever
-    reported last. What changed is what the twin's report is worth. It used to be a
-    bare `echo` -- an unconditional green that could win that race after a re-run or
-    a cancelled scan, on a PR that really did touch the UI. It now reads the pull
-    request's own changed-file list and refuses to report green for anything outside
-    the set below, so the twin's last word is a red that blocks a merge rather than
-    a green that asserted nothing. The two tests after this one pin the glob list it
-    checks against and run the check itself against a planted code path.
-    """
-    workflows = Path(__file__).resolve().parent.parent / ".github" / "workflows"
-    real = (workflows / "a11y.yml").read_text(encoding="utf-8")
-    twin = (workflows / "a11y-docs-only.yml").read_text(encoding="utf-8")
-
-    def path_globs(text: str, key: str) -> list[list[str]]:
-        """Every `key:` block's list of quoted globs, in file order."""
-        blocks: list[list[str]] = []
-        lines = text.splitlines()
-        for index, line in enumerate(lines):
-            if line.strip() != f"{key}:":
-                continue
-            entries: list[str] = []
-            for follow in lines[index + 1 :]:
-                match = re.match(r'\s+-\s+"([^"]+)"\s*$', follow)
-                if not match:
-                    break
-                entries.append(match.group(1))
-            blocks.append(entries)
-        return blocks
-
-    ignored = path_globs(real, "paths-ignore")
-    included = path_globs(twin, "paths")
-
-    assert ignored, "a11y.yml declares no paths-ignore; this guard is reading nothing"
-    assert included, "a11y-docs-only.yml declares no paths; this guard is reading nothing"
-
-    # Every paths-ignore block in the real scan must be the same set.
-    for block in ignored:
-        assert set(block) == set(ignored[0]), f"a11y.yml's paths-ignore blocks disagree: {ignored}"
-
-    assert set(included[0]) == set(ignored[0]), (
-        "the docs-only twin's `paths` is no longer the exact complement of "
-        f"a11y.yml's `paths-ignore`.\n  twin paths:       {sorted(included[0])}\n"
-        f"  real paths-ignore: {sorted(ignored[0])}\n"
-        "A mismatch either strands the required context with no report, or lets an "
-        "`echo` satisfy the accessibility gate for a change that touches the UI."
-    )
-
-    # And the twin really must be publishing the required context name, or the
-    # complement above is checking a relationship that no longer matters.
-    required = (
-        Path(__file__).resolve().parent.parent / ".github" / "rulesets" / "main-branch.json"
-    ).read_text(encoding="utf-8")
-    context = "axe-core WCAG scan (merge gate)"
-    assert f'"context": "{context}"' in required, f"{context!r} is no longer a required check"
-    assert f"name: {context}" in twin, "the twin no longer publishes the required context"
-    assert f"name: {context}" in real, "the real scan no longer publishes the required context"
-
-
-_TWIN_GUARD_STEP = "Fail unless every changed path is docs-only"
-
-
-def _workflow_step_script(text: str, step_name: str) -> str:
-    """The dedented `run: |` script of the step called ``step_name``.
-
-    Parsed with the same regex-and-indentation discipline the rest of this file
-    uses on workflow YAML, so the guard needs no YAML parser at test time -- and
-    so a renamed step is an error here rather than a silently empty script.
-    """
-    lines = text.splitlines()
-    start = next(
-        (index for index, line in enumerate(lines) if line.strip() == f"- name: {step_name}"),
-        None,
-    )
-    assert start is not None, f"no step named {step_name!r} in the workflow any more"
-    for index in range(start + 1, len(lines)):
-        stripped = lines[index].strip()
-        if stripped.startswith("- name:"):
-            break
-        if stripped != "run: |":
-            continue
-        body = lines[index + 1 :]
-        first = next((line for line in body if line.strip()), "")
-        margin = len(first) - len(first.lstrip())
-        collected: list[str] = []
-        for line in body:
-            if not line.strip():
-                collected.append("")
-                continue
-            if not line.startswith(" " * margin):
-                break
-            collected.append(line[margin:])
-        return "\n".join(collected)
-    raise AssertionError(f"the step {step_name!r} no longer carries a `run: |` script")
-
-
-def test_the_twins_own_glob_list_is_the_same_set_as_both_workflows_paths() -> None:
-    """Three lists now have to agree, not two.
-
-    The twin decides whether to report the required accessibility context by
-    matching each changed path against a glob list written inside its own shell
-    script. That list is a third copy of the same set: a11y.yml's `paths-ignore`,
-    the twin's `paths`, and now the twin's assertion.
-
-    A drift between them is not cosmetic. If the script's list were *wider* than
-    the trigger, the twin would report green for a path the real scan is the only
-    thing entitled to answer for -- which is precisely the unconditional green
-    issue #255 removed, reintroduced one glob at a time. If it were narrower, an
-    ordinary docs PR would go red for no reason and the required context would
-    need a human to clear it.
-    """
-    workflows = Path(__file__).resolve().parent.parent / ".github" / "workflows"
-    twin = (workflows / "a11y-docs-only.yml").read_text(encoding="utf-8")
-    real = (workflows / "a11y.yml").read_text(encoding="utf-8")
-
-    script = _workflow_step_script(twin, _TWIN_GUARD_STEP)
-    array = re.search(r"docs_only_globs=\((.*?)\n\)", script, re.DOTALL)
-    assert array, "the twin's guard step no longer declares a `docs_only_globs` array"
-    asserted = set(re.findall(r'"([^"]+)"', array.group(1)))
-    assert asserted, "the `docs_only_globs` array is empty; the twin would pass anything"
-
-    for text, key, label in ((twin, "paths", "the twin's trigger"), (real, "paths-ignore", "a11y")):
-        declared = re.search(rf"^\s+{key}:\n((?:\s+- \"[^\"]+\"\n)+)", text, re.MULTILINE)
-        assert declared, f"{label} declares no `{key}:` list; this guard is reading nothing"
-        globs = set(re.findall(r'"([^"]+)"', declared.group(1)))
-        assert asserted == globs, (
-            f"the twin asserts {sorted(asserted)} but {label} declares {sorted(globs)}. "
-            "The set the twin *triggers* on and the set it *accepts* must be the same "
-            "set, or the always-green it replaced comes back for the difference."
-        )
-
-
-def test_the_docs_only_twin_actually_fails_on_a_path_it_may_not_answer_for() -> None:
-    """Run the twin's own gate, verbatim, against a planted code change.
-
-    Reading the YAML proves the check is written; it does not prove the check can
-    fail. That distinction is this file's whole subject (see the axe-marker and
-    browser-stack guards above), and it mattered more here than anywhere: the step
-    this replaces was `echo`, which is the check that cannot fail taken to its
-    limit.
-
-    So the step is deliberately a *pure* function of `$CHANGED_FILES` and its own
-    glob list -- no `gh`, no network, no checkout -- and this test extracts that
-    script from the workflow and executes it. `docs/**` must not stretch to
-    `mdocs/`, `**.md` must reach a Markdown file at any depth, and an empty file
-    list must be a failure rather than a vacuous pass, because "nothing was
-    collected" and "nothing was wrong" are the two states the old echo could not
-    tell apart.
-    """
-    workflows = Path(__file__).resolve().parent.parent / ".github" / "workflows"
-    twin = (workflows / "a11y-docs-only.yml").read_text(encoding="utf-8")
-    script = _workflow_step_script(twin, _TWIN_GUARD_STEP)
-
-    bash = shutil.which("bash")
-    assert bash, "bash is required to exercise the twin's gate; it must not be skipped away"
-
-    def run(changed: list[str], tmp: Path) -> subprocess.CompletedProcess[str]:
-        listing = tmp / "changed-files.txt"
-        listing.write_text("".join(f"{name}\n" for name in changed), encoding="utf-8")
-        step = tmp / "step.sh"
-        step.write_text(script, encoding="utf-8")
-        return subprocess.run(
-            [bash, str(step)],
-            capture_output=True,
-            text=True,
-            check=False,
-            env={**os.environ, "CHANGED_FILES": str(listing)},
-        )
-
-    with tempfile.TemporaryDirectory() as raw:
-        tmp = Path(raw)
-
-        allowed = run(
-            ["README.md", "docs/adr/0012-x.md", "docs/audits/deep/note.txt", "LICENSE"], tmp
-        )
-        assert allowed.returncode == 0, (
-            f"the twin refuses an ordinary docs-only change:\n{allowed.stdout}{allowed.stderr}"
-        )
-
-        for path in ("app/index.html", "site/style.css", "src/habitable/verify.py", "Makefile"):
-            blocked = run(["docs/plan.md", path], tmp)
-            assert blocked.returncode != 0, (
-                f"the twin reported green for a PR touching {path!r} -- the required "
-                "accessibility context would be satisfied by a job that ran no scan"
-            )
-            assert path in blocked.stdout + blocked.stderr, "the failure must name the path"
-
-        # `docs/**` is a directory, not a prefix: `mdocs/` is a different tree.
-        assert run(["mdocs/notes.txt"], tmp).returncode != 0
-        # ... and `**.md` really does span directories, so this stays green.
-        assert run(["a/b/c/deep.md"], tmp).returncode == 0
-        # An empty collection is a failure, not a pass: see the docstring.
-        assert run([], tmp).returncode != 0
-
-
 # --- the app and the CLI must mean the same thing by a category and a severity ---
 
 _APP_INDEX = Path(__file__).resolve().parent.parent / "app" / "index.html"
 _I18N = Path(__file__).resolve().parent.parent / "app" / "i18n"
+
+
+# --- exactly one job may answer for the accessibility gate ----------------------
+
+
+def test_only_one_workflow_publishes_the_required_accessibility_context() -> None:
+    """Two check runs with the same name are two entries, not one that wins.
+
+    `a11y-docs-only.yml` used to publish `axe-core WCAG scan (merge gate)` as an
+    always-green twin, so a docs-only PR -- which `a11y.yml` skipped via
+    `paths-ignore` -- still reported the required context instead of hanging on
+    "Expected — waiting for status". Issue #255 made that twin assert rather than
+    assume, and doing so exposed the arrangement's real flaw.
+
+    Both files claimed, in prose, that on a mixed docs+code PR "the real scan also
+    runs and, finishing later, its result governs". That is false. Under the Checks
+    API two check runs sharing a name are two independent entries; the later one
+    does not overwrite the earlier. So a mixed PR carried a permanent *failing*
+    entry under a required name, and could only be merged with the owner's bypass.
+    #282 was merged that way and #284 was blocked outright before this was found.
+
+    The filter therefore moved from the workflow trigger into the job: one
+    workflow, one report, and the decision about whether to drive a browser made
+    inside a step. This guard pins the property that makes that safe -- that no
+    second workflow ever starts publishing the same context again, whatever its
+    reason.
+    """
+    workflows = Path(__file__).resolve().parent.parent / ".github" / "workflows"
+    context = "axe-core WCAG scan (merge gate)"
+
+    publishers = sorted(
+        path.name
+        for path in workflows.glob("*.yml")
+        if f"name: {context}" in path.read_text(encoding="utf-8")
+    )
+    assert publishers == ["a11y.yml"], (
+        f"{context!r} must be published by exactly one workflow. Found: {publishers}. "
+        "Two check runs with the same name do not resolve to the last reporter -- "
+        "they both persist, and a failing one blocks the merge under a required name."
+    )
+
+    required = (
+        Path(__file__).resolve().parent.parent / ".github" / "rulesets" / "main-branch.json"
+    ).read_text(encoding="utf-8")
+    assert f'"context": "{context}"' in required, f"{context!r} is no longer a required check"
+
+    real = (workflows / "a11y.yml").read_text(encoding="utf-8")
+    assert (
+        "paths-ignore" not in real.split("jobs:")[0].split("pull_request:")[1].split("\n  ")[0]
+    ), (
+        "a11y.yml's pull_request trigger regained a path filter. A filtered trigger "
+        "skips the workflow entirely, and a required context that never reports "
+        "leaves every docs-only PR waiting forever -- which is the problem the twin "
+        "existed to paper over."
+    )
 
 
 def _select_options(html: str, select_id: str) -> list[tuple[str, str]]:

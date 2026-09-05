@@ -30,8 +30,8 @@
 `VerificationReport.structurally_intact` is `True` **iff** *all* of:
 
 - `signature_ok` — the bundle signature verifies over the bundle's own SHA-256, **and**
-- `custody_ok` — the chain of custody walks cleanly **and** its computed head equals the declared
-  `custody_proof.head_hash`, **and**
+- `custody_ok` — the chain of custody walks cleanly **and** its computed head and entry count
+  equal the declared `custody_proof.head_hash` and `custody_proof.length`, **and**
 - `problems` is empty (no version/structural problem), **and**
 - every item's shared media, custody binding, and optional embedded-original fixity pass, **and**
 - every item carries at least one real, checkable evidence artifact — a recorded shared copy or an
@@ -73,6 +73,7 @@ presented as evidence readiness.
 | `packet_version` missing or not an integer | **False** (`problems` set) | **False** |
 | `packet_version` > supported | **False** (`problems` set) | **False** |
 | an entry in `items` is not an object | **False** (`problems` set) | **False** |
+| an item's `timestamp.tsa_name` names an authority its custody entries do not ([§4.1a](#41a-which-parts-of-the-timestamp-block-are-load-bearing-and-which-are-labels)) | **False** (`problems` set) | **False** |
 | signed/custody-valid empty packet | **True** | **False** (`status = "no_items"`) |
 | intact packet; item awaits timestamp | **True** | **False** (`status = "timestamp_missing"`) |
 | intact packet; attached token invalid | **True** | **False** (`status = "timestamp_invalid"`) |
@@ -172,10 +173,25 @@ The chain is parsed and walked; **any** of these makes `custody_ok = False`:
 | `seq` not strictly `1,2,3,…` | `CustodyError` → broken |
 | an entry's `prev_hash` ≠ previous `entry_hash` | `CustodyError` → broken |
 | an entry's recomputed hash ≠ its stored `entry_hash` (edited content) | `CustodyError` → broken |
-| computed head ≠ declared `custody_proof.head_hash` | `head_ok = False` → broken |
-| clean walk **and** declared head matches | `custody_ok = True` |
+| computed head ≠ declared `custody_proof.head_hash` | broken |
+| computed entry count ≠ declared `custody_proof.length` | broken |
+| `custody_proof.length` absent, or not an integer (a boolean is not an integer here) | broken |
+| clean walk **and** the declared head *and* length both match | `custody_ok = True` |
 
 Walking never throws out of `_verify_custody`; a broken chain is a verdict, not an exception.
+
+**Both halves of the declared summary are load-bearing.** `head_hash` and `length` are one
+statement about the entries, and either one disagreeing is the same finding: the proof's summary is
+not a summary of the entries beneath it. `sync.py` has always refused both together ("source custody
+proof summary does not match its entries"); until issue #278 this verifier checked only the head,
+recomputed the length, and let the declared one through unread — while `bundleview` rendered that
+declared value to a reader. `VerificationReport.custody_length` still reports the **recomputed**
+count, so the number an embedder receives is the walked one, never the claimed one.
+
+This is a consistency check, not an anchor. A rewriter who republishes the summary correctly after
+editing the chain satisfies it, exactly as they satisfy the head; what refuses *that* is the pin
+([§2.1](#21-producer-pin-expected_producer_key--producer_key_pinned)) or a required seal
+([§2.2](#22-packet-seal-packet_seal--reportseal)).
 
 ## 4. Per-item checks
 
@@ -210,6 +226,52 @@ packet: a failed/absent primary leaves the item not timestamp-verified unless a 
 passes. A token over a *different* hash never satisfies the item. At least one valid token supplies
 mechanical timestamp verification; at least one valid **and anchored** token supplies authority
 trust.
+
+#### 4.1a Which parts of the timestamp block are load-bearing, and which are labels
+
+A reader could not previously tell these apart, which is the whole of issue #281. They are:
+
+| Part of `items[*].timestamp` | What holds it |
+| --- | --- |
+| `token_b64` | its own signature and its imprint over `content_hash`; changing a byte invalidates it |
+| the signing certificate inside the token | `trusted_certs`, one hop, reported as `trusted_chain` / `cert_validity` |
+| `gen_time` (as reported) | read out of the verified `TSTInfo`, not out of the bundle |
+| `kind` | the token parses as that kind or the check fails |
+| `tsa_name` | **a producer-configured nickname.** Cross-checked against custody (below); never an attestation of who signed |
+
+`tsa_name` is the authority's *label*, not its identity: `Rfc3161HttpTSA("freetsa", url)` puts
+whatever string the producer configured into every token record it stores. The identity a recipient
+can actually rely on is the signing certificate, which is why authority trust is reported from
+`trusted_certs` and never from this string. A verification report nonetheless **displays** it
+(`ItemVerdict.tsa_name`, and every renderer downstream), so it is the sentence a recipient quotes —
+and until this check nothing bound it at all.
+
+**The cross-check.** Every path that stores a primary token also appends a `timestamped` custody
+entry naming the authority in its `tsa` detail, hashed into the entry and so into the chain. The
+verifier compares the two:
+
+| Condition | Result |
+| --- | --- |
+| the item's custody entries commit no `tsa` detail at all | no check runs (see the scope note below) |
+| item has no `timestamp` object | no check runs |
+| `timestamp.tsa_name` is among the authority names the item's custody entries commit | no problem |
+| `timestamp.tsa_name` (including an empty or absent one) is **not** among them | `problems` gains `item <capture_id>: the timestamp names authority '<name>', which no custody entry attests` → `structurally_intact = False` |
+
+**Scope, deliberately.** Only the **primary** token is cross-checked, and only for items whose
+custody entries commit at least one authority name. Timestamp material can reach a vault without a
+custody entry of its own — `sync` imports a peer's primary, additional and archive tokens and
+appends no `timestamped` entry — so an item with nothing committed has no second statement to be
+compared against, and demanding one would refuse honest packets rather than dishonest ones.
+`additional_timestamps[*].tsa_name` and `archive_timestamps[*].tsa_name` are displayed by the
+renderers and are **not** cross-checked, for the same reason: those tokens can be attached to a
+vault without their own custody entry. Treat both as labels with the status `tsa_name` had before
+this row existed.
+
+**What it is not.** Like the custody bindings in [§4.3](#43-custody-binding-custody_binding_ok), this
+compares two statements the *same signed bundle* makes. A rewriter who re-signs and moves both
+together satisfies it, and sits inside the self-attesting-signature residual
+[`tamper-challenge.md`](tamper-challenge.md) §4 already concedes. It refuses the packet that
+contradicts itself; the answer to the one that does not is the pin or a required seal.
 
 ### 4.2 Shared media (`shared_media_ok`)
 

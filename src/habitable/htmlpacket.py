@@ -78,6 +78,93 @@ footer { margin-top: 2rem; border-top: 1px solid #ccc; padding-top: 1rem;
 details.sensor-readings summary { cursor: pointer; font-weight: 600; }
 """
 
+#: Locale text for the workflow-profile block (issue #277).
+#:
+#: These are *rendering labels*, not signed claims, which is why they live here
+#: rather than in ``disclosure.py``: that module holds the proof/scope/privacy
+#: wording shared with ``packet.pdf``, and this section exists only in the HTML
+#: views. ``_chronology_section`` already carries its own EN/ES text in this
+#: module for the same reason. ``scripts/check_i18n_parity.py`` guards
+#: ``app/i18n/*.json`` -- the browser app's bundle -- and never reads the packet
+#: renderer, so parity here is held instead by
+#: ``test_profile_locale_text_is_at_parity`` in ``tests/test_htmlpacket.py``:
+#: same keys in both maps, no empty value, same ``{placeholders}`` per key.
+#:
+#: The *disclosure sentences themselves* are not here: they are English-only
+#: strings carried inside the signed bundle (``usecases.UseCaseProfile``), and
+#: this renderer must not translate, paraphrase, or reorder a signed claim. They
+#: are emitted verbatim and marked ``lang="en"`` when the surrounding document is
+#: not English, so a screen reader announces them in the language they are
+#: actually written in (WCAG 2.2 3.1.2, Language of Parts).
+_PROFILE_TEXT: dict[str, dict[str, str]] = {
+    "en": {
+        "heading": "Workflow profile",
+        "intro": (
+            "This packet was assembled under a workflow profile. A profile selects "
+            "prompts, vocabulary, and the order a recipient is expected to read in. "
+            "It is presentation policy only: it changes no hash, no timestamp, no "
+            "custody entry, and no verifier verdict."
+        ),
+        "external_lead": "External review required.",
+        "external": (
+            "This workflow is implemented for synthetic evaluation. It is not a "
+            "legal, medical, inspector, or accessibility approval, and shipping it "
+            "is not a claim that it is fit for a real matter."
+        ),
+        "maintainer": (
+            "Reviewed by the project maintainers. Maintainer review is not legal, "
+            "medical, inspector, or accessibility review."
+        ),
+        "reviewer": "Reviewed by {reviewer}.",
+        "reviewer_dated": "Reviewed by {reviewer} on {reviewed_at}.",
+        "state": "Recorded review state: {review_state}.",
+        "limits_heading": "What this profile does not establish",
+        "fallback": (
+            "The workflow profile requested for this export ({profile_id}) had passed "
+            "its review date ({expires_at}), so this packet carries no workflow "
+            "profile and none of that profile's guidance."
+        ),
+        "fallback_undated": (
+            "The workflow profile requested for this export ({profile_id}) had passed "
+            "its review date, so this packet carries no workflow profile and none of "
+            "that profile's guidance."
+        ),
+    },
+    "es": {
+        "heading": "Perfil de flujo de trabajo",
+        "intro": (
+            "Este paquete se preparó con un perfil de flujo de trabajo. Un perfil "
+            "elige indicaciones, vocabulario y el orden de lectura que se espera de "
+            "quien lo recibe. Es solo política de presentación: no cambia ningún "
+            "hash, marca de tiempo, registro de custodia ni veredicto de verificación."
+        ),
+        "external_lead": "Se requiere revisión externa.",
+        "external": (
+            "Este flujo de trabajo está implementado para evaluación sintética. No "
+            "es una aprobación legal, médica, de inspección ni de accesibilidad, y "
+            "publicarlo no afirma que sirva para un asunto real."
+        ),
+        "maintainer": (
+            "Revisado por el equipo del proyecto. La revisión del equipo no es "
+            "revisión legal, médica, de inspección ni de accesibilidad."
+        ),
+        "reviewer": "Revisado por {reviewer}.",
+        "reviewer_dated": "Revisado por {reviewer} el {reviewed_at}.",
+        "state": "Estado de revisión registrado: {review_state}.",
+        "limits_heading": "Lo que este perfil no establece",
+        "fallback": (
+            "El perfil de flujo de trabajo solicitado para esta exportación "
+            "({profile_id}) superó su fecha de revisión ({expires_at}), por lo que "
+            "este paquete no lleva ningún perfil ni su orientación."
+        ),
+        "fallback_undated": (
+            "El perfil de flujo de trabajo solicitado para esta exportación "
+            "({profile_id}) superó su fecha de revisión, por lo que este paquete no "
+            "lleva ningún perfil ni su orientación."
+        ),
+    },
+}
+
 
 def render_packet_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_path: Path) -> None:
     """Write an accessible, self-contained HTML packet to ``out_path``."""
@@ -119,6 +206,10 @@ def render_packet_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_pat
     item_count = _i(appendix, "item_count")
     awaiting = item_count - _i(appendix, "timestamped_count")
     parts.extend(_cover_section(cover_sheet(bundle)))
+    # Directly after the cover sheet: the profile is part of *what this packet
+    # is*, and its review state has to be read before, not after, the claims the
+    # rest of the page makes (issue #277).
+    parts.extend(_profile_section(lang, bundle))
     parts.extend(_proof_section(lang))
     parts.extend(_scope_section(lang, _map(bundle, "scope")))
     parts.extend(
@@ -327,6 +418,9 @@ def render_inspector_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_
     parts.append(f'<p class="warning">{escape(trust.view_notice)}</p>')
     parts.append("</header>")
     parts.append('<main id="main">')
+    # An inspector rollup is handed to a recipient on its own at least as often
+    # as ``packet.html`` is, so it carries the same profile block (issue #277).
+    parts.extend(_profile_section(lang, bundle))
     parts.extend(_proof_section(lang))
     parts.extend(_disclosure_section(lang, _bool(appendix, "includes_originals")))
     parts.extend(_inspector_rollup(bundle))
@@ -467,6 +561,156 @@ def _disclosure_section(
         "</ul>",
         "</section>",
     ]
+
+
+def _profile_text(lang: str) -> dict[str, str]:
+    """Return the workflow-profile labels for ``lang``, falling back to English.
+
+    Matches ``_chronology_section``'s ``startswith("es")`` rule rather than
+    inventing a second locale-resolution scheme in one module. Any language the
+    packet does not ship gets English, which is the same fallback
+    ``disclosure._resolve_lang`` applies to the signed proof and scope text.
+    """
+    return _PROFILE_TEXT["es" if lang.lower().startswith("es") else "en"]
+
+
+def _profile_section(lang: str, bundle: Mapping[str, JSONValue]) -> list[str]:
+    """The selected workflow profile, its review state, and its disclosures.
+
+    Issue #277: before this existed, ``grep -ci profile htmlpacket.py`` returned
+    zero. A profile's disclosures -- "This profile is not an inspector finding or
+    code determination", "Technical integrity does not establish disability,
+    entitlement, receipt, or compliance" -- and its ``external_review_required``
+    warning reached a recipient only through ``handoff-<id>.html`` and
+    ``bundle.json``. That is backwards: the disclosures exist so a recipient does
+    not over-read the document, and the recipient most likely to over-read it is
+    the one who was handed the packet and nothing else.
+
+    **Why this does not contradict the ADR 0011 seal precedent.** ADR 0011 says
+    ``packet.html`` and ``packet.pdf`` "cannot show the seal", and that the seal
+    "is not mentioned in ``bundle.json``'s ``disclosures``. It deliberately
+    cannot be: a disclosure lives inside the bundle, so an attacker could add a
+    reassuring line to an unsealed forgery or delete an accurate one." Both
+    sentences turn on *where the seal lives*: the seal is a statement about the
+    bundle, made from outside it, in ``bundle.sig.json``, which the bundle cannot
+    authenticate. A profile is the opposite on every axis that argument uses. It
+    is bundle *content* (``use_case_profile``), so it is covered by the producer
+    signature and, when a packet is sealed, by ``bundle_sha256`` and therefore by
+    the seal itself; ``verify._verify_v4_profile_and_handoffs`` already refuses a
+    handoff view that "suppresses required disclosures"; and its failure
+    direction is inverted -- a stripped seal claim leaves a reader *more*
+    reassured than the evidence warrants, while a stripped disclosure leaves them
+    with a limit removed, which is exactly what a signature and a seal are for.
+    Rendering it is the same act as rendering the narrative, the item list, or
+    the existing privacy disclosures, all of which this file already reads
+    straight out of the bundle. ADR 0010 decision 5 points the same way: a
+    presentation layer "cannot suppress disclosures".
+
+    Nothing here is a format change. Every value is read from fields
+    ``packet.py`` already writes; no field is added, renamed, or reinterpreted.
+    In particular ``review_state`` is *displayed*, never mapped: the two states
+    the verifier accepts today get their own sentence, and any other value is
+    printed verbatim rather than silently treated as one of them, so a future
+    vocabulary change (issue #277 finding 4, a packet-visible format decision
+    this renderer has no standing to make) shows up here as an honest unfamiliar
+    word instead of a wrong familiar one.
+
+    A packet with no profile and no expiry fallback renders nothing at all -- no
+    heading, no placeholder -- so every packet exported without the workflow
+    machinery renders exactly as it did before, ``site/sample-packet/packet.html``
+    included (verified byte-for-byte; it carries ``use_case_profile: null``).
+    The ``tests/golden/`` corpus pins signed *bundle* bytes and ships no rendered
+    HTML, so it is untouched either way, and packets from before profiles existed
+    simply have no such key to read.
+    """
+    text = _profile_text(lang)
+    profile = _map(bundle, "use_case_profile")
+    fallback = _map(bundle, "use_case_profile_fallback")
+    if not profile and not fallback:
+        return []
+
+    out = [
+        '<section aria-labelledby="profile-heading">',
+        f'<h2 id="profile-heading">{escape(text["heading"])}</h2>',
+    ]
+    if not profile:
+        out.append(f'<p class="warning">{escape(_fallback_sentence(text, fallback))}</p>')
+        out.append("</section>")
+        return out
+
+    spanish = lang.lower().startswith("es")
+    locale = "es" if spanish else "en"
+    names = _map(profile, "name")
+    summaries = _map(profile, "summary")
+    name = _s(names, locale) or _s(names, "en") or _s(profile, "profile_id")
+    summary = _s(summaries, locale) or _s(summaries, "en")
+    # A hand-crafted or future bundle can carry a profile object with no name and
+    # no summary; emit no paragraph at all rather than an empty ``<strong>``.
+    if name or summary:
+        tail = f" — {escape(summary)}" if summary and name else escape(summary)
+        out.append(f"<p><strong>{escape(name)}</strong>{tail}</p>" if name else f"<p>{tail}</p>")
+    out.append(f"<p>{escape(text['intro'])}</p>")
+    out.extend(_profile_review_state(text, profile))
+
+    # Emitted verbatim and in order: these are signed strings, so the renderer
+    # neither translates nor rewords them. ``lang`` marks them as English inside a
+    # non-English document rather than letting a screen reader read English with
+    # Spanish phonemes.
+    disclosures = [value for value in _list(profile, "disclosures") if isinstance(value, str)]
+    if disclosures:
+        item_lang = ' lang="en"' if spanish else ""
+        out.append(f"<h3>{escape(text['limits_heading'])}</h3>")
+        out.append("<ul>")
+        out.extend(f"<li{item_lang}>{escape(value)}</li>" for value in disclosures)
+        out.append("</ul>")
+    out.append("</section>")
+    return out
+
+
+def _profile_review_state(text: Mapping[str, str], profile: Mapping[str, JSONValue]) -> list[str]:
+    """One sentence naming how far this profile has actually been reviewed.
+
+    ``external_review_required`` is the warning, because it is the state that
+    tells a recipient the workflow has had no lawyer, clinician, inspector, or
+    accessibility reviewer look at it. ``maintainer_reviewed`` still gets a
+    visible note rather than silence: "reviewed" without saying *by whom* is the
+    reading this project most needs to prevent. Any third value is shown as
+    itself; see ``_profile_section``.
+    """
+    review = _map(profile, "review")
+    reviewer = _s(review, "reviewer")
+    reviewed_at = _s(review, "reviewed_at")
+    state = _s(profile, "review_state")
+    if profile.get("external_review_required") is True or state == "external_review_required":
+        return [
+            '<p class="warning"><strong>'
+            + escape(text["external_lead"])
+            + "</strong> "
+            + escape(text["external"])
+            + "</p>"
+        ]
+    if state == "maintainer_reviewed":
+        note = text["maintainer"]
+    else:
+        note = text["state"].format(review_state=state or "—")
+    if reviewer:
+        key = "reviewer_dated" if reviewed_at else "reviewer"
+        note = f"{note} {text[key].format(reviewer=reviewer, reviewed_at=reviewed_at)}"
+    return [f'<p class="notice">{escape(note)}</p>']
+
+
+def _fallback_sentence(text: Mapping[str, str], fallback: Mapping[str, JSONValue]) -> str:
+    """Say that an expired profile was dropped from this export (ADR 0012).
+
+    ``packet.py`` already records this in the bundle's signed ``disclosures``
+    array, but ``packet.html`` renders that array only to decide which privacy
+    sentence to print, so the reader was never told. Without it the packet is
+    silently indistinguishable from one exported with no profile chosen at all.
+    """
+    profile_id = _s(fallback, "requested_profile_id") or "—"
+    expires_at = _s(fallback, "expires_at")
+    key = "fallback" if expires_at else "fallback_undated"
+    return text[key].format(profile_id=profile_id, expires_at=expires_at)
 
 
 def _issue_section(

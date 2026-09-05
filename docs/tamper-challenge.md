@@ -155,7 +155,7 @@ recipient can take, from weakest to strongest.
 | Seal lifted from a different, genuine packet | **caught** (seal imprint) | caught | caught |
 | Seal replaced with a malformed record | **caught** | caught | caught |
 | Issue narrative rewritten | **MISSED** | **caught** | caught |
-| An evidence item deleted entirely | **MISSED** | **caught** | caught |
+| An evidence item deleted entirely | **MISSED** — see the note below | **caught** | caught |
 | Capture date moved | **MISSED** | **caught** | caught |
 | Unit and case identity swapped | **MISSED** | **caught** | caught |
 | `producer_fingerprint` copied across verbatim | **MISSED** | **caught** | caught |
@@ -165,6 +165,18 @@ recipient can take, from weakest to strongest.
 | Seal deleted outright, then the bundle rewritten | **MISSED** | **caught** | caught |
 | Fully rehashed forgery re-sealed by an authority you did **not** anchor | **MISSED** | **caught** | caught |
 | Fully rehashed forgery re-sealed by an authority you **did** anchor | **MISSED** | **MISSED** | **caught** |
+
+Note the **"an evidence item deleted entirely"** row. It stays MISSED, but the
+margin narrowed in a way worth being precise about. Since issue #278 the verifier
+checks `custody_proof.length` as well as `head_hash`, so a rewriter who deletes an
+item and relinks the chain while leaving the declared count stale is now caught on
+the contradiction. That is a real improvement and it is **not** what this row
+claims. The row is about a *competent* rewriter, and a competent rewriter
+republishes both halves of a summary they control — this project's own attacker
+toolkit in `tests/test_tamper_challenge.py` was updated to do so, because a
+demonstration that only works against a careless adversary demonstrates nothing
+about the threat model's adversary. Unpinned and unsealed, that rewriter is still
+missed.
 
 Note the **"re-sealed by an authority you did not anchor"** row, because the obvious
 guess is wrong. A seal from an authority you never anchored does **not** by itself sink

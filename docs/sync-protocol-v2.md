@@ -54,6 +54,18 @@ record identifiers. Scoped message construction therefore fails before a message
 Restoring it requires a new protocol version and scoped/rehashed custody-view contract; v2 is not
 silently redefined and its chain is never truncated and called complete.
 
+The custody proof is not the only member that carries identifiers past a scope, and a future
+scoped protocol has to answer for the `state` member too. Two parts of a `state` are not
+filtered by the CRDT projection that builds it: the issue OR-set's `removes`, which are the raw
+HLC add tags of *deleted* issues and so name and date records outside any scope, and the
+`case_salt` metadata register, which is the HMAC key every exported identifier in the case is
+derived from — a recipient holding it can mint and confirm the id of a record they were never
+given. Neither is reachable today, because scoped construction fails first. `share.build_share_state`
+withholds both from a scoped state anyway, and refuses outright a scope that would have to drop a
+relationship to fit inside itself, so that lifting the block cannot ship their absence by accident
+(issues #262 and #279). A full-case message still carries the salt: two devices only agree on their
+derived identifiers because that register merges between them.
+
 The outer envelope contains the complete sender identity, pairing id, canonical
 inner bytes, an Ed25519 signature, and HMAC-SHA256 over those same inner bytes.
 The envelope is then sealed to the recipient. The signature preserves durable
