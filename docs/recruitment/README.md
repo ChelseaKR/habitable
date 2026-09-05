@@ -57,6 +57,20 @@ external gate items on the
 [intake form](https://github.com/ChelseaKR/habitable/issues/new?template=reviewer-intake.yml)
 and pick the matching role.
 
+## Six workflow profiles, six different domain readers
+
+Separate from the roles above, six of habitable's eleven built-in workflow profiles ship
+marked `external_review_required` — a **named-reviewer gate, not an engineering gap.** The
+code runs; what is missing is a person from the relevant field who has read what the profile
+asserts and said whether it is right. Each has its own short brief, because the six audiences
+have nothing in common: an inspector, a fair-housing advocate, someone who has worked a
+housing-authority remediation, a clinician who writes housing letters, a tenant organizer,
+and an organization that receives evidence from outside.
+
+These are the smallest asks in this kit — roughly twenty minutes each, unpaid, synthetic data
+only, framing rather than advice — and **one profile is a complete contribution.** Start at
+[profile-reviews.md](profile-reviews.md), which holds the shared terms and routes to all six.
+
 ## Pick your path — one click to the right form
 
 Interest should convert to a filed issue in one click, with no meeting. Pick the line
@@ -69,6 +83,11 @@ async.
   [accessibility reviewer form](https://github.com/ChelseaKR/habitable/issues/new?template=reviewer-intake.yml).
 - **You model threats for at-risk or surveilled communities** → file the
   [threat-model reviewer form](https://github.com/ChelseaKR/habitable/issues/new?template=reviewer-intake.yml).
+- **You work in code enforcement, fair housing, a housing authority, a clinic, tenant
+  organizing, or legal-aid intake** → read [profile-reviews.md](profile-reviews.md), pick the
+  one profile that is yours, and file the
+  [same intake form](https://github.com/ChelseaKR/habitable/issues/new?template=reviewer-intake.yml)
+  choosing **"Other"** — the dropdown has no option for this work yet — naming the profile.
 
 The forms route interest; they do not duplicate scope. The procedural depth — exact
 scope, run instructions, synthetic-data rules, how findings get recorded — lives in
