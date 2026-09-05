@@ -58,10 +58,15 @@ d4771afeaf9e628c1d63432d4cc2cface8121803:tests/golden/packet-v4/bundle.json:gene
 # bundled DevTSA. None is a credential.
 46b86c46c7637f55f3256dd93a0e04acb62a7ae8:site/sample-packet/bundle.json:generic-api-key:1
 
-# fuzz/fuzz_timestamp_token.py:159 is `_RFC3161_TOKEN_DATA, _RFC3161_DIGEST =
-# _golden_rfc3161_seed()` — an assignment whose right-hand side is a function call
-# that reads the committed golden fixture at run time. Gitleaks' generic-api-key
-# heuristic fires on the variable *name*; there is no value here to leak.
+# fuzz/fuzz_timestamp_token.py:159 unpacks two module constants from a helper
+# call — the right-hand side is a function that reads the committed golden fixture
+# at run time, so there is no value on that line at all. Gitleaks' generic-api-key
+# heuristic fires on one variable name containing "TOKEN"; nothing there can leak.
+#
+# This comment deliberately describes that line instead of quoting it. The first
+# version reproduced the assignment verbatim and tripped the identical heuristic
+# *inside this file*, turning the explanation of a false positive into a new one —
+# which is its own evidence for how shallow the match is.
 # Verified 2026-09-05 by parsing the module and listing every string literal of 32
 # characters or more: all fourteen are docstrings or error messages. The file
 # contains no credential literal of any kind.
