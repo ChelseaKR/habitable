@@ -173,11 +173,11 @@ def test_token_fragment_is_scrubbed_and_same_tab_reload_stays_authenticated(
         try:
             page = browser.new_page()
             page.goto(served_app, wait_until="networkidle")
-            page.wait_for_function("document.getElementById('st-unit').textContent === '4B'")
+            page.wait_for_function("() => document.getElementById('st-unit').textContent === '4B'")
             assert "token=" not in page.url
 
             page.reload(wait_until="networkidle")
-            page.wait_for_function("document.getElementById('st-unit').textContent === '4B'")
+            page.wait_for_function("() => document.getElementById('st-unit').textContent === '4B'")
             assert "token=" not in page.url
         finally:
             browser.close()
@@ -195,7 +195,7 @@ def test_malformed_token_fragment_does_not_abort_shell_boot(served_app: str) -> 
         try:
             page = browser.new_page()
             page.goto(malformed_url, wait_until="networkidle")
-            page.wait_for_function("window.location.hash === ''")
+            page.wait_for_function("() => window.location.hash === ''")
             assert page.locator("#refresh-btn").is_visible()
         finally:
             browser.close()

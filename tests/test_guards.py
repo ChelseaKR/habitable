@@ -684,3 +684,37 @@ def test_the_demo_seeds_a_severity_the_cli_would_accept() -> None:
             if value and value not in ISSUE_SEVERITIES
         ]
     assert not seeded, f"the worked examples seed severities the CLI would refuse: {seeded}"
+
+
+def test_browser_tests_never_ask_the_page_to_eval_a_string() -> None:
+    """A browser test must not need a privilege the app refuses to grant itself.
+
+    `appserver.py` serves `script-src 'self'` with no `unsafe-eval`. Playwright's
+    `wait_for_function` wraps a **bare expression** string in `eval`, which that
+    header blocks; a string that *looks like a function* is passed through a
+    different path and is fine.
+
+    The difference is invisible until it bites. Four calls in this suite used the
+    bare form. Three passed by ordering luck; the fourth failed only under the full
+    run, in a test whose remaining assertions were therefore never reached under the
+    headers the app actually serves -- and it passed in isolation, which is the
+    worst way for a test to be wrong, because the obvious diagnosis is "flake".
+
+    Weakening the CSP to make a test pass would be the wrong repair twice over: it
+    is a real header on a real local server, and the test would then be asserting
+    against a page the tenant never loads.
+    """
+    tests_dir = Path(__file__).resolve().parent
+    offenders: list[str] = []
+    for path in sorted(tests_dir.glob("test_*.py")):
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for call in re.findall(r'wait_for_function\(\s*(["\'])(.*?)\1', line):
+                body = call[1].strip()
+                if body and not body.startswith(("(", "function", "async")):
+                    offenders.append(f"{path.name}:{number}: {body[:60]}")
+
+    assert not offenders, (
+        "these wait_for_function calls pass a bare expression, which Playwright "
+        "evaluates with `eval` and the app's own Content-Security-Policy forbids. "
+        "Write them as `() => …` instead.\n  " + "\n  ".join(offenders)
+    )

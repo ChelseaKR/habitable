@@ -472,7 +472,13 @@ def test_a_failed_status_fetch_says_what_is_unknown_and_offers_a_way_back(
 
             reachable["yes"] = True
             retry.click()
-            page.wait_for_function("document.getElementById('st-unit').textContent === '4B'")
+            # An arrow function, not a bare expression. Playwright wraps a bare
+            # expression string in `eval`, which this app's own CSP forbids
+            # (`script-src 'self'`, no `unsafe-eval`) -- so the bare form failed under
+            # the full suite while passing in isolation, and the assertions after it
+            # were never reached under the headers the app actually serves. The two
+            # other waits in this file were already written this way.
+            page.wait_for_function("() => document.getElementById('st-unit').textContent === '4B'")
             assert not panel.is_visible(), "the failed state outlived the successful retry"
             assert page.text_content("#rail-custody") != unknown
             assert page.evaluate("() => document.activeElement && document.activeElement.id") == (
