@@ -42,6 +42,7 @@ jobs:
   axe:
     name: axe-core WCAG scan (merge gate)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: read # to read this pull request's changed-file list

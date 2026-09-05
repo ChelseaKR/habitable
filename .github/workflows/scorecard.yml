@@ -15,10 +15,15 @@ on:
 
 permissions: read-all
 
+# CI-CD-STANDARD.md 11c: cancel superseded runs on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   analysis:
     name: Scorecard analysis
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       security-events: write # to upload SARIF to the Security tab
       id-token: write # to publish results and get a badge

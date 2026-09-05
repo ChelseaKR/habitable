@@ -18,6 +18,7 @@ jobs:
   gates:
     name: mechanical i18n gates — UTF-8 · BCP 47 · EN/ES parity (merge gate)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

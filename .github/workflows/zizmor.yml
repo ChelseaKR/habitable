@@ -27,6 +27,7 @@ jobs:
   zizmor:
     name: zizmor workflow security scan
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       security-events: write # to upload SARIF to the Security tab
