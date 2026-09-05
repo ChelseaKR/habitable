@@ -192,6 +192,17 @@
         ael.setAttribute("aria-label", strings[akey]);
       }
     }
+    // Datalist suggestions (issue #239): the option's `value` is the category
+    // actually stored, so it must not be translated; the `label` is the word the
+    // tenant reads, so it must be.
+    var labelNodes = scope.querySelectorAll("[data-i18n-label]");
+    for (i = 0; i < labelNodes.length; i++) {
+      var lel = labelNodes[i];
+      var lkey = lel.getAttribute("data-i18n-label");
+      if (Object.prototype.hasOwnProperty.call(strings, lkey)) {
+        lel.setAttribute("label", strings[lkey]);
+      }
+    }
   }
 
   function loadStrings(which) {
@@ -291,6 +302,52 @@
         announcer.classList.remove("flash-ok");
       }
     }, 600);
+  }
+
+  // ---- Status transition announcer (issue #243) ----------------------------
+  //
+  // "Waiting for a timestamp token" -> "timestamp token attached" is the moment a
+  // capture gains its independent time proof. It happens outside the focus path:
+  // a number in the status grid changes and a screen-reader user is told nothing
+  // about the single state change that most affects what their record can prove.
+  //
+  // This is a second, dedicated polite region rather than a reuse of `announcer`
+  // because `announce()` empties its node and re-fills it on a 30ms timer; an
+  // action result resolving in the same tick would clear this message before
+  // assistive tech ever saw it.
+  //
+  // Only real transitions are announced. `lastProofCounts` stays null until the
+  // first paint has been recorded, so the initial render is silent, and the node
+  // is emptied on any render that did not move the counts, so the same sentence
+  // is never read twice and the next real transition is a change AT can notice.
+  var statusAnnouncer;
+  var lastProofCounts = null;
+
+  function announceProofTransition(timestamped, awaiting) {
+    var previous = lastProofCounts;
+    lastProofCounts = { timestamped: timestamped, awaiting: awaiting };
+    if (!statusAnnouncer) {
+      return;
+    }
+    statusAnnouncer.textContent = "";
+    if (!previous) {
+      return; // first paint states the counts; it does not announce them
+    }
+    var gained = timestamped - previous.timestamped;
+    var released = previous.awaiting - awaiting;
+    // A capture that arrives already stamped raises `timestamped` without lowering
+    // `awaiting`; that is a new capture, not a transition, and is not announced.
+    if (gained <= 0 || released <= 0) {
+      return;
+    }
+    var moved = gained < released ? gained : released;
+    // Microtask gap, as in announce(): assistive tech is more reliable when the
+    // region is observed empty before the new text lands.
+    window.setTimeout(function () {
+      if (statusAnnouncer) {
+        statusAnnouncer.textContent = fm("msg_timestamp_attached", { count: moved });
+      }
+    }, 30);
   }
 
   // ---- API -----------------------------------------------------------------
@@ -830,6 +887,9 @@
     populateProfiles(status.profiles || [], status.profile || "");
     populateTimelineLinks(status.issues || []);
     renderAtlas(status);
+
+    // Last, so the announcement reflects a grid that is already up to date.
+    announceProofTransition(timestamped, deferred);
   }
 
   function populateAtlasFilter(issues) {
@@ -1061,6 +1121,18 @@
     if (!select) { return; }
     var selected = selectedValues(select);
     select.textContent = "";
+    if (!captures.length) {
+      // Issue #244: with no photos on the chosen condition this listbox rendered
+      // completely empty — no options, no explanation, nothing to do. Say why it
+      // is empty and what to do first. The option is disabled, so it can never be
+      // submitted as a link.
+      var none = document.createElement("option");
+      none.value = "";
+      none.textContent = t("link_no_captures");
+      none.disabled = true;
+      select.appendChild(none);
+      return;
+    }
     for (var i = 0; i < captures.length; i++) {
       var option = document.createElement("option");
       option.value = captures[i].capture_id;
@@ -1438,7 +1510,9 @@
         } else if (res.verification_status === "timestamp_authority_untrusted") {
           announce(t("msg_export_done_untrusted"));
         } else {
-          announce(t("msg_export_done_warn"), "error");
+          // Issue #244: the worst outcome was the only one with no way forward.
+          // The verdict keeps its full force; the next action is appended to it.
+          announce(t("msg_export_done_warn") + " " + t("export_failed_next"), "error");
         }
         return refreshStatus();
       }, announceError);
@@ -1491,6 +1565,13 @@
       var trustNext = document.createElement("p");
       trustNext.textContent = t("msg_export_done_untrusted");
       box.appendChild(trustNext);
+    } else if (!ready) {
+      // The failed-verification branch used to print the verdict and stop, leaving
+      // the reader with the app's worst news and no next step (issue #244). A
+      // successful export is not a dead end and gets no such paragraph.
+      var failedNext = document.createElement("p");
+      failedNext.textContent = t("export_failed_next");
+      box.appendChild(failedNext);
     }
 
     var ul = document.createElement("ul");
@@ -1809,6 +1890,7 @@
 
   function init() {
     announcer = document.getElementById("announcer");
+    statusAnnouncer = document.getElementById("status-announcer");
     captureToken();
     wireFocusVisibility();
     wireLang();

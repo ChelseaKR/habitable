@@ -73,13 +73,22 @@
       <div class="repair-desk">
         <div id="announcer" class="announcer" role="status" aria-live="polite"
              aria-atomic="true"></div>
+        <!-- Issue #243: the awaiting -> timestamped transition is announced here and
+             not through #announcer. #announcer clears and re-sets its node on a
+             30ms timer for every action result, so a result landing in the same tick
+             would silently swallow the one status change that most affects what the
+             record can prove. This region carries status transitions only; it stays
+             visually hidden because the status grid already shows the numbers. -->
+        <p id="status-announcer" class="sr-only" role="status" aria-live="polite"
+           aria-atomic="true"></p>
 
         <header class="trail-header">
           <div class="trail-title">
             <p id="trail-room" data-i18n="current_condition">Current condition</p>
             <h2 id="atlas-h" data-i18n="atlas_heading">Repair trail</h2>
-            <p id="trail-condition" data-i18n="atlas_empty">Add a condition to begin its
-              repair trail.</p>
+            <p id="trail-condition" data-i18n="atlas_empty">
+              Add a condition, photo, or update to begin the repair trail.
+            </p>
           </div>
           <div class="condition-picker">
             <label for="atlas-filter-issue" data-i18n="atlas_filter_issue">Condition</label>
@@ -159,7 +168,7 @@
           </div>
           <div class="next-actions">
             <button type="button" data-timeline-type="notice_sent"
-                    data-i18n="event_notice_sent">Repair request sent</button>
+                    data-i18n="event_notice_sent">Repair notice sent</button>
             <button type="button" data-timeline-type="delivery_confirmed"
                     data-i18n="event_delivery_confirmed">Delivery confirmed</button>
             <button type="button" data-timeline-type="response_received"
@@ -174,7 +183,7 @@
         <section id="coordinate" class="prepare-copy" aria-labelledby="status-h">
           <header>
             <div>
-              <p class="copy-label" data-i18n="coordinate_kicker">Before sharing</p>
+              <p class="copy-label" data-i18n="coordinate_kicker">Integrity and storage</p>
               <h2 id="status-h" data-i18n="status_heading">Prepare a copy</h2>
             </div>
             <a href="#share" class="prepare-link" data-i18n="export_heading">Choose what
@@ -183,11 +192,11 @@
 
           <div class="plain-checks">
             <p>
-              <span data-i18n="status_custody">Chain of custody</span>
+              <span data-i18n="status_custody">Evidence trail</span>
               <strong id="st-custody">—</strong>
             </p>
             <p>
-              <span data-i18n="status_awaiting">Waiting for a timestamp token</span>
+              <span data-i18n="status_awaiting">Waiting for timestamp token</span>
               <strong id="st-awaiting" aria-describedby="st-awaiting-help">—</strong>
             </p>
             <p>
@@ -196,14 +205,20 @@
             </p>
           </div>
           <p class="status-help" id="st-awaiting-help"
-             data-i18n="status_awaiting_help">Photos are sealed locally while an independent
-            timestamp is pending.</p>
+             data-i18n="status_awaiting_help">
+               Your photo is already sealed and safe on this device. A timestamp token can
+               attach next time you're online; its validity and authority trust are separate
+               checks.
+             </p>
           <div class="resolve-row">
             <button type="button" id="resolve-btn" class="text-button"
-                    aria-describedby="resolve-help" data-i18n="resolve_deferred">Fetch missing
-              timestamps</button>
-            <p id="resolve-help" data-i18n="resolve_help">Only a file fingerprint is sent
-              to the timestamp service.</p>
+                    aria-describedby="resolve-help" data-i18n="resolve_deferred">
+                      Add missing timestamp tokens
+                    </button>
+            <p id="resolve-help" data-i18n="resolve_help">
+              Only a file fingerprint is sent to the timestamp service. Authority trust is
+              checked separately.
+            </p>
           </div>
 
           <details class="technical-record">
@@ -215,10 +230,10 @@
             <dl id="status-grid">
               <div><dt data-i18n="status_unit">Unit</dt><dd id="st-unit"
                 data-i18n="status_loading">Loading…</dd></div>
-              <div><dt data-i18n="status_fingerprint">Device fingerprint</dt>
+              <div><dt data-i18n="status_fingerprint">Device ID</dt>
                 <dd id="st-fingerprint" class="mono" data-i18n="status_loading">Loading…</dd></div>
               <div><dt data-i18n="status_issues">Conditions</dt><dd id="st-issues">—</dd></div>
-              <div><dt data-i18n="status_timestamped">Timestamp attached</dt>
+              <div><dt data-i18n="status_timestamped">Timestamp token attached</dt>
                 <dd id="st-timestamped">—</dd></div>
               <div><dt data-i18n="status_storage">Storage</dt><dd id="st-storage">—</dd></div>
               <div><dt data-i18n="status_network">Network</dt><dd id="st-network">—</dd></div>
@@ -226,7 +241,10 @@
             <div class="storage-track" aria-hidden="true"><span id="storage-sealed"></span><span
               id="storage-shared"></span></div>
             <p class="muted" id="storage-note"
-               data-i18n="storage_doubling_note">Sealed originals are kept twice by design.</p>
+               data-i18n="storage_doubling_note">
+                 Sealed originals are kept twice by design: the encrypted original, plus a
+                 shareable copy when you export.
+               </p>
           </details>
 
           <section id="share" class="copy-envelope" aria-labelledby="export-h">
@@ -240,30 +258,37 @@
               </ul>
             </div>
             <div class="leaving-side">
-              <p class="copy-label" data-i18n="share_kicker">Review copy</p>
+              <p class="copy-label" data-i18n="share_kicker">Controlled disclosure</p>
               <h3 id="export-h" data-i18n="export_heading">Choose what leaves this device</h3>
               <form id="export-form" novalidate>
                 <fieldset>
-                  <legend data-i18n="export_legend">Copy options</legend>
+                  <legend data-i18n="export_legend">Export options</legend>
                   <div class="field">
                     <label for="ex-issue" data-i18n="field_issue_optional">Scope (whole unit only)</label>
                     <select id="ex-issue" name="issue_id" aria-describedby="ex-scope-help"></select>
                     <p class="field-help" id="ex-scope-help"
-                       data-i18n="export_scope_help">Issue-scoped exports are temporarily blocked.</p>
+                       data-i18n="export_scope_help">
+                         Issue-scoped exports are temporarily blocked because the current
+                         custody proof can reveal records outside the selected issue.
+                       </p>
                   </div>
                   <div class="field-check">
                     <input type="checkbox" id="ex-originals" name="include_originals"
                            aria-describedby="ex-originals-help" />
-                    <label for="ex-originals" data-i18n="field_include_originals">Include sealed
-                      original photos</label>
+                    <label for="ex-originals" data-i18n="field_include_originals">
+                      Include the sealed original photos
+                    </label>
                   </div>
                   <div class="field">
-                    <label for="ex-profile" data-i18n="field_handoff_profile">View for the recipient</label>
+                    <label for="ex-profile" data-i18n="field_handoff_profile">Handoff view</label>
                     <select id="ex-profile"></select>
                   </div>
                   <p class="field-help" id="ex-originals-help"
-                     data-i18n="field_include_originals_help">Originals can hold location and
-                    other hidden details.</p>
+                     data-i18n="field_include_originals_help">
+                       The originals are your full-quality photos, kept locked in your vault.
+                       They can still hold location and other hidden details, so include them
+                       only when the recipient needs them.
+                     </p>
                 </fieldset>
                 <button type="submit" class="make-copy" data-i18n="export_submit">Create review copy</button>
               </form>
@@ -277,7 +302,7 @@
           <div class="advanced-grid">
             <form id="relationship-form" novalidate>
               <fieldset>
-                <legend data-i18n="relationship_heading">Connect records manually</legend>
+                <legend data-i18n="relationship_heading">Connect evidence records</legend>
                 <div class="field">
                   <label for="rel-issue" data-i18n="field_issue">Condition</label>
                   <select id="rel-issue" required></select>
@@ -316,7 +341,7 @@
 
             <form id="profile-form" novalidate>
               <fieldset>
-                <legend data-i18n="profile_heading">Recipient workflow</legend>
+                <legend data-i18n="profile_heading">Choose a workflow</legend>
                 <div class="field">
                   <label for="profile-select" data-i18n="field_profile">Workflow</label>
                   <select id="profile-select" required></select>
@@ -358,8 +383,10 @@
               (offline testing)</label>
           </div>
           <p class="field-help" id="cap-devtsa-help"
-             data-i18n="field_dev_tsa_help">For trying out the app without internet. A
-            practice timestamp is not trusted.</p>
+             data-i18n="field_dev_tsa_help">
+               For trying out the app without internet. A practice timestamp is untrusted and
+               never evidence-ready. Leave it off for real evidence.
+             </p>
         </fieldset>
         <button type="submit" class="dialog-submit"
                 data-i18n="capture_submit">Save photo to this condition</button>
@@ -425,10 +452,12 @@
           </div>
           <details class="link-evidence field-wide">
             <summary data-i18n="timeline_links_heading">Link related evidence (optional)</summary>
-            <p class="field-help" data-i18n="timeline_links_help">Links keep the condition,
-              notice, delivery, and response together.</p>
+            <p class="field-help" data-i18n="timeline_links_help">
+              Links keep the condition, notice, delivery, and response together in the exported
+              packet.
+            </p>
             <div class="field">
-              <label for="tl-captures" data-i18n="field_link_captures">Related photos</label>
+              <label for="tl-captures" data-i18n="field_link_captures">Related captures</label>
               <select id="tl-captures" name="capture_ids" multiple></select>
             </div>
             <div class="field">
@@ -522,26 +551,40 @@
             <input type="text" id="ai-room" name="room" autocomplete="off" />
           </div>
           <div class="field">
-            <label for="ai-category" data-i18n="field_category">Condition</label>
+            <label for="ai-category" data-i18n="field_category">Category</label>
             <input type="text" id="ai-category" name="category" required
-                   aria-required="true" autocomplete="off" />
+                   aria-required="true" autocomplete="off" list="ai-category-options"
+                   aria-describedby="ai-category-help" />
+            <datalist id="ai-category-options">
+              <option value="heat" label="Heat" data-i18n-label="category_heat"></option>
+              <option value="mold" label="Mold" data-i18n-label="category_mold"></option>
+              <option value="pests" label="Pests" data-i18n-label="category_pests"></option>
+              <option value="water" label="Water" data-i18n-label="category_water"></option>
+              <option value="electrical" label="Electrical"
+                      data-i18n-label="category_electrical"></option>
+              <option value="structural" label="Structural"
+                      data-i18n-label="category_structural"></option>
+            </datalist>
+            <p class="field-help" id="ai-category-help"
+               data-i18n="field_category_help">Suggestions, not a limit. If none of
+              them fits, write what you see.</p>
           </div>
           <div class="field">
-            <label for="ai-title" data-i18n="field_title">Short name</label>
+            <label for="ai-title" data-i18n="field_title">Title</label>
             <input type="text" id="ai-title" name="title" autocomplete="off" />
           </div>
           <div class="field">
-            <label for="ai-severity" data-i18n="field_severity">Urgency</label>
+            <label for="ai-severity" data-i18n="field_severity">Severity</label>
             <select id="ai-severity" name="severity">
               <option value="" data-i18n="severity_unset">Not set</option>
               <option value="low" data-i18n="severity_low">Low</option>
-              <option value="medium" data-i18n="severity_medium">Medium</option>
-              <option value="high" data-i18n="severity_high">High</option>
-              <option value="urgent" data-i18n="severity_urgent">Urgent</option>
+              <option value="moderate" data-i18n="severity_moderate">Moderate</option>
+              <option value="severe" data-i18n="severity_severe">Severe</option>
+              <option value="emergency" data-i18n="severity_emergency">Emergency</option>
             </select>
           </div>
           <div class="field field-wide">
-            <label for="ai-description" data-i18n="field_description">What can you observe?</label>
+            <label for="ai-description" data-i18n="field_description">Description</label>
             <textarea id="ai-description" name="description" rows="3"></textarea>
           </div>
         </fieldset>
