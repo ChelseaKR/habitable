@@ -29,6 +29,7 @@ and a unit's packet is exactly what ``habitable export`` already produces.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from html import escape
@@ -38,6 +39,7 @@ from typing import cast
 from .canonical import JSONValue, canonical_json
 from .errors import CustodyError
 from .packet import PacketResult, build_packet
+from .tsa import TimestampAuthority
 from .vault import Vault
 
 __all__ = [
@@ -167,6 +169,17 @@ class CampaignPacketResult:
     report: CampaignReport
     units: tuple[UnitPacketResult, ...] = field(default_factory=tuple)
 
+    @property
+    def sealed_count(self) -> int:
+        """How many unit packets an authority countersigned (ADR 0011).
+
+        Deliberately not written into the manifest or the index page. A seal is
+        a file an attacker can delete, so a rendering that announced one would
+        be confidently wrong the moment it was stripped; the operator is told at
+        build time and the recipient is told by `habitable verify`.
+        """
+        return sum(1 for unit in self.units if unit.packet.seal.sealed)
+
 
 def health_for(vault: Vault, *, vault_path: Path | None = None) -> UnitHealth:
     """This vault's evidence-health, read-only -- the numbers behind ``status``.
@@ -226,6 +239,7 @@ def build_campaign_packet(
     include_originals: bool = False,
     make_pdf: bool = True,
     generated_at: str | None = None,
+    seal_authority: Callable[[Vault], TimestampAuthority | None] | None = None,
 ) -> CampaignPacketResult:
     """Assemble one packet per vault plus a building-level manifest + index.
 
@@ -236,6 +250,19 @@ def build_campaign_packet(
     with the existing ``habitable verify``, and keeps custody accountable to
     its own vault: each unit's export is recorded in *that* unit's own chain
     of custody, exactly as a standalone ``habitable export`` would record it.
+
+    ``seal_authority`` is asked, per vault, which authority should countersign
+    that unit's packet (ADR 0011). It is per vault rather than per campaign
+    because the sentence above is a promise: a unit's packet is exactly what
+    ``habitable export`` would produce from that vault, and ``export`` seals
+    with *that vault's* configured authority under *that vault's* metered-link
+    policy. Passing one authority for the whole building would quietly make an
+    organizer's choice override six tenants' configurations.
+
+    Returning ``None`` for a vault leaves that unit's packet unsealed, which is
+    ADR 0011's own degradation: an unreachable or unconfigured authority costs a
+    packet its seal, never its existence. Omitting the callback entirely leaves
+    every unit unsealed, which is what this function did before it had one.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     report = build_campaign_report(vaults)
@@ -253,6 +280,7 @@ def build_campaign_packet(
             include_originals=include_originals,
             make_pdf=make_pdf,
             generated_at=generated_at,
+            tsa=seal_authority(vault) if seal_authority is not None else None,
         )
         unit_results.append(UnitPacketResult(health=health, out_dir=unit_dir, packet=packet))
 

@@ -18,6 +18,7 @@ import os
 import sys
 import time
 import webbrowser
+from collections.abc import Callable
 from pathlib import Path
 
 from cryptography import x509
@@ -343,6 +344,24 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_campaign_export.add_argument("--include-originals", action="store_true")
     p_campaign_export.add_argument("--no-pdf", action="store_true")
+    p_campaign_export.add_argument(
+        "--no-seal",
+        action="store_true",
+        help="do not ask any authority to countersign the unit packets. They still "
+        "export, but nothing binds each one's contents as a whole: see "
+        "docs/adr/0011-authority-seal-over-the-whole-packet.md",
+    )
+    p_campaign_export.add_argument(
+        "--dev-tsa",
+        action="store_true",
+        help="seal with the offline dev authority (never trusted by a recipient)",
+    )
+    # Sealing is the one part of a campaign export that can touch the network, so
+    # it joins export under the metered-link gate (item R-19). As there, a closed
+    # gate skips the seal rather than refusing the export -- and it is read from
+    # each unit's OWN vault policy, because it is that tenant's link and that
+    # tenant's data allowance being spent.
+    add_metered(p_campaign_export)
     p_campaign_export.set_defaults(func=_cmd_campaign_export)
 
     p_joint = sub.add_parser(
@@ -373,6 +392,24 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     add_joint_anchor(p_joint_build)
     p_joint_build.add_argument(
+        "--seal-tsa",
+        metavar="URL",
+        help="an RFC 3161 authority to countersign the finished index. Recomputing "
+        "each member's digest proves no LISTED packet was swapped; only a seal over "
+        "the index binds WHICH packets the submission contains. Needs a network fetch.",
+    )
+    p_joint_build.add_argument(
+        "--seal-tsa-name",
+        metavar="NAME",
+        default="joint-index-tsa",
+        help="the name recorded for --seal-tsa (default: joint-index-tsa)",
+    )
+    p_joint_build.add_argument(
+        "--dev-tsa",
+        action="store_true",
+        help="seal with the offline dev authority (never trusted by a recipient)",
+    )
+    p_joint_build.add_argument(
         "--lang",
         choices=("en", "es"),
         help="language for the written index page (default: English)",
@@ -389,6 +426,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="the submission directory, or the joint_index.json inside it",
     )
     add_joint_anchor(p_joint_check)
+    p_joint_check.add_argument(
+        "--require-seal",
+        action="store_true",
+        help="require that an authority countersigned the list of packets itself. "
+        "This is what makes a packet DROPPED from the submission detectable: "
+        "recomputing digests can only speak for packets still on the list.",
+    )
+    p_joint_check.add_argument(
+        "--seal-not-after",
+        metavar="ISO8601",
+        help="reject an index seal minted after this instant, normally the day the "
+        "submission reached you (e.g. 2026-08-27). An honest submission cannot have "
+        "been sealed after it arrived.",
+    )
     p_joint_check.add_argument("--json", action="store_true", help="emit a structured report")
     p_joint_check.add_argument("--lang", choices=("en", "es"))
     p_joint_check.set_defaults(func=_cmd_joint_check)
@@ -1263,13 +1314,44 @@ def _cmd_campaign_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _campaign_seal_authority(
+    args: argparse.Namespace, declined: dict[str, str]
+) -> Callable[[Vault], TimestampAuthority | None] | None:
+    """Which authority seals each unit's packet, honouring that unit's own policy.
+
+    ``campaign.py`` promises that a unit's packet is exactly what
+    ``habitable export`` would produce from that vault. Since ADR 0011 that
+    includes an authority seal, so the authority is read per vault, and so is
+    the metered-link gate: it is that tenant's link being spent, not the
+    organizer's. ``declined`` collects the accurate reason for every unit left
+    unsealed here, because ``build_packet`` only ever learns that no authority
+    was supplied and cannot report *why*.
+    """
+    if args.no_seal:
+        return None
+
+    def authority_for(vault: Vault) -> TimestampAuthority | None:
+        tsa = _tsa_for(vault, dev=args.dev_tsa)
+        if isinstance(tsa, Rfc3161HttpTSA) and not _metered_allowed(args, vault):
+            declined[vault.document.case_id] = (
+                "seal skipped: wifi-only mode for this unit, and sealing needs a network "
+                "fetch; re-export with --allow-metered or on Wi-Fi"
+            )
+            return None
+        return tsa
+
+    return authority_for
+
+
 def _cmd_campaign_export(args: argparse.Namespace) -> int:
     vaults = _open_campaign_vaults(args)
+    declined: dict[str, str] = {}
     result = campaign.build_campaign_packet(
         vaults,
         args.out,
         include_originals=args.include_originals,
         make_pdf=not args.no_pdf,
+        seal_authority=_campaign_seal_authority(args, declined),
     )
     locale = _campaign_locale(vaults)
     done = cli_text(
@@ -1282,6 +1364,7 @@ def _cmd_campaign_export(args: argparse.Namespace) -> int:
             f"  · {h.unit}: {unit_result.packet.item_count} item(s), "
             f"{unit_result.packet.timestamped_count} timestamped -> {unit_result.out_dir}"
         )
+        print(f"    {_campaign_seal_note(args, unit_result, declined)}")
     print(f"           manifest: {result.manifest_path}")
     print(f"           index: {result.index_path}")
     return 0
@@ -1400,6 +1483,48 @@ def _load_trusted_certs(paths: list[Path] | None) -> list[x509.Certificate] | No
     return certs
 
 
+def _campaign_seal_note(
+    args: argparse.Namespace,
+    unit_result: campaign.UnitPacketResult,
+    declined: dict[str, str],
+) -> str:
+    """What happened to this unit's seal, in the words that are actually true.
+
+    Four different situations produce an unsealed packet and they are not the
+    same fact: the operator switched sealing off, this unit's link is metered,
+    this unit configured no authority, or the authority could not be reached.
+    The first two are only knowable here; the last two come back from
+    ``build_packet`` in the seal's own note.
+    """
+    if args.no_seal:
+        return (
+            "seal declined (--no-seal): nothing binds this packet's contents as a whole, "
+            "so a rewritten copy is indistinguishable from this one"
+        )
+    reason = declined.get(unit_result.health.case_id)
+    if reason is not None:
+        return reason
+    seal = unit_result.packet.seal
+    if seal.sealed:
+        return f"sealed by {seal.authority} at {seal.gen_time}"
+    return seal.note
+
+
+def _joint_seal_tsa(args: argparse.Namespace) -> TimestampAuthority | None:
+    """The authority that will countersign the index, if the operator named one.
+
+    `joint` has no vault to read a configured authority from, so unlike `export`
+    the URL is given on the command line. Nothing is sealed by default: an
+    organizer must ask, because sealing is the one part of this command that
+    touches the network.
+    """
+    if args.dev_tsa:
+        return DevTSA("dev-tsa")
+    if args.seal_tsa:
+        return Rfc3161HttpTSA(args.seal_tsa_name, args.seal_tsa)
+    return None
+
+
 def _joint_index_path(target: Path) -> Path:
     """Accept either the submission directory or the index file inside it."""
     return target if target.is_file() else target / joint.JOINT_INDEX_FILE
@@ -1411,6 +1536,7 @@ def _cmd_joint_build(args: argparse.Namespace) -> int:
         args.submission,
         trusted_certs=_load_trusted_certs(args.trusted_cert),
         language=locale,
+        tsa=_joint_seal_tsa(args),
     )
     print(
         cli_text(
@@ -1421,6 +1547,7 @@ def _cmd_joint_build(args: argparse.Namespace) -> int:
             out=result.index_path,
         )
     )
+    print(f"  {cli_text(result.seal_note, locale)}")
     for disclosure in joint.JOINT_DISCLOSURES:
         print(f"  {cli_text(disclosure, locale)}")
     # Same contract as `habitable verify`: a zero exit means evidence-ready, and an
@@ -1433,9 +1560,23 @@ def _cmd_joint_check(args: argparse.Namespace) -> int:
     check = joint.check_joint_index(
         _joint_index_path(args.submission),
         trusted_certs=_load_trusted_certs(args.trusted_cert),
+        require_seal=args.require_seal,
+        seal_not_after=args.seal_not_after,
     )
     if args.json:
-        print(json.dumps(check.to_json(), indent=2, sort_keys=True))
+        payload = check.to_json()
+        seal = payload["index_seal"]
+        if isinstance(seal, dict):
+            seal["statement"] = joint.seal_statement(check.seal, locale)
+        # Structured CLI output to the local caller, not a persistent log sink, and
+        # the same shape `verify --json` already emits below. The seal reaches this
+        # payload as a *verdict* -- present/verified/trusted, the authority's name,
+        # the instant -- and never as the token, which stays in `joint_index.sig.json`.
+        # `JointCheck.to_json` has no branch that can reach the token, and
+        # `test_the_check_report_carries_the_seal_verdict_and_not_the_token` asserts
+        # it against a sealed submission rather than leaving that to this comment.
+        # codeql[py/clear-text-logging-sensitive-data]
+        print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if check.ok else 1
     _print_joint_check(check, locale)
     return 0 if check.ok else 1
@@ -1455,6 +1596,7 @@ def _print_joint_check(check: joint.JointCheck, locale: str) -> None:
                 unlisted=len(check.unlisted),
             )
         )
+    print(f"  {joint.seal_statement(check.seal, locale)}")
     for problem in check.problems:
         print(f"  {problem}")
     for member in check.members:

@@ -68,6 +68,27 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   2.4.3); with a generous settle, none did. Focus is now snapped into view
   instantly, leaving anchor navigation smooth.
 
+- **Shared links no longer show a cropped slice of a portrait screenshot.** Every
+  page advertised `img/app-en.png` — 2200×3000 — as its `og:image`, with
+  `twitter:card` set to `summary`. LinkedIn, Slack, and X all fit a share card to
+  a landscape box, so what reached a reader was a centre crop of a phone-shaped
+  screenshot with the project name outside the frame. The site now ships
+  `site/img/social-card.png` at 1200×630, the size all three render whole, and
+  `twitter:card` is `summary_large_image`. The landing page's `og:image:width`,
+  `og:image:height`, and its `ImageObject` are corrected to match the bytes; the
+  screenshots themselves are unchanged and still shown on the page and in the
+  README. `tests/test_site_seo.py` now reads the PNG header, so a card that is
+  missing from `site/` or is not 1200×630 fails the gate rather than failing
+  silently in someone else's feed.
+
+- **The README's live demo and screenshots were below the fold.** The link to
+  <https://habitable.chelseakr.com/> first appeared on line 46 of 584, under the
+  status and provenance prose, and the two screenshots were 100 lines below that
+  — so the two things that show a reader what this is were the last two they
+  reached. Both now sit directly under the H1. Nothing was deleted: the status
+  block, the supply-chain badge, and the "no hosted app" explanation are intact
+  in the same words, just after the demo instead of in front of it.
+
 ### Added
 
 - **`habitable issue --category`/`--severity` are validated against a vocabulary**
@@ -88,6 +109,34 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   read it.
 
 ### Changed
+
+- **The planning documents stopped reserving work that had already shipped.**
+  #228 corrected `docs/capabilities.md` and `docs/letter-generator.md` when
+  `ew_disrepair` landed, but `ROADMAP.md` and `docs/novel-use-cases-plan.md`
+  were not in that sweep and still described jurisdiction template growth as
+  unstarted: "left open for a first-time contributor (issue #207)", "reserved as
+  good first issue #207", "deliberately reserved for a first-time contributor".
+  The framing had shipped on 2026-08-28 and the issue is closed, so a reader
+  planning contribution was being pointed at finished work. All four claims now
+  say what is true — the engineering path is walked, further framings stay open
+  to a newcomer, and what remains gated on a named legal reviewer is a
+  *reviewed* framing, since all three that ship are UNREVIEWED for their
+  jurisdiction.
+
+  The half of that this project can check mechanically is now checked.
+  `test_current_state_docs_name_every_framing_that_ships` holds every
+  describes-what-ships-today document to a conditional rule: a document that
+  names one built-in framing must name all of them, so a partial list can never
+  read as the complete one. It is conditional on purpose — prose that never
+  enumerates the framings is left alone — and ADRs and this changelog are
+  excluded on purpose, because they are dated records and editing them to
+  mention later work would falsify exactly the property the guard protects.
+  FAIL-BEFORE against the pre-fix plan: `names ['generic', 'us_habitability']
+  but not ['ew_disrepair']`.
+
+  The prose claim about *whether an issue is still open* has no offline check
+  behind it and does not now: that would need the issue tracker. It was found by
+  reading, and this entry says so rather than implying the new guard covers it.
 
 - **Several gates that could not fail were repaired.** A site test guarding the
   "do not put tenant data in a public issue" warning had never executed a single
@@ -130,6 +179,77 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   says it is not for indexing. A page can be left out. It cannot be left out
   silently.
 
+- **`campaign export` seals each unit packet, with that unit's own authority.**
+  ADR 0011 listed `campaign export` among the surfaces it had left unsealed, and
+  the gap was sharper than a missing feature: `campaign.py`'s own docstring
+  promises that "a unit's packet is exactly what `habitable export` already
+  produces", and since ADR 0011 that includes an RFC 3161 token over the whole
+  bundle. Every combined building packet built since then contained packets
+  weaker than the same vault would have exported on its own, and said nothing
+  about it.
+
+  The authority is resolved **per vault**, not per campaign, and so is the
+  metered-link gate: it is that tenant's configured authority and that tenant's
+  link and data allowance, so an organizer's single choice never overrides six
+  tenants' configurations. `--no-seal` and `--dev-tsa` behave exactly as they do
+  for `export`, and `--wifi-only`/`--allow-metered` apply per unit.
+
+  Sealing stays best-effort per unit, which is ADR 0011's own degradation: an
+  unconfigured, unreachable, or metered-gated authority costs that packet its
+  seal, never its existence, and never anybody else's seal. The operator is told
+  which of the four things happened for each unit, because "you passed
+  --no-seal", "this unit's link is metered", "this unit configured no authority"
+  and "the authority could not be reached" are different facts and only the
+  first two are knowable at the call site.
+
+  Seal state is written into **neither the manifest nor the index page**, for
+  the reason ADR 0011 kept it out of `disclosures`: a seal is a file an attacker
+  can delete, so a rendering that announced one would be confidently wrong the
+  moment it was stripped. It is reported to the operator at build time and to
+  the recipient by `habitable verify --require-packet-seal`.
+
+  This needed no ADR of its own: ADR 0011 made the decision and named this
+  surface as unfinished, so this executes it. One existing test now passes
+  `--no-seal`, because `conftest`'s outbound-network guard correctly caught the
+  merge gate newly depending on a real public TSA, exactly as it was written to.
+
+- **A packet dropped from a joint submission is no longer undetectable.** The
+  joint index (ADR 0015) recomputes every listed member's digest, which speaks
+  only for members still on the list. A submission that arrives with a
+  household quietly removed leaves every remaining packet valid, every
+  remaining digest correct, and nothing unlisted on disk. For a building-wide
+  submission that is the damaging direction: the packet a landlord would most
+  like missing is the one that is missing.
+
+  `habitable joint build --seal-tsa URL` now asks an authority to countersign
+  the finished index, writing the token to `joint_index.sig.json` in the same
+  record shape `bundle.sig.json` already uses. Removing a row changes the bytes
+  that token covers, and no attacker can mint a replacement.
+
+  This is ADR 0011's mechanism, with its three rules inherited and none of them
+  softened: a present seal is always checked against the index in front of it,
+  an absent seal is reported rather than fatal until the recipient passes
+  `habitable joint check --require-seal`, and every assertion fails closed. A
+  `dev` seal verifies and is never trusted. `--seal-not-after <the day the
+  submission reached you>` catches the one residual an authority cannot help
+  with: an attacker who can reach an anchored authority can re-seal a rewritten
+  list, but cannot backdate the token.
+
+  It was chosen over signing the index with an organizer key, which is the
+  substantive decision: a signature would require inventing an organizer
+  identity, a key, a distribution story, and a name attached to a document that
+  travels to a landlord's lawyer. ADR 0011 already declined that for producers
+  on safety grounds. The index therefore still carries **no signature of its
+  own** and `index_signed` stays `false`; a seal and a signature are different
+  claims and this project has kept them apart since ADR 0008.
+
+  Nothing is sealed by default: sealing is the one part of `joint` that touches
+  the network, and the organizer names the authority. Rebuilding without one
+  deletes a stale sidecar rather than leaving a token beside bytes it no longer
+  covers. `joint_index_version` stays 1, so an index written before this change
+  parses identically and reports an absent seal, which is the truth about it.
+  See `docs/adr/0016-authority-seal-over-the-joint-index.md`.
+
 - **An organizer can hand over several tenants' packets as one submission,
   without merging anything.** `docs/novel-use-cases-plan.md` ranks a joint
   multi-tenant case bundle as candidate #13 and specifies the only safe shape
@@ -154,13 +274,15 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   rather than being absorbed. A submission subdirectory with no `bundle.json`
   is refused by name, never skipped.
 
-  The index is presentation only and is **not itself signed or sealed**, which
+  The index is presentation only and carries **no signature of its own**, which
   it says in its JSON (`index_signed: false`), in its HTML, and in the
   command's output, alongside two other limits it must not let a reader assume
   away: it merges no chain of custody, and listing households together says
-  nothing about whether their conditions share a cause. Authenticating the
-  index is deferred to its own decision rather than inherited by assumption;
-  ADR 0015 names the two candidate mechanisms and why neither is free.
+  nothing about whether their conditions share a cause. ADR 0015 named two
+  candidate mechanisms for authenticating the index itself and deferred the
+  choice between them; ADR 0016 made it later in the same cycle, so this entry
+  is read alongside the authority seal above. As shipped, the index is
+  unsigned, and can be sealed.
 
   `packet_version` stays 4, `bundle.json` and `bundle.sig.json` are untouched,
   and `habitable.verify` gains no import: the index carries its own

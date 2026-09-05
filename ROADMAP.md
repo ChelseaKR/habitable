@@ -137,8 +137,8 @@ Targets for a small volunteer/solo effort, updated after **v0.4.0 (2026-08-16)**
 | **v0.2** | shipped June 2026 | Assurance groundwork | Verifier fuzzing; archive/re-timestamping; provenance; security/reviewer handoff materials | — |
 | **v0.3.0** | shipped 2026-07-23 (CHANGELOG-recorded; folded into the v0.4.0 tag below rather than tagged on its own) | Use-case foundation | Roadmap drain / novel-use-cases plan; bounded public review hub | N0–N4 primitives and all ten use-case profiles shipped (§E) |
 | **v0.4.0** | shipped & tagged 2026-08-16 | Packet-seal & release hygiene | Whole-packet RFC 3161 seal (ADR 0011); `--expected-producer-key`; `uv sync --locked` lockfile gate | Consent-record withdrawal semantics for local aggregation (N4) |
-| **Unreleased** | now (2026-08-26) | — | — | Profile review-expiry enforcement (ADR 0012): selection refuses an expired profile, export falls back and discloses rather than presenting stale guidance. Dated, expiring **letter** jurisdiction framing (ADR 0013): lapsed union-supplied local-law wording is withheld from the letter instead of sent, closing the stated precondition for jurisdiction template growth. Move-out/deposit-dispute record (ADR 0014): the `move_out_deposit` profile, a `deduction_itemization` artifact type, and a `deduction_for` relationship, with a drift guard pinning the verifier's restated vocabulary to the registry. Joint multi-tenant submission index (ADR 0015): an organizer holding several tenants' already-signed packets, and no keys to any of them, can write one digest-bound table of contents whose every claim `habitable joint check` re-derives from the packets, merging no custody chain |
-| **v0.5 (beta)** | mid/late 2027 | Pilot-ready | Security/crypto audit underway; recorded AT pass; 1–2 union/legal-aid pilots running; multi-device + recovery UX; one-click desktop packaging (the native-mobile spike is already done — see workstream C — and blocked on upstream `cryptography` mobile wheels, not on this) | Solo-buildable Now items from *Beyond the current portfolio*: the move-out/deposit-dispute record shipped early (2026-08-26, ADR 0014); jurisdiction template growth is unblocked on the engineering side (ADR 0013 closed its precondition) and is left open for a first-time contributor (issue #207), still gated on a named legal reviewer; named reviewer/partner secured for at least one of the six `external_review_required` profiles; the joint multi-tenant case bundle is no longer a prototype item (shipped 2026-08-27, ADR 0015) |
+| **Unreleased** | now (2026-08-26) | — | — | Profile review-expiry enforcement (ADR 0012): selection refuses an expired profile, export falls back and discloses rather than presenting stale guidance. Dated, expiring **letter** jurisdiction framing (ADR 0013): lapsed union-supplied local-law wording is withheld from the letter instead of sent, closing the stated precondition for jurisdiction template growth. Move-out/deposit-dispute record (ADR 0014): the `move_out_deposit` profile, a `deduction_itemization` artifact type, and a `deduction_for` relationship, with a drift guard pinning the verifier's restated vocabulary to the registry. Joint multi-tenant submission index (ADR 0015): an organizer holding several tenants' already-signed packets, and no keys to any of them, can write one digest-bound table of contents whose every claim `habitable joint check` re-derives from the packets, merging no custody chain. An authority seal over that index (ADR 0016), applying ADR 0011's mechanism to the list itself so a packet dropped from a submission stops being undetectable. `campaign export` now seals each unit packet with that unit's own authority, closing the last multi-packet surface ADR 0011 named as unsealed |
+| **v0.5 (beta)** | mid/late 2027 | Pilot-ready | Security/crypto audit underway; recorded AT pass; 1–2 union/legal-aid pilots running; multi-device + recovery UX; one-click desktop packaging (the native-mobile spike is already done — see workstream C — and blocked on upstream `cryptography` mobile wheels, not on this) | Solo-buildable Now items from *Beyond the current portfolio*: the move-out/deposit-dispute record shipped early (2026-08-26, ADR 0014); jurisdiction template growth is past its engineering precondition and has shipped its first new framing (`ew_disrepair`, issue #207, 2026-08-28), which is UNREVIEWED for its jurisdiction; further framings stay open to a first-time contributor, and a *reviewed* framing is still gated on a named legal reviewer; named reviewer/partner secured for at least one of the six `external_review_required` profiles; the joint multi-tenant case bundle is no longer a prototype item (shipped 2026-08-27, ADR 0015) |
 | **v1.0** | ~2028 | Trustworthy | The [v1.0 gate](#the-v10-gate-when-alpha-comes-off) met; "alpha" caveat removed | At least one `external_review_required` profile promoted to `maintainer_reviewed` on a recorded review |
 | **v2.x+** | beyond | Reach & resilience | More languages/jurisdictions; metadata-resistant sync; broader interop; shared governance | Remaining partner-gated profiles as partners arrive; protected-activity timeline only after its framing ADR; jurisdiction/language growth using the now-enforced expiry mechanism |
 
@@ -202,6 +202,18 @@ Packet-integrity claims live here; this work gets the most scrutiny.
   epoch, rewrites layer timestamps, and fails unless the complete archives are
   byte-identical; it runs in both the container merge gate and release workflow. See
   `docs/releasing.md`.
+- *Shipped:* **The packet seal reaches `campaign export`.** ADR 0011 listed
+  `campaign export` among the surfaces it had left unsealed, and
+  `campaign.py`'s own docstring promised a unit's packet is exactly what
+  `habitable export` produces from that vault, which since ADR 0011 includes an
+  authority seal. It now does: each unit packet is sealed by *that unit's own*
+  configured authority under *that unit's own* metered-link policy, so an
+  organizer's choice never overrides six tenants' configurations, and an
+  unreachable or gated authority costs one packet its seal rather than the
+  building its export. Seal state is reported to the operator and written into
+  neither the manifest nor the index page, for the reason ADR 0011 kept it out
+  of `disclosures`: a rendering that announces a seal is wrong the moment one is
+  deleted.
 - **Versioned scoped/rehashed custody views (P0 restoration).** *Objective:* restore
   issue/date-scoped packets and issue-subset organizer shares without exposing identifiers from
   records outside the declared scope. *Current safety state:* packet-v3 and sync-v2 scoped
@@ -393,16 +405,30 @@ reconciliation (2026-08-22) found and fixed.
   are signed, the index is not, and authenticating it is deferred to its own
   decision rather than assumed.
 
+- *Shipped (2026-08-27, ADR 0016):* **An authority seal over the joint index.**
+  ADR 0015 was explicit that recomputing each member's digest speaks only for
+  members still on the list, so a household quietly removed from a submission
+  left every remaining packet valid and nothing on disk unlisted. ADR 0011's
+  mechanism closes it without inventing an organizer identity: an RFC 3161 token
+  over the finished index, in a sidecar, with the same three rules (a present
+  seal is always checked, an absent one is reported until `--require-seal`, every
+  assertion fails closed) and the same named residuals. The index still carries
+  no signature of its own, and `index_signed` stays `false`: a seal and a
+  signature are different claims and this project has kept them apart since
+  ADR 0008.
+
 - **Next use-case portfolio.** *Objective:* keep adding new tenant/organizer
   jobs on the same shared primitives instead of bespoke workflows, exactly as
   ADR 0010 chose. *Exit:* see `docs/novel-use-cases-plan.md`'s "Beyond the
   current portfolio" section for the rest of the scored candidate set —
-  jurisdiction template growth stays deliberately unclaimed as a *good first
-  issue* (#207) rather than absorbed by the maintainer, because a sustained
-  outside contributor is itself an open exit criterion in workstream D; the joint
-  multi-tenant case bundle shipped 2026-08-27 as ADR 0015; a
-  protected-activity timeline is explicitly **not** queued until its own ADR
-  settles a non-inference framing (it must never become a retaliation score —
+  jurisdiction template growth shipped its first new framing from good first
+  issue #207 (`ew_disrepair`, 2026-08-28, UNREVIEWED for its jurisdiction), and
+  further framings stay deliberately unclaimed rather than absorbed by the
+  maintainer, because a sustained outside contributor is itself an open exit
+  criterion in workstream D; the joint multi-tenant case bundle shipped
+  2026-08-27 as ADR 0015; a protected-activity timeline is explicitly **not**
+  queued until its own ADR settles a non-inference framing (it must never
+  become a retaliation score —
   `docs/novel-use-cases-plan.md`'s fit filter already excludes "landlord risk
   scores" and "automated judgments about truth").
 - **Named reviewer/partner recruitment for the six gated profiles.**

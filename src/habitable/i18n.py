@@ -393,9 +393,10 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "packet listed here is still its own record and must be verified on its own."
         ),
         "joint_index_unsigned": (
-            "The packets are signed; this index is not. Anyone who can edit this file can "
-            "add or remove a row. What it does show is that no listed packet was swapped: "
-            "`habitable joint check` recomputes every digest below from the packets."
+            "The packets are signed; this index carries no signature of its own. "
+            "`habitable joint check` recomputes every digest here from the packets, and "
+            "`--require-seal` refuses a list no authority countersigned; without that "
+            "flag, anyone who can edit this file can add or remove a row."
         ),
         "joint_index_no_common_cause": (
             "Listing several households together does not make them one case, and says "
@@ -433,6 +434,32 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         "joint_member_line": "{label} ({path}): {state}",
         "joint_state_changed": "CHANGED SINCE INDEXING",
         "joint_state_missing": "MISSING",
+        "joint_seal_ok": (
+            "an authority countersigned this list of packets, so a packet added to it or "
+            "dropped from it is detectable"
+        ),
+        "joint_seal_none": (
+            "no timestamp authority was supplied, so nothing binds this list of packets as "
+            "a whole: a copy with a packet added or dropped is indistinguishable from this "
+            "one"
+        ),
+        "joint_seal_failed": (
+            "the timestamp authority could not be reached, so this list of packets is "
+            "unsealed: a copy with a packet added or dropped is indistinguishable from "
+            "this one"
+        ),
+        "joint_seal_absent": "no authority countersigned this list of packets",
+        "joint_seal_broken": (
+            "this submission carries an authority seal that does not cover the list in front of you"
+        ),
+        "joint_seal_sealed": (
+            "list of packets countersigned by {tsa} at {gen_time}, chaining to a "
+            "certificate you supplied"
+        ),
+        "joint_seal_sealed_untrusted": (
+            "list of packets countersigned by {tsa} at {gen_time}, an authority you have "
+            "not anchored"
+        ),
         "joint_unlisted_line": (
             "present in the submission folder but absent from the index: {path}"
         ),
@@ -573,10 +600,11 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "por separado."
         ),
         "joint_index_unsigned": (
-            "Los paquetes están firmados; este índice no lo está. Cualquiera que pueda "
-            "editar este archivo puede añadir o quitar una fila. Lo que sí demuestra es "
-            "que ningún paquete de la lista fue sustituido: `habitable joint check` "
-            "recalcula cada resumen a partir de los paquetes."
+            "Los paquetes están firmados; este índice no lleva firma propia. "
+            "`habitable joint check` recalcula cada resumen a partir de los paquetes, y "
+            "`--require-seal` rechaza una lista que ninguna autoridad haya refrendado; "
+            "sin esa opción, cualquiera que pueda editar este archivo puede añadir o "
+            "quitar una fila."
         ),
         "joint_index_no_common_cause": (
             "Reunir varias viviendas en una lista no las convierte en un solo caso, y no "
@@ -616,6 +644,33 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         "joint_member_line": "{label} ({path}): {state}",
         "joint_state_changed": "CAMBIÓ DESDE LA INDEXACIÓN",
         "joint_state_missing": "FALTA",
+        "joint_seal_ok": (
+            "una autoridad refrendó esta lista de paquetes, así que se puede detectar si "
+            "se añade o se quita un paquete"
+        ),
+        "joint_seal_none": (
+            "no se indicó ninguna autoridad de sellado de tiempo, así que nada vincula "
+            "esta lista de paquetes en conjunto: una copia con un paquete añadido o "
+            "quitado es indistinguible de esta"
+        ),
+        "joint_seal_failed": (
+            "no se pudo contactar con la autoridad de sellado de tiempo, así que esta "
+            "lista de paquetes queda sin sello: una copia con un paquete añadido o "
+            "quitado es indistinguible de esta"
+        ),
+        "joint_seal_absent": "ninguna autoridad refrendó esta lista de paquetes",
+        "joint_seal_broken": (
+            "esta presentación lleva un sello de autoridad que no corresponde a la lista "
+            "que tiene delante"
+        ),
+        "joint_seal_sealed": (
+            "lista de paquetes refrendada por {tsa} el {gen_time}, con cadena hasta un "
+            "certificado que usted indicó"
+        ),
+        "joint_seal_sealed_untrusted": (
+            "lista de paquetes refrendada por {tsa} el {gen_time}, una autoridad que "
+            "usted no ha anclado"
+        ),
         "joint_unlisted_line": (
             "presente en la carpeta de presentación pero ausente del índice: {path}"
         ),
