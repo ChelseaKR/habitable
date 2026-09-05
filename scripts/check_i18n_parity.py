@@ -122,7 +122,14 @@ def _parse_plural_branches(source: str) -> dict[str, str]:
     return branches
 
 
-def _analyze_message(message: str) -> tuple[set[str], dict[str, set[str]]]:
+# mccabe scores this a 12 against a limit of 10, and it stays one function on
+# purpose. It is a single-pass recursive-descent parser over the ICU subset, and
+# every branch it is charged for is one token shape the grammar admits: a bare
+# placeholder, a plural argument, an `=N` exact selector, a named category, a
+# nested message. Splitting it to satisfy the metric would put the parser's
+# cursor state behind a call boundary and buy a reader nothing. This file is a
+# blocking merge gate; refactoring it for a number is the riskier trade.
+def _analyze_message(message: str) -> tuple[set[str], dict[str, set[str]]]:  # noqa: C901
     """(simple placeholders, {plural var: categories}) for an ICU-subset message.
 
     Raises ValueError when the message is not valid under the subset.
@@ -168,7 +175,13 @@ def _analyze_message(message: str) -> tuple[set[str], dict[str, set[str]]]:
     return placeholders, plurals
 
 
-def _plural_problems(en: dict[str, Any], es: dict[str, Any]) -> list[str]:
+# Scored 11 against a limit of 10. The branches here are the G5 rules
+# themselves -- non-string values skipped, unparseable messages reported,
+# placeholder sets compared, plural-variable sets compared, then the required
+# CLDR categories checked per locale per variable. Each one is a documented
+# finding class, so scattering them across helpers would make it harder to read
+# this against INTERNATIONALIZATION-STANDARD and confirm the list is complete.
+def _plural_problems(en: dict[str, Any], es: dict[str, Any]) -> list[str]:  # noqa: C901
     """Sorted G5 findings across the keys the two bundles share."""
     problems: list[str] = []
     analyzed: dict[str, dict[str, tuple[set[str], dict[str, set[str]]]]] = {"en": {}, "es": {}}
@@ -215,7 +228,13 @@ def _empty_value_keys(bundle: dict[str, Any]) -> list[str]:
     return sorted(bad)
 
 
-def check_parity(en_path: Path = _EN, es_path: Path = _ES) -> int:
+# Scored 12 against a limit of 10, and the count is almost all report and no
+# logic: one `if <findings>:` block per category of problem, five in a row.
+# That shape is exactly why a failing run names every category at once rather
+# than stopping at the first -- the same property `make cov` spells out for its
+# per-module floors. Collapsing the blocks into a loop over a table would trade
+# a failure message a translator can act on for a better complexity score.
+def check_parity(en_path: Path = _EN, es_path: Path = _ES) -> int:  # noqa: C901
     """Return 0 if EN/ES are at parity with no empty values, else 1."""
     en = _load(en_path)
     es = _load(es_path)

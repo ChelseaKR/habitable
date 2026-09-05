@@ -174,8 +174,10 @@ def main() -> None:
     _OUT.parent.mkdir(parents=True, exist_ok=True)
     corpus = build()
     _OUT.write_text(json.dumps(corpus, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(f"wrote {_OUT} ({len(corpus['canonical_json'])} canonical, "
-          f"{len(corpus['custody_chain'])} chain vectors)")
+    print(
+        f"wrote {_OUT} ({len(corpus['canonical_json'])} canonical, "
+        f"{len(corpus['custody_chain'])} chain vectors)"
+    )
 
 
 if __name__ == "__main__":

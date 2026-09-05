@@ -30,7 +30,6 @@ Exit codes:
 
 from __future__ import annotations
 
-import json
 import re
 import sys
 from pathlib import Path
@@ -62,6 +61,13 @@ _LANGTAG = re.compile(
 
 # ISO 639-1 two-letter language codes (the IANA "language" subtags of length 2).
 # Used to registry-check the primary language subtag of every authored tag.
+#
+# The grid shape is the point, so SIM905 is suppressed rather than taken. Its fix
+# rewrites this into one 1800-character list literal, which `ruff format` then
+# explodes into 184 lines of one quoted code apiece. This is a transcription of
+# an external registry: someone has to be able to diff it by eye against IANA's
+# published list to see that a code is missing or duplicated, and eight scannable
+# rows allow that where 184 lines do not.
 _ISO_639_1 = frozenset(
     """
     aa ab ae af ak am an ar as av ay az ba be bg bh bi bm bn bo br bs ca ce ch co
@@ -72,7 +78,7 @@ _ISO_639_1 = frozenset(
     pt qu rm rn ro ru rw sa sc sd se sg si sk sl sm sn so sq sr ss st su sv sw ta
     te tg th ti tk tl tn to tr ts tt tw ty ug uk ur uz ve vi vo wa wo xh yi yo za
     zh zu
-    """.split()
+    """.split()  # noqa: SIM905 - deliberate; see the note above this assignment
 )
 
 

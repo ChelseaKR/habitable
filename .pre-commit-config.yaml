@@ -25,8 +25,8 @@ repos:
     rev: c59bba8fb259db0fec2bbb77ad8ba51ea7341b56 # v0.15.20
     hooks:
       # Scoped to src/ + tests/ only. This is deliberately NARROWER than
-      # `make lint`, whose path list is the authority -- read the `lint` recipe in
-      # the Makefile for what it covers rather than trusting an enumeration here.
+      # `make lint`, whose path list is the authority -- read `RUFF_PATHS` in the
+      # Makefile for what it covers rather than trusting an enumeration here.
       # (This comment used to list those extra paths; the list went stale the next
       # time one was added, which is the failure mode an enumeration always has.)
       #

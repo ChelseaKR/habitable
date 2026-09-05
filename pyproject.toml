@@ -124,7 +124,13 @@ warn_unreachable = true
 warn_redundant_casts = true
 disallow_any_generics = true
 no_implicit_reexport = true
-files = ["src", "tests"]
+# `scripts` is in the type gate for the same reason it is now in the ruff gate
+# (issue #272): several of these are merge gates themselves -- the three i18n
+# checks run on every PR -- and a generator whose output is a published
+# artifact should not be the least-checked code in the repository. It passes
+# under `strict = true` today with no suppressions, so this costs nothing but
+# keeps it that way.
+files = ["src", "tests", "scripts"]
 mypy_path = "contrib"
 
 [[tool.mypy.overrides]]
