@@ -24,14 +24,18 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: c59bba8fb259db0fec2bbb77ad8ba51ea7341b56 # v0.15.20
     hooks:
-      # Scoped to src/ + tests/ only. This is NARROWER than `make lint`, which also
-      # covers scripts/check_doc_links.py and scripts/check_reproducible_build.py.
-      # The comment here used to claim the two were the "same surface" and cited
+      # Scoped to src/ + tests/ only. This is deliberately NARROWER than
+      # `make lint`, whose path list is the authority -- read the `lint` recipe in
+      # the Makefile for what it covers rather than trusting an enumeration here.
+      # (This comment used to list those extra paths; the list went stale the next
+      # time one was added, which is the failure mode an enumeration always has.)
+      #
+      # The comment before that claimed the two were the "same surface" and cited
       # Makefile:19-20, which is inside the lock-check comment block, not the lint
-      # recipe. Narrower fails safe -- CI still lints the two scripts, so the worst
-      # case is a lint finding arriving at push time instead of commit time -- but
-      # the stated reasoning was inverted, and a reader trusting it would have
-      # believed a clean pre-commit run meant a clean `make lint`.
+      # recipe. Narrower fails safe -- CI still lints everything, so the worst case
+      # is a lint finding arriving at push time instead of commit time -- but the
+      # stated reasoning was inverted, and a reader trusting it would have believed
+      # a clean pre-commit run meant a clean `make lint`. It does not.
       - id: ruff-format
         files: '^(src|tests)/.*\.py$'
       - id: ruff

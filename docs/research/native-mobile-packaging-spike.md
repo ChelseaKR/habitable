@@ -239,6 +239,38 @@ into the Briefcase POC instead, which was the option the research indicated migh
 
 ---
 
+## Re-check: 2026-09-04
+
+Issue #260 asks for exactly this and nothing more: a dated re-query of the one
+fact that decides whether the blocking condition has lifted. The spike's
+recommendation stands or falls on whether `cryptography` publishes a mobile
+wheel, so that is what was re-checked, by the same method as §2 (PyPI JSON API,
+queried directly).
+
+| Package | 2026-07-09 | 2026-09-04 | Change |
+|---|---|---|---|
+| `cryptography` | 49.0.0 — no `ios_*`, no `android_*` | **50.0.1 — no `ios_*`, no `android_*`** (46 files: macOS / manylinux / musllinux / Windows / PyPy) | none |
+| `pillow` | 12.3.0 — official `ios_13_0_*` wheels, cp313–cp315 | 12.3.0 — unchanged | none |
+
+**Result: no change. The block holds.** One PyPI major version of `cryptography`
+has come and gone without a mobile target, so unblock condition 1 in issue #260
+("`cryptography` publishing usable Android/iOS wheels for the target Python") has
+not arrived. Neither package publishes an Android wheel at all.
+
+The gap is now more precisely located than the spike left it, which is worth
+saying because it changes what a future contributor should watch: `pillow` — the
+softer of the two dependencies — is no longer the obstacle on iOS. `cryptography`
+alone is, on both platforms, and it is the one that is load-bearing for every
+vault operation rather than optional. Nothing here changes the recommendation;
+it narrows what has to change for the recommendation to be revisited.
+
+Method, so the next re-check is the same measurement: fetch
+`https://pypi.org/pypi/<package>/json`, take `info.version`, and scan that
+release's `.whl` filenames for an `ios` or `android` platform tag. Two minutes,
+no local toolchain, and a negative result is the useful result.
+
+---
+
 ## Sources
 
 - [Briefcase — Android/Gradle platform docs](https://briefcase.beeware.org/en/stable/reference/platforms/android/gradle.html)

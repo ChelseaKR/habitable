@@ -97,3 +97,8 @@ scratch/
 
 # Local productionization plan (working doc — intentionally not published)
 docs/productionization.md
+
+# Local working plans, same reason. These declare in their own text that they
+# are working-tree-only records, and one has already been swept into a commit
+# once by an `add`-everything; untracked is not the same as ignored.
+docs/plans/
