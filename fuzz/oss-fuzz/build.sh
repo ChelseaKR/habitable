@@ -17,7 +17,19 @@ export PYTHONPATH="$SRC/habitable/src:${PYTHONPATH:-}"
 
 for harness in "$SRC"/habitable/fuzz/fuzz_*.py; do
   name=$(basename "$harness" .py)
-  compile_python_fuzzer "$harness"
+
+  # `compile_python_fuzzer` is `pyinstaller --onefile`, which bundles imported
+  # modules and NOT data files, and forwards any extra arguments straight to
+  # PyInstaller. Both harnesses seed from the committed golden fixtures --
+  # fuzz_verify_packet copies a whole packet at import time, before
+  # `atheris.Setup` -- so without this the compiled target dies of
+  # FileNotFoundError on startup and fuzzes nothing at all, in an image where
+  # nobody is watching a console. It is invisible locally because the clone is
+  # right there. `--add-data` puts the tree inside the binary; `golden_root()`
+  # in each harness reads it back out of `sys._MEIPASS`, and falls back to the
+  # checkout so the same file still runs from a working copy.
+  compile_python_fuzzer "$harness" \
+    --add-data "$SRC/habitable/tests/golden:habitable-golden"
 
   # Each harness ships its own seed corpus as code, so the seeds are reviewed
   # in the same diff as the harness and cannot drift from it. Materialise them

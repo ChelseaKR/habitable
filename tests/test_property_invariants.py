@@ -28,10 +28,10 @@ packet's proof actually rests on — the primitive-level targets named in
 
 5. **Sequences, not single shots** — E17's remaining half (issue #257): a
    `RuleBasedStateMachine` over a real packet, applying meaning-preserving
-   operations (re-canonicalise, archive re-timestamp, append a custody event,
-   re-sign) and unrepairable ones (media edits, retargeted digests, forged
-   archive links, stripped tokens, rewritten timeline text, reordered custody)
-   in any order, and checking a model after every step. The four sets of targets
+   operations (archive re-timestamp, append a custody event, re-sign) and
+   unrepairable ones (media edits, retargeted digests, forged archive links,
+   stripped tokens, rewritten timeline text, reordered custody) in any order,
+   and checking a model after every step. The four sets of targets
    above generate one hostile input and assert one verdict; they cannot, in
    principle, find the defect where each operation is individually sound and the
    composition is not — which is the shape #163 and #204 both had.
@@ -880,6 +880,36 @@ _MEDIA_BYTE = st.integers(
 # a link over bytes no authority ever saw.
 _MACHINE_TSA = LocalRfc3161TSA("prop-stateful", time_source=lambda: FIXED_EPOCH_SECONDS)
 
+# The five contradictions the machine can commit, drawn as one value rather than
+# spread over five rules; `contradict_something_a_proof_already_fixed` says why.
+_CONTRADICTIONS = st.sampled_from(
+    [
+        "shared media",
+        "an item's digest",
+        "an item's timestamp token",
+        "a timeline entry's text",
+        "the custody order",
+    ]
+)
+
+
+def test_the_exported_bundle_is_already_canonical() -> None:
+    """Re-encoding the golden bundle must return the exported bytes.
+
+    This was a rule inside the machine below, and it was the wrong shape for one:
+    it changed nothing, so a third of the machine's steps went on re-asserting a
+    property of a *fixture*, in states where it had already been asserted seven
+    times. It is a property of the export, it is true or false before the machine
+    starts, and one assertion states it.
+
+    Why it matters: if the exported bytes were not canonical, every hash and
+    signature over them would be a claim about one particular serialisation
+    rather than about the content -- and a recipient who re-encoded before
+    hashing, as any independent implementation might, would get a different
+    answer and no way to tell which of them was wrong.
+    """
+    assert canonical_json(_PRISTINE_BUNDLE) == _PRISTINE_BYTES
+
 
 class HostilePacketSequences(RuleBasedStateMachine):
     """Sequences of operations on a real packet, checked against a model after each.
@@ -896,9 +926,9 @@ class HostilePacketSequences(RuleBasedStateMachine):
     So this machine holds a working copy of the newest golden packet and applies
     operations to it. Three kinds:
 
-    * **Meaning-preserving** — re-canonicalise the bundle, extend an item's
-      archive-timestamp chain (RFC 4998), append a later custody event, re-sign.
-      None of these change what the packet asserts about the evidence.
+    * **Meaning-preserving** — extend an item's archive-timestamp chain
+      (RFC 4998), append a later custody event, re-sign. None of these change
+      what the packet asserts about the evidence.
     * **Unrepairable** — flip a byte of shared media, retarget an item's digest,
       attach an archive link over bytes no authority stamped, strip an item's
       token, rewrite a timeline entry's text under its own commitment, reorder
@@ -909,9 +939,10 @@ class HostilePacketSequences(RuleBasedStateMachine):
       proves a prefix, so the shortened chain still verifies standalone; the
       head hash moves, which is exactly why it is committed separately.
 
-    Every bundle-editing rule may re-sign, because that is the composition that
-    matters: re-signing is individually sound (a packet's signature carries its
-    own verifying key, FIX-05), and the model asserts it can never launder a
+    Every bundle-editing rule draws whether to re-sign -- all but the truncation
+    below, which always does, and says why -- because that is the composition
+    that matters: re-signing is individually sound (a packet's signature carries
+    its own verifying key, FIX-05), and the model asserts it can never launder a
     contradiction. When a tampered packet has a *valid* signature, the invariant
     additionally demands that `signature_ok` really is True — otherwise the
     rejection would be the signature's doing and the anchor checks would be
@@ -1019,37 +1050,54 @@ class HostilePacketSequences(RuleBasedStateMachine):
 
     # --- meaning-preserving operations ---------------------------------------
 
-    @rule()
-    def recanonicalise_the_bundle(self) -> None:
-        """Decode and re-encode: the exported bytes must already be canonical."""
-        raw = (self.packet / "bundle.json").read_bytes()
-        again = canonical_json(json.loads(raw))
-        assert again == raw, (
-            "re-encoding the bundle changed its bytes, so the packet the producer "
-            "signed was not canonical — every hash and signature over it is then a "
-            "claim about one particular serialisation rather than about the content"
-        )
-        (self.packet / "bundle.json").write_bytes(again)
-
-    @rule(index=_ITEM_INDEX, resign=st.booleans())
+    @rule(index=_ITEM_INDEX, forged=st.booleans(), resign=st.booleans())
     @precondition(lambda self: self.archive_links < 3)
-    def extend_an_items_archive_chain(self, index: int, resign: bool) -> None:
-        """RFC 4998 archival: stamp the newest token so the proof outlives its key."""
+    def add_an_archive_link(self, index: int, forged: bool, resign: bool) -> None:
+        """RFC 4998 archival, told honestly or dishonestly on one draw.
+
+        Honest: stamp the newest token so the proof outlives the key that made
+        it. Forged: attach a real token, from a real authority, over bytes that
+        are not this token -- the operation that looks identical in a listing and
+        proves nothing about the chain it claims to extend.
+
+        One rule rather than two because each mints an RSA signature and leaves
+        behind a link every later step re-verifies, and as two rules of six they
+        took a fifth of the machine's steps -- for a pair of operations
+        `TestArchiveChain` above already sweeps exhaustively at depths one to
+        three. What is wanted here is the composition, an honest link and a
+        forged one and a repair in some order, and one drawn boolean expresses
+        that as well as two rules did.
+        """
         bundle = self._read()
         item = bundle["items"][index]
         links = list(item.get("archive_timestamps") or [])
-        newest = links[-1] if links else item.get("timestamp")
-        if newest is None:  # the token was stripped; there is nothing to carry forward
-            return
-        links.append(retimestamp(TimestampToken.from_dict(newest), _MACHINE_TSA).to_dict())
+        if forged:
+            links.append(_MACHINE_TSA.stamp(sha256_bytes(b"bytes no link ever carried")).to_dict())
+        else:
+            newest = links[-1] if links else item.get("timestamp")
+            if newest is None:  # the token was stripped; there is nothing to carry forward
+                return
+            links.append(retimestamp(TimestampToken.from_dict(newest), _MACHINE_TSA).to_dict())
         item["archive_timestamps"] = links
         self.archive_links += 1
         self._write(bundle, resign=resign)
+        self.unrepairable = self.unrepairable or forged
 
     @rule(resign=st.booleans())
-    @precondition(lambda self: not self.custody_broken)
     def append_a_later_custody_event(self, resign: bool) -> None:
-        """Handling did not stop when the packet was exported; the chain can grow."""
+        """Handling did not stop when the packet was exported; the chain can grow.
+
+        Guarded from the inside rather than by a `@precondition`, and so is the
+        truncation rule below. Hypothesis picks a rule by filtering a
+        `sampled_from` over all of them, gives up after a bounded number of
+        rejections, and throws the whole example away when it does: with four of
+        the six rules this machine had gated that way, 12 of 42 generated
+        examples were being discarded as "unable to satisfy". A step that returns
+        early once the chain is broken costs one step; a discarded example costs
+        eight of them.
+        """
+        if self.custody_broken:
+            return  # the chain no longer walks, so it cannot be extended
         bundle = self._read()
         log = CustodyLog.from_records(bundle["custody_proof"]["entries"])
         log.append(
@@ -1067,77 +1115,91 @@ class HostilePacketSequences(RuleBasedStateMachine):
 
     # --- operations no re-signing can repair ---------------------------------
 
-    @rule(name=_MEDIA_NAME, position=_MEDIA_BYTE, value=_VALUE)
-    def flip_a_byte_of_shared_media(self, name: str, position: int, value: int) -> None:
-        path = self.packet / "media" / name
-        raw = bytearray(path.read_bytes())
-        raw[position] = value if raw[position] != value else value ^ 0xFF
-        path.write_bytes(bytes(raw))
-        self.unrepairable = True
-
     @rule(
+        contradiction=_CONTRADICTIONS,
         index=_ITEM_INDEX,
-        field=st.sampled_from(["content_hash", "shared_hash"]),
+        digest_field=st.sampled_from(["content_hash", "shared_hash"]),
+        entry=_TIMELINE_INDEX,
+        media=_MEDIA_NAME,
+        position=_MEDIA_BYTE,
+        value=_VALUE,
         resign=st.booleans(),
     )
-    def retarget_an_items_digest(self, index: int, field: str, resign: bool) -> None:
-        """Point a signed item at content the authority's token never covered."""
-        bundle = self._read()
-        bundle["items"][index][field] = sha256_bytes(f"substituted:{field}:{index}".encode())
-        self._write(bundle, resign=resign)
-        self.unrepairable = True
+    def contradict_something_a_proof_already_fixed(
+        self,
+        contradiction: str,
+        index: int,
+        digest_field: str,
+        entry: int,
+        media: str,
+        position: int,
+        value: int,
+        resign: bool,
+    ) -> None:
+        """Do one of five things no producer-side repair can undo.
 
-    @rule(index=_ITEM_INDEX, resign=st.booleans())
-    @precondition(lambda self: self.archive_links < 3)
-    def attach_an_archive_link_over_unstamped_bytes(self, index: int, resign: bool) -> None:
-        """A real token from a real authority — over bytes that are not this token."""
-        bundle = self._read()
-        item = bundle["items"][index]
-        links = list(item.get("archive_timestamps") or [])
-        links.append(_MACHINE_TSA.stamp(sha256_bytes(b"bytes no link ever carried")).to_dict())
-        item["archive_timestamps"] = links
-        self.archive_links += 1
-        self._write(bundle, resign=resign)
-        self.unrepairable = True
+        One rule with a drawn operation, not five rules, and the reason is a
+        budget one. ``unrepairable`` is an absorbing state: once it is set, every
+        later step asserts the same easy branch of the invariant ("still not
+        accepted"), so a second contradiction on top of the first buys nothing.
+        As five separate rules these were five of eleven draws, and the machine
+        spent 56% of its invariant checks inside that absorbing state -- while
+        the one branch nothing else in this repository covers, the custody
+        truncation limit below, was reached in 2% of them. Collapsing them to one
+        draw leaves every operation reachable, in the same combinations, and
+        moves the budget to the steps where acceptance is still in doubt.
 
-    @rule(index=_ITEM_INDEX, resign=st.booleans())
-    def strip_an_items_timestamp_token(self, index: int, resign: bool) -> None:
-        """Removing the anchor is not a way to pass; an unanchored item is not verified."""
-        bundle = self._read()
-        item = bundle["items"][index]
-        if "timestamp" not in item:
+        Each operation contradicts something a *timestamp authority*, a media
+        digest, or a custody-bound commitment has already fixed:
+
+        * **shared media** -- flip a byte of a file an item's ``shared_hash``
+          covers.
+        * **an item's digest** -- point a signed item at content the authority's
+          token never covered.
+        * **an item's timestamp token** -- strip the anchor; removing it is not a
+          way to pass, because an unanchored item is not a verified one.
+        * **a timeline entry's text** -- change what the tenant said happened,
+          leaving the commitment that bound the old text behind.
+        * **the custody order** -- swap two entries, which breaks the hash chain
+          rather than rewriting it.
+        """
+        if contradiction == "shared media":
+            path = self.packet / "media" / media
+            raw = bytearray(path.read_bytes())
+            raw[position] = value if raw[position] != value else value ^ 0xFF
+            path.write_bytes(bytes(raw))
+            self.unrepairable = True
             return
-        del item["timestamp"]
-        self._write(bundle, resign=resign)
-        self.unrepairable = True
 
-    @rule(index=_TIMELINE_INDEX, resign=st.booleans())
-    def rewrite_a_timeline_entrys_text(self, index: int, resign: bool) -> None:
-        """Change what the tenant said happened, leaving its commitment behind."""
         bundle = self._read()
-        entry = bundle["timeline"][index]
-        entry["text"] = f"{entry.get('text', '')} (rewritten after the fact)"
+        if contradiction == "an item's digest":
+            bundle["items"][index][digest_field] = sha256_bytes(
+                f"substituted:{digest_field}:{index}".encode()
+            )
+        elif contradiction == "an item's timestamp token":
+            if "timestamp" not in bundle["items"][index]:
+                return  # already stripped; there is nothing left to remove
+            del bundle["items"][index]["timestamp"]
+        elif contradiction == "a timeline entry's text":
+            record = bundle["timeline"][entry]
+            record["text"] = f"{record.get('text', '')} (rewritten after the fact)"
+        elif contradiction == "the custody order":
+            entries = bundle["custody_proof"]["entries"]
+            if len(entries) < 2 or self.custody_broken:
+                return
+            entries[0], entries[1] = entries[1], entries[0]
+            self.custody_broken = True
+        else:  # a label with no branch would silently do nothing, which is the
+            # defect class this whole module exists to catch.
+            raise AssertionError(f"no operation implements the contradiction {contradiction!r}")
         self._write(bundle, resign=resign)
         self.unrepairable = True
-
-    @rule(resign=st.booleans())
-    @precondition(lambda self: not self.custody_broken)
-    def reorder_the_custody_chain(self, resign: bool) -> None:
-        bundle = self._read()
-        entries = bundle["custody_proof"]["entries"]
-        if len(entries) < 2:
-            return
-        entries[0], entries[1] = entries[1], entries[0]
-        self._write(bundle, resign=resign)
-        self.unrepairable = True
-        self.custody_broken = True
 
     # --- the honest limit ----------------------------------------------------
 
-    @rule(resign=st.booleans())
-    @precondition(lambda self: not self.custody_broken)
-    def truncate_the_custody_chain(self, resign: bool) -> None:
-        """Drop the newest entry: the prefix still verifies, and the head moves.
+    @rule()
+    def truncate_the_custody_chain(self) -> None:
+        """Drop the newest entry, and re-sign: the prefix still verifies, and the head moves.
 
         This is the limit `test_suffix_truncation_is_invisible_to_the_chain_but_
         moves_the_head` pins on a bare chain, carried up to a whole packet. The
@@ -1147,6 +1209,8 @@ class HostilePacketSequences(RuleBasedStateMachine):
         pinned the producer key is told about it. The invariant below asserts both
         halves: the head always moves, and the pinned policy always refuses.
         """
+        if self.custody_broken:
+            return  # a chain that no longer walks has no verifiable prefix to keep
         bundle = self._read()
         records = bundle["custody_proof"]["entries"]
         if len(records) < 2:
@@ -1159,7 +1223,14 @@ class HostilePacketSequences(RuleBasedStateMachine):
             "committed head would no longer detect truncation at all"
         )
         bundle["custody_proof"] = proof
-        self._write(bundle, resign=resign)
+        # Always re-signed, unlike every other edit here, and for two reasons.
+        # A truncation the signature already refuses is not the limit this rule
+        # exists to state -- "a bundle edited after signing must not verify" is
+        # asserted by every other rule's unsigned draw. And an unparameterised
+        # rule is one hypothesis reaches far more often: with a `resign` draw
+        # this rule took 7.4% of steps and its branch of the invariant 2.3% of
+        # checks, which is not enough to call a limit pinned.
+        self._write(bundle, resign=True)
 
     # --- the model -----------------------------------------------------------
 
@@ -1248,12 +1319,24 @@ class HostilePacketSequences(RuleBasedStateMachine):
 # Budget. Every step verifies the whole packet twice — once per trust policy —
 # so the cost is `max_examples x stateful_step_count x 2` verifications, and the
 # archive-link cap above keeps each of those from growing with the step count.
-# 30 x 8 holds the machine to a few seconds beside the ~20s the rest of this
-# module already spends, while still reaching sequences long enough to interleave
-# a tamper, a repair and a second tamper: the shortest shape that can express the
-# defect class this exists to find. Hunt with a raised count and
-# `--hypothesis-seed=random` locally, not in the merge gate.
+# Eight steps stays: it is the shortest sequence that can interleave a tamper, a
+# repair and a second tamper, which is the shape this machine exists to find.
+#
+# Twenty-four examples rather than thirty, because a step is not a fixed price.
+# Verifying a packet that is already contradicted is *cheap* — a mismatched media
+# digest short-circuits the item checks that dominate the profile — so the more
+# of its budget the machine spends in states where acceptance is still in doubt,
+# the more each step costs. That is the trade this rule set was rebalanced to
+# make, and it was measured rather than assumed. Interleaved runs of the old rule
+# set at 30 x 8 against this one at 24 x 8: 5.66s vs 4.47s per run, and the
+# custody-truncation branch of the invariant — the tightest claim here, and the
+# only one nothing else in this repository covers — reached 2.9% of checks (7.7
+# per run) before and 15.5% (33.7 per run) after. Cheaper *and* four times the
+# coverage of the branch that needed it.
+#
+# Hunt with a raised count and `--hypothesis-seed=random` locally, not in the
+# merge gate.
 HostilePacketSequences.TestCase.settings = settings(
-    max_examples=30, stateful_step_count=8, deadline=None
+    max_examples=24, stateful_step_count=8, deadline=None
 )
 TestHostilePacketSequences = HostilePacketSequences.TestCase

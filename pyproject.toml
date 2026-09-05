@@ -130,12 +130,23 @@ no_implicit_reexport = true
 # artifact should not be the least-checked code in the repository. It passes
 # under `strict = true` today with no suppressions, so this costs nothing but
 # keeps it that way.
-files = ["src", "tests", "scripts"]
+files = ["src", "tests", "scripts", "fuzz"]
 mypy_path = "contrib"
 
 [[tool.mypy.overrides]]
-module = ["piexif.*", "reportlab.*", "PIL.*", "asn1crypto.*", "axe_playwright_python.*"]
+module = ["piexif.*", "reportlab.*", "PIL.*", "asn1crypto.*", "axe_playwright_python.*", "atheris.*"]
 ignore_missing_imports = true
+
+# The fuzz harnesses import `atheris` when OSS-Fuzz provides it and fall back to a
+# plain runner when it is absent, which is what makes a corpus entry reproduce
+# identically in both environments. The `# type: ignore[assignment]` on that
+# fallback is unused *here*, where atheris is missing and therefore Any -- and
+# needed wherever it is installed and typed. Warning on it would force the
+# harnesses to be correct for exactly one of the two environments they exist to
+# span.
+[[tool.mypy.overrides]]
+module = ["fuzz.*", "fuzz_verify_packet", "fuzz_timestamp_token"]
+warn_unused_ignores = false
 
 [tool.pytest.ini_options]
 minversion = "8.0"
