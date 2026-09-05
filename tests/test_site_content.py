@@ -351,9 +351,13 @@ def test_public_issue_links_carry_a_visible_privacy_warning() -> None:
     This guard was previously incapable of failing, for two independent reasons,
     and had never executed a single one of its assertions:
 
-    1. It matched the href substring ``issues/new``, which appears **nowhere** in
-       ``site/``. The real links are ``issues/121``..``issues/126`` and an
-       ``issues?q=`` filter, so the ``continue`` fired on every iteration.
+    1. It matched the href substring ``issues/new``, which appeared **nowhere** in
+       ``site/`` at the time: the links were ``issues/121``..``issues/126`` and an
+       ``issues?q=`` filter, so the ``continue`` fired on every iteration. (Issue
+       #254 has since moved the task links to ``issues/new?template=...``, which
+       would now match that substring -- the fix below does not depend on it
+       either way, and the historical reason is kept because it is why this guard
+       discovers pages from disk instead of trusting a list.)
     2. It iterated ``_PAGE_META``, a hand-maintained list of nine marketing slugs
        that does not include ``review`` -- the only page on the site that carries
        public issue links at all. Even with the substring fixed, the one page that

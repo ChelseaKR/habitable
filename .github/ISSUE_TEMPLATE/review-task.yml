@@ -1,0 +1,103 @@
+name: Review task result
+description: Return the named output from one of the six bounded review tasks. Synthetic data only.
+title: "[Review task] "
+labels: ["review-task", "help wanted"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for running one. Each of the six tasks is **repeatable on purpose** — a second
+        reviewer on different hardware, with different assistive technology, or from a different
+        professional background is a different result, not a duplicate. That is why every run gets
+        its own issue instead of queueing behind one shared thread.
+
+        The tasks, their time boxes, and their expected outputs are on the
+        [review page](https://habitable.chelseakr.com/review/#tasks).
+
+        > [!CAUTION]
+        > **Do NOT describe a security or privacy vulnerability here.** This is a public issue.
+        > An unfixed vulnerability goes through **GitHub private vulnerability reporting** per
+        > [`SECURITY.md`](https://github.com/ChelseaKR/habitable/blob/main/SECURITY.md)
+        > (Security tab → *Report a vulnerability*). That applies to SE-01 and SE-02 in
+        > particular: report the *shape* of what you tried here, and anything that actually
+        > bypasses acceptance privately.
+
+        **Use the synthetic case only** (`uv run habitable demo`). No real name, address, photo,
+        message, allegation, packet, or case detail — yours or anyone else's.
+  - type: dropdown
+    id: task
+    attributes:
+      label: Which task did you run?
+      options:
+        - OR-01 — Run the organizer workflow dry run (45 min)
+        - LA-01 — Cold-read the synthetic packet (20 min)
+        - AX-01 — Complete the app path with the keyboard (30 min)
+        - AX-02 — Walk one path with a screen reader (45 min)
+        - SE-01 — Challenge one threat-model boundary (45 min)
+        - SE-02 — Try one synthetic verifier tamper case (60 min)
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: What you ran it on
+      description: |
+        Whatever identifies the conditions of *your* run, so a later reviewer can tell theirs apart.
+        - AX-01 / AX-02: browser, platform, interface language, and — for AX-02 — the assistive
+          technology and version you actually use day to day.
+        - OR-01 / LA-01: your professional context, in whatever detail you are comfortable with.
+        - SE-01 / SE-02: habitable version or commit, and which documented boundary or verdict
+          you targeted.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: The named output
+      description: |
+        Each task names exactly what it wants back; the review page lists it under the task.
+        Please answer that, rather than a general impression — the named output is what makes
+        two runs comparable.
+    validations:
+      required: true
+  - type: textarea
+    id: blocker
+    attributes:
+      label: First blocker or highest-friction point
+      description: |
+        The first place you stopped, backtracked, or guessed. Include it even if you got past it,
+        and even if it turned out to be your own mistake — a step that is easy to get wrong is a
+        finding about the step.
+    validations:
+      required: true
+  - type: dropdown
+    id: completed
+    attributes:
+      label: Could the synthetic path be completed?
+      options:
+        - "Yes"
+        - "Yes — but only with a workaround (described above)"
+        - "No"
+    validations:
+      required: true
+  - type: input
+    id: credit
+    attributes:
+      label: Credit preference
+      description: |
+        Default is public, diffable credit — results land in `docs/audits/` and the review ledger.
+        Write "anonymous" to be recorded without a name.
+      placeholder: Credit me, or "anonymous"
+    validations:
+      required: false
+  - type: checkboxes
+    id: ground-rules
+    attributes:
+      label: Ground rules
+      options:
+        - label: I used the synthetic demo case only, and this report contains no real tenant data.
+          required: true
+        - label: I understand this issue is public and permanent, and I have not described an unfixed vulnerability in it.
+          required: true
+        - label: A recording is neither requested nor accepted — I have described the result in text.
+          required: true
