@@ -114,7 +114,7 @@ def cover_sheet(bundle: Mapping[str, JSONValue]) -> CoverSheet:
         issue_count=len(_list(bundle, "issues")),
         item_count=_i(appendix, "item_count"),
         timestamped_count=_i(appendix, "timestamped_count"),
-        custody_length=_i(_map(bundle, "custody_proof"), "length"),
+        custody_length=_custody_length(_map(bundle, "custody_proof")),
         includes_originals=appendix.get("includes_originals") is True,
         earliest=times[0] if times else "",
         latest=times[-1] if times else "",
@@ -322,7 +322,7 @@ def integrity_summary(bundle: Mapping[str, JSONValue]) -> IntegritySummary:
 
     return IntegritySummary(
         algorithm=_s(proof, "algorithm") or _s(bundle, "hash_algorithm") or "sha256",
-        custody_length=_i(proof, "length"),
+        custody_length=_custody_length(proof),
         custody_head=_s(proof, "head_hash"),
         timestamped_count=_i(appendix, "timestamped_count"),
         item_count=_i(appendix, "item_count"),
@@ -343,6 +343,26 @@ def _scope_text(scope: Mapping[str, JSONValue]) -> str:
     if since:
         text = f"{text}, items on/after {since}"
     return text
+
+
+def _custody_length(proof: Mapping[str, JSONValue]) -> int:
+    """How many custody entries there are — counted, not taken on the proof's word.
+
+    This number is printed on a cover sheet and in an integrity summary, next to
+    numbers a verifier vouches for. Until issue #278 it was ``proof["length"]``,
+    the *declared* value, and `habitable.verify` never looked at it: a renderer
+    was showing a reader a figure nothing had checked. ``verify._verify_custody``
+    now refuses a packet whose declared length disagrees with its entries, and
+    this counts the entries itself, so the two readers of this structure agree
+    and the rendered figure is one of them rather than neither.
+
+    The declared value remains the fallback for a summary-only proof (one carrying
+    no ``entries`` at all), which is the only shape where there is nothing to
+    count. That is a view of less evidence, not a more permissive view of the
+    same evidence.
+    """
+    entries = _list(proof, "entries")
+    return len(entries) if entries else _i(proof, "length")
 
 
 def _issue_title(issue: Mapping[str, JSONValue]) -> str:

@@ -178,6 +178,10 @@ _PRISTINE_BUNDLE_BYTES = _PRISTINE[Path("bundle.json")]
 COMMITTED_POSITIONS: tuple[tuple[str, ...], ...] = (
     ("packet_version",),
     ("custody_proof", "head_hash"),
+    # Checked since issue #278. Its absence from this inventory is exactly why the
+    # 2054-rewrite sweep never found that the verifier ignored it: a position the
+    # sweep does not name is a position the sweep cannot clear.
+    ("custody_proof", "length"),
     ("custody_proof", "entries", "..."),
     ("timeline", "..."),
     ("use_case_profile", "..."),
@@ -211,19 +215,22 @@ COMMITTED_POSITIONS: tuple[tuple[str, ...], ...] = (
 )
 
 #: Positions that fall *inside* a family above and are still not commitments.
-#: Two, each for a stated reason, and each subtracted here rather than by
-#: narrowing the family above -- so a field added to a committed structure
-#: tomorrow is covered by default, and someone has to come here and say why if
-#: it is not.
+#: Each for a stated reason, and each subtracted here rather than by narrowing
+#: the family above -- so a field added to a committed structure tomorrow is
+#: covered by default, and someone has to come here and say why if it is not.
+#:
+#: This list was two entries until issue #281. `items[*].timestamp.tsa_name` sat
+#: here on the argument that a display label is "not what a recipient is asked to
+#: trust" -- which was true about the *token* and false about the packet, because
+#: the custody entry commits an authority name and the verifier never compared
+#: them. The exclusion was what kept the sweep from noticing. An entry here is a
+#: claim that nothing binds the field, and that claim needs re-checking whenever
+#: the verifier grows a rule.
 UNCOMMITTED_POSITIONS: tuple[tuple[str, ...], ...] = (
     # An opaque ordering token. `verify._v3_timeline_semantic_payload` names the
     # exact fields `timeline_sha256` covers, and this is deliberately not one of
     # them; the entry's meaning -- who, what, when, and what it links to -- is.
     ("timeline", "*", "order_token"),
-    # A display label for the authority. What proves the time is the token, whose
-    # issuer identity lives inside its own signed structure, so the label beside
-    # it is not what a recipient is asked to trust.
-    ("items", "*", "timestamp", "tsa_name"),
 )
 
 

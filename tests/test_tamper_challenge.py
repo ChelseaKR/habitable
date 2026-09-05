@@ -84,13 +84,25 @@ def _entry_hash(entry: dict[str, Any], prev_hash: str) -> str:
 
 
 def _rebuild_custody(bundle: dict[str, Any]) -> None:
-    """Relink and rehash the whole chain so it walks cleanly after edits."""
+    """Relink and rehash the whole chain so it walks cleanly after edits.
+
+    The declared `length` is republished alongside `head_hash` because the
+    verifier now checks both (issue #278). Before that, this toolkit could delete
+    an evidence item and leave a summary claiming the original count, and the
+    packet was still accepted — so the "evidence item deleted" case below was
+    passing for a reason weaker than the one it documents. Republishing the count
+    keeps the attacker as strong as the residual claims: this file's job is to
+    demonstrate what a *competent* rewriter gets away with, and a rewriter who
+    forgets to update a field they control is not the adversary the threat model
+    names.
+    """
     prev = GENESIS
     for entry in bundle["custody_proof"]["entries"]:
         entry["prev_hash"] = prev
         entry["entry_hash"] = _entry_hash(entry, prev)
         prev = entry["entry_hash"]
     bundle["custody_proof"]["head_hash"] = prev
+    bundle["custody_proof"]["length"] = len(bundle["custody_proof"]["entries"])
 
 
 def _resign(
