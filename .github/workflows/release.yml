@@ -23,6 +23,7 @@ jobs:
   verify-build:
     name: verify signed tag · build exact artifacts
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       release_commit: ${{ steps.tag.outputs.commit }}
       release_tag: ${{ steps.tag.outputs.tag }}
@@ -177,6 +178,7 @@ jobs:
     name: attest · recheck tag object · publish without checkout
     needs: verify-build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
       id-token: write
@@ -225,6 +227,7 @@ jobs:
     name: publish to PyPI (Trusted Publishing)
     needs: [verify-build, publish-release]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment:
       name: pypi
       url: https://pypi.org/p/habitable

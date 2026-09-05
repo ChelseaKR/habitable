@@ -46,6 +46,7 @@ jobs:
     # `github.repository`, so it asks the tracker the documents actually name.
     if: github.repository == 'ChelseaKR/habitable' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       issues: read # to read the open/closed state of every cited issue

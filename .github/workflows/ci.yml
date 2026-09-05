@@ -18,6 +18,7 @@ jobs:
   gate:
     name: lint · types · tests (the merge gate)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       # P1-3 (SEC-04): runtime egress monitoring. Starts in `audit` mode (log,
       # don't block) so a real allowlist can be derived from real traffic
@@ -65,6 +66,7 @@ jobs:
   secrets:
     name: secret scanning (gitleaks)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Harden Runner (audit mode)
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
@@ -91,6 +93,7 @@ jobs:
   verifier-portability:
     name: verifier subset compiles on older Pythons
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       # The Apache-2.0 verifier subset must byte-compile on interpreters older than the
@@ -137,6 +140,7 @@ jobs:
   audit:
     name: dependency vulnerability audit
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Harden Runner (audit mode)
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
@@ -166,6 +170,7 @@ jobs:
   build:
     name: build wheel + sdist
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Harden Runner (audit mode)
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
@@ -178,6 +183,7 @@ jobs:
       - name: Install uv (pinned)
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
+          enable-cache: true
           version: "0.11.19"
       - name: Build distributions reproducibly
         run: make repro
