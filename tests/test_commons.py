@@ -19,6 +19,7 @@ from habitable.commons import (
     CaseContribution,
     IssueObservation,
     build_commons,
+    canonical_category,
     summarize_case,
 )
 from habitable.errors import HabitableError
@@ -205,6 +206,21 @@ class TestSummarizeCase:
         contribution = summarize_case(doc, building_label="Elm", household_token="t")
         assert contribution.observations[0].category == "uncategorized"
 
+    def test_a_grandfathered_synonym_counts_as_the_category_it_means(self) -> None:
+        """A pre-#206 vault still has a household in it.
+
+        Free-text categories were storable before #206 constrained the CLI, and
+        nothing rewrites what a vault already holds -- deliberately, because the
+        record is the tenant's. Grouping on the raw string would make that
+        household invisible in its own building's heat count while the same
+        condition typed today is counted, which is not caution, it is a wrong
+        number wearing caution's clothes.
+        """
+        doc = _doc("case-4B")
+        doc.add_issue(category="no_heat")
+        contribution = summarize_case(doc, building_label="Elm", household_token="t")
+        assert contribution.observations[0].category == "heat"
+
     def test_removed_issue_is_excluded(self) -> None:
         doc = _doc("case-4B")
         issue = doc.add_issue(category="mold")
@@ -221,6 +237,66 @@ class TestSummarizeCase:
         doc = _doc("case-4B")
         with pytest.raises(HabitableError, match="household_token"):
             summarize_case(doc, building_label="Elm", household_token="  ")
+
+
+class TestCanonicalCategory:
+    """Grouping folds spellings the vocabulary knows; it invents nothing else.
+
+    The rule is deliberately the same one ``appserver.add_issue`` applies at
+    entry, because a commons that mapped a word the product would refuse to
+    store would be re-filing a tenant's record inside a published number.
+    """
+
+    def test_a_member_is_its_own_canonical_form(self) -> None:
+        for member in ("heat", "mold", "pests", "water", "electrical", "structural", "other"):
+            assert canonical_category(member) == member
+
+    def test_documented_synonyms_resolve_to_their_member(self) -> None:
+        assert canonical_category("no_heat") == "heat"
+        assert canonical_category("moisture") == "water"
+        assert canonical_category("moho") == "mold"
+
+    def test_case_and_space_are_folded_for_the_lookup(self) -> None:
+        # A phone keyboard capitalises the first letter by default, which is how
+        # a second `Heat` bucket appears beside `heat` (issue #240).
+        assert canonical_category("  Heat ") == "heat"
+        assert canonical_category("No_Heat") == "heat"
+
+    def test_a_word_the_vocabulary_does_not_know_is_left_alone(self) -> None:
+        # Their words, their capitalisation. `plumbing` and `noise` were refused
+        # as aliases on purpose (#240): mapping them would refile the record as
+        # something the tenant did not report.
+        assert canonical_category("plumbing") == "plumbing"
+        assert canonical_category("Radiador roto") == "Radiador roto"
+        assert canonical_category("  noise  ") == "noise"
+
+    def test_two_spellings_of_one_condition_do_not_split_a_cell(self) -> None:
+        """The reason this exists: a split cell is measured against k twice.
+
+        Five households reporting one condition can publish nothing at all if
+        three of them spelled it one way and two the other. Suppression is there
+        to stop a household being identified, not to hide a building's condition
+        behind a synonym.
+        """
+        contributions = []
+        for index, typed in enumerate(("heat", "no_heat", "Heat", "heat", "NO_HEAT")):
+            doc = _doc(f"elm-{index}")
+            issue = doc.add_issue(category=typed)
+            doc.add_capture(
+                issue_id=issue,
+                content_hash="h",
+                media_type="image/jpeg",
+                sealed_name="x.enc",
+                captured_at="2026-01-15T12:00:00Z",
+            )
+            contributions.append(
+                summarize_case(doc, building_label="1200 Elm", household_token=f"elm-{index}")
+            )
+        export = build_commons(contributions, k=5)
+        assert len(export.cells) == 1
+        assert export.cells[0].category == "heat"
+        assert export.cells[0].household_count == 5
+        assert export.suppressed_cells == 0
 
 
 class TestEndToEnd:

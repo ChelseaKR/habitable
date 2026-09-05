@@ -65,16 +65,18 @@ And the machinery behind it, from [`src/habitable/patterns.py`](../../src/habita
 - **A published aggregate cannot be recalled.** Withdrawal stops future exports and nothing
   else.
 
-**One thing to check with the maintainer before you run anything.** The question counts
-conditions stored under the exact label `no_heat`, while habitable's own condition vocabulary
-records that same condition as `heat` — the command line even prints "recording
-`--category no_heat` as `heat`". If that has not been reconciled, an export can come back
-empty for reasons that have nothing to do with the building. Ask first; do not read an empty
-result as an answer.
+**One thing to know about what the number means.** The question used to count conditions
+stored under the exact label `no_heat`, which no supported path could store — so the export
+came back empty for reasons that had nothing to do with the building (issue #276, fixed).
+It now counts `heat`, and that category does not separate *no heat at all* from *inadequate
+heat* from *heat a household cannot control*. The export says so in its own `scope_note`.
+Whether a count that groups those three is the number an organizer can actually use is
+question 1 below, and it is the one this brief most wants your answer to.
 
 ## The questions this profile needs answered
 
-1. **Is this a number you would actually use?** Consenting households reporting no heat, by
+1. **Is this a number you would actually use?** Consenting households reporting a heat
+   condition — no heat, inadequate heat, and heat they cannot control, counted together — by
    building and week. In a landlord meeting, a press ask, a code complaint, a council
    hearing, a rent strike vote — where does it land, and what would you have to say next to
    make it matter?

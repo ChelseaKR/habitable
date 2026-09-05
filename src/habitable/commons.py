@@ -16,7 +16,10 @@ and it does so only under strict, checkable constraints:
 * **Aggregate-only, never per-person.** The output is coarse counts grouped by a
   union-chosen *building* label, an issue *category*, and a coarsened *time
   period*. It never contains a case id, unit label, room, title, description,
-  photo, hash, timestamp token, actor, device identity, or any free text.
+  photo, hash, timestamp token, actor, device identity, or any free text. Two
+  spellings of one condition are counted as one condition -- see
+  :func:`canonical_category` -- because a cell split by spelling is a wrong
+  number, not a cautious one.
 * **k-anonymous by suppression.** A cell is emitted only if it is backed by at
   least ``k`` distinct contributing cases (households). Any cell below the
   threshold is dropped, not rounded, so no published number reflects fewer than
@@ -38,7 +41,7 @@ from datetime import date
 from typing import Literal
 
 from .errors import HabitableError
-from .model import CaseDocument
+from .model import ISSUE_CATEGORIES, ISSUE_CATEGORY_ALIASES, CaseDocument
 
 __all__ = [
     "COMMONS_SCHEMA_VERSION",
@@ -50,6 +53,7 @@ __all__ = [
     "IssueObservation",
     "Period",
     "build_commons",
+    "canonical_category",
     "summarize_case",
 ]
 
@@ -146,7 +150,9 @@ class CommonsExport:
                 "k_anonymity_threshold": self.k,
                 "aggregation": (
                     "counts grouped by building label, issue category, and "
-                    "coarsened time period; cells backed by fewer than k distinct "
+                    "coarsened time period; spellings the tool knows to name the "
+                    "same condition are folded into one category before counting; "
+                    "cells backed by fewer than k distinct "
                     "households are suppressed, not rounded"
                 ),
                 "excludes": (
@@ -202,6 +208,41 @@ def _issue_period(doc: CaseDocument, issue_id: str, granularity: Period) -> str:
     return _period_bucket(min(dates), granularity)
 
 
+def canonical_category(raw: str) -> str:
+    """The category a stored issue counts as, for grouping only.
+
+    Three spellings can reach a stored issue and mean one condition. ``habitable
+    issue`` normalises a synonym at entry (``ISSUE_CATEGORY_ALIASES``, issue
+    #240) and the app folds case before its own lookup, but neither rewrites a
+    value that was already in the vault: an issue recorded as ``no_heat`` before
+    #206 constrained the vocabulary, or as ``Moho`` by a client that predates
+    #240, keeps the string it was written with. That is the right call for the
+    record -- their words, their capitalisation -- and the wrong one for a
+    count.
+
+    Grouping on the raw string splits one condition across two cells, and the
+    split is not merely untidy: each half is then measured against ``k``
+    separately, so a building where five households reported heat can publish
+    nothing at all because three said ``heat`` and two said ``no_heat``.
+    Suppression is meant to protect households from being identified, not to
+    hide a condition behind a spelling.
+
+    So the *lookup* folds case and surrounding space, and a folded form the
+    vocabulary recognises -- a member or one of its documented synonyms --
+    resolves to that member. Anything the vocabulary does not know is carried
+    through as the tenant wrote it, stripped of surrounding space only. This is
+    deliberately the same rule ``appserver.add_issue`` applies at entry: the
+    commons must not invent a mapping the product would refuse to store.
+    """
+    typed = raw.strip()
+    folded = typed.lower()
+    if folded in ISSUE_CATEGORY_ALIASES:
+        return ISSUE_CATEGORY_ALIASES[folded]
+    if folded in ISSUE_CATEGORIES:
+        return folded
+    return typed
+
+
 def summarize_case(
     doc: CaseDocument,
     *,
@@ -214,7 +255,9 @@ def summarize_case(
     Only ``category`` and a coarsened ``period`` survive per issue; the building
     label is the caller's coarse choice and the household token is opaque. Removed
     issues (not in the live set) are excluded. Blank categories are bucketed as
-    ``uncategorized`` so they aggregate rather than fragment.
+    ``uncategorized`` so they aggregate rather than fragment, and categories the
+    vocabulary knows to be one condition under two spellings are folded together
+    by :func:`canonical_category` for the same reason.
     """
     label = building_label.strip()
     if not label:
@@ -224,7 +267,7 @@ def summarize_case(
         raise HabitableError("commons: household_token must be non-empty")
     observations = tuple(
         IssueObservation(
-            category=(issue.category.strip() or "uncategorized"),
+            category=(canonical_category(issue.category) or "uncategorized"),
             period=_issue_period(doc, issue.issue_id, granularity),
         )
         for issue in doc.issues()
