@@ -11,17 +11,61 @@ from typing import Any
 
 # Ensure scripts directory is in sys.path for parity imports
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_i18n_parity import _EN, _analyze_message, _flatten, _load
+from check_i18n_parity import _EN, _analyze_message, _load
 
 ACCENT_MAP = {
-    "a": "å", "b": "ƀ", "c": "ç", "d": "ð", "e": "é", "f": "ƒ", "g": "ğ",
-    "h": "ħ", "i": "î", "j": "ĵ", "k": "ķ", "l": "ĺ", "m": "ɱ", "n": "ñ",
-    "o": "ö", "p": "þ", "q": "ɋ", "r": "ŕ", "s": "š", "t": "ţ", "u": "û",
-    "v": "ṽ", "w": "ŵ", "x": "ẋ", "y": "ý", "z": "ž",
-    "A": "Å", "B": "Ɓ", "C": "Ç", "D": "Ð", "E": "Ê", "F": "Ƒ", "G": "Ğ",
-    "H": "Ħ", "I": "Î", "J": "Ĵ", "K": "Ķ", "L": "Ĺ", "M": "Ɱ", "N": "Ñ",
-    "O": "Ö", "P": "Þ", "Q": "Ɋ", "R": "Ŕ", "S": "Š", "T": "Ţ", "U": "Û",
-    "V": "Ṽ", "W": "Ŵ", "X": "Ẋ", "Y": "Ý", "Z": "Ž",
+    "a": "å",
+    "b": "ƀ",
+    "c": "ç",
+    "d": "ð",
+    "e": "é",
+    "f": "ƒ",
+    "g": "ğ",
+    "h": "ħ",
+    "i": "î",
+    "j": "ĵ",
+    "k": "ķ",
+    "l": "ĺ",
+    "m": "ɱ",
+    "n": "ñ",
+    "o": "ö",
+    "p": "þ",
+    "q": "ɋ",
+    "r": "ŕ",
+    "s": "š",
+    "t": "ţ",
+    "u": "û",
+    "v": "ṽ",
+    "w": "ŵ",
+    "x": "ẋ",
+    "y": "ý",
+    "z": "ž",
+    "A": "Å",
+    "B": "Ɓ",
+    "C": "Ç",
+    "D": "Ð",
+    "E": "Ê",
+    "F": "Ƒ",
+    "G": "Ğ",
+    "H": "Ħ",
+    "I": "Î",
+    "J": "Ĵ",
+    "K": "Ķ",
+    "L": "Ĺ",
+    "M": "Ɱ",
+    "N": "Ñ",
+    "O": "Ö",
+    "P": "Þ",
+    "Q": "Ɋ",
+    "R": "Ŕ",
+    "S": "Š",
+    "T": "Ţ",
+    "U": "Û",
+    "V": "Ṽ",
+    "W": "Ŵ",
+    "X": "Ẋ",
+    "Y": "Ý",
+    "Z": "Ž",
 }
 
 
@@ -41,10 +85,10 @@ def transform_icu_message(message: str) -> str:
     """Pseudo-localize message text while preserving ICU placeholders."""
     _analyze_message(message)
 
-    output = []
+    output: list[str] = []
     i = 0
     depth = 0
-    buffer = []
+    buffer: list[str] = []
 
     while i < len(message):
         ch = message[i]
