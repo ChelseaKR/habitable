@@ -71,3 +71,11 @@ d4771afeaf9e628c1d63432d4cc2cface8121803:tests/golden/packet-v4/bundle.json:gene
 # characters or more: all fourteen are docstrings or error messages. The file
 # contains no credential literal of any kind.
 a3767cc974568a3936914b4e4b810ae6062e2228:fuzz/fuzz_timestamp_token.py:generic-api-key:159
+
+# Commit ee32736f's version of THIS file quoted the line above verbatim while
+# explaining why it is a false positive, which tripped the identical heuristic at
+# line 61. The quote is gone from the working tree (see the entry above), but
+# gitleaks scans history, so the commit that carried it stays findable. There is
+# nothing to rotate: the "secret" is a variable name inside a comment about a
+# variable name. Verified 2026-09-05.
+ee32736f5451aa70d8624a03b4fb5444e49ac5bf:.gitleaksignore:generic-api-key:61
