@@ -43,6 +43,26 @@ breaks:
 So the workflow has a hard, automatic floor: **you cannot ship an incomplete
 language.** Use that — run the test early and often.
 
+### Not every key is rendered today
+
+Parity is enforced on the key *set*, not on whether the app ever shows the
+string. A key nothing renders is still work you do, in every language, forever —
+and there are some of those right now. Before you start, see which:
+
+```console
+$ uv run python scripts/report_i18n_key_usage.py
+```
+
+It lists the keys no rendering path in the app reaches, and keeps them separate
+from the keys `src/habitable/i18n.py` also defines for CLI output, because those
+two need different fixes. It reports and never fails a build.
+
+This does **not** excuse you from a key: parity still requires every one, and a
+bundle missing any of them will not merge. What it changes is where you spend
+attention. If a string is on that list, translate it plainly and move on — the
+care the next sections ask for belongs to the strings a reader actually depends
+on. Clearing the backlog is tracked in #271.
+
 ## Add a new language
 
 1. **Copy the source bundle.** Start from `app/i18n/en.json` so you have the
