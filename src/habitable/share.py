@@ -9,6 +9,12 @@ omitted, but other full-case content can still identify the unit.
 Issue-subset sharing is temporarily blocked because sync v2 carries a complete custody
 proof that can reveal identifiers outside the selected subset.
 
+Behind that hold, :func:`build_share_state` still enforces the two disclosure rules a
+scoped share owes its recipient — prune the issue OR-set's removal tags to the scope,
+and refuse rather than silently delete a relationship that leaves it — so that whoever
+lifts the hold has to *remove* those rules to ship without them. They are unreachable
+today and are pinned by direct tests rather than by the CLI path (issue #279).
+
 How it preserves end-to-end encryption
 --------------------------------------
 A share is exactly a sync message, reusing the same primitives:
@@ -41,20 +47,39 @@ The server is never trusted: it cannot read, forge, or authorize a recipient.
 from __future__ import annotations
 
 import base64
+from collections.abc import Mapping
 from dataclasses import dataclass
 
+from .canonical import JSONValue
 from .crypto import PublicIdentity
 from .errors import ShareError
+from .model import CaseDocument
 from .sync import export_message, import_messages
 from .vault import Vault
 
 __all__ = [
     "ShareResult",
+    "build_share_state",
     "decode_share",
     "encode_share",
     "export_share",
     "import_share",
 ]
+
+#: Case metadata a *scoped* disclosure must never carry, because holding it lets the
+#: recipient reconstruct information about records the scope excluded.
+#:
+#: ``case_salt`` is the HMAC key behind :meth:`habitable.model.CaseDocument.opaque_id`:
+#: every exported identifier in the case is ``HMAC(case_salt, hlc)`` truncated to 64
+#: bits. A recipient holding the salt can mint the id of *any* record whose HLC they
+#: can guess or observe — including records the scope was drawn to withhold — and can
+#: confirm a guess offline. For a **full-case** share the salt is load-bearing and stays:
+#: ``packet.py`` derives every ``order_token`` and the whole custody-proof HLC mapping
+#: from it, so a recipient without the salt would mint a *different* salt on their first
+#: local edit and export packets whose ordering tokens no device can correlate with the
+#: sender's. That trade is the right way round: a full-case recipient was given every
+#: record the salt could name, and a scoped recipient was not.
+_SCOPE_WITHHELD_META = frozenset({"case_salt"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,8 +116,137 @@ def export_share(
         )
 
     vault.document.attest_unsigned_fields()
-    state = vault.document.subset_state(None, redact_meta=redact_unit)
+    state = build_share_state(vault.document, None, redact_meta=redact_unit)
     return export_message(vault, recipient, state=state)
+
+
+def build_share_state(
+    document: CaseDocument,
+    issue_ids: set[str] | None,
+    *,
+    redact_meta: bool = False,
+) -> dict[str, JSONValue]:
+    """Project ``document`` to the CRDT state a share may carry, refusing dishonest scopes.
+
+    For ``issue_ids=None`` — every share the CLI can build today — this is exactly
+    :meth:`habitable.model.CaseDocument.subset_state` and nothing else happens.
+
+    For a scope it is that projection *plus* the disclosure rules a scoped share owes
+    its recipient, which the projection itself does not enforce. ``subset_state`` is a
+    general CRDT projection: it filters issues, timeline entries, captures and
+    artifacts to the selected set and stops there, which is correct for a projection
+    and insufficient for a disclosure. The two extra obligations live here, at the
+    export boundary that owns the scope decision and raises the hold above, so that
+    lifting that hold cannot ship them silently:
+
+    * **Removal tags are pruned to the scope.** ``subset_state`` filters the issue
+      OR-set's ``adds`` but passes ``removes`` through whole. Those are raw HLC add
+      tags for issues that were *deleted*, and an HLC carries the originating device's
+      wall clock and node id — so an unfiltered ``removes`` names, and dates, issues
+      the scope was drawn to exclude. Only tags belonging to a disclosed issue survive.
+      The cost is that a scoped share can no longer propagate the deletion of an issue
+      outside its scope; that is the correct cost, because a scoped share is not
+      authoritative about records it does not carry.
+    * **A cross-scope relationship is refused, never dropped.** ``subset_state`` keeps
+      a relationship only when *both* endpoints are inside the scope, and drops the
+      rest without saying so. A recipient then cannot distinguish a record that never
+      had relationships from one whose relationships were removed, which is exactly the
+      "never deletes arbitrary links" clause of issue #262's own exit criteria failing
+      one layer down. Silence is the one option ADR 0018 (decision 6) rules out: the
+      scope is either closed under its links or the operator is told. Closing it widens
+      a disclosure, and only the tenant may choose that, so this layer refuses and names
+      what widening would cost.
+
+    Raising :class:`~habitable.errors.ShareError` is safe here because the caller has
+    not yet minted a message id or touched custody: :func:`export_share` refuses a scope
+    before this point, and a future caller that stops refusing still calls this before
+    :func:`habitable.sync.export_message`.
+    """
+    state = document.subset_state(issue_ids, redact_meta=redact_meta)
+    if issue_ids is None:
+        return state
+    _refuse_cross_scope_relationships(
+        _as_object(document.to_state().get("relationships")),
+        _as_object(state.get("relationships")),
+        issue_ids,
+    )
+    _prune_out_of_scope_removals(state)
+    _withhold_scope_sensitive_meta(state)
+    return state
+
+
+def _refuse_cross_scope_relationships(
+    held: Mapping[str, JSONValue], disclosed: Mapping[str, JSONValue], issue_ids: set[str]
+) -> None:
+    """Refuse a scope that would have to delete a link in order to fit inside itself.
+
+    ``held`` is every relationship the case holds; ``disclosed`` is the projection's
+    surviving subset. A relationship belongs to the scope when its own ``issue_id`` is
+    selected, so any such relationship missing from ``disclosed`` was dropped for its
+    endpoints — and shipping the scope anyway hands the recipient a record whose links
+    were removed with no record of the removal.
+
+    Written against the two dictionaries rather than against a
+    :class:`~habitable.model.CaseDocument` on purpose. Today's model makes the condition
+    unreachable from any document you can construct: ``add_relationship`` and
+    ``_validate_relationship`` both require every endpoint to belong to the
+    relationship's own issue, so an issue-selected scope always contains the endpoints
+    too. That invariant lives in ``model.py``, not here, and it is exactly one selector
+    away from ending — a date-scoped export filters captures by ``captured_at`` while
+    keeping its issue's relationships, and issue #262 restores ``--since`` alongside
+    ``--issue``. Taking plain mappings keeps this check pinned by a direct test instead
+    of resting on an invariant enforced somewhere else.
+    """
+    dropped = sorted(
+        relationship_id
+        for relationship_id, payload in held.items()
+        if relationship_id not in disclosed
+        and isinstance(payload, dict)
+        and str(payload.get("issue_id", "")) in issue_ids
+    )
+    if not dropped:
+        return
+    named = ", ".join(dropped)
+    raise ShareError(
+        f"this scope cannot be shared honestly: {len(dropped)} relationship(s) inside it "
+        f"({named}) point to an endpoint outside it. A scoped share must either include "
+        "the endpoint — widening the disclosure, which is the tenant's decision to make "
+        "and not this code's — or say that the link was removed, which sync v2 has no "
+        "field for. Share the whole case, or add the endpoint's issue to the scope "
+        "(issue #262, ADR 0018 decision 6)."
+    )
+
+
+def _prune_out_of_scope_removals(state: dict[str, JSONValue]) -> None:
+    """Drop OR-set removal tags that belong to no disclosed issue.
+
+    Every surviving tag is one of the disclosed issues' own add tags, so the add-wins
+    semantics of the elements the recipient actually receives are unchanged: a tag that
+    can cancel nothing in this state can only name something outside it.
+    """
+    issues = state.get("issues")
+    if not isinstance(issues, dict):
+        return
+    adds = _as_object(issues.get("adds"))
+    disclosed_tags = {str(tag) for tags in adds.values() if isinstance(tags, list) for tag in tags}
+    removes = issues.get("removes")
+    if not isinstance(removes, list):
+        return
+    issues["removes"] = [tag for tag in removes if str(tag) in disclosed_tags]
+
+
+def _withhold_scope_sensitive_meta(state: dict[str, JSONValue]) -> None:
+    """Strip the metadata registers a scoped recipient must not hold (``case_salt``)."""
+    meta = state.get("meta")
+    if not isinstance(meta, dict):
+        return
+    for key in _SCOPE_WITHHELD_META:
+        meta.pop(key, None)
+
+
+def _as_object(value: JSONValue | None) -> dict[str, JSONValue]:
+    """Narrow a JSON member to an object, treating anything else as empty."""
+    return value if isinstance(value, dict) else {}
 
 
 def import_share(vault: Vault, blob: bytes) -> ShareResult:
