@@ -79,3 +79,13 @@ a3767cc974568a3936914b4e4b810ae6062e2228:fuzz/fuzz_timestamp_token.py:generic-ap
 # nothing to rotate: the "secret" is a variable name inside a comment about a
 # variable name. Verified 2026-09-05.
 ee32736f5451aa70d8624a03b4fb5444e49ac5bf:.gitleaksignore:generic-api-key:61
+
+# tests/golden/scoped-packet-v3 (issue #279): a packet_version 3 scoped packet,
+# rebuilt by re-running the last commit where scoped export worked, so the format
+# the block was imposed on is pinned by bytes rather than by prose. Its one-line
+# canonical JSON carries a synthetic RFC 3161 token from the local test authority.
+# Gitleaks reports two matches under this one commit/file/rule/line fingerprint.
+# Verified 2026-09-05 by the method the entries above state: the value
+# base64-decodes to an ASN.1 SEQUENCE whose CMS content type is `signed_data`,
+# 1343 bytes. Not a credential.
+39d52af2044296f3c93060d3e60affbfa6198816:tests/golden/scoped-packet-v3/bundle.json:generic-api-key:1
