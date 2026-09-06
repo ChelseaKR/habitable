@@ -22,7 +22,7 @@ import csv
 import io
 from dataclasses import dataclass, field
 
-__all__ = ["SensorReading", "SensorSeries", "parse_sensor_csv"]
+__all__ = ["SensorExtent", "SensorReading", "SensorSeries", "parse_sensor_csv", "series_extent"]
 
 # A packet renders at most this many readings as an explicit table/chart; beyond
 # that the series is summarized and marked truncated rather than bloating the
@@ -121,6 +121,89 @@ def parse_sensor_csv(raw: bytes, *, max_readings: int = _MAX_READINGS) -> Sensor
         mean=sum(values) / len(values),
         warnings=tuple(warnings),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class SensorExtent:
+    """How much of an instrument series a rendering is actually showing.
+
+    Both renderers reduce a series twice: ``parse_sensor_csv`` keeps at most
+    :data:`_MAX_READINGS` of what the CSV held, and the PDF table then shows at most
+    forty of those. A rendering that names one of those numbers as though it were the
+    other tells a recipient the record is smaller, or more complete, than it is.
+
+    ``total`` is ``None`` when the packet says it is carrying a prefix but does not say
+    of what. That is a real state -- a bundle built by an older or a hostile producer --
+    and it is reported as unknown rather than resolved to a number, because a count a
+    reader would take at face value is exactly what is missing.
+    """
+
+    kept: int
+    total: int | None
+
+    @property
+    def complete(self) -> bool:
+        """True when the rendering carries every reading the instrument recorded."""
+        return self.total is not None and self.total <= self.kept
+
+    def table_label(self) -> str:
+        """The control that opens the readings table, which may not claim to be all."""
+        if self.complete:
+            return f"Show all {self.kept} reading(s)"
+        if self.total is None:
+            return f"Show the first {self.kept} reading(s) of a longer series"
+        return f"Show the first {self.kept} of {self.total} reading(s)"
+
+    def table_note(self, shown: int) -> str:
+        """For a rendering that shows fewer rows again than the packet carries.
+
+        ``shown`` is that rendering's own limit. The note has to name three different
+        numbers without conflating any two: how many rows are on the page, how many
+        readings the instrument recorded, and how many of them ``bundle.json`` holds.
+        Empty when the page is showing everything there is.
+        """
+        if shown >= self.kept and self.complete:
+            return ""
+        of_what = "a longer series" if self.total is None else f"{self.total} readings"
+        head = (
+            f"(showing {min(shown, self.kept)} rows of {of_what}"
+            if not self.complete
+            else f"(showing {shown} of {self.kept} readings"
+        )
+        if self.complete:
+            return f"{head}; the rest are in bundle.json)"
+        return (
+            f"{head}; bundle.json carries the first {self.kept}, and the remainder is "
+            "in the sealed original)"
+        )
+
+    def notice(self) -> str:
+        """Said in full where a reader meets the chart, not only behind the table."""
+        if self.complete:
+            return ""
+        scope = (
+            f"the first {self.kept} readings of a longer series"
+            if self.total is None
+            else f"the first {self.kept} of {self.total} readings"
+        )
+        return (
+            f"This chart and table show {scope}. The remainder is in the sealed "
+            "original, not in this packet or in bundle.json."
+        )
+
+
+def series_extent(total_rows: int, truncated: bool, kept: int) -> SensorExtent:
+    """Read the three fields a bundle carries about a series' size, distrustfully.
+
+    ``truncated`` alone is not enough (a producer may omit it) and ``total_rows`` alone
+    is not enough (it may be missing, and a missing integer field arrives here as 0).
+    A series is a prefix when either the flag says so or the arithmetic does, and the
+    total is only reported when it is a number that can actually be true.
+    """
+    is_prefix = truncated or total_rows > kept
+    if not is_prefix:
+        return SensorExtent(kept=kept, total=max(total_rows, kept))
+    return SensorExtent(kept=kept, total=total_rows if total_rows > kept else None)
 
 
 def _read_rows(data_rows: list[list[str]]) -> tuple[list[SensorReading], int]:

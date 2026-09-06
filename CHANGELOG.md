@@ -9,6 +9,31 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **A truncated instrument series told a recipient it was the whole series.** An
+  imported sensor CSV is reduced twice before anybody reads it: `parse_sensor_csv`
+  keeps at most 500 readings, and the PDF table then shows at most 40 of those. The
+  parser recorded both facts honestly — `total_rows`, a `truncated` flag and a warning
+  string all reach `bundle.json` — and **no renderer read any of them**. So a 600-row
+  logger export rendered in `packet.html` with a caption saying "600 reading(s)" above a
+  control reading "**Show all 500** reading(s)", with the only sentence reconciling the
+  two sitting inside the collapsed `<details>`, after the table. The PDF said "showing
+  40 of **500** rows; **full data in bundle.json**" — measuring against what survived
+  the first reduction rather than against what the instrument recorded, and naming a
+  file that holds the same 500-reading prefix. The remainder is only in the sealed
+  original.
+
+  `sensor.SensorExtent` now carries the three counts that must not be conflated (rows on
+  the page, readings recorded, readings in `bundle.json`) and both renderers ask it for
+  their wording, so the two cannot drift apart again — which is how the PDF came to
+  disclose a truncation the HTML did not. `packet.html` states the prefix where the
+  reader meets the chart, outside the `<details>`. A series that is complete still reads
+  "Show all N reading(s)" and gains no warning. A bundle that flags itself truncated
+  without a usable `total_rows` reports the total as unknown in words rather than
+  rendering the `0` that a missing integer field arrives as.
+
+  Verified against the pre-change tree: the two `packet.html` assertions fail on
+  `origin/main` and the complete-series regression guard passes on both.
+
 - **Four strings stating what habitable cannot prove reached nobody** (#274) —
   and the diagnosis was wrong until it was checked. `strength_caveat` was filed as
   the disclaimer for a badge that renders without it; the badge was not rendering
