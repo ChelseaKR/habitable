@@ -33,3 +33,7 @@ jobs:
         run: python3 scripts/check_bcp47.py
       - name: G6 — EN/ES bundle key-parity
         run: python3 scripts/check_i18n_parity.py
+      # The job name is a required check in the branch ruleset, so it is left
+      # alone; G9 is added as a step inside it rather than as a new context.
+      - name: G9 — pseudo-locale generates and fits the compact chrome
+        run: python3 scripts/check_pseudo_locale.py
