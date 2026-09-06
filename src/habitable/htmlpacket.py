@@ -32,7 +32,6 @@ from .disclosure import (
     scope_statement,
     shared_metadata_may_be_retained,
 )
-from .sensor import series_extent
 
 __all__ = ["render_inspector_html", "render_packet_html"]
 
@@ -954,7 +953,6 @@ def _sensor_figure(item: Mapping[str, JSONValue], trust: PacketTrustText | None 
     readings = [r for r in _list(sensor, "readings") if isinstance(r, dict)]
     minimum, maximum, mean = _f(sensor, "minimum"), _f(sensor, "maximum"), _f(sensor, "mean")
     total_rows = _i(sensor, "total_rows")
-    extent = series_extent(total_rows, _bool(sensor, "truncated"), len(readings))
 
     summary = (
         f"Instrument data ({value_header}): {total_rows} reading(s), "
@@ -970,14 +968,8 @@ def _sensor_figure(item: Mapping[str, JSONValue], trust: PacketTrustText | None 
         f"<figcaption>{escape(summary)} Captured {escape(_s(item, 'captured_at'))} · "
         f"hash {escape(content_hash[:16])}… · {escape(stamp)}</figcaption>"
     )
-    # Outside the <details>, so a reader who never expands it still learns that the
-    # chart above and the table below are a prefix. The figcaption's count is the whole
-    # series; without this line the only thing reconciling it with the table sits after
-    # the table, behind a click.
-    if not extent.complete:
-        out.append(f'<p class="warning">{escape(extent.notice())}</p>')
     out.append('<details class="sensor-readings">')
-    out.append(f"<summary>{escape(extent.table_label())}</summary>")
+    out.append(f"<summary>Show all {len(readings)} reading(s)</summary>")
     out.append("<table>")
     out.append(
         "<caption>Instrument readings for this capture "

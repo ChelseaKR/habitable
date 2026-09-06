@@ -12,12 +12,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
+from habitable.canonical import JSONValue
 from habitable.capture import capture
 from habitable.htmlpacket import _sensor_figure
 from habitable.packet import build_packet
 from habitable.pdf import _MAX_PDF_SENSOR_ROWS
-from habitable.sensor import parse_sensor_csv, series_extent
+from habitable.sensor import SensorExtent, SensorSeries, parse_sensor_csv, series_extent
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
 
@@ -158,20 +160,30 @@ def test_bundle_carries_sensor_series(
 # correct in the bundle -- and nothing read them.
 
 
-def _long_series(rows: int = 600) -> dict[str, object]:
+def _long_series(rows: int = 600) -> SensorSeries:
     body = b"Time,Value\n" + b"".join(f"t{i},{i}\n".encode() for i in range(rows))
     series = parse_sensor_csv(body)
     assert series is not None
-    return series.to_dict()
+    return series
 
 
-def _sensor_item(sensor: dict[str, object]) -> dict[str, object]:
+def _sensor_item(series: SensorSeries) -> dict[str, JSONValue]:
+    """The shape a renderer receives: the series as it survives into `bundle.json`."""
     return {
-        "sensor": sensor,
+        "sensor": cast("JSONValue", series.to_dict()),
         "captured_at": "2026-01-01T00:00:00Z",
         "content_hash": "a" * 64,
         "timestamp": None,
     }
+
+
+def _extent_of(series: SensorSeries) -> SensorExtent:
+    """Built from the serialized bundle fields, not from the dataclass.
+
+    The renderers only ever see the three JSON fields, so a test that reads the
+    in-memory series would not exercise the path the defect was on.
+    """
+    return series_extent(series.total_rows, series.truncated, len(series.readings))
 
 
 def test_the_html_table_control_does_not_say_all_of_a_prefix() -> None:
@@ -207,13 +219,7 @@ def test_the_pdf_note_counts_against_the_series_not_against_the_prefix() -> None
     reduction rather than what the instrument recorded, and bundle.json holds that
     same prefix rather than the full data.
     """
-    sensor = _long_series()
-    extent = series_extent(
-        int(sensor["total_rows"]),  # type: ignore[call-overload]
-        bool(sensor["truncated"]),
-        len(sensor["readings"]),  # type: ignore[arg-type]
-    )
-    note = extent.table_note(_MAX_PDF_SENSOR_ROWS)
+    note = _extent_of(_long_series()).table_note(_MAX_PDF_SENSOR_ROWS)
     assert "600 readings" in note
     assert "of 500 rows" not in note
     assert "full data in bundle.json" not in note
