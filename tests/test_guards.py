@@ -600,3 +600,83 @@ def test_scripts_parse_on_the_oldest_interpreter_ci_uses() -> None:
         "module-level name instead, so `ruff format` cannot rewrite it -- see "
         "`_SIG_HASH_ERRORS` in tsa.py.\n  " + "\n  ".join(offenders)
     )
+
+
+# --- A guard is only a guard if something runs it and it can go red ----------
+#
+# PR #213 shipped `scripts/check_pseudo_locale.py`: a file named `check_*`, whose
+# title said "verification gate", whose `main()` had no failure branch and no exit
+# path other than `return 0`, and which no Makefile target, workflow, or test ever
+# executed. Its CI was green because nothing in the repository could see it. The two
+# guards below make that combination fail here instead of shipping again.
+
+_SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
+_REPO_ROOT = _SCRIPTS_DIR.parent
+
+
+def _check_scripts() -> list[Path]:
+    scripts = sorted(_SCRIPTS_DIR.glob("check_*.py"))
+    assert len(scripts) >= 5, (
+        f"only {len(scripts)} check scripts found; this guard is reading nothing"
+    )
+    return scripts
+
+
+def test_every_check_script_is_actually_run_by_something() -> None:
+    """A checker nothing invokes reports on nothing, however good its rules are.
+
+    Three invocation paths count, because the repository legitimately uses all
+    three: a `Makefile` target (`make verify`), a workflow step, or a test that
+    runs it as a subprocess (which is how `check_stale_invitations.py`'s offline
+    half reaches the merge gate). Being merely *imported* does not count.
+    """
+    runners = [_REPO_ROOT / "Makefile"]
+    runners += sorted((_REPO_ROOT / ".github" / "workflows").glob("*.yml"))
+    runners += sorted((_REPO_ROOT / "tests").glob("test_*.py"))
+    haystack = "\n".join(path.read_text(encoding="utf-8") for path in runners)
+
+    unrun = [script.name for script in _check_scripts() if script.name not in haystack]
+    assert not unrun, (
+        f"these checkers are never executed: {unrun}. Wire each into `make verify`'s "
+        "chain, a workflow step, or a test that runs it -- or delete it. A gate the "
+        "repository cannot see is green for the wrong reason (see PR #213)."
+    )
+
+
+def test_every_check_script_has_a_way_to_fail() -> None:
+    """`main()` must have some path to a non-zero exit.
+
+    Deliberately conservative: a `main` that returns a computed expression is
+    accepted, because whether that expression can be non-zero is not decidable
+    here. What is rejected is the shape #213 actually shipped -- every `return`
+    in `main` is the literal `0` (or bare), with no `raise` and no `sys.exit`
+    anywhere in it. That function cannot report a failure no matter what it reads.
+    """
+    import ast
+
+    verdictless: list[str] = []
+    for script in _check_scripts():
+        tree = ast.parse(script.read_text(encoding="utf-8"), filename=str(script))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef) or node.name != "main":
+                continue
+            can_fail = False
+            for inner in ast.walk(node):
+                exits = isinstance(inner, ast.Call) and getattr(inner.func, "attr", "") == "exit"
+                if isinstance(inner, ast.Raise) or exits:
+                    can_fail = True
+                elif isinstance(inner, ast.Return):
+                    if inner.value is None:
+                        continue
+                    if isinstance(inner.value, ast.Constant):
+                        can_fail = can_fail or inner.value.value != 0
+                    else:
+                        can_fail = True  # a computed verdict; not decidable here
+            if not can_fail:
+                verdictless.append(script.name)
+
+    assert not verdictless, (
+        f"these checkers cannot fail: {verdictless}. Every `return` in `main()` is a "
+        "literal 0 and nothing raises, so the check reports success whatever it reads. "
+        "Give it a real verdict, or stop calling it a check."
+    )
