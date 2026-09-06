@@ -15,16 +15,14 @@ on:
 
 permissions: read-all
 
-# CI-CD-STANDARD.md 11c: cancel superseded runs on the same ref.
 concurrency:
+  # CI-CD-STANDARD.md 11c *deliberate exception*: a converging report, not a
+  # required status check. The score is a property of the repository rather than
+  # of a commit, so the newest run is the only one that matters and evicting a
+  # superseded one loses nothing. Everything that produces a required check
+  # carries the SHA in its group key instead; see ci.yml.
   group: ${{ github.workflow }}-${{ github.ref }}
-  # Cancel a superseded run on a pull-request branch, where only the latest
-  # commit matters -- but never on `main`, where every commit is a protected
-  # commit entitled to its own verdict. Cancelling there loses the verdict
-  # entirely rather than deferring it: `e59c84d` (PR #213) landed with all
-  # three of ci, i18n and a11y cancelled, and shipped a gate that could not
-  # fail with nothing having checked it.
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: true
 jobs:
   analysis:
     name: Scorecard analysis
