@@ -12,10 +12,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
+from habitable.canonical import JSONValue
 from habitable.capture import capture
+from habitable.htmlpacket import _sensor_figure
 from habitable.packet import build_packet
-from habitable.sensor import parse_sensor_csv
+from habitable.pdf import _MAX_PDF_SENSOR_ROWS
+from habitable.sensor import SensorExtent, SensorSeries, parse_sensor_csv, series_extent
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
 
@@ -145,3 +149,101 @@ def test_bundle_carries_sensor_series(
     items = bundle["items"]
     assert items and items[0]["sensor"] is not None
     assert items[0]["sensor"]["value_header"] == "Temperature"
+
+
+# --- a prefix must never be rendered as the whole series -----------------------
+#
+# `parse_sensor_csv` keeps at most 500 readings and the PDF table shows at most forty
+# of those, so a long logger export is reduced twice before a recipient sees it. Both
+# renderers reported one of those reductions as though it were the other. The parser
+# was right the whole time -- `total_rows`, `truncated` and the warning were all
+# correct in the bundle -- and nothing read them.
+
+
+def _long_series(rows: int = 600) -> SensorSeries:
+    body = b"Time,Value\n" + b"".join(f"t{i},{i}\n".encode() for i in range(rows))
+    series = parse_sensor_csv(body)
+    assert series is not None
+    return series
+
+
+def _sensor_item(series: SensorSeries) -> dict[str, JSONValue]:
+    """The shape a renderer receives: the series as it survives into `bundle.json`."""
+    return {
+        "sensor": cast("JSONValue", series.to_dict()),
+        "captured_at": "2026-01-01T00:00:00Z",
+        "content_hash": "a" * 64,
+        "timestamp": None,
+    }
+
+
+def _extent_of(series: SensorSeries) -> SensorExtent:
+    """Built from the serialized bundle fields, not from the dataclass.
+
+    The renderers only ever see the three JSON fields, so a test that reads the
+    in-memory series would not exercise the path the defect was on.
+    """
+    return series_extent(series.total_rows, series.truncated, len(series.readings))
+
+
+def test_the_html_table_control_does_not_say_all_of_a_prefix() -> None:
+    """It said "Show all 500 reading(s)" beside a caption reading 600."""
+    html = _sensor_figure(_sensor_item(_long_series()))
+    assert "Show all" not in html
+    assert "Show the first 500 of 600 reading(s)" in html
+
+
+def test_the_html_says_the_chart_is_a_prefix_without_being_expanded() -> None:
+    """The reconciling sentence used to sit inside the collapsed <details>.
+
+    A reader who never clicks saw a caption saying 600 and a chart of 500, with
+    nothing on the page connecting them.
+    """
+    html = _sensor_figure(_sensor_item(_long_series()))
+    before_details = html.split("<details", 1)[0]
+    assert "the first 500 of 600 readings" in before_details
+    assert "sealed original" in before_details
+
+
+def test_a_complete_series_is_still_described_as_complete() -> None:
+    """The fix must not make every series read as truncated."""
+    html = _sensor_figure(_sensor_item(_long_series(rows=10)))
+    assert "Show all 10 reading(s)" in html
+    assert "sealed original" not in html
+
+
+def test_the_pdf_note_counts_against_the_series_not_against_the_prefix() -> None:
+    """It read "showing 40 of 500 rows; full data in bundle.json".
+
+    Both halves were wrong for a truncated series: 500 is what survived the first
+    reduction rather than what the instrument recorded, and bundle.json holds that
+    same prefix rather than the full data.
+    """
+    note = _extent_of(_long_series()).table_note(_MAX_PDF_SENSOR_ROWS)
+    assert "600 readings" in note
+    assert "of 500 rows" not in note
+    assert "full data in bundle.json" not in note
+    assert "bundle.json carries the first 500" in note
+    assert "sealed original" in note
+
+
+def test_a_series_flagged_truncated_without_a_total_reports_the_total_as_unknown() -> None:
+    """A bundle can say it is a prefix and not say of what.
+
+    `_i` returns 0 for a missing integer, so trusting `total_rows` alone would render
+    "the first 500 of 0 readings". The unknown is said in words instead of resolved
+    into a number a reader would take at face value.
+    """
+    extent = series_extent(0, True, 500)
+    assert extent.complete is False
+    assert extent.total is None
+    assert extent.table_label() == "Show the first 500 reading(s) of a longer series"
+    assert "of 0" not in extent.notice()
+    assert "a longer series" in extent.table_note(_MAX_PDF_SENSOR_ROWS)
+
+
+def test_a_bundle_that_understates_its_total_is_still_read_as_a_prefix() -> None:
+    """Arithmetic overrides a missing or false `truncated` flag."""
+    extent = series_extent(600, False, 500)
+    assert extent.complete is False
+    assert extent.total == 600

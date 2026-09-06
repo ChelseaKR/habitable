@@ -49,6 +49,7 @@ from .disclosure import (
     shared_metadata_may_be_retained,
 )
 from .letter import RepairLetter, letter_lines
+from .sensor import series_extent
 
 __all__ = ["render_letter_pdf", "render_packet_pdf"]
 
@@ -538,6 +539,7 @@ def _render_sensor_item(
     unit_suffix = f" {unit}" if unit else ""
     minimum, maximum, mean = _f(sensor, "minimum"), _f(sensor, "maximum"), _f(sensor, "mean")
     total_rows = _i(sensor, "total_rows")
+    extent = series_extent(total_rows, _bool(sensor, "truncated"), len(readings))
     stamp = _timestamp_status(item.get("timestamp"), trust)
 
     summary = (
@@ -574,14 +576,16 @@ def _render_sensor_item(
         )
     )
     story.append(table)
-    if len(readings) > _MAX_PDF_SENSOR_ROWS:
-        story.append(
-            _para(
-                f"(showing {_MAX_PDF_SENSOR_ROWS} of {len(readings)} rows; "
-                "full data in bundle.json)",
-                styles["Small"],
-            )
-        )
+    # Two reductions have happened by here, not one: `parse_sensor_csv` kept at most 500
+    # of what the CSV held, and this table shows at most forty of those. The note used
+    # to measure itself against `len(readings)`, the survivor of the first reduction, and
+    # to send the reader to bundle.json for "full data" -- which for a truncated series
+    # holds the same prefix. So a 600-reading logger export read as "showing 40 of 500
+    # rows; full data in bundle.json", understating what was left out and naming a file
+    # that does not have it.
+    note = extent.table_note(_MAX_PDF_SENSOR_ROWS)
+    if note:
+        story.append(_para(note, styles["Small"]))
     for warning in _list(sensor, "warnings"):
         if isinstance(warning, str):
             story.append(_para(warning, styles["Small"]))
