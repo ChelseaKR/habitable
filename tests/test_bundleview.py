@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from habitable.bundleview import chronology, cover_sheet, integrity_summary
+from habitable.bundleview import chronology, cover_sheet, integrity_summary, item_extent
 from habitable.canonical import JSONValue
 
 # An hlc whose wall-clock part is 2026-01-02T00:00:00Z (1_767_312_000_000 ms).
@@ -124,3 +124,94 @@ def test_views_tolerate_an_empty_or_awaiting_bundle() -> None:
     assert summary.rows[0].authorities == ()
     # An undated photo still appears, sorted last.
     assert len(chronology(bundle)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# The three figures the cover sheet leads with are counted, not taken on trust. #
+# --------------------------------------------------------------------------- #
+def test_the_media_figures_are_counted_from_the_items_not_the_appendix() -> None:
+    """The same argument as ``custody_proof.length``, applied to three more fields.
+
+    ``item_count``, ``timestamped_count`` and ``includes_originals`` were read
+    straight out of ``appendix`` and printed as the packet's headline
+    completeness figures. ``habitable.verify`` now re-derives them, so a
+    mismatch is a verification failure -- but a renderer must not depend on
+    having been handed a *verified* bundle, because these views also run over a
+    bundle a recipient opened.
+    """
+    bundle = _bundle()
+    appendix = bundle["appendix"]
+    assert isinstance(appendix, dict)
+    appendix["item_count"] = 9
+    appendix["timestamped_count"] = 9
+    appendix["includes_originals"] = True
+    cover = cover_sheet(bundle)
+    assert cover.item_count == 1
+    assert cover.timestamped_count == 1
+    assert cover.includes_originals is False
+    summary = integrity_summary(bundle)
+    assert summary.item_count == 1
+    assert summary.timestamped_count == 1
+
+
+def test_a_missing_appendix_does_not_render_as_zero_media_items() -> None:
+    # A missing integer field arrives as 0 and a missing boolean as False, so an
+    # absent appendix used to print "Media items: 0" above a table listing one.
+    bundle = _bundle()
+    del bundle["appendix"]
+    cover = cover_sheet(bundle)
+    assert cover.item_count == 1
+    assert cover.timestamped_count == 1
+
+
+def test_an_integrity_summary_total_cannot_disagree_with_its_own_rows() -> None:
+    # The rows were already derived from `items`; the totals beside them were
+    # not, so one function could print a row marked awaiting under a heading
+    # saying every item is stamped.
+    bundle = _bundle()
+    items = bundle["items"]
+    assert isinstance(items, list) and isinstance(items[0], dict)
+    del items[0]["timestamp"]
+    summary = integrity_summary(bundle)
+    assert summary.rows[0].timestamp_status == "awaiting"
+    assert summary.timestamped_count == 0
+    assert summary.item_count == len(summary.rows)
+
+
+def test_an_item_that_embeds_a_sealed_original_is_reported_as_one() -> None:
+    bundle = _bundle()
+    items = bundle["items"]
+    assert isinstance(items, list) and isinstance(items[0], dict)
+    items[0]["has_original"] = True
+    appendix = bundle["appendix"]
+    assert isinstance(appendix, dict)
+    appendix["includes_originals"] = False  # the understatement that hid it
+    assert cover_sheet(bundle).includes_originals is True
+
+
+def test_the_timestamped_count_can_never_exceed_the_item_count() -> None:
+    """``ItemExtent.awaiting`` is unclamped, so the invariant is asserted here.
+
+    Both counts come from one pass over ``items`` and the stamped ones are a
+    subset, so ``awaiting`` cannot go negative for any bundle shape -- including
+    the malformed ones a recipient's bundle might carry. A clamp would be a
+    branch no input reaches; this is the check that would actually fail if the
+    two ever stopped being derived together.
+    """
+    shapes: list[JSONValue] = [
+        {"capture_id": "a", "timestamp": {"kind": "rfc3161"}},
+        {"capture_id": "b", "timestamp": None},
+        {"capture_id": "c"},
+        {"capture_id": "d", "timestamp": "not-a-mapping"},
+        {"capture_id": "e", "timestamp": []},
+        "not an item at all",
+        None,
+    ]
+    for cut in range(len(shapes) + 1):
+        extent = item_extent({"items": shapes[:cut]})
+        assert extent.timestamped_count <= extent.item_count
+        assert extent.awaiting >= 0
+    full = item_extent({"items": shapes})
+    assert full.item_count == 5  # the two non-dict entries are not items
+    assert full.timestamped_count == 1  # only a mapping counts as a token
+    assert full.awaiting == 4

@@ -83,6 +83,28 @@ def _entry_hash(entry: dict[str, Any], prev_hash: str) -> str:
     return hashlib.sha256(_canonical(payload)).hexdigest()
 
 
+def _republish_appendix(bundle: dict[str, Any]) -> None:
+    """Re-derive the appendix figures the verifier checks, as an attacker would."""
+    appendix = bundle.get("appendix")
+    if not isinstance(appendix, dict):
+        return
+    items = bundle.get("items")
+    if not isinstance(items, list):
+        return
+    if "item_count" in appendix:
+        appendix["item_count"] = len(items)
+    if "timestamped_count" in appendix:
+        appendix["timestamped_count"] = sum(
+            1
+            for item in items
+            if isinstance(item, dict) and isinstance(item.get("timestamp"), dict)
+        )
+    if "includes_originals" in appendix:
+        appendix["includes_originals"] = any(
+            isinstance(item, dict) and item.get("has_original") is True for item in items
+        )
+
+
 def _rebuild_custody(bundle: dict[str, Any]) -> None:
     """Relink and rehash the whole chain so it walks cleanly after edits.
 
@@ -95,7 +117,14 @@ def _rebuild_custody(bundle: dict[str, Any]) -> None:
     demonstrate what a *competent* rewriter gets away with, and a rewriter who
     forgets to update a field they control is not the adversary the threat model
     names.
+
+    The same argument now covers three more fields. The verifier re-derives
+    `appendix.item_count`, `appendix.timestamped_count` and
+    `appendix.includes_originals` -- the figures the cover sheet leads with --
+    so they are republished here too, for every edit rather than only the ones a
+    test remembered to handle.
     """
+    _republish_appendix(bundle)
     prev = GENESIS
     for entry in bundle["custody_proof"]["entries"]:
         entry["prev_hash"] = prev
@@ -314,9 +343,6 @@ def _drop_last_item(bundle: dict[str, Any]) -> None:
     ]
     for index, entry in enumerate(bundle["custody_proof"]["entries"], start=1):
         entry["seq"] = index
-    appendix = bundle.get("appendix")
-    if isinstance(appendix, dict) and "item_count" in appendix:
-        appendix["item_count"] = len(bundle["items"])
 
 
 def _move_capture_date(bundle: dict[str, Any]) -> None:

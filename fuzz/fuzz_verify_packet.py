@@ -189,6 +189,13 @@ COMMITTED_POSITIONS: tuple[tuple[str, ...], ...] = (
     ("appendix", "custody_bound_timeline_count"),
     ("appendix", "artifact_count"),
     ("appendix", "relationship_count"),
+    # The three the cover sheet leads with. Their absence from this inventory is
+    # why the sweep never found that no verifier re-derived them, exactly as it
+    # missed `custody_proof.length` above: a position the sweep does not name is
+    # a position the sweep cannot clear.
+    ("appendix", "item_count"),
+    ("appendix", "timestamped_count"),
+    ("appendix", "includes_originals"),
     ("issues", "*", "issue_id"),
     ("items", "*", "capture_id"),
     ("items", "*", "content_hash"),

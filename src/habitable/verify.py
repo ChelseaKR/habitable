@@ -1119,6 +1119,7 @@ def _verify_v3_timeline(bundle: Mapping[str, JSONValue], custody: CustodyLog) ->
         problems.append("appendix.timeline_count does not match timeline length")
     if appendix.get("custody_bound_timeline_count") != len(raw_entries):
         problems.append("appendix.custody_bound_timeline_count does not match timeline length")
+    problems.extend(_verify_appendix_item_counts(appendix, raw_items))
 
     for raw in raw_entries:
         if not isinstance(raw, dict):
@@ -1133,6 +1134,60 @@ def _verify_v3_timeline(bundle: Mapping[str, JSONValue], custody: CustodyLog) ->
             f"timeline {entry_id}: {message}"
             for message in _verify_v3_links(raw, event_by_id, items_by_id)
         )
+    return problems
+
+
+def _verify_appendix_item_counts(
+    appendix: Mapping[str, JSONValue], raw_items: list[JSONValue]
+) -> list[str]:
+    """Re-derive the three appendix fields the cover sheet leads with.
+
+    ``timeline_count``, ``custody_bound_timeline_count``, ``artifact_count`` and
+    ``relationship_count`` were already re-derived. ``item_count``,
+    ``timestamped_count`` and ``includes_originals`` were not, and they are the
+    three the packet prints largest: "Media items: N (M timestamp tokens
+    attached)" and "Sealed originals embedded: yes/no". A producer could state
+    any of them and no verifier objected.
+
+    Two of the consequences were worse than a wrong number, because both of the
+    disclosures they drive are printed only on a positive difference. A
+    ``timestamped_count`` equal to ``item_count`` suppresses "N of M media
+    item(s) are awaiting a timestamp token" while the appendix table beside it
+    still shows those items as awaiting; an ``includes_originals`` of ``false``
+    suppresses the privacy warning that byte-exact originals are embedded, on a
+    packet that embeds them. Absence had the same effect as a lie, because a
+    missing field reads as zero and as false.
+
+    ``includes_originals`` is checked in both directions rather than by exact
+    equality, so a packet whose items genuinely differ is not failed on a shape
+    this producer does not emit. Understating it hides embedded originals from
+    the reader; overstating it promises originals that are not there.
+    """
+    problems: list[str] = []
+    item_count = 0
+    timestamped_count = 0
+    originals_present = 0
+    for raw in raw_items:
+        if not isinstance(raw, dict):
+            continue
+        item_count += 1
+        if isinstance(raw.get("timestamp"), Mapping):
+            timestamped_count += 1
+        if raw.get("has_original") is True:
+            originals_present += 1
+    if appendix.get("item_count") != item_count:
+        problems.append("appendix.item_count does not match the packet's items")
+    if appendix.get("timestamped_count") != timestamped_count:
+        problems.append(
+            "appendix.timestamped_count does not match the items carrying a timestamp token"
+        )
+    declared_originals = appendix.get("includes_originals")
+    if not isinstance(declared_originals, bool):
+        problems.append("appendix.includes_originals is not a boolean")
+    elif originals_present and not declared_originals:
+        problems.append("appendix.includes_originals is false but items embed sealed originals")
+    elif declared_originals and item_count and not originals_present:
+        problems.append("appendix.includes_originals is true but no item embeds a sealed original")
     return problems
 
 

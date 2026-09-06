@@ -39,6 +39,7 @@ from .bundleview import (
     chronology,
     cover_sheet,
     integrity_summary,
+    item_extent,
 )
 from .canonical import JSONValue
 from .disclosure import (
@@ -129,9 +130,13 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
     # Declare the configured language so assistive tech reads the packet correctly.
     lang = _s(bundle, "language") or "en"
     trust = packet_trust_text(lang)
-    appendix = _map(bundle, "appendix")
+    # Counted from the items this document renders, not read from `appendix`.
+    # See the note in `htmlpacket.render_packet_html`: an absent field used to
+    # read as zero and drop two notices that print only on a positive
+    # difference.
+    extent = item_extent(bundle)
     timestamp_summary = trust.timestamp_summary.format(
-        attached=_i(appendix, "timestamped_count"), total=_i(appendix, "item_count")
+        attached=extent.timestamped_count, total=extent.item_count
     )
 
     doc = _PacketDoc(
@@ -152,7 +157,6 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
     if _s(template, "header"):
         story.append(_para(_s(template, "header"), styles["Normal"]))
         story.append(Spacer(1, 0.1 * inch))
-    appendix = _map(bundle, "appendix")
     # Cover sheet: the front-matter facts a court/inspector reads first.
     _render_cover_sheet(story, cover_sheet(bundle), styles)
     story.append(_para(timestamp_summary, styles["Small"]))
@@ -163,16 +167,14 @@ def render_packet_pdf(bundle: Mapping[str, JSONValue], media_dir: Path, out_path
     story.append(Spacer(1, 0.15 * inch))
     _render_scope(story, lang, _map(bundle, "scope"), styles)
     story.append(Spacer(1, 0.15 * inch))
-    item_count = _i(appendix, "item_count")
-    awaiting = item_count - _i(appendix, "timestamped_count")
     _render_disclosures(
         story,
         lang,
-        _bool(appendix, "includes_originals"),
+        extent.includes_originals,
         styles,
         metadata_may_be_retained=shared_metadata_may_be_retained(_list(bundle, "disclosures")),
-        awaiting=awaiting,
-        total=item_count,
+        awaiting=extent.awaiting,
+        total=extent.item_count,
     )
     story.append(Spacer(1, 0.3 * inch))
 
