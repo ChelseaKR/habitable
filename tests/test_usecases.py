@@ -20,6 +20,7 @@ from habitable.usecases import (
     list_profiles,
     profile_expired,
 )
+from habitable.vault import Vault
 
 
 def test_every_built_in_profile_is_versioned_and_valid() -> None:
@@ -146,3 +147,99 @@ def test_every_artifact_type_has_a_label_in_both_app_languages() -> None:
         for artifact_type in ARTIFACT_TYPES:
             key = f"artifact_{artifact_type}"
             assert bundle.get(key), f"{locale}.json: no label for {key}"
+
+
+def test_a_profile_declares_its_vocabulary_and_never_gates_what_can_be_recorded(
+    tmp_path: Path,
+) -> None:
+    """ADR 0010's vocabulary is a declaration, not a constraint (issue #277).
+
+    A profile is chosen for the workflow a tenant is *starting*; the landlord
+    decides what arrives afterwards. Someone on the repair-notice profile who is
+    then handed a clinician's letter must be able to record it, so the engine
+    validates against the global registry and ignores the profile's list. This
+    pins that, because "the declaration should constrain something" is the
+    obvious reading of the old ADR wording and would fail on the person, mid-case,
+    holding the document.
+    """
+    profile = get_profile("repair_delivery")
+    outside = "clinician_letter"
+    assert outside in ARTIFACT_TYPES
+    assert outside not in profile.artifact_types, "pick a type this profile does not declare"
+
+    vault = Vault.create(
+        tmp_path / "vault", "correct horse battery staple", case_id="c-277", unit="4B"
+    )
+    vault.document.set_use_case_profile(profile.profile_id)
+    issue_id = vault.document.add_issue(
+        title="Damp bedroom", category="mold", severity="high", room="bedroom"
+    )
+    artifact_id = vault.document.add_artifact(
+        issue_id=issue_id,
+        artifact_type=outside,
+        title="Letter from the GP",
+        source="tenant copy",
+        issuer="",
+        occurred_at="2026-01-02",
+        content_hash="0" * 64,
+        media_type="text/plain",
+        sealed_name="letter.txt",
+    )
+    assert artifact_id, "a profile blocked a record it merely does not name"
+    stored = [a for a in vault.document.artifacts() if a.artifact_id == artifact_id]
+    assert len(stored) == 1 and stored[0].artifact_type == outside
+
+
+def test_the_plan_names_exactly_the_profiles_the_registry_calls_reviewed() -> None:
+    """`docs/novel-use-cases-plan.md` enumerates the two review states by profile id.
+
+    That enumeration is hand-maintained, and it drifted: it said "Four profiles"
+    and listed four, in a paragraph that already announced `move_out_deposit` had
+    shipped (issue #277, "also, minor"). Deriving both sets and both count words
+    from the registry means the next profile to land fails here instead of leaving
+    a reader counting wrong.
+
+    The first cut of this guard read every backticked id in the text *before* the
+    `maintainer_reviewed` marker, which swept up the `move_out_deposit` mentioned
+    two sentences earlier -- so restoring the four-name list still passed. It now
+    reads the parenthesised list attached to each claim, and the sabotage fails it.
+    """
+    plan = (Path(__file__).resolve().parent.parent / "docs" / "novel-use-cases-plan.md").read_text(
+        "utf-8"
+    )
+    profiles = list_profiles()
+    known = {profile.profile_id for profile in profiles}
+    reviewed = {p.profile_id for p in profiles if p.review_state == "maintainer_reviewed"}
+    gated = {p.profile_id for p in profiles if p.external_review_required}
+    assert reviewed and gated, "the registry has no profiles in one of the two states"
+
+    words = {
+        1: "One",
+        2: "Two",
+        3: "Three",
+        4: "Four",
+        5: "Five",
+        6: "Six",
+        7: "Seven",
+        8: "Eight",
+        9: "Nine",
+        10: "Ten",
+        11: "Eleven",
+        12: "Twelve",
+    }
+    for expected, verb, state in (
+        (reviewed, "are", "maintainer_reviewed"),
+        (gated, "remain", "external_review_required"),
+    ):
+        pattern = r"(\w+)(?: profiles)? \(([^)]*)\)\s*" + verb + r"\s*`" + state + "`"
+        found = re.search(pattern, plan, re.S)
+        assert found, f"the plan no longer enumerates the {state} profiles"
+        count_word, listed = found.group(1), found.group(2)
+        named = set(re.findall(r"`([a-z_]+)`", listed))
+        assert named <= known, f"the plan names profiles that do not exist: {sorted(named - known)}"
+        assert named == expected, (
+            f"the plan lists {sorted(named)} as {state}; the registry says {sorted(expected)}"
+        )
+        assert count_word == words[len(expected)], (
+            f"the plan says {count_word!r} {state} profiles; there are {len(expected)}"
+        )
