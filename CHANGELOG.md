@@ -9,6 +9,46 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **The three figures the cover sheet leads with were declared by the producer and
+  checked by nothing.** `packet.py` writes seven counts into `appendix`. The verifier
+  re-derived four of them — `timeline_count`, `custody_bound_timeline_count`,
+  `artifact_count`, `relationship_count` — and left `item_count`, `timestamped_count`
+  and `includes_originals` unread. Those three are the ones a packet prints largest:
+  "Media items: N (M timestamp tokens attached)" and "Sealed originals embedded:
+  yes/no". They were also absent from the fuzz sweep's commitment inventory, which is
+  exactly why nothing found them, the same way it missed `custody_proof.length` before
+  issue #278.
+
+  Two of the consequences are worse than a wrong number, because both disclosures they
+  drive are printed **only on a positive difference**. A `timestamped_count` equal to
+  `item_count` deletes the sentence "*N of M media item(s) are awaiting a timestamp
+  token*" while the appendix table on the same page still shows those items as
+  awaiting. An `includes_originals` of `false` deletes "*This packet also embeds the
+  sealed original files, which retain their full metadata (including any location)*" —
+  a warning about the reader's own safety — on a packet that embeds them. And because a
+  missing integer field arrives as `0` and a missing boolean as `False`, **absence had
+  the same effect as a lie**: a bundle with no `appendix` at all rendered "Media items:
+  0" above a table listing several, with both disclosures silently gone.
+
+  Both halves are fixed. `verify` re-derives all three and refuses the packet that
+  disagrees, checking `includes_originals` in both directions — understating it hides
+  embedded originals, overstating it promises originals that are not there. And the
+  renderers no longer read the declared numbers at all: `bundleview.ItemExtent` counts
+  them from the item records the page is already built from, so `cover_sheet`,
+  `integrity_summary`, `htmlpacket` and `pdf` cannot disagree with the table beside
+  them, and a renderer handed an unverified bundle still tells the truth. This is the
+  same argument as `custody_proof.length` in issue #278 and `SensorExtent` in #307,
+  applied to the last three displayed positions that had no checker.
+
+  The attacker toolkits in `tests/test_tamper_challenge.py` and
+  `tests/test_verifier_displayed_fields.py` were updated to republish all three, for the
+  reason `docs/tamper-challenge.md` already gives: a demonstration that only works
+  against a careless adversary demonstrates nothing about the threat model's adversary.
+  The "an evidence item deleted entirely" row stays MISSED, and the doc now records that
+  a rewriter must republish five halves rather than two — deleting a *timestamped* item
+  while republishing only the item count is now caught.
+
+
 - **A truncated instrument series told a recipient it was the whole series.** An
   imported sensor CSV is reduced twice before anybody reads it: `parse_sensor_csv`
   keeps at most 500 readings, and the PDF table then shows at most 40 of those. The

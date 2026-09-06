@@ -56,6 +56,63 @@ class CoverSheet:
 
 
 @dataclass(frozen=True, slots=True)
+class ItemExtent:
+    """How many media records this packet holds, and how many carry a token.
+
+    Derived from ``items``, never from ``appendix``. The appendix declares the
+    same three facts, and the verifier now re-derives them, so a mismatch is a
+    verification failure rather than a silent one. But a renderer must not
+    depend on having been handed a *verified* bundle: an absent or zeroed
+    ``appendix.item_count`` used to render as "Media items: 0" beside an
+    appendix table listing several, and -- worse -- to suppress two disclosures
+    outright, because both are printed only when a difference is positive.
+
+    Absence therefore does not reach a renderer as a number here. It reaches it
+    as the records themselves, which are the same records the appendix table,
+    the chronology, and the integrity rows are already built from. One source,
+    the one the reader can check against the page.
+    """
+
+    item_count: int
+    timestamped_count: int
+    includes_originals: bool
+
+    @property
+    def awaiting(self) -> int:
+        """Items with no timestamp token.
+
+        Cannot be negative, and deliberately not clamped to say so: both counts
+        come from one pass over the same list, and ``timestamped_count`` counts
+        a subset of what ``item_count`` counts. A ``max(0, ...)`` here would be
+        a guard no input can reach, which is worse than none -- it would read as
+        protection against a case that cannot arise, and it would hide a real
+        contradiction if the two ever stopped being derived together. The
+        invariant is asserted in ``test_bundleview`` instead.
+        """
+        return self.item_count - self.timestamped_count
+
+
+def item_extent(bundle: Mapping[str, JSONValue]) -> ItemExtent:
+    """Count the packet's media records, its tokens, and its sealed originals."""
+    item_count = 0
+    timestamped_count = 0
+    includes_originals = False
+    for raw in _list(bundle, "items"):
+        if not isinstance(raw, dict):
+            continue
+        item_count += 1
+        if isinstance(raw.get("timestamp"), Mapping):
+            timestamped_count += 1
+        if raw.get("has_original") is True:
+            includes_originals = True
+    return ItemExtent(
+        item_count=item_count,
+        timestamped_count=timestamped_count,
+        includes_originals=includes_originals,
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class ChronologyEntry:
     """One row of the unified, chronological evidence timeline."""
 
@@ -97,7 +154,7 @@ class IntegritySummary:
 
 def cover_sheet(bundle: Mapping[str, JSONValue]) -> CoverSheet:
     """Derive the cover-sheet facts from ``bundle``."""
-    appendix = _map(bundle, "appendix")
+    extent = item_extent(bundle)
     scope = _map(bundle, "scope")
     unit = _s(bundle, "unit")
     title = "Habitability evidence bundle"
@@ -112,10 +169,10 @@ def cover_sheet(bundle: Mapping[str, JSONValue]) -> CoverSheet:
         generated_at=_s(bundle, "generated_at"),
         producer_fingerprint=_s(bundle, "producer_fingerprint"),
         issue_count=len(_list(bundle, "issues")),
-        item_count=_i(appendix, "item_count"),
-        timestamped_count=_i(appendix, "timestamped_count"),
+        item_count=extent.item_count,
+        timestamped_count=extent.timestamped_count,
         custody_length=_custody_length(_map(bundle, "custody_proof")),
-        includes_originals=appendix.get("includes_originals") is True,
+        includes_originals=extent.includes_originals,
         earliest=times[0] if times else "",
         latest=times[-1] if times else "",
     )
@@ -290,7 +347,9 @@ def integrity_summary(bundle: Mapping[str, JSONValue]) -> IntegritySummary:
     """Derive the chain-of-custody + per-item RFC 3161 attestation summary."""
     proof = _map(bundle, "custody_proof")
     custody_items = _map(proof, "items")
-    appendix = _map(bundle, "appendix")
+    # Derived from the same rows this summary builds below, so the totals and
+    # the per-item statuses cannot disagree.
+    extent = item_extent(bundle)
 
     rows: list[IntegrityRow] = []
     for raw in _list(bundle, "items"):
@@ -324,8 +383,8 @@ def integrity_summary(bundle: Mapping[str, JSONValue]) -> IntegritySummary:
         algorithm=_s(proof, "algorithm") or _s(bundle, "hash_algorithm") or "sha256",
         custody_length=_custody_length(proof),
         custody_head=_s(proof, "head_hash"),
-        timestamped_count=_i(appendix, "timestamped_count"),
-        item_count=_i(appendix, "item_count"),
+        timestamped_count=extent.timestamped_count,
+        item_count=extent.item_count,
         rows=tuple(rows),
     )
 

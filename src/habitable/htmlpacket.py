@@ -23,6 +23,7 @@ from .bundleview import (
     chronology,
     cover_sheet,
     integrity_summary,
+    item_extent,
 )
 from .canonical import JSONValue
 from .disclosure import (
@@ -174,12 +175,20 @@ def render_packet_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_pat
     title = "Habitability evidence packet"
     if unit:
         title = f"{title} — unit {unit}"
-    appendix = _map(bundle, "appendix")
+    # Counted from the items this page is about to render, not read from
+    # `appendix`. A missing or wrong appendix field used to print "0 media
+    # items" above a table listing several, and -- because both notices below
+    # are printed only on a positive difference -- silently drop the
+    # awaiting-timestamp note and the sealed-originals privacy warning. The
+    # verifier now re-derives the same three numbers, so a mismatch is a
+    # verification failure; this renderer no longer depends on that having been
+    # run.
+    extent = item_extent(bundle)
     template = _map(bundle, "template")
     items_by_issue = _items_by_issue(bundle)
     trust = packet_trust_text(lang)
     timestamp_summary = trust.timestamp_summary.format(
-        attached=_i(appendix, "timestamped_count"), total=_i(appendix, "item_count")
+        attached=extent.timestamped_count, total=extent.item_count
     )
 
     parts: list[str] = [
@@ -204,8 +213,6 @@ def render_packet_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_pat
     parts.append(f'<p class="warning">{escape(trust.view_notice)}</p>')
     parts.append("</header>")
     parts.append('<main id="main">')
-    item_count = _i(appendix, "item_count")
-    awaiting = item_count - _i(appendix, "timestamped_count")
     parts.extend(_cover_section(cover_sheet(bundle)))
     # Directly after the cover sheet: the profile is part of *what this packet
     # is*, and its review state has to be read before, not after, the claims the
@@ -216,10 +223,10 @@ def render_packet_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_pat
     parts.extend(
         _disclosure_section(
             lang,
-            _bool(appendix, "includes_originals"),
+            extent.includes_originals,
             metadata_may_be_retained=shared_metadata_may_be_retained(_list(bundle, "disclosures")),
-            awaiting=awaiting,
-            total=item_count,
+            awaiting=extent.awaiting,
+            total=extent.item_count,
         )
     )
     parts.extend(_chronology_section(chronology(bundle), lang))
@@ -388,11 +395,11 @@ def render_inspector_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_
     title = "Inspector rollup — habitability evidence"
     if unit:
         title = f"{title} — unit {unit}"
-    appendix = _map(bundle, "appendix")
+    extent = item_extent(bundle)
     template = _map(bundle, "template")
     trust = packet_trust_text(lang)
     timestamp_summary = trust.timestamp_summary.format(
-        attached=_i(appendix, "timestamped_count"), total=_i(appendix, "item_count")
+        attached=extent.timestamped_count, total=extent.item_count
     )
 
     parts: list[str] = [
@@ -423,7 +430,14 @@ def render_inspector_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_
     # as ``packet.html`` is, so it carries the same profile block (issue #277).
     parts.extend(_profile_section(lang, bundle))
     parts.extend(_proof_section(lang))
-    parts.extend(_disclosure_section(lang, _bool(appendix, "includes_originals")))
+    parts.extend(
+        _disclosure_section(
+            lang,
+            extent.includes_originals,
+            awaiting=extent.awaiting,
+            total=extent.item_count,
+        )
+    )
     parts.extend(_inspector_rollup(bundle))
 
     parts.append("<h2>Evidence appendix</h2>")

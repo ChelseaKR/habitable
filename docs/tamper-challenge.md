@@ -167,16 +167,22 @@ recipient can take, from weakest to strongest.
 | Fully rehashed forgery re-sealed by an authority you **did** anchor | **MISSED** | **MISSED** | **caught** |
 
 Note the **"an evidence item deleted entirely"** row. It stays MISSED, but the
-margin narrowed in a way worth being precise about. Since issue #278 the verifier
-checks `custody_proof.length` as well as `head_hash`, so a rewriter who deletes an
-item and relinks the chain while leaving the declared count stale is now caught on
-the contradiction. That is a real improvement and it is **not** what this row
-claims. The row is about a *competent* rewriter, and a competent rewriter
-republishes both halves of a summary they control — this project's own attacker
-toolkit in `tests/test_tamper_challenge.py` was updated to do so, because a
-demonstration that only works against a careless adversary demonstrates nothing
-about the threat model's adversary. Unpinned and unsealed, that rewriter is still
-missed.
+margin narrowed twice, in ways worth being precise about. Since issue #278 the
+verifier checks `custody_proof.length` as well as `head_hash`, so a rewriter who
+deletes an item and relinks the chain while leaving the declared count stale is
+caught on the contradiction. The verifier now also re-derives
+`appendix.item_count`, `appendix.timestamped_count` and
+`appendix.includes_originals` — the three figures the cover sheet leads with —
+so a rewriter must republish **five** halves rather than two, and deleting a
+*timestamped* item while republishing only the item count is caught as well.
+
+That is a real improvement and it is **not** what this row claims. The row is
+about a *competent* rewriter, and a competent rewriter republishes every half of
+a summary they control — this project's own attacker toolkit in
+`tests/test_tamper_challenge.py` and `tests/test_verifier_displayed_fields.py`
+was updated each time, because a demonstration that only works against a
+careless adversary demonstrates nothing about the threat model's adversary.
+Unpinned and unsealed, that rewriter is still missed.
 
 Note the **"re-sealed by an authority you did not anchor"** row, because the obvious
 guess is wrong. A seal from an authority you never anchored does **not** by itself sink

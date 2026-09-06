@@ -113,6 +113,24 @@ def _resign(packet_dir: Path, bundle: dict[str, Any]) -> None:
     )
 
 
+def _republish_appendix(bundle: dict[str, Any]) -> None:
+    """Re-derive every appendix half a competent rewriter controls.
+
+    The verifier re-derives `item_count`, `timestamped_count` and
+    `includes_originals` as well as the counts it already checked, so a
+    rewriter who leaves any of them stale is caught on the contradiction. A
+    demonstration that only works against that rewriter demonstrates nothing
+    about the threat model's adversary.
+    """
+    appendix = bundle["appendix"]
+    items = bundle["items"]
+    appendix["item_count"] = len(items)
+    appendix["timestamped_count"] = sum(
+        1 for item in items if isinstance(item.get("timestamp"), dict)
+    )
+    appendix["includes_originals"] = any(item.get("has_original") is True for item in items)
+
+
 def _rewrite(
     packet_dir: Path, mutate: Callable[[dict[str, Any]], None], *, fix_summary: bool = True
 ) -> dict[str, Any]:
@@ -247,7 +265,7 @@ def test_deleting_an_item_and_its_custody_entries_is_now_caught_if_the_summary_i
         bundle["custody_proof"]["entries"] = [
             entry for entry in bundle["custody_proof"]["entries"] if entry["item_id"] != removed
         ]
-        bundle["appendix"]["item_count"] = len(bundle["items"])
+        _republish_appendix(bundle)
 
     careless = json.loads((packet / "bundle.json").read_text(encoding="utf-8"))
     _rewrite(packet, drop_the_last_item, fix_summary=False)
@@ -261,6 +279,118 @@ def test_deleting_an_item_and_its_custody_entries_is_now_caught_if_the_summary_i
     missed = _verdict(packet, local_tsa)
     assert missed.evidence_ready, (
         "the documented residual closed silently: re-read tamper-challenge.md §4"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# The three appendix fields the cover sheet leads with                         #
+#                                                                              #
+# `item_count`, `timestamped_count` and `includes_originals` were produced by  #
+# `packet.py`, printed by every renderer as the packet's headline completeness #
+# figures, and re-derived by nothing. Two of them are worse than a wrong        #
+# number: the awaiting-timestamp note and the sealed-originals privacy warning  #
+# are printed only on a positive difference, so understating either one         #
+# suppresses a disclosure rather than misstating it — and a *missing* field      #
+# arrives as 0 and False, so absence had the same effect as a lie.              #
+# --------------------------------------------------------------------------- #
+def test_an_item_count_that_lies_is_refused(packet: Path, local_tsa: LocalRfc3161TSA) -> None:
+    _rewrite(packet, lambda bundle: bundle["appendix"].update({"item_count": 9}))
+    report = _verdict(packet, local_tsa)
+    assert report.signature_ok and not report.evidence_ready
+    assert "appendix.item_count does not match the packet's items" in report.problems
+
+
+def test_a_missing_item_count_is_refused_rather_than_read_as_zero(
+    packet: Path, local_tsa: LocalRfc3161TSA
+) -> None:
+    _rewrite(packet, lambda bundle: bundle["appendix"].pop("item_count"))
+    report = _verdict(packet, local_tsa)
+    assert not report.evidence_ready
+    assert "appendix.item_count does not match the packet's items" in report.problems
+
+
+def test_a_timestamped_count_that_hides_what_is_awaiting_is_refused(
+    packet: Path, local_tsa: LocalRfc3161TSA
+) -> None:
+    # The dangerous direction. Both items carry a token here, so overstating is
+    # what a producer would do to suppress "N of M media item(s) are awaiting a
+    # timestamp token" on a packet where some are.
+    def strip_one_token(bundle: dict[str, Any]) -> None:
+        bundle["items"][0].pop("timestamp")
+        # ...while leaving the declared count claiming both are stamped.
+
+    _rewrite(packet, strip_one_token)
+    report = _verdict(packet, local_tsa)
+    assert not report.evidence_ready
+    assert (
+        "appendix.timestamped_count does not match the items carrying a timestamp token"
+        in report.problems
+    )
+
+
+def test_understating_embedded_originals_is_refused(
+    packet: Path, local_tsa: LocalRfc3161TSA
+) -> None:
+    # Understating this suppresses the privacy warning that byte-exact
+    # originals are embedded, on a packet that embeds them.
+    def hide_the_originals(bundle: dict[str, Any]) -> None:
+        for item in bundle["items"]:
+            item["has_original"] = True
+        bundle["appendix"]["includes_originals"] = False
+
+    _rewrite(packet, hide_the_originals)
+    report = _verdict(packet, local_tsa)
+    assert not report.evidence_ready
+    assert (
+        "appendix.includes_originals is false but items embed sealed originals" in report.problems
+    )
+
+
+def test_promising_originals_that_are_not_there_is_refused(
+    packet: Path, local_tsa: LocalRfc3161TSA
+) -> None:
+    _rewrite(packet, lambda bundle: bundle["appendix"].update({"includes_originals": True}))
+    report = _verdict(packet, local_tsa)
+    assert not report.evidence_ready
+    assert (
+        "appendix.includes_originals is true but no item embeds a sealed original"
+        in report.problems
+    )
+
+
+def test_a_non_boolean_includes_originals_is_refused(
+    packet: Path, local_tsa: LocalRfc3161TSA
+) -> None:
+    _rewrite(packet, lambda bundle: bundle["appendix"].update({"includes_originals": "yes"}))
+    report = _verdict(packet, local_tsa)
+    assert not report.evidence_ready
+    assert "appendix.includes_originals is not a boolean" in report.problems
+
+
+def test_a_rewriter_who_republishes_only_the_item_count_is_now_caught(
+    packet: Path, local_tsa: LocalRfc3161TSA
+) -> None:
+    """The margin this narrowed, asserted as a catch rather than described.
+
+    Deleting an item used to require republishing `custody_proof.length` and
+    `appendix.item_count` to survive. It now requires `timestamped_count` too,
+    so the rewriter the previous revision of this file called careful is caught.
+    The residual below is what remains when *every* half is republished.
+    """
+
+    def drop_but_forget_the_tokens(bundle: dict[str, Any]) -> None:
+        removed = bundle["items"].pop()["capture_id"]
+        bundle["custody_proof"]["entries"] = [
+            entry for entry in bundle["custody_proof"]["entries"] if entry["item_id"] != removed
+        ]
+        bundle["appendix"]["item_count"] = len(bundle["items"])
+
+    _rewrite(packet, drop_but_forget_the_tokens, fix_summary=True)
+    report = _verdict(packet, local_tsa)
+    assert report.signature_ok and not report.evidence_ready
+    assert (
+        "appendix.timestamped_count does not match the items carrying a timestamp token"
+        in report.problems
     )
 
 

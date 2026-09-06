@@ -9,6 +9,7 @@ import json
 import re
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -576,3 +577,107 @@ def test_profile_bearing_packets_pass_axe_in_both_languages(
         finally:
             browser.close()
     assert violations == {"en": [], "es": []}
+
+
+# --------------------------------------------------------------------------- #
+# A disclosure printed only on a positive difference cannot be switched off by  #
+# a field nothing checked.                                                      #
+# --------------------------------------------------------------------------- #
+def _packet_bundle(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    out: Path,
+) -> tuple[dict[str, Any], Path]:
+    """One issue, two captures, both timestamped; the built packet's bundle."""
+    vault = make_vault()
+    issue = vault.document.add_issue(
+        category="mold", room="bathroom", title="Ceiling leak", issue_id="i1"
+    )
+    capture(vault, make_jpeg("a.jpg", color=(120, 30, 30)), issue_id=issue, tsa=local_tsa)
+    capture(vault, make_jpeg("b.jpg", color=(30, 90, 140)), issue_id=issue, tsa=local_tsa)
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z", make_pdf=False, tsa=local_tsa)
+    bundle = json.loads((out / "bundle.json").read_text(encoding="utf-8"))
+    return bundle, out
+
+
+def _render(bundle: dict[str, Any], packet_dir: Path, tmp_path: Path, name: str) -> str:
+    target = tmp_path / name
+    render_packet_html(bundle, packet_dir / "media", target)
+    return target.read_text(encoding="utf-8")
+
+
+def test_an_awaiting_item_is_disclosed_even_when_the_appendix_denies_it(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """The note prints only on a positive difference, so a lie switched it off.
+
+    ``awaiting`` was ``appendix.item_count - appendix.timestamped_count``. A
+    producer, or a missing field, could make those equal and the sentence
+    "N of M media item(s) are awaiting a timestamp token" simply vanished --
+    while the appendix table on the same page still showed the item as awaiting.
+    Counted from the items, the page and the table cannot disagree.
+    """
+    bundle, packet_dir = _packet_bundle(make_vault, make_jpeg, local_tsa, tmp_path / "pkt")
+    del bundle["items"][0]["timestamp"]
+    bundle["appendix"]["timestamped_count"] = 2  # the denial
+    bundle["appendix"]["item_count"] = 2
+    html = _render(bundle, packet_dir, tmp_path, "denied.html")
+    assert "1 of 2 media item(s) are awaiting a timestamp token" in html
+
+
+def test_a_missing_appendix_does_not_silence_the_awaiting_note(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    # A missing integer arrives as 0, so `0 - 0` used to suppress the note and
+    # print "0 media items" above a table listing two.
+    bundle, packet_dir = _packet_bundle(make_vault, make_jpeg, local_tsa, tmp_path / "pkt")
+    del bundle["items"][0]["timestamp"]
+    del bundle["appendix"]
+    html = _render(bundle, packet_dir, tmp_path, "absent.html")
+    assert "1 of 2 media item(s) are awaiting a timestamp token" in html
+    assert "<dt>Media items</dt><dd>2 (1 timestamp tokens attached" in html
+
+
+def test_embedded_originals_are_disclosed_even_when_the_appendix_denies_them(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """The privacy warning is the one this matters most for.
+
+    ``includes_originals: false`` on a packet that embeds byte-exact originals
+    dropped "This packet also embeds the sealed original files, which retain
+    their full metadata (including any location)" -- a warning about the
+    reader's own safety, suppressed by an unverified boolean.
+    """
+    bundle, packet_dir = _packet_bundle(make_vault, make_jpeg, local_tsa, tmp_path / "pkt")
+    for item in bundle["items"]:
+        item["has_original"] = True
+    bundle["appendix"]["includes_originals"] = False  # the denial
+    html = _render(bundle, packet_dir, tmp_path, "originals.html")
+    assert "embeds the sealed original files" in html
+    assert "<dt>Sealed originals embedded</dt><dd>yes</dd>" in html
+
+
+def test_an_honest_packet_renders_exactly_what_it_did_before(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """The complement. Without it every assertion above could be satisfied by a
+    renderer that printed every warning unconditionally."""
+    bundle, packet_dir = _packet_bundle(make_vault, make_jpeg, local_tsa, tmp_path / "pkt")
+    html = _render(bundle, packet_dir, tmp_path, "honest.html")
+    assert "awaiting a timestamp token" not in html
+    assert "embeds the sealed original files" not in html
+    assert "<dt>Media items</dt><dd>2 (2 timestamp tokens attached" in html
+    assert "<dt>Sealed originals embedded</dt><dd>no</dd>" in html
