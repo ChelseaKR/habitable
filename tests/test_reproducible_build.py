@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import runpy
 from collections.abc import Callable
 from pathlib import Path
@@ -74,6 +75,62 @@ def test_relay_reproducibility_gate_is_wired_to_merge_and_release() -> None:
     dockerignore = _DOCKERIGNORE.read_text(encoding="utf-8")
     assert "**/__pycache__" in dockerignore
     assert "**/*.py[cod]" in dockerignore
+
+
+def _trivy_steps() -> list[tuple[str, dict[str, str]]]:
+    """Each Trivy step in the container-scan workflow, with its `with:` keys.
+
+    The step name is captured by the same pattern that finds the block, so there
+    is no second search that could return ``None`` and no assumption that it
+    cannot.
+    """
+    text = _CONTAINER_WORKFLOW.read_text(encoding="utf-8")
+    pattern = re.compile(r"      - name: (?P<name>[^\n]*)\n(?P<body>(?:(?:      [ ]+[^\n]*|)\n)*)")
+    steps: list[tuple[str, dict[str, str]]] = []
+    for match in pattern.finditer(text):
+        body = match.group("body")
+        if "trivy-action@" not in body:
+            continue
+        keys = dict(re.findall(r"^\s+([a-z-]+): \"?([\w,:/-]+)\"?\s*$", body, re.M))
+        steps.append((match.group("name").strip(), keys))
+    return steps
+
+
+def test_the_container_gate_says_which_findings_it_can_and_cannot_block() -> None:
+    """`ignore-unfixed` decides a whole category, so both steps are pinned here.
+
+    The gating step drops CVEs with no available fix, per
+    `docs/standards/SECURITY-AND-SUPPLY-CHAIN-STANDARD.md` §6.3 — a gate that
+    reddens on an unpatchable CVE blocks every merge on an upstream this project
+    does not control. The workflow header used to say the opposite ("a real
+    block, and the answer is a base change"), describing a decision nobody had
+    the input for, because the gating scan never printed the findings it was
+    deciding about.
+
+    So the unfixed set is reported by a second step that deliberately cannot
+    fail. This asserts the pair: exactly one step gates, exactly one reports,
+    and neither has quietly become the other.
+    """
+    steps = _trivy_steps()
+    assert len(steps) == 2, f"expected one gating and one reporting scan, got {steps}"
+
+    gating = [keys for _name, keys in steps if keys.get("exit-code") == "1"]
+    reporting = [keys for _name, keys in steps if keys.get("exit-code") == "0"]
+    assert len(gating) == 1 and len(reporting) == 1
+
+    assert gating[0]["severity"] == "HIGH,CRITICAL"
+    assert gating[0]["ignore-unfixed"] == "true"
+    assert reporting[0]["severity"] == "HIGH,CRITICAL"
+    assert reporting[0]["ignore-unfixed"] == "false", (
+        "the reporting step exists to show what the gate drops; with "
+        "ignore-unfixed it would show the same set the gate already blocks on "
+        "and the unfixed CVEs would stay invisible"
+    )
+
+    text = _CONTAINER_WORKFLOW.read_text(encoding="utf-8")
+    assert "reported by the gating step at all" in text, (
+        "the header must keep saying what the gate cannot see; it previously claimed the opposite"
+    )
 
 
 def _instructions(dockerfile: str) -> list[str]:

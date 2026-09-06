@@ -9,6 +9,30 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **The container gate documented a block it does not have.** `container-scan.yml`
+  scans the relay image with Trivy at `HIGH,CRITICAL` and `ignore-unfixed: true`,
+  which drops every CVE with no available fix. Its header said the opposite —
+  "*What this gate cannot fix is a CVE Debian has not fixed either; that is a real
+  block, and the answer is a base change, not an exception*" — and, two lines
+  above, "*with no ignore file: a finding is cleared by patching it, not by
+  waiving it*". An unfixed CVE was not a block; it was invisible, and the base
+  change that sentence prescribes had no input, because the gating scan never
+  printed the findings it was deciding about.
+
+  The flag is unchanged and stays: it matches
+  `docs/standards/SECURITY-AND-SUPPLY-CHAIN-STANDARD.md` §6.3, and a gate that
+  reddens on an unpatchable CVE blocks every merge on an upstream this project
+  does not control. What changed is that the header now says plainly what the
+  gate cannot see, and a second Trivy step reports the unfixed set with
+  `exit-code: 0`, labelled as reporting and explicitly not counted as a gate.
+  A guard test pins the pair — exactly one step blocks, exactly one reports, and
+  neither has quietly become the other — so loosening the threshold, deleting the
+  reporting step, or restoring the header's old claim each turn it red.
+
+  Whether any unfixed finding should become blocking is a call for the owner,
+  now with the list in hand.
+
+
 - **The three figures the cover sheet leads with were declared by the producer and
   checked by nothing.** `packet.py` writes seven counts into `appendix`. The verifier
   re-derived four of them — `timeline_count`, `custody_bound_timeline_count`,
