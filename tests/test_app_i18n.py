@@ -490,3 +490,122 @@ def test_every_honest_limits_string_has_a_rendering_path() -> None:
         "_ADDITIONAL_HONEST_LIMITS in scripts/report_readability.py), in the same "
         "change, so the readability corpus stops counting a string nobody reads."
     )
+
+
+# --- The pseudo-locale gate must be able to fail (scripts/check_pseudo_locale.py) ---
+#
+# `scripts/check_pseudo_locale.py` arrived in PR #213 as a "text expansion
+# verification gate" whose `main()` had no failure branch and no exit path other
+# than `return 0`, and which nothing in the repository executed. It now runs in
+# `make i18n` and in the i18n workflow, so what it says matters -- and a gate is
+# only worth wiring in if a sabotage of the thing it guards actually turns it red.
+# Each negative control below asserts the mutation landed before asserting the
+# verdict, because a sabotage that silently no-ops reads as a pass.
+
+_PSEUDO_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "check_pseudo_locale.py"
+
+
+def _run_pseudo_gate(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(_PSEUDO_SCRIPT), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=_PSEUDO_SCRIPT.parent.parent,
+    )
+
+
+def test_pseudo_locale_gate_passes_on_the_shipped_bundle() -> None:
+    """The real bundle generates a pseudo-locale with its ICU structure intact."""
+    result = _run_pseudo_gate()
+    assert result.returncode == 0, (
+        f"gate failed on the shipped bundle:\n{result.stdout}\n{result.stderr}"
+    )
+    assert "pseudo-localize" in result.stdout
+
+
+def test_pseudo_locale_gate_writes_a_loadable_bundle(tmp_path: Path) -> None:
+    """`--out` is the reason this is a script and not only a test: it produces the
+    expanded bundle someone can actually load in the app."""
+    out = tmp_path / "en-XA.json"
+    result = _run_pseudo_gate("--out", str(out))
+    assert result.returncode == 0, result.stdout + result.stderr
+    generated = json.loads(out.read_text(encoding="utf-8"))
+    source = _load(_EN)
+    assert set(generated) == set(source), "the pseudo bundle must stay at key parity"
+    # Every string must actually be transformed, or loading the bundle proves
+    # nothing about the keys it silently passed through. Six plural messages used
+    # to come back byte-identical to their English source.
+    untouched = sorted(key for key, value in generated.items() if str(value) == source[key])
+    assert not untouched, f"these keys were not pseudo-localized at all: {untouched}"
+    assert all("[" in str(value) for value in generated.values())
+
+
+def test_pseudo_locale_gate_fails_on_an_overlong_compact_label(tmp_path: Path) -> None:
+    """RULE B: a compact label that blows the fixed-width cap once expanded."""
+    bundle = dict(_load(_EN))
+    saboteur = "sabotage_label"
+    assert saboteur not in bundle
+    bundle[saboteur] = "a" * 45  # under the cap unexpanded, far over it after
+    path = tmp_path / "en.json"
+    path.write_text(json.dumps(bundle), encoding="utf-8")
+
+    result = _run_pseudo_gate("--bundle", str(path))
+    assert result.returncode == 1, f"the gate accepted a 92-char compact label:\n{result.stdout}"
+    assert "RULE B" in result.stdout and saboteur in result.stdout
+
+
+def test_pseudo_locale_gate_fails_on_a_message_it_cannot_parse(tmp_path: Path) -> None:
+    """A malformed source is reported, not raised: a gate that dies with a
+    traceback out of its generator tells a contributor nothing about which
+    string is wrong."""
+    bundle = dict(_load(_EN))
+    saboteur = "sabotage_icu"
+    bundle[saboteur] = "{gender, select, male {he} female {she} other {they}}"
+    path = tmp_path / "en.json"
+    path.write_text(json.dumps(bundle), encoding="utf-8")
+
+    result = _run_pseudo_gate("--bundle", str(path))
+    assert result.returncode == 1, result.stdout
+    assert "Traceback" not in result.stderr, (
+        f"the gate raised instead of reporting:\n{result.stderr}"
+    )
+    assert saboteur in result.stdout
+
+
+def test_pseudo_locale_gate_fails_when_the_transform_corrupts_a_placeholder(
+    tmp_path: Path,
+) -> None:
+    """RULE A guards the generator, not the bundle, so the sabotage is of the
+    generator: pseudo-localize inside the braces too, which renames `{count}`
+    to `{çöööûñţ}` and would silently ship a locale the app cannot format."""
+    source = _PSEUDO_SCRIPT.read_text(encoding="utf-8")
+    original = '            output.append("{" + body + "}")'
+    assert original in source, (
+        "the transform's placeholder branch moved; this control is not applying"
+    )
+    sabotaged = source.replace(
+        original,
+        '            output.append("{" + "".join(ACCENT_MAP.get(c, c) for c in body) + "}")',
+    )
+    assert sabotaged != source, "the sabotage did not change the script"
+    script = tmp_path / "check_pseudo_locale.py"
+    script.write_text(sabotaged, encoding="utf-8")
+    # The script imports its parser from a sibling in scripts/, so it has to run
+    # from there; the copy goes beside it and is removed with the tmp dir.
+    beside = _PSEUDO_SCRIPT.parent / "_sabotaged_check_pseudo_locale.py"
+    beside.write_text(sabotaged, encoding="utf-8")
+    try:
+        result = subprocess.run(
+            [sys.executable, str(beside)],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=_PSEUDO_SCRIPT.parent.parent,
+        )
+    finally:
+        beside.unlink()
+    assert result.returncode == 1, (
+        "a generator that rewrites placeholder names passed the gate:\n" + result.stdout
+    )
+    assert "RULE A" in result.stdout

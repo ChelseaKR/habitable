@@ -97,10 +97,11 @@ cov: ## Run tests with coverage (85% floor overall, per-module 95% on the eviden
 integration: ## Run the network integration tests (real public TSAs)
 	uv run pytest -m integration -v
 
-i18n: ## Mechanical i18n gates: UTF-8 (G1), BCP 47 validity (G3), EN/ES key-parity (G6) — offline, stdlib-only
+i18n: ## Mechanical i18n gates: UTF-8 (G1), BCP 47 validity (G3), EN/ES key-parity (G6), pseudo-locale expansion (G9) — offline, stdlib-only
 	uv run python scripts/check_i18n_utf8.py
 	uv run python scripts/check_bcp47.py
 	uv run python scripts/check_i18n_parity.py
+	uv run python scripts/check_pseudo_locale.py
 
 fuzz: ## Replay the OSS-Fuzz harnesses over their committed seed corpora (no Atheris needed)
 	# The harnesses run with or without Atheris on purpose, so a corpus entry
