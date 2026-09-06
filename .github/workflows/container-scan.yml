@@ -14,8 +14,23 @@ name: container-scan
 # for upstream to rebuild python:slim. That is not optional tidiness — see
 # relay/Dockerfile: as of 2026-08-17 the newest published python:3.14-slim digest
 # still shipped a util-linux fixed in Debian, so a digest bump alone could not
-# clear it. What this gate cannot fix is a CVE Debian has not fixed either; that
-# is a real block, and the answer is a base change, not an exception.
+# clear it.
+#
+# What the gate does NOT do, stated plainly because this comment used to imply
+# the opposite: `ignore-unfixed: true` means a CVE Debian has not fixed is not
+# reported by the gating step at all. It is not a block, and it never prompts
+# the base change an earlier revision of this comment prescribed — it is
+# invisible. The flag matches
+# docs/standards/SECURITY-AND-SUPPLY-CHAIN-STANDARD.md §6.3, which specifies
+# `--ignore-unfixed`, and it stays: a gate that reddens on a CVE nobody can
+# patch blocks every merge until an upstream that does not answer to this
+# project acts.
+#
+# So the unfixed set is *reported* instead, by a second step that is explicitly
+# labelled as reporting and deliberately cannot fail. That is not a gate and is
+# not counted as one; it exists so the base-change judgment has an input rather
+# than resting on a sentence in a comment. Whether any of it should become
+# blocking is a call for the owner, with the list in hand.
 
 # CICD-§11e: the PR run gates the merge and the weekly schedule catches CVEs
 # disclosed after merge — a push:main run would rebuild and rescan the identical
@@ -71,7 +86,27 @@ jobs:
           scan-type: image
           image-ref: habitable-relay:scan
           severity: HIGH,CRITICAL
-          exit-code: "1"
+          # Per SECURITY-AND-SUPPLY-CHAIN-STANDARD §6.3. The findings this drops
+          # are surfaced by the reporting step below, which cannot fail.
           ignore-unfixed: true
+          exit-code: "1"
+          vuln-type: os,library
+          format: table
+      # Reporting, not a gate. `exit-code: 0` is the whole point: these are CVEs
+      # with no available fix, so failing on them would block every merge on an
+      # upstream this project does not control. Listing them is what the header
+      # comment's "the answer is a base change" needs in order to be actionable
+      # — before this step, that sentence described a decision nobody had the
+      # input for, because the gating scan never printed the findings it was
+      # deciding about.
+      - name: Report unfixed HIGH/CRITICAL CVEs (never fails)
+        if: always()
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: habitable-relay:scan
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: "0"
           vuln-type: os,library
           format: table
