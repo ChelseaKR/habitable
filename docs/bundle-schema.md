@@ -261,8 +261,15 @@ for usage.
   invented occurrence/source facts.
 - **Additive within a major.** New optional fields may appear within a `packet_version`. Consumers
   **must ignore unknown fields** (the JSON Schema sets `additionalProperties: true` at the document
-  and object level for exactly this reason) and must not assume field order — the bytes are sorted,
-  but treat the document as a mapping.
+  level and on most objects for exactly this reason) and must not assume field order — the bytes are
+  sorted, but treat the document as a mapping.
+- **Seven objects are closed, and adding a field to one of them is not additive.** `artifact`,
+  `relationship`, `custodyEntry`, `sensorSeries`, `workflowIntegrity`, and the `links` and
+  `integrity` objects inside a v3 timeline entry all set `additionalProperties: false`. A producer
+  that adds a field to any of them emits a bundle its own published schema rejects, so such a change
+  ships as a coordinated schema-and-producer change rather than as a quiet additive one. This
+  paragraph used to say `additionalProperties: true` held at the object level too; it did not, and
+  the promise above cannot be exercised on these seven.
 - **Forward rejection.** A verifier that meets a `packet_version` newer than it supports rejects the
   packet cleanly rather than guessing.
 
