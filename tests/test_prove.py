@@ -30,10 +30,15 @@ def test_prove_no_plaintext_is_clean(tmp_path: Path) -> None:
     assert report.hits == ()
     assert report.bytes_captured > 0
     assert report.frame_count > 0
-    # Every documented marker was actually searched.
-    assert len(report.marker_names) >= 8
-    assert "note-text" in report.marker_names
-    assert "device-fingerprint" in report.marker_names
+    # "Every documented marker was actually searched" is what this used to
+    # claim, over `marker_names` -- the *declared* set. `_scan` skips a marker
+    # whose value is empty, so the two are different lists and the comment was
+    # false of the assertion below it. Assert the searched set instead.
+    assert report.unsearchable == ()
+    assert report.searched_names == report.marker_names
+    assert len(report.searched_names) >= 8
+    assert "note-text" in report.searched_names
+    assert "device-fingerprint" in report.searched_names
 
     # The capture file exists, holds the wire bytes, and greps clean.
     raw = report.capture_path.read_bytes()
@@ -120,3 +125,77 @@ def test_cli_status_xray_no_network(
     assert code == 0
     assert "data-flow X-ray" in out
     assert "relay sync (optional)" in out
+
+
+# --------------------------------------------------------------------------- #
+# A marker nobody looked for cannot count toward a PASS.                        #
+# --------------------------------------------------------------------------- #
+def test_a_marker_that_could_not_be_searched_sinks_the_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`_scan` skips an empty needle, and the skip used to be silent.
+
+    Skipping is correct — ``b"" in blob`` is true of every blob, so an empty
+    marker would report a hit against everything. What was wrong is that the
+    name still appeared in the report's "markers searched" count and under
+    "each must be absent from every captured byte", and ``clean`` was true
+    because ``hits`` was empty. Two of the nine markers are derived at runtime
+    from the fabricated vault (``raw-image-bytes`` and ``base64-image-bytes``),
+    so one can be emptied by a change upstream of this function, and this is
+    the project's externally demonstrable privacy proof.
+    """
+    real_markers = prove._markers
+
+    def one_marker_empty(vault: Vault, image_bytes: bytes) -> dict[str, bytes]:
+        markers = real_markers(vault, image_bytes)
+        markers["raw-image-bytes"] = b""
+        return markers
+
+    monkeypatch.setattr(prove, "_markers", one_marker_empty)
+    report = prove_no_plaintext(tmp_path / "capture")
+
+    assert report.hits == ()  # nothing leaked...
+    assert report.unsearchable == ("raw-image-bytes",)  # ...but one was never looked for
+    assert not report.clean
+    assert report.exit_code == 1
+    assert "raw-image-bytes" not in report.searched_names
+    assert len(report.searched_names) == len(report.marker_names) - 1
+
+
+def test_the_report_says_which_marker_it_could_not_search(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_markers = prove._markers
+
+    def one_marker_empty(vault: Vault, image_bytes: bytes) -> dict[str, bytes]:
+        markers = real_markers(vault, image_bytes)
+        markers["node-id"] = b""
+        return markers
+
+    monkeypatch.setattr(prove, "_markers", one_marker_empty)
+    text = format_report(prove_no_plaintext(tmp_path / "capture"))
+
+    assert "PASS" not in text
+    assert "could NOT be searched" in text
+    assert "node-id was never searched for" in text
+    # The heading over the bullet list says "each must be absent from every
+    # captured byte". A marker nobody searched for must not be under it -- that
+    # sentence is the claim this run cannot make about it.
+    assert "    · node-id" not in text
+    assert "    ? node-id" in text
+    assert "    · note-text" in text  # the ones that *were* searched still are
+    # The count is the searched set over the declared set, not the declared set
+    # printed twice.
+    assert "markers searched           : 8 of 9" in text
+
+
+def test_an_ordinary_run_still_reports_pass_over_every_marker(tmp_path: Path) -> None:
+    """The complement. Without it, a check that always failed would satisfy the
+    two tests above, and the proof this command exists to give would be gone."""
+    report = prove_no_plaintext(tmp_path / "capture")
+    text = format_report(report)
+    assert report.clean and report.exit_code == 0
+    assert report.unsearchable == ()
+    assert "RESULT: PASS" in text
+    assert "could NOT be searched" not in text
+    assert f"markers searched           : {len(report.marker_names)} of " in text

@@ -48,6 +48,37 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   a rewriter must republish five halves rather than two — deleting a *timestamped* item
   while republishing only the item count is now caught.
 
+- **A privacy proof counted a marker it never searched for.**
+  `habitable prove-no-plaintext` runs a real sync through an in-process relay and
+  scans every captured byte for nine plaintext markers. `_scan` skips a marker
+  whose value is empty — correctly, since `b"" in blob` is true of every blob and
+  would report a hit against all of them — but the skip was silent. The name
+  still appeared in "markers searched: 9" and under "*markers (each must be
+  absent from every captured byte)*", and `clean` was true because `hits` was
+  empty. So a marker nobody looked for was counted toward a PASS, on the command
+  this project offers as its externally demonstrable privacy proof. Two of the
+  nine are derived at runtime from the fabricated vault, so a change upstream can
+  empty one. The report now separates the searched set from the declared set,
+  prints "markers searched: 8 of 9", names what it could not search under its own
+  heading, and refuses to report PASS — a marker never searched for supports no
+  claim about the wire. The existing test asserted this defect as intended
+  behaviour under the comment "*Every documented marker was actually searched*",
+  which was false of the assertion beneath it; it now checks the searched set.
+
+- **A repair letter dropped the timestamp clause instead of stating it.** Issue
+  #161 fixed exactly this shape for `total_items == 0`: a falsy count silently
+  deleted a sentence rather than saying what was true. The sibling case one line
+  down was left. A letter whose photographs carry no timestamp token produced
+  "These conditions are documented by 3 photograph(s), with content hashes…" —
+  indistinguishable from a letter whose writer chose not to mention timestamps —
+  while still offering "a complete, independently-verifiable evidence packet…on
+  request". An independent time bound is the part a landlord's representative
+  will ask about, so zero is now said. The same omission appeared in the
+  per-issue annotation, in **both** renderers (`_issue_html` and `_issue_text`)
+  independently, so a reader handed the HTML and a reader handed the PDF could
+  learn different things from one letter; both now say "no timestamp token
+  attached", and a test asserts they agree.
+
 
 - **A truncated instrument series told a recipient it was the whole series.** An
   imported sensor CSV is reduced twice before anybody reads it: `parse_sensor_csv`

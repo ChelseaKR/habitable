@@ -548,12 +548,23 @@ def _evidence_summary(total_items: int, total_stamped: int) -> str:
             "This letter is the written notice itself; if I document these conditions "
             "later, I will provide that documentation separately."
         )
-    stamped_clause = (
-        f", {total_stamped} of them carrying timestamp tokens whose validity and "
-        "authority trust must be checked independently"
-        if total_stamped
-        else ""
-    )
+    # The same failure the branch above fixes for `total_items`, one line down:
+    # a falsy count silently deleted the clause instead of stating it. A letter
+    # whose photographs carry no timestamp token read exactly like one whose
+    # writer chose not to mention timestamps, while still offering "a complete,
+    # independently-verifiable evidence packet ... on request" -- and an
+    # independent time bound is the part a landlord's representative will ask
+    # about. Zero is a fact about the evidence, so it is said.
+    if total_stamped:
+        stamped_clause = (
+            f", {total_stamped} of them carrying timestamp tokens whose validity and "
+            "authority trust must be checked independently"
+        )
+    else:
+        stamped_clause = (
+            ", none of them yet carrying a timestamp token, so nothing here "
+            "independently bounds when they were taken"
+        )
     return (
         f"These conditions are documented by {total_items} photograph(s){stamped_clause}, "
         "with content hashes that allow each photo's integrity to be verified. "
@@ -663,10 +674,12 @@ def _issue_html(issue: LetterIssue) -> str:
     if issue.description:
         out.append(f"<br>{escape(issue.description)}")
     if issue.evidence_count:
+        # Same omission, same wording as `_issue_text` below: the two renderers
+        # of one letter must not disagree about whether the reader is told.
         stamped = (
             f", {issue.timestamped_count} timestamp token(s) attached"
             if issue.timestamped_count
-            else ""
+            else ", no timestamp token attached"
         )
         out.append(
             f'<br><span class="meta">Documented by {issue.evidence_count} photo(s){stamped}.</span>'
@@ -734,10 +747,13 @@ def _issue_text(issue: LetterIssue) -> str:
     if issue.description:
         text = f"{text}. {issue.description}"
     if issue.evidence_count:
+        # The per-issue instance of the same omission as `_evidence_summary`: a
+        # zero count deleted the clause, so an issue whose photographs carry no
+        # token read like one where the annotation simply did not mention them.
         stamped = (
             f", {issue.timestamped_count} timestamp token(s) attached"
             if issue.timestamped_count
-            else ""
+            else ", no timestamp token attached"
         )
         text = f"{text} [documented by {issue.evidence_count} photo(s){stamped}]"
     return text
