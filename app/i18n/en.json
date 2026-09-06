@@ -124,6 +124,9 @@
   "severity_moderate": "Moderate",
   "severity_severe": "Severe",
   "severity_emergency": "Emergency",
+  "record_permanence_help": "Once you save this, it joins the record and cannot be edited or deleted. habitable only ever adds to a record; it will not quietly rewrite one. A mistyped room or title stays visible in the exported packet, so check them now.",
+  "record_permanence_next": "Already saved a mistake? Leave it there. Do not delete the case or start over: an unbroken record is the thing worth having, and a mistake anyone can see is not a broken record. Tell the person you hand the packet to what the correct detail is.",
+  "record_permanence_practice": "Want to practise first? Run habitable demo in a terminal. It walks a whole synthetic case in its own temporary folder and never touches this one.",
   "add_issue_submit": "Start this repair trail",
 
   "capture_heading": "Photo",

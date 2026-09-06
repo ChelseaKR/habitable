@@ -131,12 +131,22 @@ is permitted because an append-only record travels beside it.
   says what fixing it requires and refuses the version that would have looked
   like a fix.
 - **Follow-up.** (a) The implementing ADR — packet v5, retention bound, threat
-  model, migration. (b) The app and CLI should say what a tenant should do about
-  a mistake *today*, at the point of pain, rather than leaving them to discover
-  there is no path; that is copy work and does not wait for the protocol.
-  (c) `habitable demo` already provides a synthetic case to practise on — the
-  "scratch/practice mode" half of #241 — and is simply not offered where someone
-  needs it.
+  model, migration. **Still open.** (b) The app and CLI should say what a tenant
+  should do about a mistake *today*, at the point of pain, rather than leaving
+  them to discover there is no path; that is copy work and does not wait for the
+  protocol. **Shipped** — the add-condition dialog and `habitable issue` both
+  state the append-only limit before and after the record is written, and say
+  what to do about a mistake already in it. (c) `habitable demo` already provides
+  a synthetic case to practise on — the "scratch/practice mode" half of #241 —
+  and is simply not offered where someone needs it. **Shipped** — it is now
+  offered in both of those places.
+- **What (b) and (c) did not do.** They add copy, not a mechanism. A saved entry
+  still cannot be corrected, decision 5 still stands, and #241 stays open until
+  the change log in decision 1 exists. Copy that told a reader to file the
+  correction as a timeline entry would be the rejected path wearing new words, so
+  it does not: it tells them to leave the record alone and correct the detail to
+  the packet's reader instead, which is the honest answer while the record cannot
+  carry a visible correction of its own.
 
 ## References
 

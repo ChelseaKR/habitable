@@ -331,6 +331,21 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         ),
         "custody_intact": "intact",
         "custody_broken": "BROKEN",
+        # Issue #241 / ADR 0017 follow-ups (b) and (c). `habitable issue` is where a
+        # mistyped record is created, so it is where the append-only limit has to be
+        # stated and where the practice path has to be offered. Neither line is a
+        # correction mechanism: ADR 0017 refuses to ship one until a correction can be
+        # seen in the exported packet.
+        "issue_append_only": (
+            "this entry cannot be edited or deleted: the record only ever grows, and "
+            "habitable will not silently rewrite it. A mistyped detail stays visible in "
+            "the exported packet — tell whoever reads the packet what the correct detail "
+            "is rather than starting the case over"
+        ),
+        "issue_practice_path": (
+            "to practise first, run `habitable demo` — a whole synthetic case in its own "
+            "temporary folder, which never touches this one"
+        ),
         "capture_timestamped": "timestamp token attached ({when})",
         "capture_awaiting": "no timestamp token yet",
         "capture_trust_unassessed": (
@@ -529,6 +544,16 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         ),
         "custody_intact": "intacta",
         "custody_broken": "ROTA",
+        "issue_append_only": (
+            "esta entrada no se puede editar ni borrar: el registro solo crece, y "
+            "habitable no lo reescribirá en silencio. Un dato mal escrito queda visible "
+            "en el paquete exportado — dile a quien lea el paquete cuál es el dato "
+            "correcto en vez de empezar el caso de nuevo"
+        ),
+        "issue_practice_path": (
+            "para practicar primero, ejecuta `habitable demo` — un caso sintético "
+            "completo en su propia carpeta temporal, que nunca toca este"
+        ),
         "capture_timestamped": "token de sello de tiempo adjunto ({when})",
         "capture_awaiting": "aún sin token de sello de tiempo",
         "capture_trust_unassessed": (

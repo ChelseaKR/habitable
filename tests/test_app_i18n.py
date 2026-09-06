@@ -352,6 +352,57 @@ def test_the_unreachable_status_state_names_what_is_unknown_and_its_own_button()
     assert "no es cero" in es["status_unreachable"].casefold(), es["status_unreachable"]
 
 
+def test_the_add_condition_form_says_a_saved_entry_cannot_be_corrected() -> None:
+    """Issue #241, ADR 0017 follow-ups (b) and (c): the limit, and the way round it.
+
+    Append-only custody is deliberate, and the app never said so. A person typed a
+    room name into a dialog whose only words about permanence were none, pressed a
+    button, and found out that a record a court will read now carries their typo --
+    by discovering that no screen and no subcommand offers an edit. ADR 0017 refuses
+    to ship a correction mechanism until a correction is visible in the exported
+    packet, and separates that refusal from the copy work, which does not wait.
+
+    So three sentences have to be on the form, in both locales, and each does a
+    different job: the limit itself, what to do about a mistake already saved, and
+    the practice case (``habitable demo``) that has existed all along and was never
+    offered where someone needs it.
+
+    The middle one is the one worth guarding. The cheap wording -- "add a correction
+    to the timeline" -- is a path ADR 0017 explicitly rejected, because the timeline
+    is the narrative of the dwelling and not case-file bookkeeping. Copy that
+    recommended it would reintroduce the rejected design in words, so this pins that
+    it does not.
+    """
+    en, es = _load(_EN), _load(_ES)
+    keys = ("record_permanence_help", "record_permanence_next", "record_permanence_practice")
+    for bundle, name in ((en, "en"), (es, "es")):
+        for key in keys:
+            assert key in bundle, f"{name}.json has no {key}; the form states no limit"
+            assert bundle[key].strip(), f"{name}.{key} is blank"
+
+    # The limit is stated, not softened into "please check your spelling".
+    assert "cannot be edited or deleted" in en["record_permanence_help"].casefold()
+    assert "no se puede editar ni borrar" in es["record_permanence_help"].casefold()
+
+    # A mistake already saved has an answer, and it is not "start over".
+    assert "do not delete the case" in en["record_permanence_next"].casefold()
+    assert "no borres el caso" in es["record_permanence_next"].casefold()
+
+    # The practice path names the command that runs it, in both locales.
+    for bundle in (en, es):
+        assert "habitable demo" in bundle["record_permanence_practice"]
+
+    # ADR 0017 rejected filing a correction in the timeline. No locale may suggest it.
+    for bundle, name in ((en, "en"), (es, "es")):
+        for key in keys:
+            lowered = bundle[key].casefold()
+            assert "timeline" not in lowered and "cronolog" not in lowered, (
+                f"{name}.{key} points the reader at the timeline, which ADR 0017 "
+                "rejected as a correction path: the timeline is the narrative of the "
+                f"dwelling, not case-file bookkeeping. {bundle[key]!r}"
+            )
+
+
 # --- issue #274: a limit nobody can read is not a limit -----------------------------
 
 _ROOT = Path(__file__).resolve().parent.parent

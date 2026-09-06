@@ -124,6 +124,9 @@
   "severity_moderate": "Moderada",
   "severity_severe": "Grave",
   "severity_emergency": "Emergencia",
+  "record_permanence_help": "Una vez que guardes esto, pasa a formar parte del registro y no se puede editar ni borrar. habitable solo agrega al registro; no lo reescribe en silencio. Una habitación o un título mal escritos quedan visibles en el paquete exportado, así que revísalos ahora.",
+  "record_permanence_next": "¿Ya guardaste un error? Déjalo ahí. No borres el caso ni empieces de nuevo: un registro sin cortes es lo que vale la pena tener, y un error que cualquiera puede ver no es un registro roto. Dile a la persona que reciba el paquete cuál es el dato correcto.",
+  "record_permanence_practice": "¿Quieres practicar primero? Ejecuta habitable demo en una terminal. Recorre un caso sintético completo en su propia carpeta temporal y nunca toca este.",
   "add_issue_submit": "Iniciar este seguimiento",
 
   "capture_heading": "Foto",
