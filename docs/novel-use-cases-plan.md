@@ -94,8 +94,8 @@ Acceptance:
   presenting stale guidance. **Shipped 2026-08-22:** selection refuses an
   already-expired profile, export falls back to none and records why if one
   expires after selection, and the CLI/app flag expiry before it forces that
-  fallback (`docs/adr/0012-profile-review-expiry-enforcement.md`). None of the
-  ten profiles below sets an expiry yet; this is enforced infrastructure for
+  fallback (`docs/adr/0012-profile-review-expiry-enforcement.md`). No built-in
+  profile sets an expiry yet; this is enforced infrastructure for
   the jurisdiction/community profiles in
   [Beyond the current portfolio](#beyond-the-current-portfolio--year-2-and-year-3-candidates).
 
@@ -474,9 +474,9 @@ end to end (CLI, app, sync, packet v4, verifier, accessible HTML, i18n) — ten
 since 2026-07-23 and `move_out_deposit` since 2026-08-26 — confirmed against
 current code (`src/habitable/usecases.py`,
 `artifact.py`, `handoff.py`, `patterns.py`, `capsule.py`), not merely asserted.
-Four profiles (`repair_delivery`, `repair_comparison`, `utility_outage`,
-`displacement_expense`) are `maintainer_reviewed` and require no further
-engineering to use as shipped. Six (`inspector_handoff`,
+Five profiles (`repair_delivery`, `repair_comparison`, `utility_outage`,
+`displacement_expense`, `move_out_deposit`) are `maintainer_reviewed` and require
+no further engineering to use as shipped. Six (`inspector_handoff`,
 `accommodation_request`, `public_housing_remediation`,
 `health_corroboration`, `building_pattern`, `partner_capsule`) remain
 `external_review_required` — implemented and synthetic-evaluation-tested, but
@@ -488,7 +488,7 @@ follows is honest present-tense status, not a build plan.
 
 - Recruit the named reviewer/partner for each of the six
   `external_review_required` profiles (see `docs/recruitment/`); this is the
-  actual remaining work for the current ten, and it is a partnership problem,
+  actual remaining work for the current eleven, and it is a partnership problem,
   not an implementation one.
 - Complete external roadmap gates already prepared by the review hub (security/
   crypto audit, recorded AT pass, tenant-union pilot — see `ROADMAP.md`'s v1.0

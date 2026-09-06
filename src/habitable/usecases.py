@@ -144,6 +144,13 @@ class UseCaseProfile:
     name_es: str
     summary_en: str
     summary_es: str
+    # Declared, never enforced (ADR 0010's 2026-09-06 clarification, issue #277).
+    # These say what the workflow is about and travel in the exported bundle so a
+    # recipient can see it. They do not gate `model.add_artifact`, which validates
+    # against the global ``ARTIFACT_TYPES``, and they do not narrow the app's type
+    # lists. A tenant who chose a repair-notice workflow and is then handed a
+    # clinician's letter must be able to record it; a presentation choice must
+    # never decide what evidence exists.
     artifact_types: tuple[str, ...]
     relationship_types: tuple[str, ...]
     handoff_sections: tuple[str, ...]

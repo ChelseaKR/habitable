@@ -19,8 +19,9 @@ must not turn presentation profiles into legal rules or remote mutable content.
 
 ## Decision
 
-1. Add a versioned, built-in `UseCaseProfile` registry. Profiles define prompts,
-   vocabulary, presentation order, disclosures, and review state only.
+1. Add a versioned, built-in `UseCaseProfile` registry. Profiles declare prompts,
+   vocabulary, presentation order, disclosures, and review state only. A profile
+   never constrains what the case can hold: see the clarification below.
 2. Add two append-only CRDT logs:
    - `Artifact` for sealed document-like evidence;
    - `EvidenceRelationship` for explicit typed links between captures,
@@ -35,6 +36,33 @@ must not turn presentation profiles into legal rules or remote mutable content.
 7. Profiles needing legal, medical, jurisdiction, accessibility, or partner
    review remain marked `external_review_required`. Implementation availability
    is not a claim that the workflow is reviewed or fit for a real matter.
+
+### Clarification, 2026-09-06 — "declare", not "constrain" (issue #277, finding 1)
+
+Decision 1 originally said profiles "define … vocabulary", and a reviewer
+reasonably read that as a constraint. It is not one, and deliberately so.
+`artifact_types` and `relationship_types` are a *declaration*: they say which
+document and link types this workflow is about, they travel in the exported
+bundle so a recipient can see what the workflow claimed to be for, and they are
+enforced nowhere. `model.add_artifact` validates against the global
+`ARTIFACT_TYPES`; the app offers all thirteen document types whichever profile
+is selected, which
+`tests/test_usecases.py::test_browser_app_offers_exactly_the_registry_vocabulary`
+requires.
+
+Making the declaration binding was considered and refused. A profile is
+presentation and prompting policy, chosen for a workflow the tenant is *starting*
+— and the landlord decides what arrives afterwards. A tenant who picked "Repair
+notice and delivery ledger" and is then handed a clinician's letter must be able
+to record it. Refusing the record, or making them abandon the profile to file it,
+would let a presentation choice decide what evidence exists, which is exactly the
+line decision 1's "only" was written to hold. The failure would also land at the
+worst moment: on the person, mid-case, holding the document.
+
+So the declaration constrains nothing, and the word here is "declare". What a
+profile may still do with its vocabulary is *prompt* — order it, suggest it, name
+it in a handoff manifest — because none of that removes a record from a tenant's
+reach.
 
 ## Options considered
 
