@@ -680,3 +680,56 @@ def test_every_check_script_has_a_way_to_fail() -> None:
         "literal 0 and nothing raises, so the check reports success whatever it reads. "
         "Give it a real verdict, or stop calling it a check."
     )
+
+
+# --- Every commit on `main` gets its own verdict ------------------------------
+
+_WORKFLOW_DIR = Path(__file__).resolve().parent.parent / ".github" / "workflows"
+#: Triggers that fire with `github.ref` pointing at the default branch, so two of
+#: them landing close together share a `*-${{ github.ref }}` concurrency group.
+_RUNS_ON_MAIN = ("push:", "schedule:", "branch_protection_rule:")
+
+
+def test_no_workflow_cancels_an_in_progress_run_on_main() -> None:
+    """Cancelling a superseded run on `main` does not defer a verdict, it deletes one.
+
+    On a pull-request branch, cancelling is right: only the tip matters, and the
+    replacement run reports on the same code. On `main` every commit is a
+    protected commit, each one is a different tree, and the cancelled run is the
+    only run that commit will ever get.
+
+    It has happened here. Of the last 100 runs on `main`, five were `cancelled`
+    across three commits, and the worst was `e59c84d` -- PR #213, which landed
+    `scripts/check_pseudo_locale.py` -- where ci, i18n *and* a11y were all
+    cancelled. That commit reached `main` with no verdict from anything, carrying
+    a gate whose `main()` could not fail. The two others were dependabot merges
+    (`f7c1f2d`, `0bc4011`) that lost their `ci` verdict the same way.
+
+    So `cancel-in-progress` must be conditional on the ref rather than `true`.
+    """
+    workflows = sorted(_WORKFLOW_DIR.glob("*.yml"))
+    assert len(workflows) >= 8, (
+        f"only {len(workflows)} workflows found; this guard is reading nothing"
+    )
+
+    offenders: list[str] = []
+    checked = 0
+    for workflow in workflows:
+        text = workflow.read_text(encoding="utf-8")
+        if "concurrency:" not in text:
+            continue
+        setting = re.search(r"^\s*cancel-in-progress:\s*(.+?)\s*$", text, re.M)
+        if setting is None:
+            continue
+        if not any(trigger in text for trigger in _RUNS_ON_MAIN):
+            continue  # pull_request / workflow_dispatch only; never runs on main
+        checked += 1
+        if setting.group(1) == "true":
+            offenders.append(workflow.name)
+
+    assert checked >= 5, f"only {checked} main-running workflows inspected; the guard is too narrow"
+    assert not offenders, (
+        f"these workflows cancel an in-progress run on `main`: {offenders}. On `main` that "
+        "loses the verdict for a commit that will never be re-run. Make it conditional, e.g. "
+        "cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}."
+    )

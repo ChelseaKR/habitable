@@ -18,7 +18,13 @@ permissions: read-all
 # CI-CD-STANDARD.md 11c: cancel superseded runs on the same ref.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel a superseded run on a pull-request branch, where only the latest
+  # commit matters -- but never on `main`, where every commit is a protected
+  # commit entitled to its own verdict. Cancelling there loses the verdict
+  # entirely rather than deferring it: `e59c84d` (PR #213) landed with all
+  # three of ci, i18n and a11y cancelled, and shipped a gate that could not
+  # fail with nothing having checked it.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   analysis:
     name: Scorecard analysis
