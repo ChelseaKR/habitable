@@ -695,3 +695,67 @@ def test_config_round_trips_the_local_law_review_block(tmp_path: Path) -> None:
     assert letter_config.local_law_reviewed_at == "2026-01-01"
     assert letter_config.local_law_expires_at == "2027-01-01"
     assert review_local_law(letter_config, today=date(2026, 8, 26)).state == "current"
+
+
+def test_a_letter_whose_photographs_carry_no_token_says_so(
+    make_vault: Callable[..., Vault], make_jpeg: Callable[..., Path]
+) -> None:
+    """The sibling of the absence above, one line further down (issue #161).
+
+    ``total_stamped`` of zero deleted the timestamp clause rather than stating
+    it, so a letter whose photographs carry no independent time bound read
+    exactly like one whose writer chose not to mention timestamps — while still
+    offering "a complete, independently-verifiable evidence packet ... on
+    request". An independent time bound is precisely what a landlord's
+    representative will ask about, so zero is said.
+    """
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", title="Mold", issue_id="i1")
+    capture(vault, make_jpeg(), issue_id=issue, tsa=None)
+    vault.save()
+
+    letter = build_letter(vault, LetterOptions(sender_name="T", recipient_name="LL"))
+
+    assert "1 photograph(s)" in letter.evidence_summary
+    assert "none of them yet carrying a timestamp token" in letter.evidence_summary
+    assert "independently bounds when they were taken" in letter.evidence_summary
+    assert "no timestamp token attached" in render_letter_html(letter)
+
+
+def test_a_letter_whose_photographs_are_stamped_still_says_how_many(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+) -> None:
+    """The complement: the positive clause is unchanged, so the test above is
+    not satisfied by a letter that says "none" whatever the evidence holds."""
+    vault = _case(make_vault, make_jpeg, local_tsa)
+
+    letter = build_letter(vault, LetterOptions(sender_name="T", recipient_name="LL"))
+
+    assert "carrying timestamp tokens whose validity and" in letter.evidence_summary
+    assert "none of them yet carrying" not in letter.evidence_summary
+    assert "timestamp token(s) attached" in render_letter_html(letter)
+
+
+def test_both_letter_renderers_agree_about_a_missing_token(
+    make_vault: Callable[..., Vault], make_jpeg: Callable[..., Path]
+) -> None:
+    """One letter, two renderers, one statement.
+
+    `_issue_html` and `_issue_text` build the same per-issue annotation
+    separately, and both dropped the clause on a zero count. A reader handed the
+    PDF and a reader handed the HTML must not learn different things about
+    whether an independent time bound exists.
+    """
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", title="Mold", issue_id="i1")
+    capture(vault, make_jpeg(), issue_id=issue, tsa=None)
+    vault.save()
+
+    letter = build_letter(vault, LetterOptions(sender_name="T", recipient_name="LL"))
+    html = render_letter_html(letter)
+    flat = " ".join(text for _role, text in letter_lines(letter))
+
+    assert "no timestamp token attached" in html
+    assert "no timestamp token attached" in flat

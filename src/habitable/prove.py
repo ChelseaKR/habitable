@@ -66,11 +66,30 @@ class ProveReport:
     frame_count: int
     marker_names: tuple[str, ...]
     hits: tuple[tuple[str, str], ...]  # (marker_name, direction) for each plaintext hit
+    #: Markers that could not be searched for because their value was empty.
+    #: Two of the nine are derived at runtime from the fabricated vault, so a
+    #: change upstream can silently empty one, and an empty needle matches
+    #: every blob -- which is why ``_scan`` skips it rather than reporting a
+    #: hit against everything. Skipping is right; counting a skipped marker
+    #: toward a PASS is not, so it is recorded here.
+    unsearchable: tuple[str, ...] = ()
+
+    @property
+    def searched_names(self) -> tuple[str, ...]:
+        """The markers this run actually looked for."""
+        skipped = set(self.unsearchable)
+        return tuple(name for name in self.marker_names if name not in skipped)
 
     @property
     def clean(self) -> bool:
-        """True when no marker was found anywhere in the captured wire bytes."""
-        return not self.hits
+        """True when every marker was searched for and none was found.
+
+        A marker that could not be searched supports no claim about the wire.
+        This proof's whole assertion is "no plaintext marker reached the
+        relay", so a run that never looked for one of them has not
+        demonstrated it, and must not report PASS.
+        """
+        return not self.hits and not self.unsearchable
 
     @property
     def exit_code(self) -> int:
@@ -141,16 +160,26 @@ def _forms(blob: bytes) -> list[bytes]:
 
 def _scan(
     frames: list[tuple[str, bytes]], markers: dict[str, bytes]
-) -> tuple[tuple[str, str], ...]:
+) -> tuple[tuple[tuple[str, str], ...], tuple[str, ...]]:
+    """Search every marker, returning the hits and the ones that could not be.
+
+    An empty needle is skipped rather than searched, because ``b"" in blob`` is
+    true of every blob and would report a hit against all of them. The skip is
+    correct and the silence was not: the name still appeared in the report's
+    "markers searched" count and under "each must be absent from every captured
+    byte", so a marker nobody looked for was counted toward a PASS.
+    """
     hits: list[tuple[str, str]] = []
+    unsearchable: list[str] = []
     for name, needle in markers.items():
         if not needle:
+            unsearchable.append(name)
             continue
         for direction, blob in frames:
             if any(needle in form for form in _forms(blob)):
                 hits.append((name, direction))
                 break
-    return tuple(hits)
+    return tuple(hits), tuple(unsearchable)
 
 
 def prove_no_plaintext(capture_dir: Path | None = None) -> ProveReport:
@@ -204,13 +233,14 @@ def prove_no_plaintext(capture_dir: Path | None = None) -> ProveReport:
         sync(bob, alice.identity.public(), tap, channel=_CHANNEL)
         tap.close()
 
-        hits = _scan(tap.frames, markers)
+        hits, unsearchable = _scan(tap.frames, markers)
         return ProveReport(
             capture_path=capture_path,
             bytes_captured=tap.bytes_captured,
             frame_count=len(tap.frames),
             marker_names=tuple(markers),
             hits=hits,
+            unsearchable=unsearchable,
         )
     finally:
         if tap is not None:
@@ -246,14 +276,22 @@ def format_report(report: ProveReport) -> str:
         "",
         f"  bytes captured on the wire : {report.bytes_captured}",
         f"  wire frames recorded       : {report.frame_count}",
-        f"  markers searched           : {len(report.marker_names)}",
+        f"  markers searched           : {len(report.searched_names)} "
+        f"of {len(report.marker_names)}",
         f"  plaintext hits             : {len(report.hits)}",
         f"  capture file               : {report.capture_path}",
         "",
         "  markers (each must be absent from every captured byte):",
     ]
-    lines.extend(f"    · {name}" for name in report.marker_names)
+    lines.extend(f"    · {name}" for name in report.searched_names)
     lines.append("")
+    if report.unsearchable:
+        # Named separately from the searched list, because listing them together
+        # under "each must be absent from every captured byte" said this run had
+        # established something about them. It had not looked.
+        lines.append("  markers that could NOT be searched (their value was empty):")
+        lines.extend(f"    ? {name}" for name in report.unsearchable)
+        lines.append("")
     if report.clean:
         lines.append("  RESULT: PASS — no plaintext marker reached the relay (ciphertext only).")
         lines.append("")
@@ -261,9 +299,13 @@ def format_report(report: ProveReport) -> str:
         lines.append(f"    xxd {report.capture_path} | less")
         lines.append(f"    grep -a '{_MARKER_TITLE}' {report.capture_path}   # expect: no output")
     else:
-        lines.append("  RESULT: FAIL — plaintext reached the relay:")
+        lines.append("  RESULT: FAIL — this run does not demonstrate the claim.")
         lines.extend(
             f"    ✗ {name} appeared in a {direction} frame" for name, direction in report.hits
+        )
+        lines.extend(
+            f"    ? {name} was never searched for, so nothing here rules it out"
+            for name in report.unsearchable
         )
     lines.append("")
     lines.append(TCPDUMP_INSTRUCTIONS)
