@@ -12,6 +12,12 @@ on:
 permissions:
   contents: read
 
+# CI-CD-STANDARD.md 11c *deliberate exception*: a deploy, not a verdict. The
+# last deploy is the site, so a superseded one may be evicted without losing
+# anything, and a half-finished deploy must never be interrupted -- hence the
+# constant group with cancel-in-progress: false. Nothing here is a required
+# status check; workflows that produce one carry the commit SHA in their
+# group key instead (see ci.yml).
 concurrency:
   group: pages
   cancel-in-progress: false

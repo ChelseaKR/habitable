@@ -685,51 +685,119 @@ def test_every_check_script_has_a_way_to_fail() -> None:
 # --- Every commit on `main` gets its own verdict ------------------------------
 
 _WORKFLOW_DIR = Path(__file__).resolve().parent.parent / ".github" / "workflows"
-#: Triggers that fire with `github.ref` pointing at the default branch, so two of
-#: them landing close together share a `*-${{ github.ref }}` concurrency group.
-_RUNS_ON_MAIN = ("push:", "schedule:", "branch_protection_rule:")
+
+#: Workflows that may key their concurrency group on the ref alone, because the
+#: newest run really is the only one that matters and eviction of a superseded
+#: run loses nothing: a deploy converges on the site that is live, and a
+#: Scorecard run converges on a score that is a property of the repository
+#: rather than of a commit. CI-CD-STANDARD.md 11c names this exception, and
+#: gives the test for it: none of these produces a required status check.
+_CONVERGING_WORKFLOWS = {
+    "pages.yml": "GitHub Pages deploy; the last deploy is the site",
+    "release.yml": "publish; queued, never cancelled (11c / 8b)",
+    "scorecard.yml": "OpenSSF score; a repository property, not a commit's",
+}
+
+_GROUP = re.compile(r"^[ \t]+group:[ \t]*(.+?)[ \t]*$", re.M)
+_CANCEL = re.compile(r"^[ \t]+cancel-in-progress:[ \t]*(.+?)[ \t]*$", re.M)
 
 
-def test_no_workflow_cancels_an_in_progress_run_on_main() -> None:
-    """Cancelling a superseded run on `main` does not defer a verdict, it deletes one.
-
-    On a pull-request branch, cancelling is right: only the tip matters, and the
-    replacement run reports on the same code. On `main` every commit is a
-    protected commit, each one is a different tree, and the cancelled run is the
-    only run that commit will ever get.
-
-    It has happened here. Of the last 100 runs on `main`, five were `cancelled`
-    across three commits, and the worst was `e59c84d` -- PR #213, which landed
-    `scripts/check_pseudo_locale.py` -- where ci, i18n *and* a11y were all
-    cancelled. That commit reached `main` with no verdict from anything, carrying
-    a gate whose `main()` could not fail. The two others were dependabot merges
-    (`f7c1f2d`, `0bc4011`) that lost their `ci` verdict the same way.
-
-    So `cancel-in-progress` must be conditional on the ref rather than `true`.
-    """
-    workflows = sorted(_WORKFLOW_DIR.glob("*.yml"))
-    assert len(workflows) >= 8, (
-        f"only {len(workflows)} workflows found; this guard is reading nothing"
-    )
-
-    offenders: list[str] = []
-    checked = 0
-    for workflow in workflows:
+def _concurrency_settings() -> dict[str, tuple[str, str]]:
+    """`{workflow filename: (group expression, cancel-in-progress literal)}`."""
+    found: dict[str, tuple[str, str]] = {}
+    for workflow in sorted(_WORKFLOW_DIR.glob("*.yml")):
         text = workflow.read_text(encoding="utf-8")
-        if "concurrency:" not in text:
+        if "\nconcurrency:\n" not in text:
             continue
-        setting = re.search(r"^\s*cancel-in-progress:\s*(.+?)\s*$", text, re.M)
-        if setting is None:
-            continue
-        if not any(trigger in text for trigger in _RUNS_ON_MAIN):
-            continue  # pull_request / workflow_dispatch only; never runs on main
-        checked += 1
-        if setting.group(1) == "true":
-            offenders.append(workflow.name)
+        group, cancel = _GROUP.search(text), _CANCEL.search(text)
+        assert group is not None and cancel is not None, (
+            f"{workflow.name} declares `concurrency:` without both a group and a "
+            "cancel-in-progress; this guard cannot read it."
+        )
+        found[workflow.name] = (group.group(1), cancel.group(1))
+    assert len(found) >= 7, f"only {len(found)} concurrency blocks found; the guard reads nothing"
+    return found
 
-    assert checked >= 5, f"only {checked} main-running workflows inspected; the guard is too narrow"
+
+def test_no_two_commits_share_a_concurrency_group() -> None:
+    """A group key that omits the commit deletes verdicts, silently.
+
+    A GitHub concurrency group holds one *running* run and exactly one *pending*
+    run. When a third run enters the group the pending one is evicted **with zero
+    jobs dispatched** — so with a `${{ github.ref }}`-only key, every push to
+    `main` competes for one slot and a burst of merges discards CI for the
+    commits in the middle. Those commits do not go red; they get no verdict at
+    all, which is the harder thing to notice.
+
+    Measured on this repository over the last 100 push-on-`main` runs of each
+    workflow: 37 cancelled runs, 5 of them with zero jobs dispatched, and 10
+    commits left with no successful `ci` run against 5 genuine failures. The
+    worst was `e59c84d` (PR #213), which lost `ci`, `i18n` *and* `a11y` and
+    reached `main` carrying a gate whose `main()` could not fail.
+
+    So the fix is the group key, and `cancel-in-progress` is pinned separately by
+    `test_cancel_in_progress_is_never_conditional_on_the_ref`.
+    """
+    offenders = {
+        name: group
+        for name, (group, _) in _concurrency_settings().items()
+        if name not in _CONVERGING_WORKFLOWS and "github.sha" not in group
+    }
     assert not offenders, (
-        f"these workflows cancel an in-progress run on `main`: {offenders}. On `main` that "
-        "loses the verdict for a commit that will never be re-run. Make it conditional, e.g. "
-        "cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}."
+        f"these workflows share one concurrency group across commits: {offenders}. "
+        "A third run into the group evicts the pending one with zero jobs, so the "
+        "commit it belonged to lands on `main` with no verdict. Use the key from "
+        "CI-CD-STANDARD.md 11c: ${{ github.workflow }}-${{ github.ref }}-${{ "
+        "github.event_name == 'pull_request' && 'pr' || github.sha }}. If the "
+        "workflow genuinely only needs its newest run, add it to "
+        "_CONVERGING_WORKFLOWS with the reason."
     )
+
+
+def test_cancel_in_progress_is_never_conditional_on_the_ref() -> None:
+    """`cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}` is worse than `true`.
+
+    It reads as the careful choice — cancel on branches, protect `main` — and it
+    was shipped here in #305 on exactly that reasoning. It does not work.
+    Eviction of the *pending* run happens whatever this flag says; the flag only
+    decides where the loss lands. `true` kills the running run, which at least
+    leaves a cancelled run with jobs in it. `false`, and every expression that
+    evaluates to `false` on the default branch, protects the running slot and
+    pushes every loss into the pending slot, where it appears as a cancelled run
+    with zero jobs that nobody inspects. Ranked by how visible the loss is, the
+    conditional is the worst of the three, and it makes a repository look fixed.
+
+    So this must stay a literal. The group key is what stops the contention, and
+    `test_no_two_commits_share_a_concurrency_group` holds that line.
+    """
+    offenders = {
+        name: cancel
+        for name, (_, cancel) in _concurrency_settings().items()
+        if cancel not in {"true", "false"}
+    }
+    assert not offenders, (
+        f"these workflows compute cancel-in-progress: {offenders}. Every such "
+        "expression is a variant of 'cancel on branches, not on main', which "
+        "hides verdict loss in the pending slot instead of preventing it. Make "
+        "it a literal and put the commit SHA in the group key instead."
+    )
+
+
+def test_the_converging_workflow_exception_stays_documented() -> None:
+    """An exception list is only safe while every entry still earns its place.
+
+    CI-CD-STANDARD.md 11c allows a ref-only key exactly where the newest run is
+    the only one that matters, and gives the test: none of those workflows
+    produces a required status check. Each entry must therefore still exist, must
+    still declare a concurrency block, and must say in the file itself why it is
+    exempt — so the next person to read it is reading a reason, not a habit.
+    """
+    settings = _concurrency_settings()
+    for name, reason in _CONVERGING_WORKFLOWS.items():
+        assert name in settings, f"{name} is listed as an exception but declares no concurrency"
+        assert reason, f"{name} is exempt with no reason recorded"
+        text = (_WORKFLOW_DIR / name).read_text(encoding="utf-8")
+        assert re.search(r"^\s*#.*\b(deploy|publish|exception|converg)", text, re.M | re.I), (
+            f"{name} takes the 11c ref-only exception without explaining itself in "
+            "the workflow. Say why its newest run is the only one that matters."
+        )

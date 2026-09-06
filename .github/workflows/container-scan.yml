@@ -31,14 +31,18 @@ permissions:
   contents: read
 
 concurrency:
-  group: container-scan-${{ github.ref }}
-  # Cancel a superseded run on a pull-request branch, where only the latest
-  # commit matters -- but never on `main`, where every commit is a protected
-  # commit entitled to its own verdict. Cancelling there loses the verdict
-  # entirely rather than deferring it: `e59c84d` (PR #213) landed with all
-  # three of ci, i18n and a11y cancelled, and shipped a gate that could not
-  # fail with nothing having checked it.
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  # CI-CD-STANDARD.md 11c. One group per commit on a push, one per branch on a
+  # pull request. A concurrency group holds one *running* run and exactly one
+  # *pending* run; a third arrival evicts the pending one with zero jobs ever
+  # dispatched. So a ref-only key makes every push to `main` compete for one
+  # slot, and a burst of merges deletes the verdict for whichever commit was
+  # waiting -- not a failure anyone can see, an absence. `cancel-in-progress`
+  # neither causes nor prevents that; it only decides whether the loss is
+  # visible (cancelled with jobs) or invisible (cancelled with zero jobs).
+  # Carrying the SHA gives each commit its own slot; PR supersession is
+  # unchanged, because pull requests still share a per-ref group.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  cancel-in-progress: true
 
 jobs:
   scan:
