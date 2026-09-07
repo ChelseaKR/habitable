@@ -47,7 +47,7 @@ from .crypto import (
 from .errors import CryptoError, FixityError, TimestampError, VaultError
 from .evidence import CustodyAction, CustodyLog
 from .model import CaseDocument
-from .syncstate import PeerAuthorization
+from .syncstate import PeerAuthorization, SyncRedundancy, redundancy_from_peers
 from .threshold import create_recovery_bundle, recover_dek
 from .tsa import TimestampToken
 
@@ -940,12 +940,36 @@ class Vault:
         return tuple(peer.pending_receipts[key] for key in sorted(peer.pending_receipts))
 
     def record_verified_sync_receipt(
-        self, identity: PublicIdentity, message_id: str, receipt: dict[str, JSONValue]
+        self,
+        identity: PublicIdentity,
+        message_id: str,
+        receipt: dict[str, JSONValue],
+        *,
+        transport: str | None = None,
     ) -> None:
         peer = self.sync_peer(identity)
         if peer is None:
             raise VaultError("cannot record a receipt from an unauthorized peer")
         peer.verified_receipts[message_id] = receipt
+        # Alongside the peer's signed claim, this device's own observation: when
+        # *we* verified it, by *our* clock. The peer signs its own watermark;
+        # it does not get to tell us what time it is here.
+        observation: dict[str, JSONValue] = {
+            "observed_at_ms": self.document.clock.wall_ms(),
+        }
+        if transport:
+            observation["transport"] = transport
+        peer.receipt_observations[message_id] = observation
+
+    def sync_redundancy(self) -> SyncRedundancy:
+        """Which paired devices have *proved* they hold this case (RR-07).
+
+        Answers the organizer's question — "is this case safely on more than one
+        device?" — from receipts rather than from the pairing list, because
+        pairing a peer and that peer actually holding the case are different
+        facts and only the second one is a backup.
+        """
+        return redundancy_from_peers(self._sync_peers, now_ms=self.document.clock.wall_ms())
 
     def verified_sync_receipt(
         self, identity: PublicIdentity, message_id: str

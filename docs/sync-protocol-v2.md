@@ -114,12 +114,49 @@ evidence.
 
 After import, the recipient signs a receipt binding the case id, exact message
 id/digest, original sender and importer identities, every capture id/content
-hash, and the custody head after import. The receipt rides in the recipient's
-next delta. The original sender accepts it only if the digest matches a message
-recorded as sent to that exact peer.
+hash, the custody head after import, and the importer's HLC watermark after the
+merge. The receipt rides in the recipient's next delta. The original sender
+accepts it only if the digest matches a message recorded as sent to that exact
+peer.
 
 A receipt proves cryptographic acceptance by a device key. It does not prove
 that a particular human reviewed the contents or constitute legal service.
+
+`importer_hlc_watermark` was added after the first receipts shipped. It is
+additive and does not bump `habitable-sync-receipt-v1`: the signature covers the
+payload exactly as it travels, and validation reads named fields and ignores the
+rest, so a peer on either build verifies the other's receipts.
+
+## 4a. What the receipts say about redundancy
+
+Receipts are also the only evidence this device has that the case exists
+anywhere else, so `habitable status` and the app answer "is this case on more
+than one device?" from them.
+
+**A paired peer is not a copy.** Pairing authorizes a peer to send us data; it
+says nothing about whether that peer ever received ours. Only a verified receipt
+— that peer's signature over the digest of a message we recorded as sent to it —
+proves the peer holds the case. The device count is therefore this device plus
+the peers that returned a receipt, and a vault with three paired peers and no
+completed exchange reports **one** device and says so plainly. The paired count
+is reported beside it, never merged into it.
+
+**Two clocks, kept apart.** The watermark inside the receipt is the peer's own,
+signed on the peer's device. The time shown to the tenant is *this* device's
+record of when it verified the receipt, held in `receipt_observations` inside
+`sync_security.enc` and never sent anywhere. A peer's watermark that is absent,
+unparseable, or more than `CLOCK_SKEW_TOLERANCE_MS` ahead of this device's clock
+is reported as unusable rather than as a time — a future timestamp is a broken
+clock or a fabricated record, not fresh data.
+
+**Absence is not a value.** A confirmed peer with no recorded observation time
+prints a line saying no time was recorded; it does not print the epoch. The
+transport is recorded only when the caller knew it, and a transport that is
+unknown is omitted rather than written as `"unknown"`.
+
+Receipts, observations, and the redundancy summary are local. Nothing here is
+exported into a packet, so a recipient of a packet learns nothing about how many
+devices hold the case.
 
 ## 5. Compatibility
 

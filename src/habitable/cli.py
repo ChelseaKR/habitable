@@ -19,6 +19,7 @@ import sys
 import time
 import webbrowser
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 
 from cryptography import x509
@@ -1157,9 +1158,56 @@ def _cmd_status(args: argparse.Namespace) -> int:
         shared=human_bytes(footprint.shared_copies_bytes),
     )
     print(f"  {storage}")
+    _print_sync_redundancy(vault, locale)
     if any_issues:
         print(f"  {cli_text('status_strength_caveat', locale)}")
     return 0
+
+
+# Transport labels are protocol tokens, not prose. Only the ones this build ships
+# have a translation; anything else is printed verbatim rather than mapped to a
+# nearby-sounding phrase that would misdescribe how the case actually travelled.
+_TRANSPORT_KEYS = {"file": "sync_transport_file", "relay": "sync_transport_relay"}
+
+
+def _print_sync_redundancy(vault: Vault, locale: str) -> None:
+    """RR-07: say whether any other device is known to hold this case.
+
+    Everything printed here comes from :meth:`Vault.sync_redundancy`, which
+    counts peers that returned a signed receipt — not peers that are merely
+    paired. A missing observation time prints a different line rather than a
+    stand-in date.
+    """
+    redundancy = vault.sync_redundancy()
+    if redundancy.single_device:
+        print(f"  {cli_text('status_sync_alone', locale, paired=redundancy.paired_count)}")
+        return
+    print(
+        "  "
+        + cli_text(
+            "status_sync_devices",
+            locale,
+            devices=redundancy.device_count,
+            confirmed=redundancy.confirmed_count,
+        )
+    )
+    peer = redundancy.last_peer
+    if peer is None:
+        # Confirmed by signature, but with no local record of when. Naming one of
+        # the confirming peers without a time beats printing the epoch.
+        untimed = redundancy.confirmed_peers[0]
+        print(f"      {cli_text('status_sync_last_untimed', locale, peer=untimed.fingerprint)}")
+        return
+    when = format_datetime(
+        datetime.fromtimestamp((peer.observed_at_ms or 0) / 1000, tz=UTC), locale
+    )
+    print(f"      {cli_text('status_sync_last_seen', locale, peer=peer.fingerprint, when=when)}")
+    if peer.transport is not None:
+        key = _TRANSPORT_KEYS.get(peer.transport)
+        named = cli_text(key, locale) if key is not None else peer.transport
+        print(f"      {cli_text('status_sync_via', locale, transport=named)}")
+    if peer.claimed_clock_state != "present":
+        print("      " + cli_text("status_sync_peer_clock_unusable", locale, peer=peer.fingerprint))
 
 
 def _cmd_resolve(args: argparse.Namespace) -> int:

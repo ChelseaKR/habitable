@@ -484,6 +484,30 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "storage: {total} total — {sealed} sealed originals + {shared} shared copies "
             "(originals are kept twice by design)"
         ),
+        # RR-07: "is this case on more than one device?" Counted from receipts a
+        # peer signed, never from the pairing list -- a paired peer that has never
+        # completed an exchange holds nothing.
+        "status_sync_alone": (
+            "copies: this device only — no other device has acknowledged holding this case "
+            "({paired, plural, =0 {no peer is paired} one {# peer is paired} "
+            "other {# peers are paired}}). If this device is lost, the case is lost."
+        ),
+        "status_sync_devices": (
+            "copies: this case is on {devices, plural, one {# device} other {# devices}} — "
+            "{confirmed, plural, one {# paired peer has} other {# paired peers have}} "
+            "acknowledged holding it"
+        ),
+        "status_sync_last_seen": "last acknowledgement: {peer} — recorded here {when}",
+        "status_sync_last_untimed": (
+            "last acknowledgement: {peer} — this device recorded no time for it"
+        ),
+        "status_sync_via": "carried over: {transport}",
+        "sync_transport_file": "a file or removable drive",
+        "sync_transport_relay": "a relay server",
+        "status_sync_peer_clock_unusable": (
+            "note: the acknowledgement from {peer} carries no usable clock of its own, "
+            "so the time above is this device's own record of when it arrived"
+        ),
         # Issue #161: the repair-request letter is the one surface that is not
         # bilingual. It says so instead of relabelling English prose.
         "letter_language_unavailable": (
@@ -704,6 +728,29 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         "status_storage": (
             "almacenamiento: {total} en total — {sealed} originales sellados + "
             "{shared} copias compartidas (los originales se guardan por duplicado por diseño)"
+        ),
+        "status_sync_alone": (
+            "copias: solo este dispositivo — ningún otro dispositivo ha confirmado que "
+            "tiene este caso ({paired, plural, =0 {no hay ningún dispositivo vinculado} "
+            "one {hay # dispositivo vinculado} other {hay # dispositivos vinculados}}). "
+            "Si se pierde este dispositivo, se pierde el caso."
+        ),
+        "status_sync_devices": (
+            "copias: este caso está en {devices, plural, one {# dispositivo} "
+            "other {# dispositivos}} — "
+            "{confirmed, plural, one {# dispositivo vinculado ha confirmado} "
+            "other {# dispositivos vinculados han confirmado}} que lo tiene"
+        ),
+        "status_sync_last_seen": "última confirmación: {peer} — registrada aquí el {when}",
+        "status_sync_last_untimed": (
+            "última confirmación: {peer} — este dispositivo no registró la hora"
+        ),
+        "status_sync_via": "transmitida por: {transport}",
+        "sync_transport_file": "un archivo o una unidad extraíble",
+        "sync_transport_relay": "un servidor de retransmisión",
+        "status_sync_peer_clock_unusable": (
+            "nota: la confirmación de {peer} no trae una hora propia utilizable, así que "
+            "la hora anterior es la que registró este dispositivo cuando llegó"
         ),
         "letter_language_unavailable": (
             "aviso: esta carta está escrita en inglés. habitable todavía no incluye una "

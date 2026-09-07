@@ -963,6 +963,8 @@
       status.allow_metered === false ? t("network_wifi_only") : t("network_metered_ok")
     );
 
+    renderCopies(status.sync);
+
     setText("rail-stamp", fm("rail_awaiting", { count: deferred }));
     var ring = document.getElementById("readiness-ring");
     var total = status.evidence_count || status.capture_count || 0;
@@ -983,6 +985,45 @@
 
     // Last, so the announcement reflects a grid that is already up to date.
     announceProofTransition(timestamped, deferred);
+  }
+
+  // RR-07: "is this case safely on more than one device?" Everything shown here
+  // is derived server-side from receipts a peer signed, never from the pairing
+  // list, so a peer that was paired but never synced is reported as exactly that.
+  var COPY_TRANSPORTS = { file: "sync_transport_file", relay: "sync_transport_relay" };
+
+  function renderCopies(sync) {
+    var note = document.getElementById("copies-note");
+    if (!sync) {
+      // The server did not report redundancy at all. Say nothing rather than
+      // rendering the absence as "1 device", which would read as a measurement.
+      setText("st-copies", "—");
+      if (note) { setText("copies-note", ""); }
+      return;
+    }
+    if (sync.single_device) {
+      setText("st-copies", t("copies_alone"));
+      if (note) {
+        setText("copies-note", fm("copies_alone_detail", { count: sync.paired_devices || 0 }));
+      }
+      return;
+    }
+    setText("st-copies", fm("copies_devices", { count: sync.devices || 0 }));
+    if (!note) { return; }
+    var peer = sync.last_peer || "";
+    var detail;
+    if (typeof sync.last_observed_at_ms === "number" && sync.last_observed_at_ms > 0) {
+      detail = fm("copies_last_seen", {
+        peer: peer,
+        when: formatDateTime(new Date(sync.last_observed_at_ms))
+      });
+      var transportKey = COPY_TRANSPORTS[sync.last_transport];
+      if (transportKey) { detail += " " + fm("copies_via", { transport: t(transportKey) }); }
+    } else {
+      // No local observation time. A zero here would render as January 1970.
+      detail = fm("copies_last_untimed", { peer: peer });
+    }
+    setText("copies-note", detail);
   }
 
   function populateAtlasFilter(issues) {
