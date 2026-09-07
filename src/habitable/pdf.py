@@ -50,7 +50,7 @@ from .disclosure import (
     shared_metadata_may_be_retained,
 )
 from .letter import RepairLetter, letter_lines
-from .sensor import series_extent
+from .sensor import series_extent, series_loss, series_summary
 
 __all__ = ["render_letter_pdf", "render_packet_pdf"]
 
@@ -543,19 +543,33 @@ def _render_sensor_item(
     label_header = _s(sensor, "label_header") or "Reading"
     value_header = _s(sensor, "value_header") or "Value"
     unit = _s(sensor, "unit")
-    unit_suffix = f" {unit}" if unit else ""
     minimum, maximum, mean = _f(sensor, "minimum"), _f(sensor, "maximum"), _f(sensor, "mean")
     total_rows = _i(sensor, "total_rows")
     extent = series_extent(total_rows, _bool(sensor, "truncated"), len(readings))
+    # `sensor.get`, not `_i`: `_i` returns 0 for an absent field, and 0 here would say
+    # "no row was unreadable" about a bundle that never made that claim (issue #311).
+    loss = series_loss(total_rows, sensor.get("skipped_rows"))
     stamp = _timestamp_status(item.get("timestamp"), trust)
 
+    measurement = series_summary(
+        value_header=value_header,
+        unit=unit,
+        minimum=minimum,
+        maximum=maximum,
+        mean=mean,
+        loss=loss,
+    )
     summary = (
-        f"Instrument data ({value_header}): {total_rows} reading(s), ranging "
-        f"{minimum:g}{unit_suffix} to {maximum:g}{unit_suffix}, averaging "
-        f"{mean:g}{unit_suffix}. Captured {_s(item, 'captured_at')} · "
+        f"{measurement} Captured {_s(item, 'captured_at')} · "
         f"hash {_s(item, 'content_hash')[:16]}… · {stamp}"
     )
     story.append(_para(summary, styles["Small"]))
+    # Beside the summary it qualifies, not after the table -- the same placement the
+    # HTML gives it, so the two renderings of one bundle agree about what a reader is
+    # told (issue #311).
+    loss_notice = loss.notice()
+    if loss_notice:
+        story.append(_para(loss_notice, styles["Small"]))
 
     chart = _sensor_chart_drawing(readings, minimum, maximum)
     if chart is not None:

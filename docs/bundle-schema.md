@@ -178,12 +178,20 @@ A **timestamp token** is `{kind: "rfc3161"|"dev", tsa_name, token_b64}` where `t
 of the DER token (`rfc3161`) or a canonical-JSON token (`dev`, non-production/offline only).
 
 A **sensor series** (`item.sensor`) is `{label_header, value_header, unit|null, readings: [{label, value}],
-total_rows, truncated, minimum, maximum, mean, warnings[]}`. It is **corroboration, not proof of cause**:
-an independent instrument's reading of a condition (a no-heat or mold case), rendered as a small line chart
-over an accessible readings table (the table, never color, is the source of truth). Readings are capped at
+total_rows, truncated, minimum, maximum, mean, warnings[], skipped_rows}`. It is **corroboration, not proof of
+cause**: an independent instrument's reading of a condition (a no-heat or mold case), rendered as a small line
+chart over an accessible readings table (the table, never color, is the source of truth). Readings are capped at
 500 rows; `total_rows`/`truncated` disclose any truncation, and the full data remains in the sealed original.
 A data file is copied into `media/` **verbatim** (a CSV carries no embedded location metadata to strip), which
 `stripped` records as *not applicable*.
+
+Two counts, deliberately: `total_rows` is the readings the parser **understood**, and `skipped_rows` is the
+data rows it could not evaluate at all (no second column, or a non-numeric value column). `mean` is computed
+over `total_rows`, so a series with `skipped_rows > 0` is an average of a subset, and the source file held
+`total_rows + skipped_rows` data rows. `skipped_rows` was added after packet v4 shipped and is **optional**:
+a bundle written before it existed does not carry it, and a reader must treat its absence as *unknown* rather
+than as zero — the count exists there only inside a `warnings` sentence. Both renderers do exactly that
+(`series_loss` in `src/habitable/sensor.py`, issue #311).
 
 ### `custody_proof` — integrity without identities
 
