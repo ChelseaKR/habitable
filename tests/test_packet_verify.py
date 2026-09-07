@@ -82,6 +82,16 @@ def test_retained_metadata_policy_is_disclosed_in_bundle_and_human_view(
     local_tsa: LocalRfc3161TSA,
     tmp_path: Path,
 ) -> None:
+    """Every human rendering of one bundle makes the same metadata claim.
+
+    ``inspector.html`` is asserted here, beside ``packet.html``, because until
+    this test it was not asserted anywhere. #104 added the retained-metadata
+    branch and threaded it through ``render_packet_html`` and the PDF; the third
+    caller of the same helper, ``render_inspector_html``, kept the default and so
+    printed "embedded location metadata removed from its shared media copies"
+    over a packet whose own signed ``disclosures`` said the opposite -- in the
+    view written specifically to be handed to an inspector.
+    """
     from habitable.disclosure import proof_statement
 
     vault = Vault.create(tmp_path / "vault-retained", "pw", case_id="c", unit="4B", language="es")
@@ -93,6 +103,7 @@ def test_retained_metadata_policy_is_disclosed_in_bundle_and_human_view(
         out,
         generated_at="2026-01-02T00:10:00Z",
         make_pdf=False,
+        inspector_view=True,
         policy=SharingPolicy(strip_location=False, strip_all_metadata=False),
     )
 
@@ -102,10 +113,43 @@ def test_retained_metadata_policy_is_disclosed_in_bundle_and_human_view(
     assert "custody identities not exported" in disclosures
     shared = next((out / "media").glob("*.jpg"))
     assert read_metadata(shared).has_location
-    html = (out / "packet.html").read_text(encoding="utf-8")
     statement = proof_statement("es")
-    assert statement.privacy_metadata_warning in html
-    assert statement.privacy_stripped not in html
+    for name in ("packet.html", "inspector.html"):
+        html = (out / name).read_text(encoding="utf-8")
+        assert statement.privacy_metadata_warning in html, name
+        assert statement.privacy_stripped not in html, name
+
+
+def test_stripping_policy_is_disclosed_in_every_human_view(
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """The negative half: the reassuring sentence is still printed when it is true.
+
+    Without this, the assertion above could be satisfied by a renderer that had
+    simply lost the ability to say "removed" at all.
+    """
+    from habitable.disclosure import proof_statement
+
+    vault = Vault.create(tmp_path / "vault-stripped", "pw", case_id="c", unit="4B", language="es")
+    issue = vault.document.add_issue(category="mold", title="Mold", issue_id="i1")
+    capture(vault, make_jpeg("stripped.jpg", with_location=True), issue_id=issue, tsa=local_tsa)
+    out = tmp_path / "packet-stripped"
+    build_packet(
+        vault,
+        out,
+        generated_at="2026-01-02T00:10:00Z",
+        make_pdf=False,
+        inspector_view=True,
+        policy=SharingPolicy(strip_location=True, strip_all_metadata=True),
+    )
+
+    statement = proof_statement("es")
+    for name in ("packet.html", "inspector.html"):
+        html = (out / name).read_text(encoding="utf-8")
+        assert statement.privacy_stripped in html, name
+        assert statement.privacy_metadata_warning not in html, name
 
 
 def test_packet_html_has_proof_and_disclosure(

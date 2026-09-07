@@ -9,6 +9,43 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **`inspector.html` told the reader location metadata had been removed from a
+  packet whose own signed disclosures said it had been kept.** Issue #104 made the
+  packet's metadata claim fail closed: `_disclosure_section` gained a
+  `metadata_may_be_retained` keyword, and under a retain policy the packet says
+  "*the configured sharing policy allows some or all embedded metadata to remain in
+  supported shared copies, possibly including location*" instead of "*embedded
+  location metadata removed from its shared media copies*". That keyword was
+  threaded through `render_packet_html` and `render_packet_pdf`. It was not threaded
+  through `render_inspector_html`, the other caller of `_disclosure_section` in that
+  same file, which kept the `= False` default and so went on printing the
+  removed-metadata sentence.
+
+  One `build_packet(..., inspector_view=True, policy=SharingPolicy(strip_location=
+  False, strip_all_metadata=False))` produced two files from one bundle:
+  `packet.html` carrying the warning and `inspector.html` carrying its opposite,
+  over shared copies that really did still hold GPS. The rollup is the view written
+  to be handed to a housing inspector or code-enforcement officer, and the threat
+  model assumes a landlord who retaliates, so the sentence it got wrong is the one
+  about where the tenant lives.
+
+  `render_inspector_html` now derives the flag from the bundle's own `disclosures`,
+  exactly as the other two renderers do. Separately, the keyword defaults are gone
+  from both `htmlpacket._disclosure_section` and `pdf._render_disclosures`: each of
+  `metadata_may_be_retained=False`, `awaiting=0` and `total=0` defaulted to the
+  *reassuring* branch — the first picks "removed", the second deletes the
+  awaiting-timestamp note — so a caller that forgot one published a safety claim
+  nothing had checked, silently. They are required keywords now, which makes the
+  same omission a `mypy --strict` error at the call site rather than a wrong
+  sentence in a recipient's document. `mypy` was green on the original bug; only the
+  new test caught it, which is why both guards are here.
+
+  `test_retained_metadata_policy_is_disclosed_in_bundle_and_human_view` now asserts
+  every human rendering of one bundle, not just `packet.html`, and a companion test
+  pins the negative half so a renderer cannot pass by losing the ability to say
+  "removed" at all.
+
+
 - **The container gate documented a block it does not have.** `container-scan.yml`
   scans the relay image with Trivy at `HIGH,CRITICAL` and `ignore-unfixed: true`,
   which drops every CVE with no available fix. Its header said the opposite —
