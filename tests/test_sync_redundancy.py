@@ -10,6 +10,7 @@ than as a value.
 
 from __future__ import annotations
 
+import base64
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -17,7 +18,7 @@ from typing import cast
 
 import pytest
 
-from habitable.canonical import JSONValue
+from habitable.canonical import JSONValue, canonical_json
 from habitable.cli import main
 from habitable.crypto import PublicIdentity
 from habitable.errors import SyncError
@@ -175,6 +176,65 @@ def test_a_tampered_receipt_is_refused_and_never_counted(tmp_path: Path) -> None
     with pytest.raises(SyncError, match="signature is invalid"):
         import_messages(a, [reply])
     assert a.sync_redundancy().single_device is True
+
+
+# --- the receipt stayed compatible in both directions ----------------------------
+
+
+def test_a_receipt_without_the_watermark_still_validates(tmp_path: Path) -> None:
+    """A peer on the previous build signs a payload with no watermark.
+
+    The field is additive and the protocol tag is unchanged, so this must be
+    accepted -- otherwise the field is a silent protocol break that only shows
+    up when half a union has updated.
+    """
+    a, b = _pair(tmp_path)
+    outbound = export_message(a, b.identity.public())
+    import_messages(b, [outbound])
+
+    peer = b.sync_peer(a.identity.public())
+    assert peer is not None
+    message_id, receipt = next(iter(peer.pending_receipts.items()))
+    payload = cast(dict[str, JSONValue], receipt["payload"])
+    assert "importer_hlc_watermark" in payload
+    del payload["importer_hlc_watermark"]
+    # Re-sign, because the old build signed a payload that never had the field --
+    # this is a compatibility test, not a tampering test.
+    receipt["signature_b64"] = base64.b64encode(b.identity.sign(canonical_json(payload))).decode(
+        "ascii"
+    )
+    peer.pending_receipts[message_id] = receipt
+    b.save()
+
+    assert import_messages(a, [export_message(b, a.identity.public())]).receipts_received == 1
+    holding = a.sync_redundancy().peers[0]
+    assert holding.confirmed is True
+    assert holding.claimed_clock_state == "absent"
+
+
+def test_a_receipt_carrying_an_unknown_field_still_validates(tmp_path: Path) -> None:
+    """The reverse direction: a future build adds another field to the payload.
+
+    Validation reads named fields and re-canonicalizes the payload as received,
+    so an unknown key must ride through rather than being rejected as malformed.
+    """
+    a, b = _pair(tmp_path)
+    outbound = export_message(a, b.identity.public())
+    import_messages(b, [outbound])
+
+    peer = b.sync_peer(a.identity.public())
+    assert peer is not None
+    message_id, receipt = next(iter(peer.pending_receipts.items()))
+    payload = cast(dict[str, JSONValue], receipt["payload"])
+    payload["some_field_from_a_later_build"] = "value"
+    receipt["signature_b64"] = base64.b64encode(b.identity.sign(canonical_json(payload))).decode(
+        "ascii"
+    )
+    peer.pending_receipts[message_id] = receipt
+    b.save()
+
+    assert import_messages(a, [export_message(b, a.identity.public())]).receipts_received == 1
+    assert a.sync_redundancy().device_count == 2
 
 
 # --- the two clocks stay apart ---------------------------------------------------
