@@ -106,3 +106,4 @@ ee32736f5451aa70d8624a03b4fb5444e49ac5bf:.gitleaksignore:generic-api-key:61
 # with no commit, while the CI history scan reports `commit:file:rule:line`. An
 # entry in only one of those forms passes one gate and fails the other.
 tests/golden/sensor-packet-v4/bundle.json:generic-api-key:1
+7765fa77a8b2d5a2de7489b322ec49c88d197cd4:tests/golden/sensor-packet-v4/bundle.json:generic-api-key:1
