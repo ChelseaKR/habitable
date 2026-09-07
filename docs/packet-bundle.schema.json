@@ -348,7 +348,7 @@
             }
           }
         },
-        "total_rows": { "type": "integer", "description": "Total numeric readings parsed (before any truncation)." },
+        "total_rows": { "type": "integer", "description": "Total numeric readings parsed (before any truncation). NOT the number of rows the source file held: rows that could not be read are counted in 'skipped_rows' and are in neither this total nor 'mean'." },
         "truncated": { "type": "boolean", "description": "Whether 'readings' is a truncated prefix of the full series." },
         "minimum": { "type": "number" },
         "maximum": { "type": "number" },
@@ -357,6 +357,11 @@
           "type": "array",
           "items": { "type": "string" },
           "description": "Non-fatal parse notes (rows skipped, truncation), surfaced verbatim in the packet."
+        },
+        "skipped_rows": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Data rows the parser could not read at all (no second column, or a non-numeric value column). They are in neither 'total_rows' nor 'mean', so the source file held 'total_rows + skipped_rows' data rows. Emitted from the packet version that followed 4; ABSENT MEANS UNKNOWN, not zero — an older bundle states this only inside a 'warnings' sentence."
         }
       },
       "additionalProperties": false

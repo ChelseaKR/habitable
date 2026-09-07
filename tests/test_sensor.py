@@ -11,15 +11,24 @@ opposing counsel cannot wave away as the tenant's own staged photo).
 from __future__ import annotations
 
 from collections.abc import Callable
+from html import unescape
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
+
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 
 from habitable.canonical import JSONValue
 from habitable.capture import capture
 from habitable.htmlpacket import _sensor_figure
 from habitable.packet import build_packet
-from habitable.pdf import _MAX_PDF_SENSOR_ROWS
-from habitable.sensor import SensorExtent, SensorSeries, parse_sensor_csv, series_extent
+from habitable.pdf import _MAX_PDF_SENSOR_ROWS, _render_sensor_item
+from habitable.sensor import (
+    SensorExtent,
+    SensorSeries,
+    parse_sensor_csv,
+    series_extent,
+    series_loss,
+)
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
 
@@ -247,3 +256,148 @@ def test_a_bundle_that_understates_its_total_is_still_read_as_a_prefix() -> None
     extent = series_extent(600, False, 500)
     assert extent.complete is False
     assert extent.total == 600
+
+
+# --- rows that could not be read at all ---------------------------------------
+#
+# The truncation half of this (above) was about readings that were parsed and then
+# reduced twice. This half is about rows that were never parsed: `_read_rows` drops
+# a row with no second column or a non-numeric value, `total_rows` then counts the
+# survivors, and `mean` divides by them. So a 600-row export with 90 unreadable rows
+# reported "510 reading(s) ... averaging X" with the 90 named only inside a `warnings`
+# sentence -- which the HTML put behind a collapsed <details> and the PDF put in the
+# normal flow. One bundle, two renderings, one of them silent (issue #311).
+
+_PARTLY_UNREADABLE_CSV = (
+    b"Time,Temperature (F)\n"
+    b"2026-01-01 00:00,58.4\n"
+    b"2026-01-01 01:00,\n"  # no value at all
+    b"2026-01-01 02:00,ERR\n"  # the logger's own error marker
+    b"2026-01-01 03:00,49.2\n"
+    b"2026-01-01 04:00\n"  # a truncated line: no second column
+)
+
+
+def _pdf_styles() -> Any:
+    """The stylesheet `render_packet_pdf` builds, so the renderer runs unchanged."""
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="Small", parent=styles["Normal"], fontSize=8, leading=10))
+    return styles
+
+
+def _series_with_unreadable_rows() -> SensorSeries:
+    series = parse_sensor_csv(_PARTLY_UNREADABLE_CSV)
+    assert series is not None
+    return series
+
+
+def test_the_series_records_how_many_rows_it_could_not_read() -> None:
+    """Structurally, in the bundle -- not only inside an English sentence.
+
+    The count existed before this, but only formatted into `warnings`, so a renderer
+    had to string-match a sentence to learn it and a verifier could not reconcile it
+    the way `SensorExtent` reconciles the truncation counts.
+    """
+    series = _series_with_unreadable_rows()
+    assert series.total_rows == 2, "readings parsed"
+    assert series.skipped_rows == 3, "rows that could not be read"
+    assert series.to_dict()["skipped_rows"] == 3, "and it survives into bundle.json"
+
+
+def test_the_figcaption_separates_source_rows_from_readings_parsed() -> None:
+    """A count and an average whose denominator silently excluded rows.
+
+    Both numbers are literals here on purpose: a property ("the caption mentions two
+    numbers") holds for the wrong pair just as well as the right one.
+    """
+    html = _sensor_figure(_sensor_item(_series_with_unreadable_rows()))
+    assert "2 reading(s) parsed from 5 row(s) in the source file" in html
+    assert "averaging 53.8 F over the 2 reading(s) parsed" in html
+
+
+def test_a_reader_who_never_expands_the_details_is_told_rows_were_dropped() -> None:
+    """The notice has to be above the collapsed control, like the truncation one."""
+    html = _sensor_figure(_sensor_item(_series_with_unreadable_rows()))
+    before_details = html.split("<details", 1)[0]
+    assert "3 of the 5 row(s) in the source file could not be read" in before_details
+    assert "neither the reading total nor the average" in before_details
+
+
+def test_both_renderers_tell_a_recipient_the_same_thing_about_the_unread_rows() -> None:
+    """The disagreement is the defect, so the agreement is what gets asserted.
+
+    The PDF paragraphs are read out of the story rather than out of a rendered file:
+    the point is what the renderer emits, and `Paragraph.text` is the string a reader
+    sees on the page.
+    """
+    item = _sensor_item(_series_with_unreadable_rows())
+    html = _sensor_figure(item)
+
+    story: list[Any] = []
+    _render_sensor_item(story, item, _pdf_styles())
+    pdf_text = " ".join(
+        getattr(flowable, "text", "") for flowable in story if hasattr(flowable, "text")
+    )
+
+    sentence = series_loss(2, 3).notice()
+    assert sentence, "the fixture must actually have unreadable rows"
+    assert sentence in unescape(html)
+    assert sentence in unescape(pdf_text)
+    # And the measurement sentence itself, which used to be two f-strings.
+    assert "2 reading(s) parsed from 5 row(s) in the source file" in unescape(pdf_text)
+
+
+def test_a_clean_csv_reads_exactly_as_it_did_before() -> None:
+    """The complement: the fix must not make every series read as damaged."""
+    series = parse_sensor_csv(_HEATER_CSV)
+    assert series is not None
+    assert series.skipped_rows == 0
+    html = _sensor_figure(_sensor_item(series))
+    assert "Instrument data (Temperature): 4 reading(s), ranging" in html
+    assert "source file" not in html
+    assert "could not be read" not in html
+    assert "reading(s) parsed" not in html
+
+
+def test_a_record_that_does_not_say_how_many_rows_were_unread_does_not_say_zero() -> None:
+    """A bundle written before `skipped_rows` existed is silent, not clean.
+
+    `_i` returns 0 for an absent integer field, and 0 here is the sentence "no row was
+    unreadable" -- a claim the packet never made, published as a measurement. The old
+    packet's own `warnings` prose still carries the count, so silence is the honest
+    rendering and it is byte-for-byte the rendering that bundle already got.
+    """
+    series = _series_with_unreadable_rows()
+    old_shape = cast("dict[str, JSONValue]", series.to_dict())
+    del old_shape["skipped_rows"]
+    item: dict[str, JSONValue] = {
+        "sensor": cast("JSONValue", old_shape),
+        "captured_at": "2026-01-01T00:00:00Z",
+        "content_hash": "a" * 64,
+        "timestamp": None,
+    }
+
+    loss = series_loss(2, old_shape.get("skipped_rows"))
+    assert loss.skipped is None, "unknown, not zero"
+    assert loss.recorded is False
+    assert loss.source_rows is None
+    assert loss.notice() == ""
+
+    html = _sensor_figure(item)
+    assert "Instrument data (Temperature): 2 reading(s), ranging" in html
+    assert "could not be read" not in html
+    # The count it does carry is still reachable, where it always was.
+    assert "3 row(s) skipped" in html
+
+
+def test_a_skipped_row_count_that_cannot_be_believed_is_not_rendered_as_one() -> None:
+    """Every coercion available here turns a producer's error into a measurement."""
+    for bogus in (-1, "3", 3.0, True, None, [3]):
+        loss = series_loss(2, bogus)
+        assert loss.skipped is None, f"{bogus!r} was accepted as a count"
+        assert loss.source_rows is None
+        assert loss.notice() == ""
+    believable = series_loss(2, 0)
+    assert believable.recorded is True
+    assert believable.lossy is False
+    assert believable.source_rows == 2

@@ -12,30 +12,72 @@ window in which issue-scoped export existed (issue #279, item 3). It is verified
 because "old scoped packets keep verifying" is the compatibility claim the scoped-export
 work leans on hardest and nothing else in the tree pins it. Its own README states the
 provenance, which is not the same as the other fixtures'.
+
+`tests/golden/sensor-packet-v4/` sits beside them for the same kind of reason and a
+different gap: until it was committed, **no bundle in this corpus carried a `sensor`
+record at all**, so the instrument-data format was pinned by nothing while two defects
+in it were being fixed from a code read (issue #314). It is the current format version
+rather than a historical one, because it exists to pin a live surface.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
+from collections.abc import Mapping
+from html import unescape
 from pathlib import Path
+from typing import Any
 
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+
+from habitable.canonical import JSONValue
+from habitable.htmlpacket import render_packet_html
+from habitable.pdf import _render_sensor_item
 from habitable.verify import SUPPORTED_PACKET_VERSION, _check_packet_version, verify_packet
+
+
+def _pdf_sensor_text(bundle: Mapping[str, JSONValue]) -> str:
+    """What the PDF renderer emits for this bundle's instrument items, as text.
+
+    The document is built flowable by flowable rather than written and read back:
+    nothing in this repository extracts text from a PDF, and `pypdf` would be a new
+    runtime dependency for a project whose minimal-dependency principle is load-bearing.
+    `Paragraph.text` is the string that reaches the page, so this reads what a recipient
+    is shown; what it does not exercise is pagination, which is not what #311 was about.
+    """
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="Small", parent=styles["Normal"], fontSize=8, leading=10))
+    story: list[Any] = []
+    items = bundle["items"]
+    assert isinstance(items, list)
+    for item in items:
+        if isinstance(item, dict) and item.get("sensor") is not None:
+            _render_sensor_item(story, item, styles)
+    return unescape(
+        " ".join(getattr(flowable, "text", "") for flowable in story if hasattr(flowable, "text"))
+    )
+
 
 _GOLDEN = Path(__file__).resolve().parent / "golden"
 _SCOPED = _GOLDEN / "scoped-packet-v3"
+_SENSOR = _GOLDEN / f"sensor-packet-v{SUPPORTED_PACKET_VERSION}"
 
 
 def _corpus() -> list[Path]:
-    """Every committed packet this file verifies: the per-version corpus, plus the scoped one.
+    """Every committed packet this file verifies: the per-version corpus, plus the two siblings.
 
-    The scoped fixture is deliberately outside the `packet-v*` glob. That glob is the
-    one-fixture-per-version corpus enumerated by `test_verify_fuzz.py` and
-    `test_contrib_importer.py` as well, and pulling a second v3 packet into those
-    harnesses is a decision for whoever owns them, not a side effect of committing
-    evidence here.
+    The scoped and sensor fixtures are deliberately outside the `packet-v*` glob. That
+    glob is the one-fixture-per-version corpus enumerated by `test_verify_fuzz.py` and
+    `test_contrib_importer.py` as well, and pulling a second packet of an already
+    covered version into those harnesses is a decision for whoever owns them, not a
+    side effect of committing evidence here.
     """
-    return [*sorted(path for path in _GOLDEN.glob("packet-v*") if path.is_dir()), _SCOPED]
+    return [
+        *sorted(path for path in _GOLDEN.glob("packet-v*") if path.is_dir()),
+        _SCOPED,
+        _SENSOR,
+    ]
 
 
 def test_a_fixture_exists_for_every_version_we_have_ever_emitted() -> None:
@@ -106,6 +148,96 @@ def test_the_scoped_fixture_is_a_scoped_packet_and_names_what_it_excluded() -> N
     named_by_custody = set(bundle["custody_proof"]["items"])
     assert named_by_custody - disclosed == {"cap-3cbf05d983c31784", "tl-839fd8292269d9fb"}
     assert bundle["custody_proof"]["length"] > len(disclosed)
+
+
+def _sensor_records() -> list[dict[str, object]]:
+    """Every `sensor` record in the instrument-data fixture, in item order."""
+    bundle = json.loads((_SENSOR / "bundle.json").read_text("utf-8"))
+    return [item["sensor"] for item in bundle["items"] if item.get("sensor") is not None]
+
+
+def test_the_corpus_carries_an_instrument_data_packet(tmp_path: Path) -> None:
+    """Issue #314: measured across all six committed bundles, none held a sensor record.
+
+    So the instrument-data path was outside the compatibility guarantee entirely, while
+    two defects in it (#307, #311) were being found by reading the code because no
+    fixture would have shown them. The counts are asserted as literals: a property
+    ("the fixture has a sensor record with some numbers in it") is satisfied by the
+    wrong numbers as comfortably as by the right ones.
+    """
+    clean, lossy = _sensor_records()
+
+    assert clean["total_rows"] == 6
+    assert clean["skipped_rows"] == 0
+    assert clean["truncated"] is False
+    assert len(clean["readings"]) == 6  # type: ignore[arg-type]
+
+    # The record where all three counts differ: 620 rows in the file, 600 of them
+    # readable, 500 of those carried in the bundle.
+    assert lossy["skipped_rows"] == 20
+    assert lossy["total_rows"] == 600
+    assert lossy["truncated"] is True
+    assert len(lossy["readings"]) == 500  # type: ignore[arg-type]
+    assert lossy["mean"] == 56.54, "an average over the 600 that parsed, not the 620 written"
+
+
+def test_the_sensor_fixture_tracks_the_current_format() -> None:
+    """A fixture pinning a live surface has to be at the version people export.
+
+    `scoped-packet-v3` is frozen because it is evidence of a format that no longer
+    exists. This one is not: if it lags a version bump it stops pinning the format
+    anyone is producing, which is the failure `test_a_fixture_exists_for_every_version`
+    exists to prevent one directory over. Regenerate with
+    `uv run python scripts/make_golden_sensor_packet.py`.
+    """
+    bundle = json.loads((_SENSOR / "bundle.json").read_text("utf-8"))
+    assert bundle["packet_version"] == SUPPORTED_PACKET_VERSION, (
+        "sensor fixture is behind the current packet version; regenerate it with "
+        "scripts/make_golden_sensor_packet.py"
+    )
+
+
+def test_both_renderings_of_the_fixture_disclose_what_was_left_out(tmp_path: Path) -> None:
+    """The renderers' instrument output over the fixture, in HTML and in PDF.
+
+    #311 was a disagreement between two renderings of one bundle, so what is asserted
+    is that both say the same things about the lossy series: how many source rows could
+    not be read, and what the average averaged over.
+
+    The prefix disclosure is deliberately *not* asserted as one shared sentence. The two
+    renderings reduce the series by different amounts -- the HTML table carries all 500
+    readings the bundle holds, the PDF table shows forty of them -- so a single sentence
+    would have to be wrong in one of them. Each is checked against its own accurate
+    wording instead, which is the distinction `SensorExtent.notice` and
+    `SensorExtent.table_note` exist to keep.
+    """
+    bundle = json.loads((_SENSOR / "bundle.json").read_text("utf-8"))
+
+    html_path = tmp_path / "packet.html"
+    render_packet_html(bundle, _SENSOR / "media", html_path)
+    html = unescape(html_path.read_text("utf-8"))
+
+    pdf_text = _pdf_sensor_text(bundle)
+
+    for rendering, text in (("html", html), ("pdf", pdf_text)):
+        assert "600 reading(s) parsed from 620 row(s) in the source file" in text, rendering
+        assert "averaging 56.54 F over the 600 reading(s) parsed" in text, rendering
+        assert "20 of the 620 row(s) in the source file could not be read" in text, rendering
+        # And the clean capture still reads as complete in the same document.
+        assert "Instrument data (Temperature): 6 reading(s), ranging" in text, rendering
+        assert "6 reading(s) parsed from" not in text, rendering
+
+    # Each rendering's own prefix disclosure, measured against what it actually shows.
+    assert "This chart and table show the first 500 of 600 readings" in html
+    assert "showing 40 rows of 600 readings" in pdf_text
+    assert "bundle.json carries the first 500" in pdf_text
+
+    # The skipped-row notice reaches a reader who never expands the disclosure.
+    # Scoped to the lossy figure: splitting the whole page at its first <details> would
+    # land inside the *clean* capture, which correctly has nothing to disclose, and the
+    # assertion would then be measuring the wrong figure.
+    lossy_figure = html.split('<figure class="sensor-evidence">')[2]
+    assert "could not be read" in lossy_figure.split("<details", 1)[0]
 
 
 def test_every_golden_packet_verifies() -> None:

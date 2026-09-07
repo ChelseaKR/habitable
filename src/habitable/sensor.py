@@ -22,7 +22,16 @@ import csv
 import io
 from dataclasses import dataclass, field
 
-__all__ = ["SensorExtent", "SensorReading", "SensorSeries", "parse_sensor_csv", "series_extent"]
+__all__ = [
+    "SensorExtent",
+    "SensorLoss",
+    "SensorReading",
+    "SensorSeries",
+    "parse_sensor_csv",
+    "series_extent",
+    "series_loss",
+    "series_summary",
+]
 
 # A packet renders at most this many readings as an explicit table/chart; beyond
 # that the series is summarized and marked truncated rather than bloating the
@@ -47,12 +56,19 @@ class SensorSeries:
     value_header: str
     unit: str | None
     readings: tuple[SensorReading, ...]
+    #: Numeric readings the parser *understood*, before truncation. It is not the
+    #: number of rows the source file held: rows that could not be read are in
+    #: :attr:`skipped_rows` and in neither this count nor :attr:`mean`.
     total_rows: int
     truncated: bool
     minimum: float
     maximum: float
     mean: float
     warnings: tuple[str, ...] = field(default_factory=tuple)
+    #: Data rows the parser could not read (no second column, or a non-numeric
+    #: value). Carried structurally so a renderer can name it without reading it
+    #: back out of an English sentence in ``warnings`` (issue #311).
+    skipped_rows: int = 0
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -66,6 +82,7 @@ class SensorSeries:
             "maximum": self.maximum,
             "mean": self.mean,
             "warnings": list(self.warnings),
+            "skipped_rows": self.skipped_rows,
         }
 
 
@@ -120,6 +137,7 @@ def parse_sensor_csv(raw: bytes, *, max_readings: int = _MAX_READINGS) -> Sensor
         maximum=max(values),
         mean=sum(values) / len(values),
         warnings=tuple(warnings),
+        skipped_rows=skipped,
     )
 
 
@@ -190,6 +208,113 @@ class SensorExtent:
             f"This chart and table show {scope}. The remainder is in the sealed "
             "original, not in this packet or in bundle.json."
         )
+
+
+@dataclass(frozen=True, slots=True)
+class SensorLoss:
+    """What a series could not read at all, and whether the record even says.
+
+    ``parse_sensor_csv`` drops a data row it cannot evaluate -- no second column, or a
+    non-numeric value column -- and every figure downstream is then computed over the
+    survivors. ``total_rows`` is that survivor count and ``mean`` is a ratio whose
+    denominator excludes the dropped rows, so a 600-row export with 90 unreadable rows
+    was reported as "510 reading(s) ... averaging X" with the 90 named nowhere a
+    recipient would see them.
+
+    ``skipped`` is ``None`` when the record does not carry ``skipped_rows`` -- a bundle
+    written before that field existed. That is *unknown*, not zero, and the difference
+    is the whole point of this class: a missing integer arrives from JSON as absent,
+    ``dict.get`` turns it into ``None``, and an int coercion would turn it into ``0``,
+    which is a sentence ("nothing was lost") that the record never said. An unrecorded
+    loss is therefore rendered as silence, exactly as it rendered before the field
+    existed, and the old bundle's own ``warnings`` prose keeps carrying the count.
+    """
+
+    #: Readings the parser understood: the denominator of the count and the mean.
+    parsed: int
+    #: Rows it could not read, or ``None`` when the record does not say.
+    skipped: int | None
+
+    @property
+    def recorded(self) -> bool:
+        """True when the record states a skipped-row count that can be believed."""
+        return self.skipped is not None
+
+    @property
+    def lossy(self) -> bool:
+        """True only when the record says, in a number, that rows were dropped."""
+        return self.skipped is not None and self.skipped > 0
+
+    @property
+    def source_rows(self) -> int | None:
+        """Data rows the source file held, or ``None`` when that cannot be known."""
+        if self.skipped is None:
+            return None
+        return self.parsed + self.skipped
+
+    def reading_count_phrase(self) -> str:
+        """How the figcaption names its count: readings parsed, out of what."""
+        if not self.lossy:
+            return f"{self.parsed} reading(s)"
+        return f"{self.parsed} reading(s) parsed from {self.source_rows} row(s) in the source file"
+
+    def mean_scope_phrase(self) -> str:
+        """What the average averaged over. Empty when nothing was left out of it."""
+        if not self.lossy:
+            return ""
+        return f" over the {self.parsed} reading(s) parsed"
+
+    def notice(self) -> str:
+        """Said where a reader meets the chart, not only behind a collapsed control.
+
+        Empty when there is nothing to disclose -- either the record says no row was
+        dropped, or it does not say at all.
+        """
+        if not self.lossy:
+            return ""
+        return (
+            f"{self.skipped} of the {self.source_rows} row(s) in the source file could not "
+            "be read, so they are counted in neither the reading total nor the average. "
+            "They remain in the sealed original."
+        )
+
+
+def series_loss(parsed: int, skipped: object) -> SensorLoss:
+    """Read a series' ``skipped_rows`` field distrustfully.
+
+    ``skipped`` is the raw JSON value as it arrives from ``bundle.json``, which may be
+    absent, null, a string, a float, a bool, or negative. Anything that is not a
+    non-negative integer is reported as *not recorded* rather than coerced, because
+    every coercion available here (``int(...)``, ``or 0``, ``max(0, ...)``) turns a
+    producer's silence or a producer's error into the claim that no row was lost.
+    """
+    if isinstance(skipped, bool) or not isinstance(skipped, int) or skipped < 0:
+        return SensorLoss(parsed=parsed, skipped=None)
+    return SensorLoss(parsed=parsed, skipped=skipped)
+
+
+def series_summary(
+    *,
+    value_header: str,
+    unit: str | None,
+    minimum: float,
+    maximum: float,
+    mean: float,
+    loss: SensorLoss,
+) -> str:
+    """The one measurement sentence both renderers print, built in one place.
+
+    The HTML figcaption and the PDF summary paragraph used to hold two copies of this
+    f-string. They agreed by coincidence, and issue #311 is partly a report that the
+    two renderings of one bundle disagreed about what a reader is told; a single
+    source is the only structural guarantee that they cannot drift again.
+    """
+    unit_suffix = f" {unit}" if unit else ""
+    return (
+        f"Instrument data ({value_header}): {loss.reading_count_phrase()}, "
+        f"ranging {minimum:g}{unit_suffix} to {maximum:g}{unit_suffix}, "
+        f"averaging {mean:g}{unit_suffix}{loss.mean_scope_phrase()}."
+    )
 
 
 def series_extent(total_rows: int, truncated: bool, kept: int) -> SensorExtent:
