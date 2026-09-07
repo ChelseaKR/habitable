@@ -170,12 +170,16 @@ class AppServer:
             "deferred": len(self.vault.deferred()),
             "custody_ok": custody.ok,
             "custody_length": custody.length,
-            # Storage footprint (R-03): sealed originals are kept twice by design.
+            # Storage footprint (R-03). The measured keys and the projected ones
+            # are named apart so the app cannot render an export that has not
+            # happened as space this case is occupying now; `on_disk_bytes` is the
+            # only one that answers "will this case fit on my phone".
             "storage": {
                 "sealed_originals_bytes": footprint.sealed_originals_bytes,
-                "shared_copies_bytes": footprint.shared_copies_bytes,
                 "metadata_bytes": footprint.metadata_bytes,
-                "total_bytes": footprint.total_bytes,
+                "on_disk_bytes": footprint.on_disk_bytes,
+                "projected_shared_copy_bytes": footprint.projected_shared_copy_bytes,
+                "projected_total_with_export_bytes": footprint.projected_total_with_export_bytes,
             },
             # Network policy (R-19), exposed read-only so the app can show it.
             "allow_metered": self.vault.config.network.allow_metered,

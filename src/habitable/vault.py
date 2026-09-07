@@ -125,17 +125,29 @@ class CaptureSize:
 
 @dataclass(frozen=True, slots=True)
 class StorageFootprint:
-    """How much space a case occupies on the device, and why (item R-03).
+    """How much space a case occupies on the device, and what an export would add
+    (item R-03).
 
-    The default packet needs two media-sized copies: the encrypted original stays
-    in the vault and a policy-processed shared copy is exported. This estimate does
-    not include an optional byte-exact packet original added by ``--include-originals``.
+    Two kinds of number live here and they are named apart on purpose. The first
+    three are **measured**: they are bytes this process counted under the vault
+    path just now. ``projected_shared_copy_bytes`` and
+    ``projected_total_with_export_bytes`` are **projections** -- an estimate of what
+    a default packet export would write, at a path the caller has not chosen yet,
+    *outside* the vault. A tenant deciding whether her phone can hold this case is
+    asking the first question; a tenant deciding whether it can hold the export too
+    is asking the second, and one number cannot answer both.
+
+    The projection assumes the default policy, under which each sealed original is
+    re-encoded into a policy-processed shared copy of roughly the same size. It does
+    not include the byte-exact packet original that ``--include-originals`` adds, so
+    that case runs to roughly three media-sized copies rather than two.
     """
 
     sealed_originals_bytes: int
-    shared_copies_bytes: int
     metadata_bytes: int
-    total_bytes: int
+    on_disk_bytes: int
+    projected_shared_copy_bytes: int
+    projected_total_with_export_bytes: int
     per_capture: tuple[CaptureSize, ...]
 
 
@@ -1054,14 +1066,21 @@ class Vault:
     # --- storage footprint (R-03) ---------------------------------------------
 
     def storage_footprint(self) -> StorageFootprint:
-        """Measure the case's on-device storage, distinguishing kept-twice copies.
+        """Measure the case's on-device storage, and project what an export adds.
 
         Sealed originals live under ``originals/`` (one ``.enc`` per capture);
         everything else in the vault (encrypted state blobs, tokens, config, the
-        keyfile) is counted as metadata. The *shared copies* line reports the
-        default-packet doubling: each sealed original is copied again, at roughly
-        the same size, as shared media. A packet built with ``--include-originals``
-        adds another byte-exact copy that this estimate does not count.
+        keyfile) is counted as metadata. ``on_disk_bytes`` is the sum of every file
+        under the vault path, so it is the number a tenant checking whether this case
+        fits on her phone is actually asking for.
+
+        The shared copy is **not** one of those files and never has been. It is
+        written at export time, into the packet directory the caller names, which is
+        outside the vault and which she may delete without changing anything counted
+        here. Reporting it therefore has to be a projection, and is labelled as one:
+        a case that has never been exported has no shared copy anywhere on the
+        device. A packet built with ``--include-originals`` adds a further byte-exact
+        copy that this projection does not count.
         """
         originals_dir = self.path / _ORIGINALS
         per_capture: list[CaptureSize] = []
@@ -1074,12 +1093,13 @@ class Vault:
                     per_capture.append(CaptureSize(capture_id=entry.stem, sealed_bytes=size))
         on_disk = sum(f.stat().st_size for f in self.path.rglob("*") if f.is_file())
         metadata = on_disk - sealed
-        shared = sealed  # the shareable copy kept (by design) once the case is exported
+        projected_shared = sealed  # what a default export would write, elsewhere
         return StorageFootprint(
             sealed_originals_bytes=sealed,
-            shared_copies_bytes=shared,
             metadata_bytes=metadata,
-            total_bytes=sealed + shared + metadata,
+            on_disk_bytes=on_disk,
+            projected_shared_copy_bytes=projected_shared,
+            projected_total_with_export_bytes=on_disk + projected_shared,
             per_capture=tuple(per_capture),
         )
 

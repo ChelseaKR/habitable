@@ -39,30 +39,46 @@ On a desktop browser that supports installation, the shell may be added to the
 desktop or dock. That convenience does not turn it into a self-contained phone
 app: it still depends on the loopback engine on the same device.
 
-## Storage footprint — why a case is "kept twice" (R-03)
+## Storage footprint — what a case costs on this device (R-03)
 
 On a low-end phone, storage is scarce, so habitable is explicit about what a case
 costs. `habitable status` prints a `storage:` line, and the app shows the same
 numbers:
 
 ```text
-storage: 12.4 MB total — 6.1 MB sealed originals + 6.1 MB shared copies
-         (originals are kept twice by design)
+storage: 6.3 MB on this device — 6.1 MB sealed originals + 0.2 MB case data
+         exporting a packet writes about 6.1 MB more — a shareable copy of each
+         sealed original, in the folder you name, outside the vault and not
+         counted above
 ```
 
-The doubling is deliberate. Every original is **sealed** (encrypted) into the
-vault and kept forever — that is the evidence. When you export a packet, habitable
-also writes a **policy-processed shared copy** of roughly the same size. The default
-removes embedded metadata; a nondefault policy may retain some or all of it. So
-budget about **twice** the media size for a default packet: one encrypted vault
-original plus one packet shared copy. `--include-originals` also writes a byte-exact
-packet original, bringing the rough total to **three media-sized copies**, plus small
-metadata overhead (the encrypted case document, custody log, timestamp tokens, and
-keyfile). `Vault.storage_footprint()` reports the default two-copy estimate and does
-not include that optional packet `originals/` directory.
+The first line is **counted**: it is the size of every file under the vault path,
+which is what you are asking when you want to know whether this case fits on the
+phone. Every original is **sealed** (encrypted) into the vault and kept forever —
+that is the evidence — and the rest is small metadata overhead (the encrypted case
+document, custody log, timestamp tokens, and keyfile).
 
-To reclaim space, export finished issues to an external drive and keep the vault
-itself somewhere durable — the sealed originals are the copy that must survive.
+The second line is a **projection**, and it is a separate line because the bytes it
+describes are not on the device yet and will not be inside the vault when they are.
+When you export a packet, habitable writes a **policy-processed shared copy** of
+roughly the same size into the packet folder you name; the default removes embedded
+metadata, and a nondefault policy may retain some or all of it. So budget about
+**twice** the media size if you intend to export: one encrypted vault original plus
+one packet shared copy. `--include-originals` also writes a byte-exact packet
+original, bringing that budget to **three media-sized copies**.
+
+`Vault.storage_footprint()` keeps the two apart in the same way — `on_disk_bytes`
+against `projected_shared_copy_bytes` — and neither number includes the optional
+packet `originals/` directory. A case you have never exported has no shared copy
+anywhere on the device, and the storage line says so by not counting one.
+
+**There is no way to reclaim space inside a case today, and exporting is not one.**
+An export *adds* a copy; it removes nothing from the vault, and the sealed originals
+are the copy that must survive, so deleting one by hand destroys the evidence the
+custody chain and the timestamp token were built over. Moving a sealed original to
+external storage while leaving a custody-bound stub behind — the operation a tenant
+on a full phone actually needs — is not built: it is issue #296. Until it is, keep
+the vault somewhere durable and plan the device's space for the whole case.
 
 ## Data cost and metered links (R-18, R-19)
 

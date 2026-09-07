@@ -6,6 +6,7 @@ Wi-Fi-only / metered network gate (items R-03, R-18, R-19)."""
 from __future__ import annotations
 
 import json
+import re
 import threading
 import tomllib
 from collections.abc import Callable
@@ -37,37 +38,77 @@ def test_footprint_empty_vault_is_metadata_only(make_vault: Callable[..., Vault]
     vault = make_vault()
     fp = vault.storage_footprint()
     assert fp.sealed_originals_bytes == 0
-    assert fp.shared_copies_bytes == 0
+    assert fp.projected_shared_copy_bytes == 0
     assert fp.per_capture == ()
     assert fp.metadata_bytes > 0  # config, keyfile, encrypted state blobs
-    assert fp.total_bytes == fp.metadata_bytes
+    assert fp.on_disk_bytes == fp.metadata_bytes
+    assert fp.projected_total_with_export_bytes == fp.metadata_bytes
 
 
-def test_footprint_counts_sealed_and_doubling(
+def test_the_measured_footprint_is_what_is_actually_under_the_vault_path(
     make_vault: Callable[..., Vault],
     make_jpeg: Callable[..., Path],
     dev_tsa: DevTSA,
 ) -> None:
+    """`on_disk_bytes` is counted, and equals the bytes really there.
+
+    This is the number a tenant on a nearly-full phone is asking for, and before
+    it existed nothing reported it: the storage line published
+    ``sealed + shared + metadata``, where ``shared`` was an *assumed* second copy
+    of every original. For a case that has never been exported that copy does not
+    exist anywhere on the device, so the "total" was roughly the media size again
+    on top of the truth. Summing the tree here rather than restating the
+    implementation is the point -- a projection that leaks back into the measured
+    total fails on the byte.
+    """
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", room="bath", issue_id="i1")
+    capture(vault, make_jpeg("p.jpg"), issue_id=issue, tsa=dev_tsa)
+
+    fp = vault.storage_footprint()
+    really_on_disk = sum(f.stat().st_size for f in vault.path.rglob("*") if f.is_file())
+
+    sealed_files = list((vault.path / "originals").glob("*.enc"))
+    assert len(sealed_files) == 1
+    expected_sealed = sum(p.stat().st_size for p in sealed_files)
+
+    assert fp.on_disk_bytes == really_on_disk
+    assert fp.sealed_originals_bytes == expected_sealed
+    assert fp.metadata_bytes == really_on_disk - expected_sealed
+    assert fp.metadata_bytes > 0
+    assert fp.on_disk_bytes == fp.sealed_originals_bytes + fp.metadata_bytes
+    assert len(fp.per_capture) == 1
+    assert fp.per_capture[0].capture_id.startswith("cap-")
+    assert fp.per_capture[0].sealed_bytes == expected_sealed
+
+
+def test_the_shared_copy_is_projected_and_is_kept_out_of_the_measured_total(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    dev_tsa: DevTSA,
+) -> None:
+    """The export copy is a forecast about a folder the vault does not own.
+
+    It is still reported -- budgeting for it is the whole point of R-03 -- but it
+    is reported as its own number, and the measured total must not move when it is
+    added. Asserting the strict inequality is what stops the two being folded back
+    together: a change that put the projection back inside `on_disk_bytes` would
+    make these equal.
+    """
     vault = make_vault()
     issue = vault.document.add_issue(category="mold", room="bath", issue_id="i1")
     capture(vault, make_jpeg("p.jpg"), issue_id=issue, tsa=dev_tsa)
 
     fp = vault.storage_footprint()
 
-    sealed_files = list((vault.path / "originals").glob("*.enc"))
-    assert len(sealed_files) == 1
-    expected_sealed = sum(p.stat().st_size for p in sealed_files)
-
-    assert fp.sealed_originals_bytes == expected_sealed
-    # Sealed originals are kept twice by design (sealed + shared copy on export).
-    assert fp.shared_copies_bytes == expected_sealed
-    assert fp.metadata_bytes > 0
-    assert fp.total_bytes == (
-        fp.sealed_originals_bytes + fp.shared_copies_bytes + fp.metadata_bytes
+    assert fp.projected_shared_copy_bytes == fp.sealed_originals_bytes > 0
+    assert fp.projected_total_with_export_bytes == (
+        fp.on_disk_bytes + fp.projected_shared_copy_bytes
     )
-    assert len(fp.per_capture) == 1
-    assert fp.per_capture[0].capture_id.startswith("cap-")
-    assert fp.per_capture[0].sealed_bytes == expected_sealed
+    assert fp.projected_total_with_export_bytes > fp.on_disk_bytes
+    # Nothing under the vault path accounts for the projected copy: the case has
+    # never been exported, so those bytes are nowhere on this device.
+    assert sum(f.stat().st_size for f in vault.path.rglob("*") if f.is_file()) == fp.on_disk_bytes
 
 
 def test_status_cli_prints_storage_line(
@@ -83,8 +124,16 @@ def test_status_cli_prints_storage_line(
     code = main(["status", "--vault", str(vault.path), "--passphrase", "test-passphrase"])
     assert code == 0
     out = capsys.readouterr().out
+    fp = vault.storage_footprint()
     assert "storage:" in out
-    assert "sealed originals" in out and "shared copies" in out
+    assert "on this device" in out
+    assert "sealed originals" in out and "case data" in out
+    # The measured size is printed and the projection is printed as its own
+    # sentence about a folder the reader has not named yet. Before this, the two
+    # were added together and the sum was labelled "total".
+    assert human_bytes(fp.on_disk_bytes) in out
+    assert "outside the vault and not counted above" in out
+    assert human_bytes(fp.projected_total_with_export_bytes) not in out
 
 
 def test_appserver_status_exposes_storage_and_metered(
@@ -95,8 +144,31 @@ def test_appserver_status_exposes_storage_and_metered(
     st = app.status()
     storage = st["storage"]
     assert isinstance(storage, dict)
-    assert storage["total_bytes"] >= storage["sealed_originals_bytes"] >= 0
+    assert storage["on_disk_bytes"] >= storage["sealed_originals_bytes"] >= 0
+    assert storage["projected_total_with_export_bytes"] >= storage["on_disk_bytes"]
     assert st["allow_metered"] is True
+
+
+def test_the_app_reads_only_storage_keys_the_server_actually_sends(
+    make_vault: Callable[..., Vault],
+) -> None:
+    """`app.js` falls back to 0 on a missing key, so a rename would print "0 bytes".
+
+    Every miss is silent: `humanBytes(s.whatever_bytes || 0)` renders a confident
+    "0 bytes" for a key the server stopped sending, which is the storage panel
+    telling a tenant her case is empty. Reading the names out of the script and
+    checking them against the real payload makes a rename fail here instead.
+    """
+    vault = make_vault()
+    app = AppServer(vault=vault, tsa=None, static_root=vault.path, lock=threading.Lock())
+    storage = app.status()["storage"]
+    assert isinstance(storage, dict)
+
+    script = (Path(__file__).resolve().parent.parent / "app" / "app.js").read_text("utf-8")
+    read_by_app = set(re.findall(r"\bs\.([a-z_]+_bytes)\b", script))
+    assert read_by_app, "no storage keys found in app.js -- this probe stopped finding the code"
+    missing = read_by_app - set(storage)
+    assert not missing, f"app.js reads storage keys the server does not send: {sorted(missing)}"
 
 
 # --- R-18: sync data-cost transparency -----------------------------------------

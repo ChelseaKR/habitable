@@ -1153,11 +1153,19 @@ def _cmd_status(args: argparse.Namespace) -> int:
     storage = cli_text(
         "status_storage",
         locale,
-        total=human_bytes(footprint.total_bytes),
+        on_disk=human_bytes(footprint.on_disk_bytes),
         sealed=human_bytes(footprint.sealed_originals_bytes),
-        shared=human_bytes(footprint.shared_copies_bytes),
+        metadata=human_bytes(footprint.metadata_bytes),
     )
     print(f"  {storage}")
+    print(
+        "  "
+        + cli_text(
+            "status_storage_export",
+            locale,
+            shared=human_bytes(footprint.projected_shared_copy_bytes),
+        )
+    )
     _print_sync_redundancy(vault, locale)
     if any_issues:
         print(f"  {cli_text('status_strength_caveat', locale)}")

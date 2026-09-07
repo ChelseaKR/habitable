@@ -878,9 +878,9 @@
     var custody = document.getElementById("st-custody");
     if (custody) { custody.className = ""; }
     var sealedBar = document.getElementById("storage-sealed");
-    var sharedBar = document.getElementById("storage-shared");
+    var metadataBar = document.getElementById("storage-metadata");
     if (sealedBar) { sealedBar.style.flexBasis = "0%"; }
-    if (sharedBar) { sharedBar.style.flexBasis = "0%"; }
+    if (metadataBar) { metadataBar.style.flexBasis = "0%"; }
     // renderStatus() picks this paragraph, and its unrendered fallback asserts
     // "your photo is already sealed and safe on this device" -- a claim about the
     // reader's own evidence, made by an app that has just said it cannot reach its
@@ -944,18 +944,22 @@
     var storage = document.getElementById("st-storage");
     if (storage) {
       var s = status.storage || {};
+      // Only measured bytes reach this panel. The projected shared copy an export
+      // would write is deliberately not shown as space in use: it is written
+      // outside the vault, into a folder the reader has not chosen yet, and for a
+      // case never exported it does not exist. #storage-note carries it as advice.
       storage.textContent = fm("storage_summary", {
-        total: humanBytes(s.total_bytes || 0),
+        on_disk: humanBytes(s.on_disk_bytes || 0),
         sealed: humanBytes(s.sealed_originals_bytes || 0),
-        shared: humanBytes(s.shared_copies_bytes || 0)
+        metadata: humanBytes(s.metadata_bytes || 0)
       });
       var sealed = s.sealed_originals_bytes || 0;
-      var shared = s.shared_copies_bytes || 0;
-      var visualTotal = sealed + shared;
+      var metadata = s.metadata_bytes || 0;
+      var visualTotal = sealed + metadata;
       var sealedBar = document.getElementById("storage-sealed");
-      var sharedBar = document.getElementById("storage-shared");
+      var metadataBar = document.getElementById("storage-metadata");
       if (sealedBar) { sealedBar.style.flexBasis = (visualTotal ? sealed / visualTotal * 100 : 0) + "%"; }
-      if (sharedBar) { sharedBar.style.flexBasis = (visualTotal ? shared / visualTotal * 100 : 0) + "%"; }
+      if (metadataBar) { metadataBar.style.flexBasis = (visualTotal ? metadata / visualTotal * 100 : 0) + "%"; }
     }
 
     setText(
