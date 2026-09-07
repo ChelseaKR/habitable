@@ -39,7 +39,7 @@ On a desktop browser that supports installation, the shell may be added to the
 desktop or dock. That convenience does not turn it into a self-contained phone
 app: it still depends on the loopback engine on the same device.
 
-## Storage footprint — why a case is "kept twice" (R-03)
+## Storage footprint — what a case costs on this device (R-03)
 
 On a low-end phone, storage is scarce, so habitable is explicit about what a case
 costs. `habitable status` prints a `storage:` line, and the app shows the same
@@ -72,8 +72,13 @@ against `projected_shared_copy_bytes` — and neither number includes the option
 packet `originals/` directory. A case you have never exported has no shared copy
 anywhere on the device, and the storage line says so by not counting one.
 
-To reclaim space, export finished issues to an external drive and keep the vault
-itself somewhere durable — the sealed originals are the copy that must survive.
+**There is no way to reclaim space inside a case today, and exporting is not one.**
+An export *adds* a copy; it removes nothing from the vault, and the sealed originals
+are the copy that must survive, so deleting one by hand destroys the evidence the
+custody chain and the timestamp token were built over. Moving a sealed original to
+external storage while leaving a custody-bound stub behind — the operation a tenant
+on a full phone actually needs — is not built: it is issue #296. Until it is, keep
+the vault somewhere durable and plan the device's space for the whole case.
 
 ## Data cost and metered links (R-18, R-19)
 
