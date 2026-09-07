@@ -360,7 +360,7 @@ _DESCRIBEDBY_ADJACENCY = """
 #: the capture, timeline and issue dialogs; every dialog is visited, so the walk
 #: measures at least this many pairs. A floor, not an exact count -- adding a
 #: description should not fail this test.
-_MIN_DESCRIBED_PAIRS = 6
+_MIN_DESCRIBED_PAIRS = 7
 
 #: Every dialog is opened in turn so the controls inside it are measured too.
 #: They overlap each other when opened together, which would make the geometry
