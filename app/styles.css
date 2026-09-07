@@ -742,7 +742,7 @@ th {
   background: var(--rule);
 }
 #storage-sealed { background: var(--carbon-bright); }
-#storage-shared { background: var(--shared); }
+#storage-metadata { background: var(--shared); }
 
 /* Carbonless-copy metaphor: canary stays with the tenant, pink leaves deliberately. */
 .copy-envelope {

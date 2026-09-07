@@ -480,9 +480,15 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         ),
         "sync_data_cost": "data: sent {sent}, received {received}",
         "network_data_cost": "network used: sent {sent}, received {received}",
+        # R-03. Two lines because there are two facts and they are not the same
+        # kind: what is on this device now (counted), and what an export would add
+        # (projected, and written somewhere the vault does not own).
         "status_storage": (
-            "storage: {total} total — {sealed} sealed originals + {shared} shared copies "
-            "(originals are kept twice by design)"
+            "storage: {on_disk} on this device — {sealed} sealed originals + {metadata} case data"
+        ),
+        "status_storage_export": (
+            "exporting a packet writes about {shared} more — a shareable copy of each "
+            "sealed original, in the folder you name, outside the vault and not counted above"
         ),
         # RR-07: "is this case on more than one device?" Counted from receipts a
         # peer signed, never from the pairing list -- a paired peer that has never
@@ -726,8 +732,13 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         "sync_data_cost": "datos: enviados {sent}, recibidos {received}",
         "network_data_cost": "red utilizada: enviados {sent}, recibidos {received}",
         "status_storage": (
-            "almacenamiento: {total} en total — {sealed} originales sellados + "
-            "{shared} copias compartidas (los originales se guardan por duplicado por diseño)"
+            "almacenamiento: {on_disk} en este dispositivo — {sealed} originales sellados "
+            "+ {metadata} datos del caso"
+        ),
+        "status_storage_export": (
+            "exportar un paquete escribe unos {shared} más — una copia compartible de cada "
+            "original sellado, en la carpeta que usted indique, fuera de la bóveda y no "
+            "incluida arriba"
         ),
         "status_sync_alone": (
             "copias: solo este dispositivo — ningún otro dispositivo ha confirmado que "

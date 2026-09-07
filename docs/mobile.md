@@ -46,20 +46,31 @@ costs. `habitable status` prints a `storage:` line, and the app shows the same
 numbers:
 
 ```text
-storage: 12.4 MB total — 6.1 MB sealed originals + 6.1 MB shared copies
-         (originals are kept twice by design)
+storage: 6.3 MB on this device — 6.1 MB sealed originals + 0.2 MB case data
+         exporting a packet writes about 6.1 MB more — a shareable copy of each
+         sealed original, in the folder you name, outside the vault and not
+         counted above
 ```
 
-The doubling is deliberate. Every original is **sealed** (encrypted) into the
-vault and kept forever — that is the evidence. When you export a packet, habitable
-also writes a **policy-processed shared copy** of roughly the same size. The default
-removes embedded metadata; a nondefault policy may retain some or all of it. So
-budget about **twice** the media size for a default packet: one encrypted vault
-original plus one packet shared copy. `--include-originals` also writes a byte-exact
-packet original, bringing the rough total to **three media-sized copies**, plus small
-metadata overhead (the encrypted case document, custody log, timestamp tokens, and
-keyfile). `Vault.storage_footprint()` reports the default two-copy estimate and does
-not include that optional packet `originals/` directory.
+The first line is **counted**: it is the size of every file under the vault path,
+which is what you are asking when you want to know whether this case fits on the
+phone. Every original is **sealed** (encrypted) into the vault and kept forever —
+that is the evidence — and the rest is small metadata overhead (the encrypted case
+document, custody log, timestamp tokens, and keyfile).
+
+The second line is a **projection**, and it is a separate line because the bytes it
+describes are not on the device yet and will not be inside the vault when they are.
+When you export a packet, habitable writes a **policy-processed shared copy** of
+roughly the same size into the packet folder you name; the default removes embedded
+metadata, and a nondefault policy may retain some or all of it. So budget about
+**twice** the media size if you intend to export: one encrypted vault original plus
+one packet shared copy. `--include-originals` also writes a byte-exact packet
+original, bringing that budget to **three media-sized copies**.
+
+`Vault.storage_footprint()` keeps the two apart in the same way — `on_disk_bytes`
+against `projected_shared_copy_bytes` — and neither number includes the optional
+packet `originals/` directory. A case you have never exported has no shared copy
+anywhere on the device, and the storage line says so by not counting one.
 
 To reclaim space, export finished issues to an external drive and keep the vault
 itself somewhere durable — the sealed originals are the copy that must survive.

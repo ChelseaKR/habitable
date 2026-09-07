@@ -273,12 +273,17 @@
               <div><dt data-i18n="status_copies">Copies</dt><dd id="st-copies">—</dd></div>
             </dl>
             <p class="muted" id="copies-note">—</p>
+            <!-- Both segments are bytes counted under the vault path just now. The
+                 shared copy an export would write is deliberately not a segment here:
+                 it lives outside the vault and may not exist at all, and a bar is an
+                 assertion about space in use. -->
             <div class="storage-track" aria-hidden="true"><span id="storage-sealed"></span><span
-              id="storage-shared"></span></div>
+              id="storage-metadata"></span></div>
             <p class="muted" id="storage-note"
                data-i18n="storage_doubling_note">
-                 Sealed originals are kept twice by design: the encrypted original, plus a
-                 shareable copy when you export.
+                 Exporting writes a shareable copy of each sealed original, in the folder you
+                 choose — outside the vault, and not counted above. Budget about twice the size
+                 of your photos and video if you plan to export.
                </p>
           </details>
 

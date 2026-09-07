@@ -270,9 +270,10 @@ def _status_payload(timestamped: int, awaiting: int) -> dict[str, object]:
         "custody_length": 1,
         "storage": {
             "sealed_originals_bytes": 0,
-            "shared_copies_bytes": 0,
             "metadata_bytes": 0,
-            "total_bytes": 0,
+            "on_disk_bytes": 0,
+            "projected_shared_copy_bytes": 0,
+            "projected_total_with_export_bytes": 0,
         },
         "allow_metered": True,
     }
