@@ -434,6 +434,7 @@ def render_inspector_html(bundle: Mapping[str, JSONValue], media_dir: Path, out_
         _disclosure_section(
             lang,
             extent.includes_originals,
+            metadata_may_be_retained=shared_metadata_may_be_retained(_list(bundle, "disclosures")),
             awaiting=extent.awaiting,
             total=extent.item_count,
         )
@@ -557,11 +558,25 @@ def _disclosure_section(
     lang: str,
     includes_originals: bool,
     *,
-    metadata_may_be_retained: bool = False,
-    awaiting: int = 0,
-    total: int = 0,
+    metadata_may_be_retained: bool,
+    awaiting: int,
+    total: int,
 ) -> list[str]:
-    """A short, localized note of what the packet reveals."""
+    """A short, localized note of what the packet reveals.
+
+    Every keyword is required, and deliberately has no default. Each one selects
+    or suppresses a warning, and each defaulted to the *reassuring* branch:
+    ``metadata_may_be_retained=False`` picks "location metadata removed", and
+    ``awaiting=0`` deletes the awaiting-timestamp note outright. A caller that
+    forgot one therefore published a safety claim it had never checked, and did
+    so silently -- which is exactly what ``render_inspector_html`` did from
+    #104, when the metadata keyword was added here and threaded through
+    ``render_packet_html`` and the PDF but not through this module's other
+    caller. Without a default, that omission is a ``mypy --strict`` error at the
+    call site instead of a wrong sentence in a recipient's document, and it is
+    checked as a set -- every call site must name every keyword -- rather than
+    against a count of call sites that a later edit would silently invalidate.
+    """
     stmt = proof_statement(lang)
     notes = [stmt.privacy_metadata_warning if metadata_may_be_retained else stmt.privacy_stripped]
     if includes_originals:

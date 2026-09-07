@@ -240,11 +240,16 @@ def _render_disclosures(
     includes_originals: bool,
     styles: Any,
     *,
-    metadata_may_be_retained: bool = False,
-    awaiting: int = 0,
-    total: int = 0,
+    metadata_may_be_retained: bool,
+    awaiting: int,
+    total: int,
 ) -> None:
-    """Append the localized 'what this packet discloses' block."""
+    """Append the localized 'what this packet discloses' block.
+
+    Required keywords, no defaults, for the reason given on
+    ``htmlpacket._disclosure_section``: every default would have been the
+    reassuring branch, so forgetting one reads as a checked claim.
+    """
     stmt = proof_statement(lang)
     story.append(_para(stmt.privacy_heading, styles["Heading3"]))
     metadata_note = (
