@@ -66,6 +66,7 @@ __all__ = [
     "import_messages",
     "suggested_delta_filename",
     "sync",
+    "transport_label",
 ]
 
 
@@ -237,12 +238,21 @@ def suggested_delta_filename(recipient: PublicIdentity) -> str:
 
 
 def import_messages(
-    vault: Vault, blobs: list[bytes], *, require_case_id: str | None = None
+    vault: Vault,
+    blobs: list[bytes],
+    *,
+    require_case_id: str | None = None,
+    transport: str | None = None,
 ) -> SyncResult:
     """Verify and merge messages addressed to this vault, failing closed.
 
     ``require_case_id`` is retained for API compatibility, but can only equal
     the opened vault's case.  Case binding is unconditional in protocol v2.
+
+    ``transport`` names how these bytes reached this device, for the local
+    receipt observation only. A caller that does not know stays silent: the
+    observation then records no transport at all rather than a placeholder,
+    because "unknown" written into the field reads back as a measurement.
     """
     if require_case_id is not None and require_case_id != vault.document.case_id:
         raise SyncError("required case id does not match the opened vault")
@@ -269,7 +279,9 @@ def import_messages(
         vault.record_peer_captures(sender.fingerprint, _confirmed_have(vault, validated.have))
         imported += _apply_captures(vault, validated, sender)
         for receipt_message_id, receipt in validated.receipt_records:
-            vault.record_verified_sync_receipt(sender, receipt_message_id, receipt)
+            vault.record_verified_sync_receipt(
+                sender, receipt_message_id, receipt, transport=transport
+            )
             receipts_received += 1
         receipt = _create_receipt(vault, sender, validated)
         vault.queue_sync_receipt(sender, validated.message_id, receipt)
@@ -294,7 +306,7 @@ def sync(vault: Vault, peer: PublicIdentity, transport: Transport, *, channel: s
     posted = export_message(vault, peer)
     transport.post(channel, posted)
     blobs = transport.fetch(channel)
-    result = import_messages(vault, blobs)
+    result = import_messages(vault, blobs, transport=transport_label(transport))
     # Metadata-only round summary (no-op unless logging is opted in): ciphertext
     # sizes and counts only — never the channel id, peer id, or any message content.
     log_event(
@@ -667,6 +679,12 @@ def _create_receipt(
             capture.capture_id: capture.content_hash for capture in message.captures
         },
         "custody_head_after_import": vault.custody.head_hash,
+        # The importer's causal watermark after merging this message: how far
+        # along the peer's view of the case is, in the same HLC the CRDT orders
+        # by. Additive on purpose -- the signature covers the payload exactly as
+        # it travels, and older validators read named fields and ignore the
+        # rest, so a peer running the previous build still verifies this receipt.
+        "importer_hlc_watermark": vault.document.clock.last.encode(),
     }
     payload_bytes = canonical_json(payload)
     return {
@@ -765,8 +783,23 @@ def _confirmed_have(vault: Vault, have: Iterable[tuple[str, str]]) -> list[str]:
 # --- transports ---------------------------------------------------------------
 
 
+def transport_label(transport: object) -> str | None:
+    """A short name for how bytes moved, for the local receipt observation.
+
+    Read from an optional ``label`` attribute rather than the class name: a
+    class name is an implementation detail that renames under refactoring and
+    would silently rewrite a tenant's sync history. A transport that offers no
+    label yields ``None``, which is recorded as *no transport*, never as a
+    placeholder string standing in for one.
+    """
+    raw = getattr(transport, "label", None)
+    return raw if isinstance(raw, str) and raw else None
+
+
 class LocalDirTransport:
     """A shared-directory mailbox: one append-only file of messages per channel."""
+
+    label = "file"
 
     def __init__(self, root: Path) -> None:
         self._root = Path(root)
@@ -798,6 +831,8 @@ def _room_token(channel: str) -> str:
 
 class RelayClient:
     """Posts/fetches ciphertext to a habitable relay room over HTTP."""
+
+    label = "relay"
 
     _TOKEN_HEADER = "X-Habitable-Room-Token"  # noqa: S105 - header name, not a secret
 
@@ -943,6 +978,11 @@ class PaddingTransport:
         self._batch_size = batch_size
         self._auto_flush = auto_flush
         self._pending: dict[str, list[bytes]] = {}
+
+    @property
+    def label(self) -> str | None:
+        """The wrapped transport's label — padding changes the bytes, not the route."""
+        return transport_label(self._inner)
 
     def post(self, channel: str, blob: bytes) -> None:
         """Frame + pad ``blob`` and queue it; emit a batch now if ``auto_flush``."""

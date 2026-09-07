@@ -141,6 +141,8 @@ class AppServer:
         timestamped = len(evidence_ids) - len(awaiting)
         custody = self.vault.custody.verify()
         footprint = self.vault.storage_footprint()
+        redundancy = self.vault.sync_redundancy()
+        last_peer = redundancy.last_peer
         return {
             "unit": doc.get_meta("unit") or doc.case_id,
             "case_id": doc.case_id,
@@ -177,6 +179,27 @@ class AppServer:
             },
             # Network policy (R-19), exposed read-only so the app can show it.
             "allow_metered": self.vault.config.network.allow_metered,
+            # Peer redundancy (RR-07). `confirmed_devices` counts peers that
+            # returned a signed receipt, so it is never larger than the truth;
+            # `paired_devices` is reported beside it precisely so the app can
+            # say "paired but not yet confirmed" instead of conflating the two.
+            # No peer identity leaves this object beyond the short fingerprint
+            # the tenant already compares out of band during pairing.
+            "sync": {
+                "devices": redundancy.device_count,
+                "confirmed_devices": redundancy.confirmed_count,
+                "paired_devices": redundancy.paired_count,
+                "single_device": redundancy.single_device,
+                # `null`, not 0 and not "now": no recorded observation is not a
+                # date, and an epoch timestamp in this field would render as
+                # January 1970 in the app.
+                "last_observed_at_ms": redundancy.last_observed_at_ms,
+                "last_peer": last_peer.fingerprint if last_peer is not None else None,
+                "last_transport": last_peer.transport if last_peer is not None else None,
+                "last_peer_clock": (
+                    last_peer.claimed_clock_state if last_peer is not None else None
+                ),
+            },
         }
 
     def _issue(self, issue_id: str) -> dict[str, object]:

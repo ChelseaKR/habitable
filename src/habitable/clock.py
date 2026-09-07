@@ -88,6 +88,17 @@ class HybridLogicalClock:
         """The most recently issued timestamp (without advancing the clock)."""
         return self._last
 
+    def wall_ms(self) -> int:
+        """Read this device's physical clock without issuing a timestamp.
+
+        Callers that need to record *when this device observed something* — as
+        opposed to ordering a case event — must not call :meth:`now`, because
+        that mints an HLC timestamp and moves the causal watermark for an
+        observation that is not a case edit. The injected ``time_source`` makes
+        such observations as deterministic in tests as the clock itself.
+        """
+        return self._time_source()
+
     def now(self) -> HLCTimestamp:
         """Issue a fresh timestamp for a local event."""
         physical = self._time_source()
