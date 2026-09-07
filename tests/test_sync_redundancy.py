@@ -196,13 +196,27 @@ def test_the_recorded_time_is_this_device_s_clock_not_the_peer_s(tmp_path: Path)
     assert peer.claimed_clock_ms > peer.observed_at_ms
 
 
+def test_the_skew_tolerance_is_five_minutes() -> None:
+    """Pinned by value, because no property test can catch a wrong constant.
+
+    A tolerance raised past the skew the test below uses would make that test
+    pass with a future clock accepted, and nothing else in the suite would
+    notice.
+    """
+    assert CLOCK_SKEW_TOLERANCE_MS == 300_000
+
+
 def test_a_peer_clock_far_in_the_future_is_unusable_not_fresh(tmp_path: Path) -> None:
     """A future timestamp is a broken clock, not a recent sync.
 
     Without this, a peer whose clock is wrong (or lying) reads as permanently
     up to date, because a negative age satisfies every "younger than" test.
+
+    The skew is a literal hour rather than ``CLOCK_SKEW_TOLERANCE_MS + n``:
+    written against the constant, raising the constant raises the fixture with
+    it and the test can never fail, however wrong the tolerance becomes.
     """
-    a, b = _pair(tmp_path, skew_ms=CLOCK_SKEW_TOLERANCE_MS + 60_000)
+    a, b = _pair(tmp_path, skew_ms=3_600_000)
     _round_trip(a, b)
 
     peer = a.sync_redundancy().last_peer
