@@ -97,7 +97,7 @@ cov: ## Run tests with coverage (85% floor overall, per-module 95% on the eviden
 integration: ## Run the network integration tests (real public TSAs)
 	uv run pytest -m integration -v
 
-i18n: ## Mechanical i18n gates: UTF-8 (G1), BCP 47 validity (G3), EN/ES key-parity (G6), pseudo-locale expansion (G9) — offline, stdlib-only
+i18n: ## Mechanical i18n gates: UTF-8 (G1), BCP 47 validity (G3), EN/ES completeness + placeholder/plural parity (G5), key-parity (G6), pseudo-locale expansion (G9, offline half) — offline, stdlib-only
 	uv run python scripts/check_i18n_utf8.py
 	uv run python scripts/check_bcp47.py
 	uv run python scripts/check_i18n_parity.py

@@ -32,6 +32,33 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   serves. The gate also refuses to report success when it compared no keys, and
   gained `--en` / `--es` / `--identical-by-design` seams so the controls can
   point it at a deliberately broken catalog.
+- **The document that records which i18n gates are live said a merge-blocking
+  gate did not exist.** `docs/I18N.md`'s AUTO-GATES table carried
+  `G9 | Pseudolocale overflow | **DEFERRED** (frontend-depth phase) | —` while
+  `scripts/check_pseudo_locale.py` ran in `make verify` and in
+  `.github/workflows/i18n.yml` — in a step the workflow itself names `G9`, with
+  the `Makefile`'s help text advertising "pseudo-locale expansion (G9)" beside
+  it. A conformance document that understates an enforced gate disagrees with
+  the build exactly as much as one that overstates it, and this one is the
+  record a reader consults instead of the recipe.
+
+  The row now says **PARTIAL** and says which half: the offline check (ICU
+  integrity, plus compact chrome within 60 characters at the transform's real
+  expansion) is enforced and has four negative controls behind it; the
+  standard's own measure — a DOM-overflow assertion over the rendered views —
+  is not wired, and the row says so rather than claiming the gate whole.
+
+  `tests/test_i18n_gate_inventory.py` is the repair. It derives the table's
+  claims from the `Makefile` recipe and the workflow's own `run:` lines, holds
+  i18n.yml to its header's claim that it mirrors `make i18n` "byte-for-byte",
+  and fails in both directions: a gate the build runs and the table does not
+  record, and a gate the table calls deferred while the build runs it. Every
+  collector carries a non-empty floor, and an unrecognised status word is an
+  error rather than a default, so the module cannot pass by having stopped
+  reading. Run against unmodified `main` it named
+  `scripts/check_pseudo_locale.py` on its first execution. The `Makefile` help
+  and the workflow's parity step also name G5 now, which
+  `scripts/check_i18n_parity.py` has enforced since FIX-12.
 
 - **`inspector.html` told the reader location metadata had been removed from a
   packet whose own signed disclosures said it had been kept.** Issue #104 made the
