@@ -7,6 +7,38 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+### Added
+
+- **`habitable status --storage` breaks the storage line down per capture, largest
+  first** (the storage-visibility half of #296, RR-08). The aggregate line answers
+  "does this case fit on my phone"; it cannot answer "which capture is filling it",
+  which is the question a tenant on a full device has to act on. The per-capture
+  sizes were already measured — `StorageFootprint.per_capture` has existed since
+  R-03 — and nothing surfaced them.
+
+  **The header states two numbers, and that is the substantive part.**
+  `per_capture` is built from the files under `originals/`, so a capture whose
+  sealed original is not on this device has **no row at all** — and a missing row is
+  indistinguishable from a zero-byte row to anyone reading the list. The breakdown
+  therefore prints *"N captures measured of M in this case"* and then names each
+  unmeasured capture as *"sealed original not on this device — nothing to
+  measure"*, rather than dropping it. `StorageFootprint` gains
+  `captures_without_a_sealed_original` to carry that denominator.
+
+  A case with no captures gets its own sentence instead of an empty list, because
+  an empty breakdown and a breakdown that failed to read the vault look identical.
+
+  The flag also prints what deleting the case does **not** reach: a packet already
+  exported is a separate copy in a folder the vault does not own, so deleting the
+  case frees the space shown and leaves that copy where it is.
+
+  Three negative controls, each asserted landed by `git hash-object` before the run:
+  dropping the denominator, dropping the unmeasured rows, and reversing the sort
+  each turned exactly the predicted test red.
+
+  **Offload and restore — the other half of #296 — are still not built.** This
+  makes the cost legible; it does not add a way to reclaim the space.
+
 ### Fixed
 
 - **The published packet schema rejected the genesis link of every custody chain,

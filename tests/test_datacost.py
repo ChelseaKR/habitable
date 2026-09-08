@@ -136,6 +136,138 @@ def test_status_cli_prints_storage_line(
     assert human_bytes(fp.projected_total_with_export_bytes) not in out
 
 
+def test_status_storage_breaks_the_line_down_per_capture_largest_first(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    dev_tsa: DevTSA,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`status --storage` answers "which capture is filling my phone" (RR-08).
+
+    The aggregate line cannot: a tenant told her case is 40 MB still has to guess
+    which capture to offload. The sizes were already measured -- `per_capture` has
+    been on `StorageFootprint` since R-03 -- and nothing surfaced them.
+    """
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", room="bath", issue_id="i1")
+    capture(vault, make_jpeg("small.jpg", size=(8, 8)), issue_id=issue, tsa=dev_tsa)
+    capture(
+        vault,
+        make_jpeg("big.jpg", size=(256, 256), color=(9, 200, 77)),
+        issue_id=issue,
+        tsa=dev_tsa,
+    )
+
+    code = main(
+        ["status", "--vault", str(vault.path), "--passphrase", "test-passphrase", "--storage"]
+    )
+    assert code == 0
+    out = capsys.readouterr().out
+    fp = vault.storage_footprint()
+    assert len(fp.per_capture) == 2
+
+    assert "space used by each capture" in out
+    for entry in fp.per_capture:
+        assert entry.capture_id in out
+        assert human_bytes(entry.sealed_bytes) in out
+
+    ordered = sorted(fp.per_capture, key=lambda item: -item.sealed_bytes)
+    assert ordered[0].sealed_bytes > ordered[1].sealed_bytes, (
+        "the fixture no longer produces two different sizes, so the ordering "
+        "assertion below would hold whatever order the code emitted"
+    )
+    assert out.index(ordered[0].capture_id) < out.index(ordered[1].capture_id)
+
+    # The breakdown is opt-in: the plain status line must not have grown a
+    # per-capture list nobody asked for.
+    capsys.readouterr()
+    assert main(["status", "--vault", str(vault.path), "--passphrase", "test-passphrase"]) == 0
+    assert "space used by each capture" not in capsys.readouterr().out
+
+
+def test_status_storage_states_how_many_captures_it_measured_and_names_the_rest(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    dev_tsa: DevTSA,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A per-item list covers only the items it could measure, and says so.
+
+    `per_capture` is built from the files under `originals/`, so a capture whose
+    sealed original is not on this device has **no row** -- and a missing row and a
+    zero-byte row are the same thing to anyone reading the list. That is this
+    project's dominant defect shape (absence rendered as a value) arriving through a
+    storage panel, so the header carries both numbers and the unmeasured captures
+    are named rather than dropped.
+    """
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", room="bath", issue_id="i1")
+    present = capture(vault, make_jpeg("p.jpg"), issue_id=issue, tsa=dev_tsa).capture_id
+    gone = capture(vault, make_jpeg("q.jpg"), issue_id=issue, tsa=dev_tsa).capture_id
+    # Offloading is #296's other half and does not exist yet; removing the sealed
+    # file is the state this reader has to be honest about either way (a restore
+    # from backup, a partial sync, a hand-deleted file).
+    (vault.path / "originals" / f"{gone}.enc").unlink()
+
+    fp = vault.storage_footprint()
+    assert [entry.capture_id for entry in fp.per_capture] == [present]
+    assert fp.captures_without_a_sealed_original == (gone,)
+
+    code = main(
+        ["status", "--vault", str(vault.path), "--passphrase", "test-passphrase", "--storage"]
+    )
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "1 capture measured of 2 in this case" in out, (
+        "the breakdown states one number where it has two; a list covering half the "
+        "case would read as a list covering the case"
+    )
+    assert gone in out
+    assert "sealed original not on this device" in out
+    # ...and it is not reported as a size, which is the failure this guards.
+    assert f"{gone}: 0" not in out
+
+
+def test_status_storage_says_what_deleting_the_case_does_not_remove(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    dev_tsa: DevTSA,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """#296 asks for a "what happens if you delete this" explanation, and the
+    non-obvious half is what deletion does *not* reach: an exported packet is a
+    separate copy in a folder the vault does not own."""
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", room="bath", issue_id="i1")
+    capture(vault, make_jpeg("p.jpg"), issue_id=issue, tsa=dev_tsa)
+
+    assert (
+        main(["status", "--vault", str(vault.path), "--passphrase", "test-passphrase", "--storage"])
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert "destroys the evidence with it" in out
+    assert "deleting the case does not remove it" in out
+
+
+def test_status_storage_on_a_case_with_no_captures_says_so_rather_than_printing_nothing(
+    make_vault: Callable[..., Vault],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An empty breakdown and a breakdown that failed to read the vault look
+    identical. The empty case gets its own sentence."""
+    vault = make_vault()
+    vault.document.add_issue(category="mold", room="bath", issue_id="i1")
+
+    assert (
+        main(["status", "--vault", str(vault.path), "--passphrase", "test-passphrase", "--storage"])
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert "no captures yet" in out
+    assert "space used by each capture" not in out
+
+
 def test_appserver_status_exposes_storage_and_metered(
     make_vault: Callable[..., Vault],
 ) -> None:
