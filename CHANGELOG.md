@@ -9,6 +9,36 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **The published packet schema rejected the genesis link of every custody chain,
+  so it rejected every packet this project has ever produced.**
+  `docs/packet-bundle.schema.json` is served under a public `$id` and
+  `docs/embedding-the-verifier.md` sends third parties to it, but nothing in this
+  repository validates a bundle against it — so the defect was invisible here and
+  visible only to the relying party.
+
+  `custodyEntry.prev_hash` and `custodyProof.head_hash` were each declared
+  `oneOf: [hexSha256, ^0{64}$]`, and `hexSha256` is `^[0-9a-f]{64}$`, which matches
+  64 zeros. `oneOf` requires **exactly one** matching branch, so the sentinel the
+  description itself names matched both and was refused. Every chain opens with it:
+  measured with a throwaway validator, **all seven committed bundles** — `packet-v1`
+  through `packet-v4`, `scoped-packet-v3`, `sensor-packet-v4` and the sample packet
+  published on the site — failed at `custody_proof/entries/0/prev_hash`, which is
+  the first line of the custody proof and the part of the artifact a court clerk or
+  opposing party has most reason to check.
+
+  The second branch accepted a strict subset of the first, so it constrained nothing
+  under any reading. It is collapsed into the `$ref`, leaving the accept-set
+  identical for every value except the sentinel, which is now accepted as the
+  description always said it was. `head_hash` carried the same defect latently: no
+  committed fixture has an empty chain, so only a declaration-level assertion could
+  have caught it.
+
+  `tests/test_packet_schema_contract.py` pins three things: the corpus's real
+  genesis values, the documented empty-chain head, and the general rule that no
+  `oneOf` in the schema may have two branches accepting one value. Run against
+  unmodified `origin/main` all three go red — the defect was live, so no sabotage
+  was needed to demonstrate the guard.
+
 - **The rename guard over the app's payload covered three of thirty-five reads.**
   `app/app.js` is hand-written JavaScript against a `mypy --strict` Python server,
   and no type system spans the boundary: renaming a field is safe on the Python

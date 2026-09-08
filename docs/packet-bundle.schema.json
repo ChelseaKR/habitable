@@ -384,8 +384,8 @@
         "algorithm": { "type": "string", "const": "sha256" },
         "length": { "type": "integer", "minimum": 0 },
         "head_hash": {
-          "oneOf": [{ "$ref": "#/$defs/hexSha256" }, { "type": "string", "pattern": "^0{64}$" }],
-          "description": "entry_hash of the last entry, or 64 zeros for an empty chain."
+          "$ref": "#/$defs/hexSha256",
+          "description": "entry_hash of the last entry, or 64 zeros for an empty chain. The empty-chain sentinel is a hexSha256 value like any other, so it needs no branch of its own: it used to carry a second `^0{64}$` alternative under `oneOf`, which rejected the sentinel outright because `oneOf` demands exactly one matching branch and 64 zeros match both."
         },
         "items": {
           "type": "object",
@@ -422,8 +422,8 @@
           "description": "Verification-relevant, non-identifying facts only (hashes, media_type, tsa, etc.). A copied_for_sharing entry carries content_hash + shared_hash + stripped."
         },
         "prev_hash": {
-          "oneOf": [{ "$ref": "#/$defs/hexSha256" }, { "type": "string", "pattern": "^0{64}$" }],
-          "description": "entry_hash of the previous entry; 64 zeros for the genesis link."
+          "$ref": "#/$defs/hexSha256",
+          "description": "entry_hash of the previous entry; 64 zeros for the genesis link. The genesis sentinel is a hexSha256 value like any other, so it needs no branch of its own: it used to carry a second `^0{64}$` alternative under `oneOf`, which rejected every chain's first entry because `oneOf` demands exactly one matching branch and 64 zeros match both."
         },
         "entry_hash": { "$ref": "#/$defs/hexSha256" }
       },
