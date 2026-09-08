@@ -838,3 +838,105 @@ def test_the_app_folds_case_and_space_before_the_vocabulary_lookup(app: App) -> 
     )
     assert stored[fifth["issue_id"]] == "mold"
     assert stored[sixth["issue_id"]] == "Broken Lift"
+
+
+# --- The app reads this payload with `|| 0`; a rename must fail here ------------
+#
+# `app/app.js` is hand-written JavaScript against a `mypy --strict` Python
+# server, and no type system spans the boundary. Renaming a field is safe on the
+# Python side -- strict mypy finds every caller -- and finds none of the
+# JavaScript ones. The idiomatic defensive read is `status.capture_count || 0`,
+# so the browser does not throw, does not warn, and renders a confident **0**:
+# the status panel telling a tenant her case is empty.
+#
+# `tests/test_datacost.py::test_the_app_reads_only_storage_keys_the_server_actually_sends`
+# closed this for the storage figures after a rename made it real (#296 lineage).
+# It matches `\bs\.([a-z_]+_bytes)\b`, which is one object and one suffix. The
+# app reads **32** keys off this payload across four more bindings, all with the
+# same fallback and none of them checked.
+
+#: JavaScript identifier -> where its object comes from in `AppServer.status()`.
+#:
+#: Only identifiers this file binds *unambiguously* are here, and the two that
+#: are missing are missing for a measured reason rather than an oversight:
+#: `s` is bound four times (once to `status.storage`, three times to a loop
+#: counter and a DOM element) and `issue` five times, so a file-wide
+#: `<name>.<key>` scan picks up `s.textContent` and `issue.value` -- DOM
+#: properties, not payload keys. Narrowing those two needs a per-function
+#: parser; the storage half of `s.` is already covered by the test named above.
+_PAYLOAD_BINDINGS = ("status", "sync", "rs", "capture")
+
+
+def _app_js() -> str:
+    return (Path(__file__).resolve().parent.parent / "app" / "app.js").read_text("utf-8")
+
+
+def _keys_read(identifier: str) -> set[str]:
+    """Every `<identifier>.<key>` the app reads."""
+    return set(re.findall(rf"\b{identifier}\.([A-Za-z_][A-Za-z0-9_]*)\b", _app_js()))
+
+
+def test_the_payload_bindings_this_probe_assumes_are_still_unambiguous() -> None:
+    """The probe below scans the whole file, so each name must mean one thing.
+
+    Without this, adding `var sync = document.getElementById(...)` somewhere
+    would quietly widen the next test's key set with DOM properties, and it
+    would start failing for a reason that has nothing to do with the payload.
+    """
+    script = _app_js()
+    assert not re.search(r"\bvar\s+status\s*=", script), (
+        "`status` is now assigned as a variable; it is only a parameter carrying "
+        "the server payload, and the probe below assumes that"
+    )
+    for identifier in ("sync", "rs", "capture"):
+        bindings = re.findall(
+            rf"var\s+{identifier}\s*=|function\s+\w+\(\s*{identifier}\s*[,)]", script
+        )
+        assert len(bindings) == 1, (
+            f"`{identifier}` is bound {len(bindings)} times in app.js; the probe below "
+            "would mix payload keys with whatever else it names"
+        )
+
+
+def test_the_app_reads_only_payload_keys_the_server_actually_sends(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+) -> None:
+    """Every key `app.js` reads must exist in a payload the server really built.
+
+    Checked against `AppServer.status()` output, not against a fixture that
+    restates the key list -- a fixture would drift with the app rather than with
+    the server, which is the drift this exists to catch.
+    """
+    vault = make_vault()
+    issue_id = vault.document.add_issue(category="mold", room="bath", issue_id="i1")
+    capture(vault, make_jpeg(), issue_id=issue_id, tsa=local_tsa)
+    app = AppServer(vault=vault, tsa=None, static_root=vault.path, lock=threading.Lock())
+    status = app.status()
+
+    issues = cast("list[dict[str, object]]", status["issues"])
+    assert issues, "the fixture built no issue; every assertion below would be vacuous"
+    issue = issues[0]
+    capture_items = cast("list[dict[str, object]]", issue["capture_items"])
+    assert capture_items, "the fixture built no capture; the `capture.` half would be vacuous"
+
+    sent: dict[str, object] = {
+        "status": status,
+        "sync": status["sync"],
+        "rs": issue["record_strength"],
+        "capture": capture_items[0],
+    }
+    missing: dict[str, list[str]] = {}
+    for identifier in _PAYLOAD_BINDINGS:
+        keys = _keys_read(identifier)
+        assert keys, f"no `{identifier}.` reads found in app.js -- this probe stopped finding code"
+        payload = cast("dict[str, object]", sent[identifier])
+        absent = sorted(keys - set(payload))
+        if absent:
+            missing[identifier] = absent
+    assert not missing, (
+        f"app.js reads keys the server does not send: {missing}. Each one renders as "
+        "0, an empty string, or a blank in the app -- silently, because the reads "
+        "fall back rather than throw."
+    )

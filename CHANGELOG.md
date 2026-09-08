@@ -9,6 +9,31 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **The rename guard over the app's payload covered three of thirty-five reads.**
+  `app/app.js` is hand-written JavaScript against a `mypy --strict` Python server,
+  and no type system spans the boundary: renaming a field is safe on the Python
+  side, where strict mypy finds every caller, and finds none of the JavaScript
+  ones. The idiomatic read is `status.capture_count || 0`, so the browser does
+  not throw, does not warn, and renders a confident **0** — the status panel
+  telling a tenant her case is empty.
+
+  `test_the_app_reads_only_storage_keys_the_server_actually_sends` closed this
+  for the storage figures by matching `\bs\.([a-z_]+_bytes)\b`: one object, one
+  suffix, three keys. The app reads **32 more** off the same `AppServer.status()`
+  payload — `status.*` (15), `sync.*` (6), `capture.*` (7), `rs.*` (4) — every one
+  with the same fallback and none of them checked.
+  `test_the_app_reads_only_payload_keys_the_server_actually_sends` now reads the
+  key names out of the script and checks them against a payload the server really
+  built, from a vault carrying a real issue and a real capture so neither half is
+  vacuous. No mismatch exists today; the hole did.
+
+  Two identifiers are deliberately not covered, for a measured reason rather than
+  an oversight: `s` is bound four times in that file and `issue` five, so a
+  file-wide scan collects `s.textContent` and `issue.value` — DOM properties, not
+  payload keys. A companion test asserts the four covered names stay
+  unambiguous, so a future `var sync = document.getElementById(...)` fails here
+  instead of quietly widening the probe.
+
 - **The i18n merge gate could not see an untranslated string, and the test named
   `test_spanish_is_actually_translated` passed with 128 of 260 strings in
   English.** Key parity, the non-empty rule and placeholder parity are all
