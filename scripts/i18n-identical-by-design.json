@@ -1,0 +1,4 @@
+{
+  "app_name": "The product name. \"habitable\" is what this program is called; a translated name would name a different program, and this key feeds the install prompt, the manifest and the app's own heading.",
+  "app_title": "The browser document title, which is the product name, for the same reason as app_name."
+}
