@@ -64,7 +64,7 @@ from .usecases import (
     list_profiles,
     profile_expired,
 )
-from .vault import Vault, human_bytes
+from .vault import StorageFootprint, Vault, human_bytes
 from .verify import verify_packet
 
 __all__ = ["main"]
@@ -257,6 +257,12 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="show a local, telemetry-free data-flow X-ray of what each component "
         "would expose externally (no network)",
+    )
+    p_status.add_argument(
+        "--storage",
+        action="store_true",
+        help="break the storage line down per capture, largest first, and say what "
+        "deleting the case would and would not remove",
     )
     p_status.set_defaults(func=_cmd_status)
 
@@ -1166,6 +1172,8 @@ def _cmd_status(args: argparse.Namespace) -> int:
             shared=human_bytes(footprint.projected_shared_copy_bytes),
         )
     )
+    if getattr(args, "storage", False):
+        _print_storage_breakdown(footprint, locale)
     _print_sync_redundancy(vault, locale)
     if any_issues:
         print(f"  {cli_text('status_strength_caveat', locale)}")
@@ -1176,6 +1184,33 @@ def _cmd_status(args: argparse.Namespace) -> int:
 # have a translation; anything else is printed verbatim rather than mapped to a
 # nearby-sounding phrase that would misdescribe how the case actually travelled.
 _TRANSPORT_KEYS = {"file": "sync_transport_file", "relay": "sync_transport_relay"}
+
+
+def _print_storage_breakdown(footprint: StorageFootprint, locale: str) -> None:
+    """Print the per-capture storage breakdown behind ``status --storage`` (RR-08).
+
+    Three states, three sentences, because two of them look identical if they are
+    collapsed. A case with no captures at all, a case whose captures are all present,
+    and a case some of whose sealed originals are not on this device are different
+    facts, and only the last one has a number a reader could act on.
+
+    The header states both numbers -- how many captures this breakdown measured and
+    how many the case holds -- so a list covering 3 of 11 cannot read as a list
+    covering the case. The unmeasured ones are then named, never silently dropped.
+    """
+    measured = len(footprint.per_capture)
+    total = measured + len(footprint.captures_without_a_sealed_original)
+    if total == 0:
+        print(f"  {cli_text('status_storage_no_captures', locale)}")
+        return
+    print(f"  {cli_text('status_storage_breakdown', locale, measured=measured, total=total)}")
+    for entry in sorted(
+        footprint.per_capture, key=lambda item: (-item.sealed_bytes, item.capture_id)
+    ):
+        print(f"    {entry.capture_id}: {human_bytes(entry.sealed_bytes)}")
+    for capture_id in footprint.captures_without_a_sealed_original:
+        print(f"    {capture_id}: {cli_text('status_storage_no_original', locale)}")
+    print(f"  {cli_text('status_storage_delete_note', locale)}")
 
 
 def _print_sync_redundancy(vault: Vault, locale: str) -> None:

@@ -490,6 +490,24 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "exporting a packet writes about {shared} more — a shareable copy of each "
             "sealed original, in the folder you name, outside the vault and not counted above"
         ),
+        # RR-08. The breakdown states both numbers. A per-capture list only covers the
+        # captures whose sealed original is on this device, and a capture with no row
+        # is indistinguishable from a capture with a zero-byte row unless the header
+        # says how many of the case's captures were measured.
+        "status_storage_breakdown": (
+            "space used by each capture — {measured, plural, one {# capture} "
+            "other {# captures}} measured of {total, plural, one {# in this case} "
+            "other {# in this case}}, largest first"
+        ),
+        "status_storage_no_captures": (
+            "no captures yet, so nothing here takes space beyond the case data above"
+        ),
+        "status_storage_no_original": "sealed original not on this device — nothing to measure",
+        "status_storage_delete_note": (
+            "deleting this case frees the space above and destroys the evidence with it. "
+            "A packet you have already exported is a separate copy in the folder you chose: "
+            "it is not counted here and deleting the case does not remove it."
+        ),
         # RR-07: "is this case on more than one device?" Counted from receipts a
         # peer signed, never from the pairing list -- a paired peer that has never
         # completed an exchange holds nothing.
@@ -739,6 +757,23 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "exportar un paquete escribe unos {shared} más — una copia compartible de cada "
             "original sellado, en la carpeta que usted indique, fuera de la bóveda y no "
             "incluida arriba"
+        ),
+        "status_storage_breakdown": (
+            "espacio que ocupa cada captura — se {measured, plural, one {midió # captura} "
+            "other {midieron # capturas}} de {total, plural, one {# que tiene este caso} "
+            "other {# que tiene este caso}}, de mayor a menor"
+        ),
+        "status_storage_no_captures": (
+            "todavía no hay capturas, así que aquí no ocupa espacio nada más allá de los "
+            "datos del caso indicados arriba"
+        ),
+        "status_storage_no_original": (
+            "el original sellado no está en este dispositivo — no hay nada que medir"
+        ),
+        "status_storage_delete_note": (
+            "borrar este caso libera el espacio indicado arriba y destruye con él las pruebas. "
+            "Un paquete que usted ya haya exportado es una copia aparte, en la carpeta que "
+            "eligió: no se cuenta aquí y borrar el caso no lo elimina."
         ),
         "status_sync_alone": (
             "copias: solo este dispositivo — ningún otro dispositivo ha confirmado que "

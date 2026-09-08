@@ -141,6 +141,12 @@ class StorageFootprint:
     re-encoded into a policy-processed shared copy of roughly the same size. It does
     not include the byte-exact packet original that ``--include-originals`` adds, so
     that case runs to roughly three media-sized copies rather than two.
+
+    ``per_capture`` covers only the captures whose sealed original is on this device.
+    ``captures_without_a_sealed_original`` is the rest of the case, named rather than
+    omitted, so a breakdown can say how many captures it measured *and* how many it
+    could have: a capture with no ``.enc`` under ``originals/`` has no row at all, and
+    a missing row is indistinguishable from a zero-byte one to any reader of the list.
     """
 
     sealed_originals_bytes: int
@@ -149,6 +155,7 @@ class StorageFootprint:
     projected_shared_copy_bytes: int
     projected_total_with_export_bytes: int
     per_capture: tuple[CaptureSize, ...]
+    captures_without_a_sealed_original: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1094,6 +1101,18 @@ class Vault:
         on_disk = sum(f.stat().st_size for f in self.path.rglob("*") if f.is_file())
         metadata = on_disk - sealed
         projected_shared = sealed  # what a default export would write, elsewhere
+        # The denominator. ``per_capture`` is built from the files that exist under
+        # ``originals/``, so a capture whose sealed original is not on this device is
+        # simply absent from it -- and an absent row and a zero-byte row are the same
+        # thing to anything that only reads the list. Name them instead: a per-item
+        # breakdown that silently covers 3 of 11 captures is a statement about 3
+        # presented as a statement about the case.
+        measured = {entry.capture_id for entry in per_capture}
+        without_original = tuple(
+            capture.capture_id
+            for capture in self.document.captures()
+            if capture.capture_id not in measured
+        )
         return StorageFootprint(
             sealed_originals_bytes=sealed,
             metadata_bytes=metadata,
@@ -1101,6 +1120,7 @@ class Vault:
             projected_shared_copy_bytes=projected_shared,
             projected_total_with_export_bytes=on_disk + projected_shared,
             per_capture=tuple(per_capture),
+            captures_without_a_sealed_original=without_original,
         )
 
     # --- timestamp tokens -----------------------------------------------------

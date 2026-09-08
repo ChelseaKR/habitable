@@ -72,6 +72,30 @@ against `projected_shared_copy_bytes` — and neither number includes the option
 packet `originals/` directory. A case you have never exported has no shared copy
 anywhere on the device, and the storage line says so by not counting one.
 
+### Which capture is filling the phone — `habitable status --storage`
+
+The aggregate line cannot answer that, so `--storage` breaks it down per capture,
+largest first, and says what deleting the case would and would not remove:
+
+```text
+storage: 6.3 MB on this device — 6.1 MB sealed originals + 0.2 MB case data
+  space used by each capture — 2 captures measured of 3 in this case, largest first
+    cap-9f2c1a7b: 4.8 MB
+    cap-1d40e662: 1.3 MB
+    cap-77b0c914: sealed original not on this device — nothing to measure
+  deleting this case frees the space above and destroys the evidence with it. A
+  packet you have already exported is a separate copy in the folder you chose: it
+  is not counted here and deleting the case does not remove it.
+```
+
+**The header carries two numbers on purpose.** The breakdown can only measure a
+capture whose sealed original is under `originals/`, so a capture without one has
+no row — and a missing row looks exactly like a zero-byte row to anyone reading the
+list. Saying *"2 captures measured of 3 in this case"* and then naming the third is
+what stops a list covering part of the case from reading as a list covering the
+case. A case with no captures at all gets its own sentence rather than an empty
+list, for the same reason.
+
 **There is no way to reclaim space inside a case today, and exporting is not one.**
 An export *adds* a copy; it removes nothing from the vault, and the sealed originals
 are the copy that must survive, so deleting one by hand destroys the evidence the
