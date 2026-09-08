@@ -9,6 +9,30 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **The i18n merge gate could not see an untranslated string, and the test named
+  `test_spanish_is_actually_translated` passed with 128 of 260 strings in
+  English.** Key parity, the non-empty rule and placeholder parity are all
+  satisfied by a `es.json` value that is verbatim its own English source — the
+  key is there, the value is not blank, and the placeholders are identical by
+  construction. Nothing compared a value to its source. Measured on the shipped
+  bundles: planting one full English sentence in `es.json` left `make i18n`
+  green and the "actually translated" test passing; the test's rule was "at
+  least half the shared strings differ", so it only flips at 129 of 260, and the
+  merge gate never flipped at all.
+
+  `scripts/check_i18n_parity.py` now compares every shared value against its
+  source, and the test asserts the same property per key. Strings that are
+  genuinely identical in both languages carry a written reason in
+  `scripts/i18n-identical-by-design.json` — today the product name, twice. No
+  predicate can separate a product name from a word somebody forgot to
+  translate, so a person writes down which is which; the list is held to the
+  catalogs (a key the bundles no longer share, a string since translated, or a
+  missing reason each fail the gate) and a malformed list is an operator error
+  rather than "no exemptions", so the escape hatch cannot disarm the rule it
+  serves. The gate also refuses to report success when it compared no keys, and
+  gained `--en` / `--es` / `--identical-by-design` seams so the controls can
+  point it at a deliberately broken catalog.
+
 - **`inspector.html` told the reader location metadata had been removed from a
   packet whose own signed disclosures said it had been kept.** Issue #104 made the
   packet's metadata claim fail closed: `_disclosure_section` gained a
