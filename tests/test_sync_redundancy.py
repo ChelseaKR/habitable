@@ -34,6 +34,7 @@ from habitable.sync import (
 )
 from habitable.syncstate import CLOCK_SKEW_TOLERANCE_MS, redundancy_from_peers
 from habitable.vault import Vault
+from habitable.verify import verify_packet
 
 # The same fixed epoch the rest of the suite pins to, kept local rather than
 # imported from conftest: `tests/` is not a package, so a relative import here
@@ -693,3 +694,22 @@ def test_a_count_this_device_cannot_date_is_carried_without_a_date(tmp_path: Pat
     html = (out / "packet.html").read_text(encoding="utf-8")
     assert "1970" not in html
     assert "recorded no time" in html
+
+
+def test_the_verifier_reads_the_device_count_a_real_export_writes(tmp_path: Path) -> None:
+    """The producer and the verifier, on the same packet, end to end.
+
+    The unit tests in `test_packet_verify.py` hand `_verify_appendix_redundancy`
+    shapes by hand, which proves the rule and not the wiring. This runs the whole
+    path over a vault with a paired-but-unsynced peer -- the state whose numbers
+    are easiest to get wrong -- and requires the verifier to accept what
+    `build_packet` actually wrote.
+    """
+    a, _b = _pair(tmp_path)
+    a.document.add_issue(category="mold", room="bath", issue_id="i1")
+    a.save()
+
+    out = tmp_path / "packet-verified"
+    _bundle_of(a, out)
+    report = verify_packet(out)
+    assert not [problem for problem in report.problems if "redundancy" in problem], report.problems
