@@ -19,11 +19,25 @@ from .errors import VaultError
 
 __all__ = [
     "CLOCK_SKEW_TOLERANCE_MS",
+    "REDUNDANCY_STATES",
     "PeerAuthorization",
     "PeerHolding",
     "SyncRedundancy",
     "redundancy_from_peers",
 ]
+
+#: The words a *producer* may write into ``appendix.redundancy.state`` in an
+#: exported packet (issue #297, RR-07). It lives here, in the leaf module that
+#: owns the concept and imports nothing but ``canonical`` and ``errors``, so the
+#: producer (`packet`), the verifier (`verify`) and the renderers (`bundleview`)
+#: all read one list rather than each compiling their own copy.
+#:
+#: The published schema deliberately declares ``state`` as a plain string rather
+#: than an `enum`. A closed vocabulary inside a document served under a pinned
+#: ``$id`` cannot gain a member without rejecting documents its own producer
+#: considers valid, and this list is three days old. It is closed here, where
+#: widening it costs one line and a test.
+REDUNDANCY_STATES = ("acknowledged", "this_device_only")
 
 # How far a peer's *claimed* clock may run ahead of this device's own clock
 # before the claim is treated as unmeasurable rather than as a time. A receipt

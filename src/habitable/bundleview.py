@@ -21,19 +21,64 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import TypeGuard
 
 from .canonical import JSONValue
+from .syncstate import REDUNDANCY_STATES
 from .timeline import event_label, source_label
 
 __all__ = [
+    "REDUNDANCY_STATES",
     "ChronologyEntry",
     "CoverSheet",
     "IntegrityRow",
     "IntegritySummary",
+    "PacketRedundancy",
     "chronology",
     "cover_sheet",
     "integrity_summary",
+    "packet_redundancy",
+    "redundancy_sentence",
 ]
+
+#: The two states a *reader* can reach that no producer can write: a packet that
+#: says nothing, and a packet that says something unparseable. Neither carries a
+#: count, and neither is ``this_device_only``.
+_READER_STATES = ("not_stated", "unreadable")
+
+
+@dataclass(frozen=True, slots=True)
+class PacketRedundancy:
+    """How many devices are known to hold this case, as this packet states it.
+
+    Issue #297 (RR-07). A recipient asking "if the tenant loses her phone, does
+    this case still exist?" has, until now, had nowhere to look. The answer is a
+    **count and never an identity**: naming the peers would put a social graph of
+    a tenant union into a document that goes to a landlord's solicitor.
+
+    Four states, because the three obvious ones collapse the distinction this
+    project keeps making. ``acknowledged`` and ``this_device_only`` are
+    measurements a producer wrote down. ``not_stated`` is a packet that predates
+    the field -- every bundle exported before this shipped, and the six committed
+    golden fixtures -- and it is not the same fact as "one device": rendering it
+    as ``1`` would publish a redundancy claim nobody made. ``unreadable`` is a
+    packet that carries the field in a shape this reader cannot parse, which is
+    also not "one device", and which a verifier is entitled to complain about
+    while a renderer still has to print something.
+
+    ``device_count`` and ``acknowledged_by`` are therefore ``None`` rather than
+    ``0`` in both reader states. There is no number to round down to.
+    """
+
+    state: str
+    device_count: int | None
+    acknowledged_by: int | None
+    as_of: str
+
+    @property
+    def stated(self) -> bool:
+        """True when the packet actually carries a readable count."""
+        return self.state in REDUNDANCY_STATES
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +98,8 @@ class CoverSheet:
     includes_originals: bool
     earliest: str
     latest: str
+    redundancy: PacketRedundancy
+    copies: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,6 +208,7 @@ def cover_sheet(bundle: Mapping[str, JSONValue]) -> CoverSheet:
     if unit:
         title = f"{title} — unit {unit}"
     times = sorted(e.when for e in chronology(bundle) if e.when)
+    redundancy = packet_redundancy(bundle)
     return CoverSheet(
         title=title,
         case_id=_s(bundle, "case_id"),
@@ -175,7 +223,139 @@ def cover_sheet(bundle: Mapping[str, JSONValue]) -> CoverSheet:
         includes_originals=extent.includes_originals,
         earliest=times[0] if times else "",
         latest=times[-1] if times else "",
+        redundancy=redundancy,
+        copies=redundancy_sentence(redundancy, _s(bundle, "language") or "en"),
     )
+
+
+_REDUNDANCY_SENTENCES: dict[str, dict[str, str]] = {
+    "en": {
+        "acknowledged": (
+            "{devices} devices, as of {as_of}: the device that produced this packet, "
+            "and {acknowledged} paired device(s) that returned a signed acknowledgement "
+            "of holding this case. Devices are counted, never named."
+        ),
+        "acknowledged_undated": (
+            "{devices} devices: the device that produced this packet, and {acknowledged} "
+            "paired device(s) that returned a signed acknowledgement of holding this "
+            "case. The producing device recorded no time for the most recent one. "
+            "Devices are counted, never named."
+        ),
+        "this_device_only": (
+            "1 device. When this packet was produced, no other device had acknowledged "
+            "holding the case, so the evidence existed in one place."
+        ),
+        "not_stated": (
+            "not stated. This packet was produced before habitable recorded a device "
+            "count, so the number of copies is unknown here — which is not the same as "
+            "one."
+        ),
+        "unreadable": (
+            "not readable. This packet carries a device count in a shape this reader "
+            "does not understand, so no number is shown rather than a wrong one. Run "
+            "`habitable verify`, which reports the malformed field."
+        ),
+    },
+    "es": {
+        "acknowledged": (
+            "{devices} dispositivos, al {as_of}: el dispositivo que generó este "
+            "expediente y {acknowledged} dispositivo(s) vinculado(s) que devolvieron "
+            "una confirmación firmada de que tienen este caso. Los dispositivos se "
+            "cuentan, nunca se nombran."
+        ),
+        "acknowledged_undated": (
+            "{devices} dispositivos: el dispositivo que generó este expediente y "
+            "{acknowledged} dispositivo(s) vinculado(s) que devolvieron una confirmación "
+            "firmada de que tienen este caso. El dispositivo emisor no registró la hora "
+            "de la más reciente. Los dispositivos se cuentan, nunca se nombran."
+        ),
+        "this_device_only": (
+            "1 dispositivo. Cuando se generó este expediente, ningún otro dispositivo "
+            "había confirmado que tuviera el caso, así que las pruebas existían en un "
+            "solo lugar."
+        ),
+        "not_stated": (
+            "no se indica. Este expediente se generó antes de que habitable registrara "
+            "un recuento de dispositivos, así que aquí se desconoce el número de copias, "
+            "lo cual no es lo mismo que uno."
+        ),
+        "unreadable": (
+            "no se puede leer. Este expediente trae un recuento de dispositivos en un "
+            "formato que este lector no entiende, así que no se muestra ningún número en "
+            "lugar de uno equivocado. Ejecute `habitable verify`, que informa del campo "
+            "mal formado."
+        ),
+    },
+}
+
+
+def redundancy_sentence(redundancy: PacketRedundancy, language: str) -> str:
+    """Say how many devices hold the case, in words, without naming any of them.
+
+    The undated variant is a separate sentence rather than a formatted-in "" or
+    an epoch date: a count with no time beside it is a weaker claim than a
+    current one, and a reader has to be able to tell them apart.
+    """
+    lang = "es" if language.lower().startswith("es") else "en"
+    sentences = _REDUNDANCY_SENTENCES[lang]
+    if redundancy.state == "acknowledged":
+        key = "acknowledged" if redundancy.as_of else "acknowledged_undated"
+        return sentences[key].format(
+            devices=redundancy.device_count,
+            acknowledged=redundancy.acknowledged_by,
+            as_of=redundancy.as_of,
+        )
+    if redundancy.state in sentences:
+        return sentences[redundancy.state]
+    return sentences["unreadable"]
+
+
+def packet_redundancy(bundle: Mapping[str, JSONValue]) -> PacketRedundancy:
+    """Read ``appendix.redundancy``, distinguishing absent from unreadable.
+
+    Every rejection below lands on ``unreadable`` rather than on a default,
+    because the two failure directions are not symmetric: a reader that quietly
+    substituted ``this_device_only`` for a field it could not parse would publish
+    the project's worst redundancy claim -- "the evidence exists in one place" --
+    on the strength of a parse error.
+    """
+    appendix = _map(bundle, "appendix")
+    if "redundancy" not in appendix:
+        return _reader_redundancy("not_stated")
+    raw = appendix.get("redundancy")
+    if not isinstance(raw, Mapping):
+        return _reader_redundancy("unreadable")
+    state = raw.get("state")
+    devices = raw.get("device_count")
+    acknowledged = raw.get("acknowledged_by")
+    if not isinstance(state, str) or state not in REDUNDANCY_STATES:
+        return _reader_redundancy("unreadable")
+    if not _is_count(devices) or not _is_count(acknowledged):
+        return _reader_redundancy("unreadable")
+    # The two halves have to agree, or the sentence is arithmetic nobody did:
+    # the producing device is always one of the devices it is counting.
+    if devices != acknowledged + 1:
+        return _reader_redundancy("unreadable")
+    if (state == "this_device_only") != (acknowledged == 0):
+        return _reader_redundancy("unreadable")
+    as_of = raw.get("as_of")
+    return PacketRedundancy(
+        state=state,
+        device_count=devices,
+        acknowledged_by=acknowledged,
+        as_of=as_of if isinstance(as_of, str) else "",
+    )
+
+
+def _reader_redundancy(state: str) -> PacketRedundancy:
+    """A state a reader reached, which therefore carries no counts at all."""
+    assert state in _READER_STATES
+    return PacketRedundancy(state=state, device_count=None, acknowledged_by=None, as_of="")
+
+
+def _is_count(value: object) -> TypeGuard[int]:
+    """An integer this can render. ``True`` is an ``int`` in Python and is not one."""
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 def chronology(bundle: Mapping[str, JSONValue]) -> tuple[ChronologyEntry, ...]:

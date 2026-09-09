@@ -20,7 +20,12 @@ from habitable.exif import read_metadata
 from habitable.packet import build_packet
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
-from habitable.verify import VerificationReport, _verify_item, verify_packet
+from habitable.verify import (
+    VerificationReport,
+    _verify_appendix_redundancy,
+    _verify_item,
+    verify_packet,
+)
 
 
 def _case_with_two_captures(
@@ -679,3 +684,130 @@ def test_every_disclosure_lookup_resolves_a_regional_tag_the_same_way() -> None:
     # And the two languages are genuinely different text, so the assertions above
     # are not all trivially comparing English to English.
     assert scope_statement("es", scope_type="unit") != scope_statement("en", scope_type="unit")
+
+
+# ----------------------------------------------------------------------------------
+# appendix.redundancy — the one appendix figure the verifier cannot re-derive
+# ----------------------------------------------------------------------------------
+
+
+def test_a_packet_that_omits_the_device_count_still_verifies() -> None:
+    """Absence is accepted, and it has to be.
+
+    Every packet exported before issue #297 shipped omits ``redundancy``,
+    including all six committed golden fixtures. Requiring the field would turn
+    "every packet version we have emitted keeps verifying" -- the compatibility
+    guarantee `tests/test_golden.py` exists for -- into a promise this repository
+    broke the day it added an optional field.
+    """
+    assert _verify_appendix_redundancy({"item_count": 0}) == []
+
+
+def test_a_well_formed_device_count_raises_no_problem() -> None:
+    assert (
+        _verify_appendix_redundancy(
+            {
+                "redundancy": {
+                    "state": "acknowledged",
+                    "device_count": 3,
+                    "acknowledged_by": 2,
+                    "identities_included": False,
+                    "as_of": "2026-01-02T00:05:00Z",
+                }
+            }
+        )
+        == []
+    )
+    assert (
+        _verify_appendix_redundancy(
+            {
+                "redundancy": {
+                    "state": "this_device_only",
+                    "device_count": 1,
+                    "acknowledged_by": 0,
+                    "identities_included": False,
+                }
+            }
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    ("redundancy", "expected"),
+    [
+        pytest.param("not an object", "not an object", id="scalar"),
+        pytest.param(
+            {
+                "state": "everyone",
+                "device_count": 2,
+                "acknowledged_by": 1,
+                "identities_included": False,
+            },
+            "state is not one of",
+            id="state-outside-the-vocabulary",
+        ),
+        pytest.param(
+            {
+                "state": "acknowledged",
+                "device_count": "2",
+                "acknowledged_by": 1,
+                "identities_included": False,
+            },
+            "are not counts",
+            id="count-as-a-string",
+        ),
+        pytest.param(
+            {
+                "state": "acknowledged",
+                "device_count": 4,
+                "acknowledged_by": 1,
+                "identities_included": False,
+            },
+            "does not count the producing device plus",
+            id="arithmetic-a-hand-edit-would-carry",
+        ),
+        pytest.param(
+            {
+                "state": "this_device_only",
+                "device_count": 3,
+                "acknowledged_by": 2,
+                "identities_included": False,
+            },
+            "contradicts acknowledged_by",
+            id="word-and-number-disagree",
+        ),
+        pytest.param(
+            {
+                "state": "acknowledged",
+                "device_count": 2,
+                "acknowledged_by": 1,
+                "identities_included": True,
+            },
+            "counts devices and never names them",
+            id="identities-claimed",
+        ),
+        pytest.param(
+            {
+                "state": "acknowledged",
+                "device_count": 2,
+                "acknowledged_by": 1,
+                "identities_included": False,
+                "as_of": 1767312000,
+            },
+            "as_of is not a string",
+            id="epoch-instead-of-a-date",
+        ),
+    ],
+)
+def test_a_stated_device_count_must_agree_with_its_own_arithmetic(
+    redundancy: JSONValue, expected: str
+) -> None:
+    """Nothing in a packet says how many devices exist, so nothing re-derives this.
+
+    What is checkable is that the producer's three numbers and the word beside
+    them agree -- which is what refuses a hand-edited packet claiming four
+    devices over one acknowledgement.
+    """
+    problems = _verify_appendix_redundancy({"redundancy": redundancy})
+    assert any(expected in problem for problem in problems), problems

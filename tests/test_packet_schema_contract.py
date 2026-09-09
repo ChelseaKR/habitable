@@ -33,6 +33,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from habitable.syncstate import REDUNDANCY_STATES
+
 _ROOT = Path(__file__).resolve().parent.parent
 _SCHEMA_PATH = _ROOT / "docs" / "packet-bundle.schema.json"
 
@@ -227,3 +229,55 @@ def test_no_oneof_in_the_published_schema_has_overlapping_branches() -> None:
         "no literal witness was derivable from any oneOf branch, so this test asserted "
         "nothing; either the schema changed shape or _literal_witnesses stopped reading it"
     )
+
+
+def test_the_schema_declares_the_device_count_this_project_actually_writes() -> None:
+    """`appendix.redundancy` (issue #297) — the contract and the producer, compared.
+
+    The published schema is the only description of this field a third party
+    reads, and nothing else in this repository holds it to what `packet.py`
+    emits. Two directions are checked: every key the producer always writes is
+    `required` here, and the vocabulary the schema's prose names is the one the
+    code enforces -- so widening `REDUNDANCY_STATES` without saying so in the
+    document served under the public `$id` fails here rather than in a stranger's
+    validator.
+    """
+    declared = _schema()["properties"]["appendix"]["properties"]["redundancy"]
+
+    # What `packet._redundancy_json` writes unconditionally. `as_of` is
+    # deliberately absent: it is omitted, never defaulted, when the producing
+    # device recorded no time for the most recent acknowledgement.
+    assert set(declared["required"]) == {
+        "state",
+        "device_count",
+        "acknowledged_by",
+        "identities_included",
+    }
+    assert "as_of" not in declared["required"]
+    assert declared["properties"]["as_of"]["type"] == "string"
+
+    # A count of devices always includes the device that wrote the packet.
+    assert declared["properties"]["device_count"]["minimum"] == 1
+    assert declared["properties"]["acknowledged_by"]["minimum"] == 0
+
+    # The one closure that belongs here. A packet counts devices; the only
+    # honest way this could become true is a different field.
+    assert declared["properties"]["identities_included"]["const"] is False
+
+    # And the one that does not. `state` stays a plain string in the published
+    # contract: an enum in a document served under a pinned `$id` rejects a
+    # document its own producer considers valid on the day a member is added.
+    state = declared["properties"]["state"]
+    assert state["type"] == "string"
+    assert "enum" not in state and "const" not in state, (
+        "`state` is an enum again. A consumer pinned to this $id would then "
+        "reject a packet the producer considers valid the first time the "
+        "vocabulary grows; habitable's own verifier is where it is closed."
+    )
+    assert REDUNDANCY_STATES, "the vocabulary is empty; this comparison reads nothing"
+    for word in REDUNDANCY_STATES:
+        assert f"'{word}'" in declared["description"], (
+            f"the published schema's prose does not name the state {word!r} that "
+            f"this project's producer can write"
+        )
+    assert declared["additionalProperties"] is True

@@ -40,6 +40,7 @@ from .canonical import JSONValue, canonical_json, sha256_bytes
 from .crypto import verify as verify_signature
 from .errors import VerificationError
 from .evidence import CustodyLog
+from .syncstate import REDUNDANCY_STATES
 from .timeline import EVENT_TYPES, SOURCES, normalize_occurred_at
 from .tsa import TimestampInfo, TimestampToken, verify_archive_chain, verify_token
 
@@ -1191,6 +1192,60 @@ def _verify_appendix_item_counts(
     return problems
 
 
+def _verify_appendix_redundancy(appendix: Mapping[str, JSONValue]) -> list[str]:
+    """Hold ``appendix.redundancy`` to its own arithmetic. Issue #297 (RR-07).
+
+    Unlike every other appendix figure this module re-derives, a device count is
+    **not** a fact about the bundle: nothing inside the packet says how many
+    devices hold the case, so nothing here can recompute it. What can be checked
+    is that the producer's own three numbers agree with each other and with the
+    word beside them, which is what stops a hand-edited packet claiming "4
+    devices" over ``acknowledged_by: 0``.
+
+    Absence is accepted and deliberately not a problem. Every packet exported
+    before this field existed -- including all six committed golden fixtures --
+    omits it, and `bundleview.packet_redundancy` renders that omission as "not
+    stated" rather than as a count. Requiring the field would make a backward
+    compatibility guarantee fail on the day a new optional field shipped.
+    """
+    if "redundancy" not in appendix:
+        return []
+    raw = appendix.get("redundancy")
+    if not isinstance(raw, Mapping):
+        return ["appendix.redundancy is not an object"]
+    problems: list[str] = []
+    state = raw.get("state")
+    if state not in REDUNDANCY_STATES:
+        problems.append(f"appendix.redundancy.state is not one of {list(REDUNDANCY_STATES)}")
+    devices = raw.get("device_count")
+    acknowledged = raw.get("acknowledged_by")
+    counted = [
+        value
+        for value in (devices, acknowledged)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0
+    ]
+    if len(counted) != 2:
+        problems.append("appendix.redundancy device_count/acknowledged_by are not counts")
+        return problems
+    assert isinstance(devices, int) and isinstance(acknowledged, int)
+    if devices != acknowledged + 1:
+        problems.append(
+            "appendix.redundancy.device_count does not count the producing device plus "
+            "its acknowledged peers"
+        )
+    if state in REDUNDANCY_STATES and (state == "this_device_only") != (acknowledged == 0):
+        problems.append("appendix.redundancy.state contradicts acknowledged_by")
+    if raw.get("identities_included") is not False:
+        problems.append(
+            "appendix.redundancy.identities_included must be false; this packet counts "
+            "devices and never names them"
+        )
+    as_of = raw.get("as_of")
+    if as_of is not None and not isinstance(as_of, str):
+        problems.append("appendix.redundancy.as_of is not a string")
+    return problems
+
+
 def _verify_v4_workflows(  # noqa: C901 -- ordered fail-closed checks remain linear
     bundle: Mapping[str, JSONValue], custody: CustodyLog
 ) -> list[str]:
@@ -1232,6 +1287,7 @@ def _verify_v4_workflows(  # noqa: C901 -- ordered fail-closed checks remain lin
         problems.append("appendix.artifact_count does not match artifact items")
     if appendix.get("relationship_count") != len(raw_relationships):
         problems.append("appendix.relationship_count does not match relationships")
+    problems.extend(_verify_appendix_redundancy(appendix))
 
     graphs: dict[str, dict[str, set[str]]] = {}
     seen_relationships: set[str] = set()
