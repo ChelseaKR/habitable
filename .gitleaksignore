@@ -131,3 +131,4 @@ tests/golden/sensor-packet-v4/bundle.json:generic-api-key:1
 # pre-commit hook scans the staged diff and reports `file:rule:line` with no
 # commit, while the CI history scan reports `commit:file:rule:line`.
 tests/golden/correspondence-packet-v4/bundle.json:generic-api-key:1
+1020bb467d27118b75905ee4aaf31c8d4228a24d:tests/golden/correspondence-packet-v4/bundle.json:generic-api-key:1
