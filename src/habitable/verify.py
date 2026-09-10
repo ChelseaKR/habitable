@@ -40,14 +40,31 @@ from .canonical import JSONValue, canonical_json, sha256_bytes
 from .crypto import verify as verify_signature
 from .errors import VerificationError
 from .evidence import CustodyLog
-from .syncstate import REDUNDANCY_STATES
 from .timeline import EVENT_TYPES, SOURCES, normalize_occurred_at
 from .tsa import TimestampInfo, TimestampToken, verify_archive_chain, verify_token
 
 if TYPE_CHECKING:
     from cryptography import x509
 
-__all__ = ["ItemVerdict", "SealVerdict", "VerificationReport", "verify_packet"]
+__all__ = [
+    "REDUNDANCY_STATES",
+    "ItemVerdict",
+    "SealVerdict",
+    "VerificationReport",
+    "verify_packet",
+]
+
+#: The words a *producer* may write into ``appendix.redundancy.state`` in an
+#: exported packet (issue #297, RR-07).
+#:
+#: It lives in the verifier rather than beside :class:`SyncRedundancy`, which owns
+#: the concept, and the reason is a licence boundary rather than a dependency one.
+#: ``tests/test_guards.py`` pins the exact module set the Apache-2.0 verification
+#: subset may load, and ``syncstate`` is AGPL-only; importing it here would pull an
+#: AGPL module into the embeddable verifier's closure. The constant is one tuple, so
+#: it comes to the subset instead of the subset widening to reach it. The producer
+#: (`packet`) and the reader (`bundleview`) are both AGPL and may import from here.
+REDUNDANCY_STATES = ("acknowledged", "this_device_only")
 
 _BUNDLE = "bundle.json"
 _SIGNATURE = "bundle.sig.json"

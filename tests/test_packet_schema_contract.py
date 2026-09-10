@@ -33,7 +33,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from habitable.syncstate import REDUNDANCY_STATES
+from habitable.verify import REDUNDANCY_STATES
 
 _ROOT = Path(__file__).resolve().parent.parent
 _SCHEMA_PATH = _ROOT / "docs" / "packet-bundle.schema.json"

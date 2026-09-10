@@ -24,8 +24,8 @@ from datetime import UTC, datetime
 from typing import TypeGuard
 
 from .canonical import JSONValue
-from .syncstate import REDUNDANCY_STATES
 from .timeline import event_label, source_label
+from .verify import REDUNDANCY_STATES
 
 __all__ = [
     "REDUNDANCY_STATES",
