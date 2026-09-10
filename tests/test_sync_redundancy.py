@@ -603,7 +603,7 @@ def _redundancy_of(bundle: dict[str, JSONValue]) -> dict[str, JSONValue]:
     assert isinstance(appendix, dict)
     field = appendix["redundancy"]
     assert isinstance(field, dict)
-    return cast("dict[str, JSONValue]", field)
+    return field
 
 
 def test_a_packet_from_a_lone_device_states_one_device(tmp_path: Path) -> None:
