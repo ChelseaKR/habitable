@@ -15,13 +15,21 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .canonical import sha256_file
+from .correspondence import MESSAGE_MEDIA_TYPE, Attachment, attachments, read_message
 from .errors import CaptureError, TimestampError
 from .evidence import CustodyAction
+from .private_temp import PrivateTempWorkspace, private_temp_workspace
 from .tsa import TimestampAuthority, TimestampInfo, verify_token
 from .usecases import ARTIFACT_TYPES, RELATIONSHIP_TYPES
 from .vault import Vault
 
-__all__ = ["ArtifactResult", "add_relationship", "capture_artifact"]
+__all__ = [
+    "ArtifactResult",
+    "CorrespondenceResult",
+    "add_relationship",
+    "capture_artifact",
+    "capture_correspondence",
+]
 
 _MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
 _DOCUMENT_TYPES = {
@@ -158,6 +166,193 @@ def capture_artifact(
         timestamp_info=info,
         extra_authorities=tuple(extra_authorities),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class CorrespondenceResult:
+    """What one ``.eml`` capture produced: the message, and its attachments.
+
+    ``declared`` is the attachment count read out of the *message's own* part walk,
+    and ``attachments`` is what was sealed. The two are separate on purpose: a loop
+    that sealed two parts of a two-part message and one that sealed two parts of a
+    five-part message are indistinguishable from the sealed side, and only the first
+    of those is the message the packet then describes.
+    """
+
+    message: ArtifactResult
+    attachments: tuple[ArtifactResult, ...]
+    relationship_ids: tuple[str, ...]
+    declared: int
+    unreadable: tuple[str, ...] = field(default_factory=tuple)
+
+    @property
+    def items(self) -> int:
+        """Custody-bound items this capture created, message included."""
+        return 1 + len(self.attachments)
+
+
+def capture_correspondence(
+    vault: Vault,
+    source: str | Path,
+    *,
+    issue_id: str,
+    artifact_type: str,
+    title: str,
+    source_assertion: str,
+    occurred_at: str,
+    issuer: str = "",
+    accessible_description: str = "",
+    attachment_type: str = "other_document",
+    actor: str | None = None,
+    tsa: TimestampAuthority | None = None,
+    extra_tsas: Sequence[TimestampAuthority] = (),
+) -> CorrespondenceResult:
+    """Seal one ``.eml`` and each of its attachments as custody-bound evidence.
+
+    Issue #304. Sealing the message alone -- which is what ``capture_artifact`` does,
+    and did before this existed -- puts the attachments *inside* an opaque blob: their
+    bytes are in the record, and they are in no evidence list, no custody entry of
+    their own and no item count. Issue #158 is the precedent for why that is not good
+    enough: a capture whose bytes never reached the packet still verified clean.
+
+    Order matters and is the reason this is not a loop in the CLI. The message is
+    parsed and **refused before anything is sealed**, so a file that is not a message
+    can never become an empty item; only then is the ``.eml`` sealed, and only then
+    each readable attachment, each joined back to the message with a ``supports``
+    relationship whose assertion states which part of which message it was.
+
+    ``supports`` rather than a minted ``attachment_of``: the published schema's
+    ``relationship_type`` is a closed enum, so a new value is a change a third party
+    who pinned the ``$id`` would reject, and ``supports`` plus a precise assertion
+    carries the same fact today. Whether the vocabulary should grow a term for it is
+    an owner decision, recorded rather than taken here.
+
+    An attachment whose content cannot be decoded is **named, not skipped**: it stays
+    in ``declared``, appears in ``unreadable``, and the packet's own summary counts it
+    among the attachments the message declares but not among those that were read.
+    """
+    src = Path(source)
+    if not src.is_file():
+        raise CaptureError(f"no such artifact file: {src}")
+    if attachment_type not in ARTIFACT_TYPES:
+        raise CaptureError(f"unknown artifact type: {attachment_type!r}")
+    try:
+        raw = src.read_bytes()
+    except OSError as exc:
+        raise CaptureError(f"could not read message: {src}") from exc
+
+    # Refuse before sealing anything. `read_message` names the file in the refusal;
+    # a message-shaped error with no path sends the reader into this module.
+    message = read_message(raw, source=src.name)
+    parts = attachments(message)
+
+    sealed_message = capture_artifact(
+        vault,
+        src,
+        issue_id=issue_id,
+        artifact_type=artifact_type,
+        title=title,
+        source_assertion=source_assertion,
+        occurred_at=occurred_at,
+        issuer=issuer,
+        accessible_description=accessible_description,
+        actor=actor,
+        tsa=tsa,
+        extra_tsas=extra_tsas,
+        media_type=MESSAGE_MEDIA_TYPE,
+    )
+
+    sealed: list[ArtifactResult] = []
+    relationships: list[str] = []
+    unreadable: list[str] = []
+    with private_temp_workspace(forbidden_root=vault.path) as workspace:
+        for part in parts:
+            if part.payload is None:
+                unreadable.append(_part_label(part, len(parts)))
+                continue
+            sealed_part, relationship_id = _seal_attachment(
+                vault,
+                part,
+                workspace=workspace,
+                message_id=sealed_message.artifact_id,
+                total=len(parts),
+                issue_id=issue_id,
+                artifact_type=attachment_type,
+                source_assertion=source_assertion,
+                occurred_at=occurred_at,
+                issuer=issuer,
+                actor=actor,
+                tsa=tsa,
+                extra_tsas=extra_tsas,
+            )
+            sealed.append(sealed_part)
+            relationships.append(relationship_id)
+
+    return CorrespondenceResult(
+        message=sealed_message,
+        attachments=tuple(sealed),
+        relationship_ids=tuple(relationships),
+        declared=len(parts),
+        unreadable=tuple(unreadable),
+    )
+
+
+def _part_label(part: Attachment, total: int) -> str:
+    return f"attachment {part.index} of {total} ({part.filename or 'unnamed'}, {part.media_type})"
+
+
+def _seal_attachment(
+    vault: Vault,
+    part: Attachment,
+    *,
+    workspace: PrivateTempWorkspace,
+    message_id: str,
+    total: int,
+    issue_id: str,
+    artifact_type: str,
+    source_assertion: str,
+    occurred_at: str,
+    issuer: str,
+    actor: str | None,
+    tsa: TimestampAuthority | None,
+    extra_tsas: Sequence[TimestampAuthority],
+) -> tuple[ArtifactResult, str]:
+    """Seal one decoded attachment and join it back to the message it came from."""
+    assert part.payload is not None
+    suffix = Path(part.filename).suffix if part.filename else ""
+    path = workspace.write_bytes(part.payload, suffix=suffix or ".bin")
+    try:
+        result = capture_artifact(
+            vault,
+            path,
+            issue_id=issue_id,
+            artifact_type=artifact_type,
+            title=f"Attachment {part.index} of {total}: {part.filename or 'unnamed'}",
+            source_assertion=source_assertion,
+            occurred_at=occurred_at,
+            issuer=issuer,
+            accessible_description="",
+            actor=actor,
+            tsa=tsa,
+            extra_tsas=extra_tsas,
+            media_type=part.media_type,
+            source_name=part.filename or path.name,
+        )
+    finally:
+        path.unlink(missing_ok=True)
+    relationship_id = add_relationship(
+        vault,
+        issue_id=issue_id,
+        relationship_type="supports",
+        source_id=result.artifact_id,
+        target_id=message_id,
+        assertion=(
+            f"Attachment {part.index} of {total} in the sealed message {message_id}, "
+            f"declared as {part.filename or 'unnamed'} ({part.media_type})."
+        ),
+        actor=actor,
+    )
+    return result, relationship_id
 
 
 def add_relationship(

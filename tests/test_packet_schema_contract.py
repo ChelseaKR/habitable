@@ -33,7 +33,12 @@ import re
 from pathlib import Path
 from typing import Any
 
-from habitable.verify import REDUNDANCY_STATES
+from habitable.verify import (
+    CORRESPONDENCE_BODY_STATES,
+    CORRESPONDENCE_HEADER_STATES,
+    CORRESPONDENCE_SCHEMA,
+    REDUNDANCY_STATES,
+)
 
 _ROOT = Path(__file__).resolve().parent.parent
 _SCHEMA_PATH = _ROOT / "docs" / "packet-bundle.schema.json"
@@ -49,6 +54,7 @@ _BUNDLE_PATHS = (
     "tests/golden/packet-v4/bundle.json",
     "tests/golden/scoped-packet-v3/bundle.json",
     "tests/golden/sensor-packet-v4/bundle.json",
+    "tests/golden/correspondence-packet-v4/bundle.json",
     "site/sample-packet/bundle.json",
 )
 
@@ -281,3 +287,73 @@ def test_the_schema_declares_the_device_count_this_project_actually_writes() -> 
             f"this project's producer can write"
         )
     assert declared["additionalProperties"] is True
+
+
+def test_the_schema_declares_the_message_summary_this_project_actually_writes() -> None:
+    """`item.correspondence` (issue #304) — the contract and the producer, compared.
+
+    Same two directions as the device-count guard above, and the same reason: the
+    published schema is the only description a third party reads, and nothing else
+    here holds it to what `packet._correspondence_summary` emits.
+    """
+    defs = _schema()["$defs"]
+    summary = defs["correspondenceSummary"]
+    header = defs["correspondenceHeader"]
+
+    assert set(summary["required"]) == {
+        "correspondence_schema",
+        "from_header",
+        "date_header",
+        "subject",
+        "message_id",
+        "attachment_count",
+        "attachments_readable",
+        "attachments",
+        "body",
+        "header_dates_are_claims",
+    }
+    assert summary["properties"]["correspondence_schema"]["const"] == CORRESPONDENCE_SCHEMA
+
+    # The one closure that belongs here. A message header is the sender's claim, and
+    # the only honest way this could become false is a different field with its own
+    # contract -- exactly `redundancy.identities_included`'s argument.
+    assert summary["properties"]["header_dates_are_claims"]["const"] is True
+
+    # And the two that do not. A state enum in a document served under a pinned $id
+    # would reject a packet its own producer considers valid the day the vocabulary
+    # grows; habitable's own verifier is where both are closed.
+    for label, node, vocabulary, prose in (
+        (
+            "correspondenceHeader.state",
+            header["properties"]["state"],
+            CORRESPONDENCE_HEADER_STATES,
+            header["properties"]["state"]["description"],
+        ),
+        (
+            "correspondenceSummary.body.state",
+            summary["properties"]["body"]["properties"]["state"],
+            CORRESPONDENCE_BODY_STATES,
+            # The body's states are described on the object, not on the leaf: the
+            # description has to explain what each one means about the message, which
+            # is a fact about the body and not about the string.
+            summary["properties"]["body"]["description"],
+        ),
+    ):
+        assert node["type"] == "string", label
+        assert "enum" not in node and "const" not in node, (
+            f"`{label}` is an enum again. A consumer pinned to this $id would reject a "
+            "packet the producer considers valid the first time the vocabulary grows."
+        )
+        assert vocabulary, f"{label}: the vocabulary is empty; this comparison reads nothing"
+        for word in vocabulary:
+            assert f"'{word}'" in prose, (
+                f"the published schema's prose does not name the {label} value {word!r} "
+                "that this project's producer can write"
+            )
+
+    # An item that is not a message says so, and an older packet that says nothing is
+    # still a valid packet.
+    slot = _schema()["$defs"]["item"]["properties"]["correspondence"]
+    assert {"$ref": "#/$defs/correspondenceSummary"} in slot["oneOf"]
+    assert {"type": "null"} in slot["oneOf"]
+    assert "correspondence" not in _schema()["$defs"]["item"]["required"]

@@ -25,7 +25,7 @@ from pathlib import Path
 from cryptography import x509
 
 from . import __version__, campaign, joint
-from .artifact import add_relationship, capture_artifact
+from .artifact import add_relationship, capture_artifact, capture_correspondence
 from .capsule import build_capsule, import_capsule, verify_capsule
 from .capture import capture, resolve_deferred, retimestamp_all
 from .commons import DEFAULT_K, build_commons, summarize_case
@@ -206,6 +206,43 @@ def _build_parser() -> argparse.ArgumentParser:
     p_artifact.add_argument("--dev-tsa", action="store_true", help="use the offline dev TSA")
     p_artifact.add_argument("--no-timestamp", action="store_true", help="defer timestamping")
     p_artifact.set_defaults(func=_cmd_artifact)
+
+    p_mail = sub.add_parser(
+        "correspondence",
+        help="capture an email (.eml) and its attachments as custody-bound evidence",
+        description=(
+            "Seal one RFC 5322 message and each of its attachments as separate, "
+            "custody-bound items, joined by `supports` relationships. Header values "
+            "(sender, Date, Message-ID, Subject) are summarised into the packet as "
+            "the sender's CLAIMS: habitable does not verify DKIM or any other mail "
+            "signature, and a Date header is never treated as a timestamp -- the only "
+            "time bound on an item is its RFC 3161 token. A file that is not a "
+            "readable message is refused before anything is sealed."
+        ),
+    )
+    add_vault(p_mail)
+    p_mail.add_argument("file", type=Path)
+    p_mail.add_argument("--issue", required=True)
+    p_mail.add_argument(
+        "--type",
+        default="landlord_response",
+        choices=sorted(ARTIFACT_TYPES),
+        help="artifact type for the message itself (default: landlord_response)",
+    )
+    p_mail.add_argument(
+        "--attachment-type",
+        default="other_document",
+        choices=sorted(ARTIFACT_TYPES),
+        help="artifact type for each sealed attachment (default: other_document)",
+    )
+    p_mail.add_argument("--title", required=True)
+    p_mail.add_argument("--source", required=True, help="neutral source assertion")
+    p_mail.add_argument("--issuer", default="", help="asserted issuer label")
+    p_mail.add_argument("--occurred-at", required=True)
+    p_mail.add_argument("--description", default="", help="accessible description")
+    p_mail.add_argument("--dev-tsa", action="store_true", help="use the offline dev TSA")
+    p_mail.add_argument("--no-timestamp", action="store_true", help="defer timestamping")
+    p_mail.set_defaults(func=_cmd_correspondence)
 
     p_relate = sub.add_parser("relate", help="add a typed relationship between evidence records")
     add_vault(p_relate)
@@ -982,6 +1019,40 @@ def _cmd_artifact(args: argparse.Namespace) -> int:
     state = "timestamped" if result.timestamped else "awaiting timestamp"
     print(f"habitable: captured artifact {result.artifact_id} ({args.type})")
     print(f"           content hash {result.content_hash[:16]}… · {state}")
+    return 0
+
+
+def _cmd_correspondence(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    tsa = None if args.no_timestamp else _tsa_for(vault, dev=args.dev_tsa)
+    result = capture_correspondence(
+        vault,
+        args.file,
+        issue_id=args.issue,
+        artifact_type=args.type,
+        title=args.title,
+        source_assertion=args.source,
+        issuer=args.issuer,
+        occurred_at=args.occurred_at,
+        accessible_description=args.description,
+        attachment_type=args.attachment_type,
+        tsa=tsa,
+        extra_tsas=() if args.no_timestamp else _extra_tsas_for(vault, dev=args.dev_tsa),
+    )
+    state = "timestamped" if result.message.timestamped else "awaiting timestamp"
+    print(f"habitable: captured message {result.message.artifact_id} ({args.type})")
+    print(f"           content hash {result.message.content_hash[:16]}… · {state}")
+    # Both numbers, always. "2 attachments sealed" over a five-part message and over a
+    # two-part message read identically, and only one of them is the whole message.
+    print(
+        f"           {len(result.attachments)} of {result.declared} declared attachment(s) "
+        f"sealed as their own items; {result.items} item(s) in total"
+    )
+    for note in result.unreadable:
+        print(
+            f"           NOT sealed separately: {note} — could not be decoded; its bytes "
+            "remain inside the sealed message"
+        )
     return 0
 
 

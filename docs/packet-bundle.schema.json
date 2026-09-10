@@ -257,6 +257,11 @@
           "oneOf": [{ "$ref": "#/$defs/sensorSeries" }, { "type": "null" }],
           "description": "Present (non-null) only for instrument data-file captures (EXP-09, e.g. a temperature-logger or moisture-meter CSV). The readings interpreted from the sealed original for accessible chart+table rendering; the CSV bytes themselves remain the hash-anchored evidence under content_hash. null (or absent) for photo/video captures."
         },
+        "correspondence": {
+          "oneOf": [{ "$ref": "#/$defs/correspondenceSummary" }, { "type": "null" }],
+          "description": "Present (non-null) only for a sealed RFC 5322 message artifact (media_type message/rfc822, issue #304). The header summary and body derived from the sealed original for rendering; the message bytes themselves remain the hash-anchored evidence under content_hash. null (or absent) for every other item, and absent from any packet exported before this field existed.",
+          "$comment": "Derived from the sealed bytes at export, not stored at capture: a recipient holding the original can recompute it."
+        },
         "artifact": { "$ref": "#/$defs/artifact" },
         "integrity": { "$ref": "#/$defs/workflowIntegrity" }
       },
@@ -382,6 +387,101 @@
           "type": "integer",
           "minimum": 0,
           "description": "Data rows the parser could not read at all (no second column, or a non-numeric value column). They are in neither 'total_rows' nor 'mean', so the source file held 'total_rows + skipped_rows' data rows. Emitted from the packet version that followed 4; ABSENT MEANS UNKNOWN, not zero — an older bundle states this only inside a 'warnings' sentence."
+        }
+      },
+      "additionalProperties": false
+    },
+    "correspondenceHeader": {
+      "type": "object",
+      "description": "One summarized message header. 'state' is 'present', 'absent' (the message never carried this header) or 'unreadable' (it is there and could not be decoded). The last two are different facts and neither is an empty value a sender wrote: 'value' is empty for both, and a renderer must say which state it is looking at rather than printing a blank. Declared as a plain string rather than an enum on purpose — see the note on 'state' below.",
+      "required": ["name", "state", "value"],
+      "properties": {
+        "name": { "type": "string", "description": "The RFC 5322 header name, e.g. 'Date'." },
+        "state": {
+          "type": "string",
+          "description": "One of 'present', 'absent', 'unreadable'. NOT an enum here: a document served under a pinned $id must not start rejecting packets its own producer considers valid on the day a state is added. The vocabulary is closed in habitable.verify.CORRESPONDENCE_HEADER_STATES, where widening it costs one line and a test."
+        },
+        "value": {
+          "type": "string",
+          "description": "The decoded header value; empty unless state is 'present'. It is a CLAIM BY THE SENDER and nothing in this packet verifies it — habitable checks no DKIM or ARC signature."
+        }
+      },
+      "additionalProperties": false
+    },
+    "correspondenceSummary": {
+      "type": "object",
+      "description": "A sealed RFC 5322 message read for rendering (issue #304). Derived from the sealed original, never stored at capture, so a recipient holding the bytes can recompute it. EVERY FIELD IS THE SENDER'S CLAIM: in particular 'date_header' is what the sending program wrote and is not a time this packet can prove — the only time bound on the item is its RFC 3161 token in 'timestamp'.",
+      "required": [
+        "correspondence_schema",
+        "from_header",
+        "date_header",
+        "subject",
+        "message_id",
+        "attachment_count",
+        "attachments_readable",
+        "attachments",
+        "body",
+        "header_dates_are_claims"
+      ],
+      "properties": {
+        "correspondence_schema": { "type": "integer", "const": 1 },
+        "from_header": { "$ref": "#/$defs/correspondenceHeader" },
+        "date_header": { "$ref": "#/$defs/correspondenceHeader" },
+        "subject": { "$ref": "#/$defs/correspondenceHeader" },
+        "message_id": { "$ref": "#/$defs/correspondenceHeader" },
+        "attachment_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Attachments the MESSAGE ITSELF declares, from its own part walk. Not the number of items a capture created: those two answer different questions, and only this one is a property of the evidence."
+        },
+        "attachments_readable": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many of those parts could be decoded, and therefore how many are sealed as their own custody-bound items in this packet. Never greater than 'attachment_count'; when it is smaller, the difference is named in 'warnings'."
+        },
+        "attachments": {
+          "type": "array",
+          "description": "One entry per declared attachment, in message order, so a reader can join a sealed attachment item back to the part it came from. Filename and media type are the message's own declarations and are unverified.",
+          "items": {
+            "type": "object",
+            "required": ["index", "filename", "media_type"],
+            "properties": {
+              "index": { "type": "integer", "minimum": 1 },
+              "filename": { "type": "string" },
+              "media_type": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "body": {
+          "type": "object",
+          "required": ["state", "media_type", "text", "characters", "truncated"],
+          "description": "The message body as this packet renders it. 'state' is 'present', 'absent' (no body part at all), 'not_plain_text' (a body this packet declines to render, an HTML-only mail most often — the bytes are in the sealed original) or 'unreadable' (a text body that could not be decoded). Declared as a string and not an enum, for the reason given on correspondenceHeader.state.",
+          "properties": {
+            "state": { "type": "string" },
+            "media_type": { "type": "string" },
+            "text": {
+              "type": "string",
+              "description": "Up to 5000 characters of the decoded plain-text body; empty unless state is 'present'."
+            },
+            "characters": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Characters the decoded body held BEFORE truncation. 'text' is a prefix when 'truncated' is true; the remainder is in the sealed original, not in this packet."
+            },
+            "truncated": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        },
+        "header_dates_are_claims": {
+          "type": "boolean",
+          "const": true,
+          "description": "A constant, and the verifier refuses a packet that sets it otherwise. Same shape as appendix.redundancy.identities_included being pinned false: a document must not be able to say the other thing, so the honest way to change it is a different field with its own contract."
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Non-fatal notes surfaced verbatim in the packet: an attachment that could not be decoded (named and counted, never dropped), a truncated body."
         }
       },
       "additionalProperties": false

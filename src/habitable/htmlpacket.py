@@ -26,6 +26,7 @@ from .bundleview import (
     item_extent,
 )
 from .canonical import JSONValue
+from .correspondence import correspondence_view
 from .disclosure import (
     PacketTrustText,
     packet_trust_text,
@@ -78,6 +79,9 @@ footer { margin-top: 2rem; border-top: 1px solid #ccc; padding-top: 1rem;
 .sensor-chart .point { fill: #1f4e5f; }
 .sensor-chart .axis { stroke: #999; stroke-width: 1; }
 details.sensor-readings summary { cursor: pointer; font-weight: 600; }
+.correspondence { margin: .6rem 0; }
+pre.message-body { white-space: pre-wrap; word-wrap: break-word; background: #f6f6f4;
+  padding: .6rem; border-left: 3px solid #1f4e5f; }
 """
 
 #: Locale text for the workflow-profile block (issue #277).
@@ -753,6 +757,7 @@ def _issue_section(
     items_by_issue: dict[str, list[Mapping[str, JSONValue]]],
     trust: PacketTrustText,
 ) -> list[str]:
+    lang = _s(bundle, "language") or "en"
     issue_id = _s(issue, "issue_id")
     heading = _s(issue, "title") or _s(issue, "category") or issue_id
     out = [
@@ -790,7 +795,7 @@ def _issue_section(
             if item.get("sensor") is not None:
                 out.append(_sensor_figure(item, trust))
             else:
-                out.extend(_evidence_figure(item, trust))
+                out.extend(_evidence_figure(item, trust, lang))
     relationships = [
         relationship
         for relationship in _list(bundle, "relationships")
@@ -817,7 +822,9 @@ def _issue_section(
     return out
 
 
-def _evidence_figure(item: Mapping[str, JSONValue], trust: PacketTrustText) -> list[str]:
+def _evidence_figure(
+    item: Mapping[str, JSONValue], trust: PacketTrustText, lang: str = "en"
+) -> list[str]:
     """Render one evidence item: a photo inline, or -- for video/audio (EXP-07) --
     a poster frame and/or transcript plus a link to the shared media file. Video
     and audio are never embedded as playable <video>/<audio> elements here: doing
@@ -842,7 +849,7 @@ def _evidence_figure(item: Mapping[str, JSONValue], trust: PacketTrustText) -> l
 
     out = ["<figure>"]
     if is_artifact and not media_type.startswith("image/"):
-        body, rendered_evidence_bytes = _document_artifact_body(item)
+        body, rendered_evidence_bytes = _document_artifact_body(item, lang)
     elif is_video or is_audio:
         body, rendered_evidence_bytes = _video_audio_body(item, stamp, captured_at, content_hash)
     elif shared:
@@ -866,7 +873,9 @@ def _evidence_figure(item: Mapping[str, JSONValue], trust: PacketTrustText) -> l
     return out
 
 
-def _document_artifact_body(item: Mapping[str, JSONValue]) -> tuple[list[str], bool]:
+def _document_artifact_body(
+    item: Mapping[str, JSONValue], lang: str = "en"
+) -> tuple[list[str], bool]:
     """The body of a non-image artifact's figure (a repair request, receipt,
     etc.): title, source/issuer assertions, transcript, and a download link
     for its shared copy. Returns whether a real download link was rendered."""
@@ -881,6 +890,7 @@ def _document_artifact_body(item: Mapping[str, JSONValue]) -> tuple[list[str], b
     ]
     if transcript:
         out.append(f"<p>{escape(transcript)}</p>")
+    out.extend(_correspondence_block(item, lang))
     if not shared:
         return out, False
     out.append(
@@ -888,6 +898,42 @@ def _document_artifact_body(item: Mapping[str, JSONValue]) -> tuple[list[str], b
         "(verify its hash against bundle.json before opening)</a></p>"
     )
     return out, True
+
+
+def _correspondence_block(item: Mapping[str, JSONValue], lang: str) -> list[str]:
+    """Render a sealed message's header summary and body (issue #304).
+
+    Empty for every item that is not a sealed ``.eml``. What it prints is entirely
+    the sender's claims, so the block opens with the sentence saying so and the
+    ``Date:`` row carries that warning in its own label -- a reader who skims one
+    row must not be able to read a header date as a proved time. The only time bound
+    on the item is the RFC 3161 status in the figcaption below, which this block
+    never touches.
+    """
+    raw = item.get("correspondence")
+    if not isinstance(raw, Mapping):
+        return []
+    view = correspondence_view(raw, lang)
+    out = [
+        '<div class="correspondence">',
+        f"<h4>{escape(view.heading)}</h4>",
+        f'<p class="warning">{escape(view.claim_note)}</p>',
+        "<table><tbody>",
+    ]
+    out += [
+        f'<tr><th scope="row">{escape(label)}</th><td>{escape(value)}</td></tr>'
+        for label, value in view.header_rows
+    ]
+    out.append("</tbody></table>")
+    out.append(f"<p>{escape(view.attachment_sentence)}</p>")
+    out.append(f"<h4>{escape(view.body_heading)}</h4>")
+    if view.body_text:
+        out.append(f'<pre class="message-body">{escape(view.body_text)}</pre>')
+    if view.body_note:
+        out.append(f'<p class="warning">{escape(view.body_note)}</p>')
+    out += [f"<p><em>{escape(warning)}</em></p>" for warning in view.warnings]
+    out.append("</div>")
+    return out
 
 
 def _video_audio_body(

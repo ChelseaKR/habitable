@@ -9,6 +9,72 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **A landlord's email is now readable evidence, and its attachments are their own
+  items** (#304). Sealing an `.eml` already worked — `habitable artifact reply.eml`
+  hashed, encrypted, custody-bound and RFC 3161 timestamped it like any other
+  document — so the issue's premise that correspondence "can only be screenshotted"
+  was already wrong when it was written. Two things were genuinely missing, and both
+  are the half that decides whether the evidence is usable.
+
+  **The message was opaque.** A packet carried a sealed blob a recipient had to
+  download and open in a mail client; the PDF rendering did not even do that, because
+  a document artifact reached reportlab's `Image(...)` and **killed the export**
+  (`UnidentifiedImageError`, no packet produced at all — measured against `main` with
+  a single captured `notice.pdf`, and not specific to messages). `bundle.json` now
+  carries `item.correspondence` for a `message/rfc822` artifact, and both renderings
+  print the sender, the `Date:` header, the subject, the `Message-ID`, the attachment
+  inventory and the body, in EN and ES from one source.
+
+  **Its attachments were inside it.** `habitable correspondence reply.eml` seals the
+  message *and* each attachment as its own custody-bound item, joined back with a
+  `supports` relationship whose assertion names which part of which message it was.
+  An `.eml` with two attachments is three items — the issue's own acceptance
+  criterion, and the shape of #158, where evidence present in the bytes reached no
+  evidence list and still verified clean.
+
+  **Every line of it is the sender's claim, and the packet says so.** habitable
+  verifies no DKIM or ARC signature — the same honesty EXIF already gets — so
+  `header_dates_are_claims` is a schema `const: true` that the verifier refuses to
+  see set otherwise, the `Date:` row carries that warning in its own label, and an
+  item whose summary holds a perfectly good-looking date and no token is still
+  *awaiting timestamp*. A header date appears in none of `captured_at`, `timestamp`,
+  `archive_timestamps` or `additional_timestamps`, and a test asserts exactly that
+  over a packet built with no TSA, which is the packet where the two could be
+  confused.
+
+  **Three states for a header, four for a body, because the differences are the
+  evidence.** `absent` (the message never carried it), `unreadable` (it is there and
+  could not be decoded — no damaged value is published) and `present`, which includes
+  a sender who wrote nothing; a body adds `not_plain_text` for an HTML-only mail this
+  packet declines to render rather than showing a blank. `unreadable` is about
+  decoding and not about meaning: `Date: next Tuesday` is *present*, because this code
+  never turns a `Date:` header into a time and suppressing it would delete evidence.
+
+  **Two attachment counts, always both.** `attachment_count` comes from the message's
+  own part walk and `attachments_readable` from what could be decoded; a part that
+  cannot be decoded is named in `warnings` and counted, never dropped. A single count
+  taken from the items created cannot tell a two-part message from a five-part one
+  whose other three were lost.
+
+  A malformed `.eml` is refused **before anything is sealed**, with a sentence per
+  fault naming the file: empty, no header line at all, a header block with no blank
+  line before the body, a multipart whose boundary never appears. A message sealed
+  by an older version that would be refused today still exports, with a `null`
+  summary — an export must not die on evidence already sealed and already hashed.
+
+  The summary is derived from the sealed original at export, not stored at capture:
+  `vault.read_original` has already re-derived and matched its SHA-256, so a
+  recipient holding the bytes can recompute the summary and contradict it. Same slot
+  and same argument as `item.sensor` (EXP-09).
+
+  `tests/golden/correspondence-packet-v4/` is the first committed bundle carrying one
+  — before it, the surface shipped pinned by nothing, which is the state #314 found
+  instrument data in one directory over. Its second message carries every state that
+  is not "present" at once. Not minted, deliberately: no new timeline `source` (an
+  inbound email is already `message`) and no `attachment_of` relationship type
+  (`supports` plus a precise assertion validates against the published schema today);
+  both are recorded as owner decisions rather than taken.
+
 - **The packet cover sheet says how many devices hold this case** (the deferred
   half of #297, RR-07). "If this tenant loses her phone, does the case still
   exist?" has been answerable on the producer's own screen since the sync-receipt

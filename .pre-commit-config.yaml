@@ -29,6 +29,18 @@ repos:
         args: ["--maxkb=2048"]
       - id: mixed-line-ending
         args: ["--fix=lf"]
+        # Same reason as `end-of-file-fixer` above, and the same shape of near
+        # miss. A packet's `bundle.json` records the SHA-256 of every file beside
+        # it, so rewriting one byte of committed evidence is a content change that
+        # makes the fixture fail its own verifier. CRLF is not incidental in these
+        # files: it is *mandatory* in an RFC 5322 header block, and this hook
+        # silently rewrote both sealed messages in the correspondence fixture on
+        # the commit that added them (issue #304).
+        #
+        # A directory pattern, not an enumeration, for the reason the comment
+        # above records: `packet-v[123]` went stale the day `packet-v4` landed,
+        # and an enumeration only fails on the day someone needs it.
+        exclude: '^(tests/golden/|site/sample-packet/)'
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: c59bba8fb259db0fec2bbb77ad8ba51ea7341b56 # v0.15.20

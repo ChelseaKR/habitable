@@ -1,0 +1,33 @@
+From: Building Manager <manager@example-landlord.test>
+To: tenant@example.test
+Subject: Re: no heat in bedroom, unit 2C
+Date: Fri, 02 Jan 2026 08:41:13 +0000
+Message-ID: <20260102084113.9f3a@example-landlord.test>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="=_habitable_reply_0"
+
+--=_habitable_reply_0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+We have your notice of 28 December about the bedroom radiator.
+A contractor is booked for Thursday morning. Photograph of the
+boiler and the work order are attached.
+
+--=_habitable_reply_0
+Content-Type: image/png
+Content-Disposition: attachment; filename="boiler.png"
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAAANSUhEUgAAABgAAAAQCAIAAACDRijCAAAAI0lEQVR4nGOU94tnoAZgooopDKMG
+EQNGA5swGA0jwmDwhREA7qUA7L1EmrYAAAAASUVORK5CYII=
+
+--=_habitable_reply_0
+Content-Type: application/pdf
+Content-Disposition: attachment; filename="work-order-4471.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQKJSBzeW50aGV0aWMgd29yayBvcmRlciwgbm90IGEgcmVhbCBkb2N1bWVudAoxIDAg
+b2JqPDwvVHlwZS9DYXRhbG9nPj5lbmRvYmoKdHJhaWxlcjw8L1Jvb3QgMSAwIFI+PgolJUVPRgo=
+
+--=_habitable_reply_0--

@@ -1,0 +1,29 @@
+From: Building Manager <manager@example-landlord.test>
+To: tenant@example.test
+Subject: humedad y moho en el baño
+Message-ID: <20260102091500.4c11@example-landlord.test>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="=_habitable_fragment_0"
+
+--=_habitable_fragment_0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+<html><body><p>Forwarded for your records.</p></body></html>
+
+--=_habitable_fragment_0
+Content-Type: image/png
+Content-Disposition: attachment; filename="bathroom.png"
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAAANSUhEUgAAABgAAAAQCAIAAACDRijCAAAAI0lEQVR4nGOU94tnoAZgooopDKMG
+EQNGA5swGA0jwmDwhREA7qUA7L1EmrYAAAAASUVORK5CYII=
+
+--=_habitable_fragment_0
+Content-Type: text/plain; charset="x-nonesuch-8"
+Content-Disposition: attachment; filename="notes.txt"
+Content-Transfer-Encoding: 7bit
+
+illegible notes
+
+--=_habitable_fragment_0--

@@ -168,6 +168,7 @@ at the original occurrence or recording time.
 | `archive_timestamps` | array | Archive (re-)timestamps chaining back to the primary token. |
 | `additional_timestamps` | array | Optional redundant tokens naming other authorities over the same `content_hash` (not a chain). Token presence and authority names are untrusted metadata until the verifier validates each token against recipient-selected roots. Absent in single-authority packets. |
 | `sensor` | object \| null | Present (non-null) only for **instrument data-file** captures (EXP-09, e.g. a temperature-logger or moisture-meter CSV): the readings interpreted from the sealed original for accessible chart + table rendering. `null`/absent for photos and video. The CSV bytes themselves stay the hash-anchored evidence under `content_hash`. |
+| `correspondence` | object \| null | Present (non-null) only for a **sealed RFC 5322 message** artifact (`media_type` `message/rfc822`, issue #304): the header summary and body derived from the sealed original for rendering. `null` for every other item; absent from any packet exported before the field existed. Every value in it is the **sender's claim**. |
 
 For an artifact item, `artifact` carries schema version 1, id, issue, reviewed
 artifact type, neutral title, source/issuer assertions, occurrence/recording
@@ -226,6 +227,40 @@ over `total_rows`, so a series with `skipped_rows > 0` is an average of a subset
 a bundle written before it existed does not carry it, and a reader must treat its absence as *unknown* rather
 than as zero — the count exists there only inside a `warnings` sentence. Both renderers do exactly that
 (`series_loss` in `src/habitable/sensor.py`, issue #311).
+
+A **correspondence summary** (`item.correspondence`) is `{correspondence_schema, from_header,
+date_header, subject, message_id, attachment_count, attachments_readable, attachments[],
+body, header_dates_are_claims, warnings[]}`. It is what a sealed `.eml` says about itself, and
+**nothing in it is verified**: habitable checks no DKIM or ARC signature, and says so on the page
+rather than implying otherwise by silence. In particular `date_header` is what the sending
+program wrote; the only time bound on the item is its RFC 3161 token in `timestamp`.
+`header_dates_are_claims` is a schema `const: true` and the verifier refuses a packet that sets
+it otherwise — the same shape as `appendix.redundancy.identities_included` being pinned false.
+
+Like `item.sensor` it is **derived from the sealed original at export**, not stored at capture,
+so a recipient holding the bytes can recompute it and contradict it. A message that cannot be
+parsed at export time yields `null` rather than failing the export: `habitable artifact
+reply.eml` sealed messages long before anything validated them, and an export must not die on
+evidence that is already sealed and already hashed.
+
+Each summarized header carries its own `state` — `present`, `absent` (the message never had it)
+or `unreadable` (it is there and could not be decoded) — beside its `value`, because those are
+three different facts and only one of them is a sender who wrote nothing. `body.state` adds a
+fourth, `not_plain_text`, for a body this packet declines to render (an HTML-only mail): the
+bytes are in the sealed original, and a blank body would say the sender sent none. Neither
+`state` is an enum in this schema, deliberately — a closed vocabulary inside a document served
+under a pinned `$id` rejects a packet its own producer considers valid the day a member is
+added, so both are closed in `habitable.verify` instead
+(`CORRESPONDENCE_HEADER_STATES`, `CORRESPONDENCE_BODY_STATES`).
+
+Two attachment counts, deliberately: `attachment_count` is what the **message's own part walk**
+declares and `attachments_readable` is how many of those could be decoded — and therefore how
+many are sealed as their own custody-bound items, each joined back to the message with a
+`supports` relationship. A part that cannot be decoded is **named in `warnings` and counted**,
+never dropped; its bytes remain inside the sealed message. A single count taken from the items
+created cannot tell a two-part message from a five-part one whose other three were lost.
+`body.text` is capped at 5,000 characters with `body.characters` carrying the untruncated
+length, the same disclose-rather-than-silently-shorten rule the sensor series uses.
 
 ### `custody_proof` — integrity without identities
 

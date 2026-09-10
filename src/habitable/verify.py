@@ -47,6 +47,9 @@ if TYPE_CHECKING:
     from cryptography import x509
 
 __all__ = [
+    "CORRESPONDENCE_BODY_STATES",
+    "CORRESPONDENCE_HEADER_STATES",
+    "CORRESPONDENCE_SCHEMA",
     "REDUNDANCY_STATES",
     "ItemVerdict",
     "SealVerdict",
@@ -65,6 +68,20 @@ __all__ = [
 #: it comes to the subset instead of the subset widening to reach it. The producer
 #: (`packet`) and the reader (`bundleview`) are both AGPL and may import from here.
 REDUNDANCY_STATES = ("acknowledged", "this_device_only")
+
+#: The vocabulary of ``item.correspondence`` (issue #304), here for the same licence
+#: reason as ``REDUNDANCY_STATES`` above: ``habitable.correspondence`` is AGPL-only and
+#: importing it would pull it into the closure ``tests/test_guards.py`` pins for the
+#: Apache-2.0 verifier subset. The producer (`packet`), the parser (`correspondence`)
+#: and both renderers are AGPL and import these from here.
+#:
+#: A header has three states and a body four, and the fourth is the one worth naming:
+#: a message whose body exists in a form this packet declines to render (HTML, most
+#: often) is not a message with no body. Every state that is not "present" carries an
+#: empty value, and they are different facts.
+CORRESPONDENCE_SCHEMA = 1
+CORRESPONDENCE_HEADER_STATES = ("present", "absent", "unreadable")
+CORRESPONDENCE_BODY_STATES = ("present", "absent", "not_plain_text", "unreadable")
 
 _BUNDLE = "bundle.json"
 _SIGNATURE = "bundle.sig.json"
@@ -1263,6 +1280,84 @@ def _verify_appendix_redundancy(appendix: Mapping[str, JSONValue]) -> list[str]:
     return problems
 
 
+def _verify_correspondence(item: Mapping[str, JSONValue]) -> list[str]:  # noqa: C901
+    """Hold ``item.correspondence`` to what a producer can honestly have written.
+
+    Issue #304. Like the device count, this is not a fact the verifier can re-derive:
+    the summary comes from parsing the sealed original, and a packet exported without
+    ``--include-originals`` does not carry those bytes. What is checkable is that the
+    block is internally consistent and that it has not been edited into a stronger
+    claim than the format allows, which is what stops a hand-edited packet asserting
+    that its ``Date:`` header is a verified time.
+
+    ``header_dates_are_claims`` is therefore refused unless it is exactly ``true``.
+    It is the same shape as ``redundancy.identities_included`` being pinned false: a
+    constant whose whole purpose is that a document cannot say the other thing, so the
+    honest way to change it is a different field with its own contract.
+
+    Absence is accepted. Every packet exported before this field existed omits it, and
+    so does every item that is not a sealed message.
+    """
+    if "correspondence" not in item:
+        return []
+    raw = item.get("correspondence")
+    if raw is None:
+        return []
+    if not isinstance(raw, Mapping):
+        return ["correspondence is not an object"]
+    problems: list[str] = []
+    if raw.get("correspondence_schema") != CORRESPONDENCE_SCHEMA:
+        problems.append(f"correspondence_schema must be {CORRESPONDENCE_SCHEMA}")
+    if raw.get("header_dates_are_claims") is not True:
+        problems.append(
+            "correspondence.header_dates_are_claims must be true; a message header is "
+            "the sender's claim and this packet never presents one as a time it can prove"
+        )
+    for key in ("from_header", "date_header", "subject", "message_id"):
+        header = raw.get(key)
+        if not isinstance(header, Mapping):
+            problems.append(f"correspondence.{key} is not an object")
+            continue
+        if header.get("state") not in CORRESPONDENCE_HEADER_STATES:
+            problems.append(
+                f"correspondence.{key}.state is not one of {list(CORRESPONDENCE_HEADER_STATES)}"
+            )
+        value = header.get("value")
+        if not isinstance(value, str):
+            problems.append(f"correspondence.{key}.value is not a string")
+        elif value and header.get("state") != "present":
+            problems.append(f"correspondence.{key} carries a value while stating it is not present")
+    body = raw.get("body")
+    if not isinstance(body, Mapping):
+        problems.append("correspondence.body is not an object")
+    elif body.get("state") not in CORRESPONDENCE_BODY_STATES:
+        problems.append(
+            f"correspondence.body.state is not one of {list(CORRESPONDENCE_BODY_STATES)}"
+        )
+    counts = [
+        raw.get("attachment_count"),
+        raw.get("attachments_readable"),
+    ]
+    if not all(isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in counts):
+        problems.append("correspondence attachment_count/attachments_readable are not counts")
+        return problems
+    declared, readable = counts
+    assert isinstance(declared, int) and isinstance(readable, int)
+    if readable > declared:
+        problems.append(
+            "correspondence.attachments_readable exceeds the attachment_count the message "
+            "itself declares"
+        )
+    listed = raw.get("attachments")
+    if not isinstance(listed, list):
+        problems.append("correspondence.attachments is not an array")
+    elif len(listed) != declared:
+        problems.append(
+            "correspondence.attachments does not list every attachment the message declares"
+        )
+    return problems
+
+
 def _verify_v4_workflows(  # noqa: C901 -- ordered fail-closed checks remain linear
     bundle: Mapping[str, JSONValue], custody: CustodyLog
 ) -> list[str]:
@@ -1293,6 +1388,9 @@ def _verify_v4_workflows(  # noqa: C901 -- ordered fail-closed checks remain lin
             problems.append(f"item {item_id or '<missing>'}: record_kind is invalid")
             continue
         endpoints[item_id] = (_s(raw, "issue_id"), kind)
+        problems.extend(
+            f"item {item_id or '<missing>'}: {message}" for message in _verify_correspondence(raw)
+        )
         if kind == "artifact":
             artifact_count += 1
             problems.extend(

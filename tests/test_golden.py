@@ -13,6 +13,12 @@ because "old scoped packets keep verifying" is the compatibility claim the scope
 work leans on hardest and nothing else in the tree pins it. Its own README states the
 provenance, which is not the same as the other fixtures'.
 
+`tests/golden/correspondence-packet-v4/` sits beside them for the same reason as the
+sensor fixture and a different gap: until it was committed, **no bundle in this corpus
+carried a `correspondence` record**, so the sealed-message surface (issue #304) -- the
+header summary, the attachment decomposition, the four body states -- was pinned by
+nothing on the day it shipped.
+
 `tests/golden/sensor-packet-v4/` sits beside them for the same kind of reason and a
 different gap: until it was committed, **no bundle in this corpus carried a `sensor`
 record at all**, so the instrument-data format was pinned by nothing while two defects
@@ -33,7 +39,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 
 from habitable.canonical import JSONValue
 from habitable.htmlpacket import render_packet_html
-from habitable.pdf import _render_sensor_item
+from habitable.pdf import _render_document_item, _render_sensor_item
 from habitable.verify import SUPPORTED_PACKET_VERSION, _check_packet_version, verify_packet
 
 
@@ -59,9 +65,50 @@ def _pdf_sensor_text(bundle: Mapping[str, JSONValue]) -> str:
     )
 
 
+def _pdf_document_text(bundle: Mapping[str, JSONValue]) -> str:
+    """What the PDF renderer emits for this bundle's document artifacts, as text.
+
+    Built flowable by flowable for the same reason `_pdf_sensor_text` is: nothing in
+    this repository extracts text from a PDF, and `pypdf` would be a new runtime
+    dependency for a project whose minimal-dependency principle is load-bearing.
+    """
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="Small", parent=styles["Normal"], fontSize=8, leading=10))
+    story: list[Any] = []
+    items = bundle["items"]
+    assert isinstance(items, list)
+    for item in items:
+        # The same condition `_render_evidence_item` dispatches on: an image artifact
+        # is rendered as an image, not as a document.
+        if (
+            isinstance(item, dict)
+            and item.get("record_kind") == "artifact"
+            and not str(item.get("media_type", "")).startswith("image/")
+        ):
+            _render_document_item(story, item, styles, "caption", "en")
+    return unescape(" ".join(_flowable_text(flowable) for flowable in story))
+
+
+def _flowable_text(flowable: Any) -> str:
+    """Every string a flowable puts on the page, table cells included.
+
+    A `Table`'s rows are themselves flowables, so reading only `.text` off the story
+    misses the header summary entirely -- and a rendering assertion that silently
+    examines nothing is this campaign's most common way to be wrong.
+    """
+    text = getattr(flowable, "text", None)
+    if isinstance(text, str):
+        return text
+    cells = getattr(flowable, "_cellvalues", None)
+    if cells is None:
+        return ""
+    return " ".join(_flowable_text(cell) for row in cells for cell in row)
+
+
 _GOLDEN = Path(__file__).resolve().parent / "golden"
 _SCOPED = _GOLDEN / "scoped-packet-v3"
 _SENSOR = _GOLDEN / f"sensor-packet-v{SUPPORTED_PACKET_VERSION}"
+_CORRESPONDENCE = _GOLDEN / f"correspondence-packet-v{SUPPORTED_PACKET_VERSION}"
 
 
 def _corpus() -> list[Path]:
@@ -77,6 +124,7 @@ def _corpus() -> list[Path]:
         *sorted(path for path in _GOLDEN.glob("packet-v*") if path.is_dir()),
         _SCOPED,
         _SENSOR,
+        _CORRESPONDENCE,
     ]
 
 
@@ -238,6 +286,103 @@ def test_both_renderings_of_the_fixture_disclose_what_was_left_out(tmp_path: Pat
     # assertion would then be measuring the wrong figure.
     lossy_figure = html.split('<figure class="sensor-evidence">')[2]
     assert "could not be read" in lossy_figure.split("<details", 1)[0]
+
+
+def _correspondence_records() -> tuple[dict[str, Any], dict[str, Any]]:
+    """The fixture's two message summaries, in the order the messages were sealed."""
+    bundle: Any = json.loads((_CORRESPONDENCE / "bundle.json").read_text("utf-8"))
+    blocks = [
+        item["correspondence"]
+        for item in bundle["items"]
+        if isinstance(item, dict) and item.get("correspondence")
+    ]
+    assert len(blocks) == 2, "the fixture carries exactly two sealed messages"
+    complete = next(b for b in blocks if b["attachments_readable"] == b["attachment_count"])
+    partial = next(b for b in blocks if b["attachments_readable"] != b["attachment_count"])
+    return complete, partial
+
+
+def test_the_corpus_carries_a_sealed_correspondence_packet() -> None:
+    """Issue #304: measured across all seven committed bundles, none held one.
+
+    So the sealed-message surface was outside the compatibility guarantee on the day
+    it shipped -- the state issue #314 found the instrument-data surface in, one
+    directory over, after two defects in it had been found by reading the code. The
+    counts are asserted as literals: a property ("there is a message summary with
+    some fields in it") is satisfied by the wrong values as comfortably as the right
+    ones.
+    """
+    bundle: Any = json.loads((_CORRESPONDENCE / "bundle.json").read_text("utf-8"))
+    # Two messages and three sealed attachments, of four attachments declared.
+    assert bundle["appendix"]["item_count"] == 5
+    assert bundle["appendix"]["relationship_count"] == 3
+    assert {r["relationship_type"] for r in bundle["relationships"]} == {"supports"}
+
+    complete, partial = _correspondence_records()
+
+    assert complete["attachment_count"] == 2
+    assert complete["attachments_readable"] == 2
+    assert complete["body"]["state"] == "present"
+    assert [h["state"] for h in _header_states(complete)] == ["present"] * 4
+    assert complete["warnings"] == []
+
+    # The record where every state that is not "present" occurs at once.
+    assert partial["date_header"]["state"] == "absent"
+    assert partial["subject"]["state"] == "unreadable"
+    assert partial["subject"]["value"] == "", "a damaged header value is never published"
+    assert partial["body"]["state"] == "not_plain_text"
+    assert partial["body"]["media_type"] == "text/html"
+    assert partial["attachment_count"] == 2
+    assert partial["attachments_readable"] == 1
+    assert len(partial["attachments"]) == 2, "the part that could not be read is still listed"
+    assert any("notes.txt" in warning for warning in partial["warnings"])
+
+    for block in (complete, partial):
+        assert block["header_dates_are_claims"] is True
+
+
+def _header_states(block: dict[str, Any]) -> list[dict[str, Any]]:
+    return [block[key] for key in ("from_header", "date_header", "subject", "message_id")]
+
+
+def test_the_correspondence_fixture_tracks_the_current_format() -> None:
+    """Same discipline as the sensor fixture: a fixture pinning a live surface has to
+    be at the version people export. Regenerate with
+    `uv run python scripts/make_golden_correspondence_packet.py`."""
+    bundle = json.loads((_CORRESPONDENCE / "bundle.json").read_text("utf-8"))
+    assert bundle["packet_version"] == SUPPORTED_PACKET_VERSION, (
+        "correspondence fixture is behind the current packet version; regenerate it with "
+        "scripts/make_golden_correspondence_packet.py"
+    )
+
+
+def test_no_header_date_in_the_fixture_is_rendered_as_a_time_bound(tmp_path: Path) -> None:
+    """The fixture's own version of issue #304's third acceptance criterion.
+
+    Its `Date:` header is a well-formed RFC 5322 date beside a real RFC 3161 token,
+    which is precisely the packet where the two could be confused. Both renderings
+    are checked, because #311 was one bundle whose two renderings disagreed.
+    """
+    bundle: Any = json.loads((_CORRESPONDENCE / "bundle.json").read_text("utf-8"))
+    complete, _ = _correspondence_records()
+    header_date = complete["date_header"]["value"]
+    assert header_date == "Fri, 02 Jan 2026 08:41:13 +0000"
+
+    for item in bundle["items"]:
+        assert item["captured_at"] != header_date
+        for token in [item.get("timestamp"), *item.get("archive_timestamps", [])]:
+            assert header_date not in json.dumps(token)
+
+    html_path = tmp_path / "packet.html"
+    render_packet_html(bundle, _CORRESPONDENCE / "media", html_path)
+    html = unescape(html_path.read_text("utf-8"))
+    pdf_text = _pdf_document_text(bundle)
+    for rendering, text in (("html", html), ("pdf", pdf_text)):
+        assert header_date in text, rendering
+        assert "Date header (claimed by the sender, not a timestamp)" in text, rendering
+        assert "habitable does not check DKIM" in text, rendering
+        # And the two numbers that keep an inventory honest.
+        assert "declares 2 attachment(s), of which 1 could be read" in text, rendering
 
 
 def test_every_golden_packet_verifies() -> None:
