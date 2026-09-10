@@ -46,7 +46,25 @@ from .tsa import TimestampInfo, TimestampToken, verify_archive_chain, verify_tok
 if TYPE_CHECKING:
     from cryptography import x509
 
-__all__ = ["ItemVerdict", "SealVerdict", "VerificationReport", "verify_packet"]
+__all__ = [
+    "REDUNDANCY_STATES",
+    "ItemVerdict",
+    "SealVerdict",
+    "VerificationReport",
+    "verify_packet",
+]
+
+#: The words a *producer* may write into ``appendix.redundancy.state`` in an
+#: exported packet (issue #297, RR-07).
+#:
+#: It lives in the verifier rather than beside :class:`SyncRedundancy`, which owns
+#: the concept, and the reason is a licence boundary rather than a dependency one.
+#: ``tests/test_guards.py`` pins the exact module set the Apache-2.0 verification
+#: subset may load, and ``syncstate`` is AGPL-only; importing it here would pull an
+#: AGPL module into the embeddable verifier's closure. The constant is one tuple, so
+#: it comes to the subset instead of the subset widening to reach it. The producer
+#: (`packet`) and the reader (`bundleview`) are both AGPL and may import from here.
+REDUNDANCY_STATES = ("acknowledged", "this_device_only")
 
 _BUNDLE = "bundle.json"
 _SIGNATURE = "bundle.sig.json"
@@ -1191,6 +1209,60 @@ def _verify_appendix_item_counts(
     return problems
 
 
+def _verify_appendix_redundancy(appendix: Mapping[str, JSONValue]) -> list[str]:
+    """Hold ``appendix.redundancy`` to its own arithmetic. Issue #297 (RR-07).
+
+    Unlike every other appendix figure this module re-derives, a device count is
+    **not** a fact about the bundle: nothing inside the packet says how many
+    devices hold the case, so nothing here can recompute it. What can be checked
+    is that the producer's own three numbers agree with each other and with the
+    word beside them, which is what stops a hand-edited packet claiming "4
+    devices" over ``acknowledged_by: 0``.
+
+    Absence is accepted and deliberately not a problem. Every packet exported
+    before this field existed -- including all six committed golden fixtures --
+    omits it, and `bundleview.packet_redundancy` renders that omission as "not
+    stated" rather than as a count. Requiring the field would make a backward
+    compatibility guarantee fail on the day a new optional field shipped.
+    """
+    if "redundancy" not in appendix:
+        return []
+    raw = appendix.get("redundancy")
+    if not isinstance(raw, Mapping):
+        return ["appendix.redundancy is not an object"]
+    problems: list[str] = []
+    state = raw.get("state")
+    if state not in REDUNDANCY_STATES:
+        problems.append(f"appendix.redundancy.state is not one of {list(REDUNDANCY_STATES)}")
+    devices = raw.get("device_count")
+    acknowledged = raw.get("acknowledged_by")
+    counted = [
+        value
+        for value in (devices, acknowledged)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0
+    ]
+    if len(counted) != 2:
+        problems.append("appendix.redundancy device_count/acknowledged_by are not counts")
+        return problems
+    assert isinstance(devices, int) and isinstance(acknowledged, int)
+    if devices != acknowledged + 1:
+        problems.append(
+            "appendix.redundancy.device_count does not count the producing device plus "
+            "its acknowledged peers"
+        )
+    if state in REDUNDANCY_STATES and (state == "this_device_only") != (acknowledged == 0):
+        problems.append("appendix.redundancy.state contradicts acknowledged_by")
+    if raw.get("identities_included") is not False:
+        problems.append(
+            "appendix.redundancy.identities_included must be false; this packet counts "
+            "devices and never names them"
+        )
+    as_of = raw.get("as_of")
+    if as_of is not None and not isinstance(as_of, str):
+        problems.append("appendix.redundancy.as_of is not a string")
+    return problems
+
+
 def _verify_v4_workflows(  # noqa: C901 -- ordered fail-closed checks remain linear
     bundle: Mapping[str, JSONValue], custody: CustodyLog
 ) -> list[str]:
@@ -1232,6 +1304,7 @@ def _verify_v4_workflows(  # noqa: C901 -- ordered fail-closed checks remain lin
         problems.append("appendix.artifact_count does not match artifact items")
     if appendix.get("relationship_count") != len(raw_relationships):
         problems.append("appendix.relationship_count does not match relationships")
+    problems.extend(_verify_appendix_redundancy(appendix))
 
     graphs: dict[str, dict[str, set[str]]] = {}
     seen_relationships: set[str] = set()

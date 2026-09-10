@@ -90,7 +90,27 @@
         "timeline_count": { "type": "integer", "minimum": 0 },
         "custody_bound_timeline_count": { "type": "integer", "minimum": 0 },
         "artifact_count": { "type": "integer", "minimum": 0 },
-        "relationship_count": { "type": "integer", "minimum": 0 }
+        "relationship_count": { "type": "integer", "minimum": 0 },
+        "redundancy": {
+          "type": "object",
+          "description": "How many devices were known to hold this case when the packet was exported (issue #297, RR-07). A count and never an identity: naming the paired peers would put a map of who is organizing in a building into a document that goes to the other side. 'device_count' counts the producing device plus every paired device that returned a signed acknowledgement of holding the case, so it is always 'acknowledged_by' + 1; a merely paired peer that has never completed an exchange is not counted. 'as_of' is omitted, never defaulted, when the producing device recorded no time for the most recent acknowledgement. A bundle that omits 'redundancy' altogether states nothing about copies, which is not the same fact as one device, and every packet exported before this field existed is in that state. 'state' is declared as a plain string rather than an enum on purpose: a closed vocabulary inside a document served under a pinned $id rejects a document its own producer considers valid on the day a member is added. The vocabulary today is 'acknowledged' and 'this_device_only'; habitable's own verifier enforces it, and a third party meeting an unfamiliar word should read it as unknown rather than as a failure.",
+          "required": ["state", "device_count", "acknowledged_by", "identities_included"],
+          "properties": {
+            "state": { "type": "string" },
+            "device_count": { "type": "integer", "minimum": 1 },
+            "acknowledged_by": { "type": "integer", "minimum": 0 },
+            "identities_included": {
+              "type": "boolean",
+              "const": false,
+              "description": "Always false. A packet counts devices; it never names them. A const rather than a plain boolean because the only honest way this could become true is a different field with its own contract."
+            },
+            "as_of": {
+              "type": "string",
+              "description": "ISO 8601 UTC. The producing device's own record of when the most recent acknowledgement arrived — not the peer's clock, which habitable does not treat as a time it can rely on."
+            }
+          },
+          "additionalProperties": true
+        }
       },
       "additionalProperties": true
     }

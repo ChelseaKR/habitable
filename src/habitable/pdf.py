@@ -286,6 +286,8 @@ def _render_cover_sheet(story: list[Any], cover: CoverSheet, styles: Any) -> Non
         ("Chain-of-custody entries", str(cover.custody_length)),
         ("Date range of evidence", span),
         ("Sealed originals embedded", "yes" if cover.includes_originals else "no"),
+        # Issue #297 (RR-07); see the note in `htmlpacket._cover_section`.
+        ("Copies of this case", cover.copies),
     ]
     rows: list[list[Any]] = [
         [_para(label, styles["Small"]), _para(value, styles["Small"])] for label, value in facts

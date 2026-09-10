@@ -75,7 +75,41 @@ may carry one or not. A packet exported offline has none. See
 | `handoff_views` | array | Packet-v4 presentation-only manifests; `bundle.json` remains the source of truth. |
 | `custody_proof` | object | Identity-stripped chain-of-custody proof (see below). |
 | `disclosures` | array | Human-readable notes of what the packet reveals (shared-copy metadata handling, custody identities not exported, originals embedded). Also rendered, localized, in `packet.html`/`packet.pdf`. |
-| `appendix` | object | V4 adds `artifact_count` and `relationship_count` to the v3 counts. `timestamped_count` means a token record is attached; it does not assert token validity or authority trust. |
+| `appendix` | object | V4 adds `artifact_count` and `relationship_count` to the v3 counts. `timestamped_count` means a token record is attached; it does not assert token validity or authority trust. `redundancy` (see below) says how many devices held the case at export time. |
+
+### `appendix.redundancy` — how many devices hold this case
+
+RR-07's question, answered in the artifact rather than only on the producer's own
+screen: *if this tenant loses her phone, does the case still exist?* The packet
+carries `{state, device_count, acknowledged_by, identities_included, as_of?}`.
+
+It is a **count and never an identity**. A peer fingerprint in a document that
+reaches a landlord's solicitor is a map of who is organizing in the building, and
+the count answers the question without drawing it; `identities_included` is a
+schema `const: false` so that the only way to change that is a new field with its
+own contract.
+
+`acknowledged_by` counts paired devices that returned a **signed acknowledgement**
+of holding the case, not devices that are merely paired — a peer that has never
+completed an exchange holds nothing, and counting it would answer "your case is on
+three devices" for a vault that has never synced. `device_count` is that number
+plus the producing device, so `device_count == acknowledged_by + 1` always, and
+`state` is `"this_device_only"` exactly when `acknowledged_by` is zero. The
+verifier checks all three against each other; it cannot re-derive them, because
+nothing inside a packet knows how many devices exist.
+
+`as_of` is the producing device's own record of when the most recent
+acknowledgement arrived. It is **omitted, never defaulted**, when no time was
+recorded — the case `habitable status` already prints its own line for. An epoch
+date beside a device count would date a redundancy claim to 1970.
+
+**Absence is a fourth state, and it is not "one device".** `redundancy` was added
+after packet v4 shipped, so every packet exported before it — including all six
+committed golden fixtures — omits the field. A reader must render that as *not
+stated*; rendering it as `1` would publish a redundancy claim nobody made. This
+project's renderers therefore distinguish four states: the two a producer can
+write, the absent one, and a field present in a shape the reader cannot parse —
+also not "one device", and reported as a problem by `habitable verify`.
 
 ### Opaque identifiers (packet_version ≥ 2)
 

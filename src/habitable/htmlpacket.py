@@ -273,6 +273,10 @@ def _cover_section(cover: CoverSheet) -> list[str]:
         ("Chain-of-custody entries", str(cover.custody_length)),
         ("Date range of evidence", span),
         ("Sealed originals embedded", "yes" if cover.includes_originals else "no"),
+        # Issue #297 (RR-07). The value is localized because it is a sentence
+        # about what the producer could and could not measure; the label is not,
+        # for the same reason as every label above it.
+        ("Copies of this case", cover.copies),
     ]
     out = [
         '<section aria-labelledby="cover-heading">',

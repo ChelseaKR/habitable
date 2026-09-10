@@ -25,6 +25,7 @@ __all__ = [
     "redundancy_from_peers",
 ]
 
+
 # How far a peer's *claimed* clock may run ahead of this device's own clock
 # before the claim is treated as unmeasurable rather than as a time. A receipt
 # is signed on the peer's device with the peer's own wall clock, so a little

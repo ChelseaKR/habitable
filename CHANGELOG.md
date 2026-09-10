@@ -9,6 +9,62 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **The packet cover sheet says how many devices hold this case** (the deferred
+  half of #297, RR-07). "If this tenant loses her phone, does the case still
+  exist?" has been answerable on the producer's own screen since the sync-receipt
+  work landed, and nowhere in the artifact that actually reaches an inspector, a
+  clerk or an adviser. `bundle.json` now carries `appendix.redundancy`, and both
+  renderings print it as a *Copies of this case* row.
+
+  It was deferred on the belief that `appendix` was one of the seven objects in
+  `docs/packet-bundle.schema.json` that set `additionalProperties: false`, so that
+  adding a field would need a `packet_version` decision. It is not one of them:
+  `appendix` is open, which is where every other count in this packet already
+  lives, and the field validates against the published schema unchanged.
+
+  **A count, and never an identity.** A peer fingerprint in a document whose whole
+  purpose is to be handed to the other side is a map of who is organizing in a
+  building. `identities_included` is a schema `const: false`, so the only honest
+  way to change that is a different field with its own contract, and a test asserts
+  over the whole packet — bundle and HTML — that the paired peer's fingerprint
+  appears in neither.
+
+  **Four states, because three of them are not "one device".** `acknowledged` and
+  `this_device_only` are measurements a producer wrote down; a merely *paired* peer
+  that has never completed an exchange is not counted, because counting it would
+  answer "your case is on 3 devices" for a vault that has never synced. `not_stated`
+  is every packet exported before the field existed — including all six committed
+  golden fixtures — and rendering that as `1` would publish this project's most
+  alarming redundancy claim on behalf of a producer who claimed nothing.
+  `unreadable` is a field present in a shape the reader cannot parse. Both reader
+  states carry no counts at all, because there is no number to round down to.
+
+  `as_of` is **omitted, never defaulted**, when the producing device recorded no
+  time for the most recent acknowledgement — the case `status` already prints its
+  own line for. An epoch date beside a device count dates the claim to 1970.
+
+  The verifier **cannot re-derive this figure**: nothing inside a packet knows how
+  many devices exist. So it does the checkable thing instead — the producer's three
+  numbers must agree with each other and with the word beside them, which refuses a
+  hand-edited packet claiming four devices over one acknowledgement — and it accepts
+  absence, because requiring the field would have broken the backward-compatibility
+  guarantee `tests/test_golden.py` exists for on the day an optional field shipped.
+
+  Four negative controls, each asserted landed by `git hash-object` and each
+  restored to its baseline hash afterwards. Reading an absent field as one device
+  reddened **only** `test_a_packet_that_says_nothing_about_copies_does_not_say_one_device`
+  — the six golden packets, which all omit the field, went on verifying and
+  rendering while stating a copy count nobody wrote. Counting paired peers instead
+  of acknowledged ones reddened the producer test and the end-to-end verifier test.
+  Defaulting `as_of` to the epoch reddened the two tests about that distinction.
+  And smuggling a fingerprint list in *beside* an unchanged `identities_included:
+  false` reddened exactly one test — the privacy assertion — where flipping the flag
+  as well reddened nine, which is the measurement worth keeping: the schema const is
+  enforced everywhere, and the fingerprint itself is caught in one place.
+
+  **The metered-data half of #297 needs nothing further** — it shipped with the
+  data-cost work — so what remains on that issue is nothing this adds to.
+
 - **`habitable status --storage` breaks the storage line down per capture, largest
   first** (the storage-visibility half of #296, RR-08). The aggregate line answers
   "does this case fit on my phone"; it cannot answer "which capture is filling it",

@@ -48,6 +48,7 @@ from .media_types import REGISTRY as _MEDIA_TYPE_REGISTRY
 from .model import Artifact, Capture, EvidenceRelationship, Issue, TimelineEntry
 from .private_temp import PrivateTempWorkspace, private_temp_workspace
 from .sensor import parse_sensor_csv
+from .syncstate import SyncRedundancy
 from .tsa import TimestampAuthority, verify_token
 from .usecases import get_profile, profile_expired
 from .vault import Vault
@@ -417,6 +418,7 @@ def _build_packet_in_dir(  # noqa: C901 -- packet staging keeps one rollback bou
             "custody_bound_timeline_count": len(timeline_entries),
             "artifact_count": sum(1 for item in items if item.get("record_kind") == "artifact"),
             "relationship_count": len(relationships),
+            "redundancy": _redundancy_json(vault.sync_redundancy()),
         },
         "disclosures": cast(JSONValue, list(disclosures)),
     }
@@ -1030,3 +1032,39 @@ def _disclosures(
 
 def _now_iso() -> str:
     return datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _redundancy_json(redundancy: SyncRedundancy) -> dict[str, JSONValue]:
+    """State how many devices are known to hold this case. A count, never a name.
+
+    Issue #297 (RR-07). ``status`` has answered this on the producer's own screen
+    since PR #319; the packet -- the artifact that actually reaches an inspector,
+    a clerk or an adviser -- did not, and the field was deferred on the belief
+    that ``appendix`` was one of the schema's closed objects. It is not:
+    ``docs/packet-bundle.schema.json`` sets ``additionalProperties: true`` there,
+    which is where every other count in this packet already lives.
+
+    Two things this deliberately does not carry. **No identity**: a peer
+    fingerprint in a document that goes to a landlord's solicitor is a map of who
+    is organizing in the building, and a count answers the question without
+    drawing it. **No pairing figure**: ``paired_count`` would inflate the answer
+    with peers that have never completed an exchange, which is the distinction
+    :class:`SyncRedundancy` exists to make.
+
+    ``as_of`` is omitted rather than defaulted when this device recorded no time
+    for the most recent acknowledgement -- the case
+    :func:`cli._print_sync_redundancy` already prints its own line for. An epoch
+    date beside a device count would date a redundancy claim to 1970.
+    """
+    payload: dict[str, JSONValue] = {
+        "state": "this_device_only" if redundancy.single_device else "acknowledged",
+        "device_count": redundancy.device_count,
+        "acknowledged_by": redundancy.confirmed_count,
+        "identities_included": False,
+    }
+    observed = redundancy.last_observed_at_ms
+    if observed is not None:
+        payload["as_of"] = datetime.fromtimestamp(observed / 1000, tz=UTC).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+    return payload
