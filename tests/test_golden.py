@@ -32,6 +32,7 @@ from typing import Any
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 
 from habitable.canonical import JSONValue
+from habitable.evidence import CustodyAction
 from habitable.htmlpacket import render_packet_html
 from habitable.pdf import _render_sensor_item
 from habitable.verify import SUPPORTED_PACKET_VERSION, _check_packet_version, verify_packet
@@ -270,3 +271,105 @@ def test_version_check_unit() -> None:
     assert _check_packet_version({}) is not None  # missing
     assert _check_packet_version({"packet_version": True}) is not None  # bool is not a version
     assert _check_packet_version({"packet_version": SUPPORTED_PACKET_VERSION + 1}) is not None
+
+
+# --- the published JSON Schema ------------------------------------------------
+#
+# `docs/packet-bundle.schema.json` is the machine-readable contract this project
+# hands to strangers: `docs/embedding-the-verifier.md` points a court, a clerk or an
+# opposing party at it, and its `$id` is a public URL. Nothing in the tree validated
+# anything against it, so it drifted from the code it claims to describe -- the same
+# shape as the gap `test_a_fixture_exists_for_every_version_we_have_ever_emitted`
+# above was written to end, one layer further out: the corpus proved old packets keep
+# *verifying*, and two documents said so, while whether they still matched the
+# published *schema* was pinned by nothing.
+#
+# These two guards are deliberately not a JSON Schema implementation. They assert
+# exact set relationships read out of the schema file itself, so they cannot pass by
+# quietly failing to understand a keyword -- which is what a hand-rolled validator
+# would risk, and it is the reason a full conformance run is left as a dependency
+# decision rather than approximated here.
+
+_SCHEMA_PATH = Path(__file__).resolve().parents[1] / "docs" / "packet-bundle.schema.json"
+_SITE_SAMPLE = Path(__file__).resolve().parents[1] / "site" / "sample-packet" / "bundle.json"
+
+
+def _schema() -> dict[str, Any]:
+    loaded: object = json.loads(_SCHEMA_PATH.read_text("utf-8"))
+    assert isinstance(loaded, dict), "the published schema must be a JSON object"
+    return loaded
+
+
+def test_the_published_schema_lists_every_custody_action_the_code_can_emit() -> None:
+    """The custody enum must equal `CustodyAction`, not merely overlap it.
+
+    Packet v4 added `artifact_added` and `relationship_added` to the chain of custody
+    and the schema's enum was not extended with them, so the committed `packet-v4`
+    fixture -- a valid packet, produced by this code -- failed the project's own
+    published contract on three of its custody entries. A relying party who did what
+    `embedding-the-verifier.md` tells them to do would have concluded that the custody
+    proof, the most trust-critical part of the artifact, was malformed.
+
+    Set equality rather than containment, in both directions on purpose: a value in
+    the code and not the schema rejects real packets, and a value in the schema and
+    not the code advertises a custody event this software cannot produce.
+    """
+    declared = set(_schema()["$defs"]["custodyEntry"]["properties"]["action"]["enum"])
+    emitted = {action.value for action in CustodyAction}
+    assert declared == emitted, (
+        f"schema enum and CustodyAction disagree; "
+        f"in the code only: {sorted(emitted - declared)}; "
+        f"in the schema only: {sorted(declared - emitted)}"
+    )
+
+
+def test_every_published_bundle_meets_the_schemas_own_required_and_closed_declarations() -> None:
+    """Every packet this repository publishes must satisfy the schema it ships beside.
+
+    Scoped to what can be checked exactly: the `required` key lists and the
+    `additionalProperties: false` property sets, read from the schema file rather than
+    restated here, plus the custody action enum at the data layer. That is enough to
+    have caught both drifts this test was written for, and it stays correct when the
+    schema changes because it derives its expectations from the schema.
+
+    The site sample is included deliberately. It is the packet a stranger downloads
+    from the public site, so it is the one whose disagreement with the contract would
+    be found by someone the project cannot talk to.
+    """
+    schema = _schema()
+    defs = schema["$defs"]
+    item_required = set(defs["item"]["required"])
+    entry_required = set(defs["custodyEntry"]["required"])
+    entry_allowed = set(defs["custodyEntry"]["properties"])
+    actions = set(defs["custodyEntry"]["properties"]["action"]["enum"])
+
+    bundles = [(path.name, path / "bundle.json") for path in _corpus()]
+    bundles.append(("site/sample-packet", _SITE_SAMPLE))
+
+    items_checked = 0
+    entries_checked = 0
+    for name, path in bundles:
+        bundle = json.loads(path.read_text("utf-8"))
+        for index, item in enumerate(bundle["items"]):
+            missing = item_required - set(item)
+            assert not missing, f"{name} items[{index}] missing required {sorted(missing)}"
+            items_checked += 1
+        for entry in bundle["custody_proof"]["entries"]:
+            seq = entry.get("seq")
+            missing = entry_required - set(entry)
+            assert not missing, f"{name} custody entry {seq} missing required {sorted(missing)}"
+            unexpected = set(entry) - entry_allowed
+            assert not unexpected, (
+                f"{name} custody entry {seq} carries {sorted(unexpected)}, and custodyEntry is a "
+                "closed object: adding a field to it is a schema change, not an additive one"
+            )
+            assert entry["action"] in actions, (
+                f"{name} custody entry {seq} has action {entry['action']!r}, "
+                "which the published schema does not list"
+            )
+            entries_checked += 1
+
+    # A loop that checked nothing would otherwise pass. These are the counts the
+    # committed corpus holds today; they only ever grow.
+    assert items_checked >= 6, f"only {items_checked} items checked -- the corpus did not load"
+    assert entries_checked >= 20, f"only {entries_checked} custody entries checked"
