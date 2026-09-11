@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from habitable.canonical import JSONValue
 from habitable.capture import capture
 from habitable.cli import main
 from habitable.errors import FixityError, HabitableError, PacketError, SyncError, VaultError
@@ -846,7 +847,9 @@ def test_a_container_that_reads_back_wrong_costs_nothing(
         ("sealed_bytes", -1),
     ],
 )
-def test_a_malformed_offload_record_is_refused_at_the_boundary(field: str, value: object) -> None:
+def test_a_malformed_offload_record_is_refused_at_the_boundary(
+    field: str, value: JSONValue
+) -> None:
     """One refusal where the record is read, so the restore path needs no branch.
 
     A non-hex key would reach `bytes.fromhex` as an uncaught `ValueError`; a
