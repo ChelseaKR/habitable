@@ -75,7 +75,7 @@ may carry one or not. A packet exported offline has none. See
 | `handoff_views` | array | Packet-v4 presentation-only manifests; `bundle.json` remains the source of truth. |
 | `custody_proof` | object | Identity-stripped chain-of-custody proof (see below). |
 | `disclosures` | array | Human-readable notes of what the packet reveals (shared-copy metadata handling, custody identities not exported, originals embedded). Also rendered, localized, in `packet.html`/`packet.pdf`. |
-| `appendix` | object | V4 adds `artifact_count` and `relationship_count` to the v3 counts. `timestamped_count` means a token record is attached; it does not assert token validity or authority trust. `redundancy` (see below) says how many devices held the case at export time. |
+| `appendix` | object | V4 adds `artifact_count` and `relationship_count` to the v3 counts. `timestamped_count` means a token record is attached; it does not assert token validity or authority trust. `redundancy` (see below) says how many devices held the case at export time. `offloaded_count` (issue #296) is how many items carry no evidence bytes because their sealed original was on external storage; it is emitted on **every** packet, including as `0`, so "nothing is offloaded" is something the bundle states rather than something a reader infers from a missing key. |
 
 ### `appendix.redundancy` — how many devices hold this case
 
@@ -169,6 +169,40 @@ at the original occurrence or recording time.
 | `additional_timestamps` | array | Optional redundant tokens naming other authorities over the same `content_hash` (not a chain). Token presence and authority names are untrusted metadata until the verifier validates each token against recipient-selected roots. Absent in single-authority packets. |
 | `sensor` | object \| null | Present (non-null) only for **instrument data-file** captures (EXP-09, e.g. a temperature-logger or moisture-meter CSV): the readings interpreted from the sealed original for accessible chart + table rendering. `null`/absent for photos and video. The CSV bytes themselves stay the hash-anchored evidence under `content_hash`. |
 | `correspondence` | object \| null | Present (non-null) only for a **sealed RFC 5322 message** artifact (`media_type` `message/rfc822`, issue #304): the header summary and body derived from the sealed original for rendering. `null` for every other item; absent from any packet exported before the field existed. Every value in it is the **sender's claim**. |
+| `offload` | object | Present **only** when this item's sealed original was on external storage at export time (issue #296). `{state: "offloaded", offloaded_at, container_hash}`. Absent from every other item and from any packet exported before the field existed. See below. |
+
+#### `item.offload` — the sealed original is not on the producer's device
+
+`habitable offload` moves a sealed original into an encrypted container on a USB
+stick or SD card and leaves the custody-bound stub in the vault. A packet exported
+in that state (only with `habitable export --allow-offloaded`) carries the item's
+`content_hash`, its tokens and its custody chain, and **none of its bytes**.
+
+Three fields, and no more. `state` is `"offloaded"` — the only value defined, because
+a restored item carries no block at all rather than a second state, so "present" and
+"offloaded" cannot disagree. `offloaded_at` is when. `container_hash` is the SHA-256
+of the container file, which is the one thing a reader who later holds the drive can
+check for themselves.
+
+**What is deliberately not here: which drive.** The label a tenant types
+(*"green USB stick"*) stays in the vault-only half of the custody entry, beside her
+source filenames. A verifier does not need it, and it is a fact about a person's home.
+
+**Every content-derived field on an offloaded item reads as absent because nothing
+could look, not because the content lacks it.** `shared_name`, `shared_hash`,
+`poster_name`/`poster_hash`, `sensor` and `correspondence` are all derived by reading
+the original. An offloaded `.eml` artifact therefore publishes `"correspondence":
+null`, which for any other item means *not a message* and here means *not read*. The
+`offload` block is how a consumer tells the two apart; a consumer that reads those
+nulls without checking for it will draw a false conclusion about the content.
+
+`has_original` is `false` on an offloaded item even under `--include-originals`: the
+flag says what the export was asked to do, the field says what is in `originals/`.
+
+The verifier's treatment is in
+[`verifier-decision-table.md` §4.2c](verifier-decision-table.md#42c-a-declared-offload-explains-a-byteless-item-and-never-excuses-it):
+it changes the explanation for a byteless item and never a verdict, so such a packet
+is **not evidence-ready**.
 
 For an artifact item, `artifact` carries schema version 1, id, issue, reviewed
 artifact type, neutral title, source/issuer assertions, occurrence/recording

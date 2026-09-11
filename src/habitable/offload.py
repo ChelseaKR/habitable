@@ -31,6 +31,7 @@ Two consequences are deliberate and are stated wherever a reader can see them:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .errors import HabitableError
@@ -98,7 +99,7 @@ def offload_item(
         content_hash,
         destination,
         label=label,
-        offloaded_at=stamp.encode(),
+        offloaded_at=_exported_time(stamp.wall_ms),
     )
     vault.custody.append(
         CustodyAction.NOTE_ADDED,
@@ -161,6 +162,20 @@ def restore_item(
         content_hash=record.content_hash[:12],
     )
     return _result(record)
+
+
+def _exported_time(wall_ms: int) -> str:
+    """Second-resolution UTC, the same shape ``Capture.captured_at`` exports.
+
+    ``offloaded_at`` reaches a packet, so it must not be the HLC. An HLC encodes
+    the device wall clock in milliseconds *and* the node id -- exactly the two
+    things packet v2 removed from every exported identifier, and exactly what
+    `test_packet_ids_do_not_encode_wall_clock_or_node_id` refuses. The first
+    draft of this function passed ``stamp.encode()`` and the guard would have
+    caught it only once the guard's packet contained an offloaded item, which is
+    why that test now builds one.
+    """
+    return datetime.fromtimestamp(wall_ms / 1000, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _private_details(record: OffloadRecord, path: Path) -> dict[str, str]:
