@@ -196,11 +196,20 @@ class OffloadRecord:
 
     @classmethod
     def from_json(cls, raw: JSONValue) -> OffloadRecord:
+        """Rebuild a record, refusing anything the restore path could not use.
+
+        The three hex fields are shape-checked here rather than where they are
+        consumed, which is what keeps :meth:`Vault.restore_original` free of a
+        branch for a malformed key: ``bytes.fromhex`` on a non-hex string raises
+        ``ValueError``, which nothing downstream catches, and a short key reaches
+        ``SymmetricKey`` as a ``CryptoError`` that says "wrong key" about a
+        container that is fine. One refusal, at the boundary, naming the record.
+        """
         if not isinstance(raw, dict):
             raise VaultError("corrupt offload record")
         try:
             sealed_bytes = int(cast(int, raw["sealed_bytes"]))
-            return cls(
+            record = cls(
                 capture_id=str(raw["capture_id"]),
                 content_hash=str(raw["content_hash"]),
                 container_name=str(raw["container_name"]),
@@ -212,6 +221,15 @@ class OffloadRecord:
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise VaultError("corrupt offload record") from exc
+        if sealed_bytes < 0 or not _is_hex64(record.content_hash):
+            raise VaultError("corrupt offload record")
+        if not _is_hex64(record.container_hash) or len(record.key_hex) != _OFFLOAD_KEY_BYTES * 2:
+            raise VaultError("corrupt offload record")
+        try:
+            bytes.fromhex(record.key_hex)
+        except ValueError as exc:
+            raise VaultError("corrupt offload record") from exc
+        return record
 
     def packet_json(self) -> dict[str, JSONValue]:
         """The subset a packet publishes about this offload.
@@ -1356,14 +1374,16 @@ class Vault:
                 f"when it was written: expected {record.container_hash[:12]}…, "
                 f"found {found[:12]}…"
             )
-        try:
-            raw = SymmetricKey(bytes.fromhex(record.key_hex)).decrypt(
-                data, aad=_offload_aad(capture_id, record.content_hash)
-            )
-        except CryptoError as exc:
-            raise FixityError(
-                f"offload container for {capture_id} could not be decrypted: {exc}"
-            ) from exc
+        # No try/except around this. The container's SHA-256 has already matched
+        # the one recorded when these exact ciphertext bytes were written, and
+        # `OffloadRecord.from_json` has already refused a key that is not 32 hex
+        # bytes -- so there is no input reachable from here that decrypts wrong,
+        # and a `CryptoError` handler would be a branch no test could ever enter.
+        # If one is ever raised it is a defect in this file, and it should say so
+        # rather than be relabelled as the drive's fault.
+        raw = SymmetricKey(bytes.fromhex(record.key_hex)).decrypt(
+            data, aad=_offload_aad(capture_id, record.content_hash)
+        )
         # store_original_bytes re-checks the plaintext against content_hash and
         # clears the offload record, which is what makes the item present again.
         self.store_original_bytes(capture_id, raw, record.content_hash)
@@ -3011,6 +3031,11 @@ def _load_offload(path: Path, dek: SymmetricKey) -> dict[str, OffloadRecord]:
     raw = _decode_json(_read_blob(path, dek, _OFFLOAD))
     if not isinstance(raw, dict):
         raise VaultError("corrupt offload record")
+    return _offload_records_from_json(raw)
+
+
+def _offload_records_from_json(raw: Mapping[str, JSONValue]) -> dict[str, OffloadRecord]:
+    """Validate a decoded offload blob. Separate so a test can reach it directly."""
     records: dict[str, OffloadRecord] = {}
     for capture_id, entry in raw.items():
         record = OffloadRecord.from_json(entry)
@@ -3018,6 +3043,10 @@ def _load_offload(path: Path, dek: SymmetricKey) -> dict[str, OffloadRecord]:
             raise VaultError("offload record does not match its capture id")
         records[capture_id] = record
     return records
+
+
+def _is_hex64(value: str) -> bool:
+    return len(value) == 64 and all(c in "0123456789abcdef" for c in value)
 
 
 def _offload_aad(capture_id: str, content_hash: str) -> bytes:

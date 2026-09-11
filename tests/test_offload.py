@@ -25,7 +25,7 @@ from habitable.offload import offload_item, offloaded_item_ids, restore_item
 from habitable.packet import build_packet
 from habitable.sync import export_message
 from habitable.tsa import DevTSA, LocalRfc3161TSA
-from habitable.vault import OFFLOAD_CONTAINER_SUFFIX, Vault, human_bytes
+from habitable.vault import OFFLOAD_CONTAINER_SUFFIX, OffloadRecord, Vault, human_bytes
 from habitable.verify import verify_packet
 
 
@@ -831,3 +831,90 @@ def test_a_container_that_reads_back_wrong_costs_nothing(
     assert vault.read_original(capture_id, content_hash) == before
     # The half-written container is removed rather than left to be restored from.
     assert list(drive.iterdir()) == []
+
+
+# --- reading a record back, defensively ---------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("key_hex", "not-hex" + "0" * 57),
+        ("key_hex", "ab" * 16),
+        ("container_hash", "zz" + "0" * 62),
+        ("content_hash", ""),
+        ("sealed_bytes", -1),
+    ],
+)
+def test_a_malformed_offload_record_is_refused_at_the_boundary(field: str, value: object) -> None:
+    """One refusal where the record is read, so the restore path needs no branch.
+
+    A non-hex key would reach `bytes.fromhex` as an uncaught `ValueError`; a
+    short one would reach `SymmetricKey` as a `CryptoError` saying "wrong key"
+    about a container that is perfectly fine. Neither is a sentence about the
+    drive, so neither belongs on the restore path.
+    """
+    good = OffloadRecord(
+        capture_id="cap-1",
+        content_hash="a" * 64,
+        container_name="cap-1.habitable-offload",
+        container_hash="b" * 64,
+        key_hex="c" * 64,
+        sealed_bytes=10,
+        offloaded_at="2026-01-02T00:00:00Z",
+    ).to_json()
+    assert OffloadRecord.from_json(dict(good)) is not None  # the fixture is otherwise valid
+    with pytest.raises(VaultError, match="corrupt offload record"):
+        OffloadRecord.from_json({**good, field: value})
+
+
+def test_an_offload_record_whose_key_does_not_match_its_slot_is_refused(
+    make_vault: Callable[..., Vault], make_jpeg: Callable[..., Path], tmp_path: Path
+) -> None:
+    """The record is keyed by capture id; the two must agree or the blob is corrupt."""
+    vault_module = importlib.import_module("habitable.vault")
+    vault, capture_id = _case(make_vault, make_jpeg)
+    drive = tmp_path / "usb"
+    drive.mkdir()
+    record = vault.offload_record(capture_id)
+    assert record is None
+    offload_item(vault, capture_id, drive)
+    stored = vault.offload_record(capture_id)
+    assert stored is not None
+
+    with pytest.raises(VaultError, match="does not match its capture id"):
+        vault_module._offload_records_from_json({"cap-someone-else": stored.to_json()})
+
+
+def test_restoring_from_the_container_file_itself_works(
+    make_vault: Callable[..., Vault], make_jpeg: Callable[..., Path], tmp_path: Path
+) -> None:
+    """`--from` accepts the folder or the file; a tenant will type either."""
+    vault, capture_id = _case(make_vault, make_jpeg)
+    content_hash = vault.document.captures()[0].content_hash
+    before = vault.read_original(capture_id, content_hash)
+    drive = tmp_path / "usb"
+    drive.mkdir()
+    record = offload_item(vault, capture_id, drive)
+
+    restore_item(vault, capture_id, drive / record.container_name)
+    assert vault.read_original(capture_id, content_hash) == before
+
+
+def test_an_absurdly_large_container_is_refused_before_it_is_read(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The bytes come off removable media, so the size is checked by stat first."""
+    vault_module = importlib.import_module("habitable.vault")
+    vault, capture_id = _case(make_vault, make_jpeg)
+    drive = tmp_path / "usb"
+    drive.mkdir()
+    offload_item(vault, capture_id, drive)
+    monkeypatch.setattr(vault_module, "_MAX_OFFLOAD_CONTAINER_BYTES", 16)
+
+    with pytest.raises(VaultError, match="above the 16-byte limit"):
+        restore_item(vault, capture_id, drive)
+    assert not vault.has_original(capture_id)
