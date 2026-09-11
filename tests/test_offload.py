@@ -9,17 +9,22 @@ custody all stay, and the chain is extended rather than rewritten.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from habitable.capture import capture
-from habitable.errors import FixityError, HabitableError, VaultError
+from habitable.errors import FixityError, HabitableError, PacketError, SyncError, VaultError
 from habitable.evidence import CUSTODY_EVENT_OFFLOADED, CUSTODY_EVENT_RESTORED
 from habitable.offload import offload_item, offloaded_item_ids, restore_item
-from habitable.tsa import DevTSA
+from habitable.packet import build_packet
+from habitable.sync import export_message
+from habitable.tsa import DevTSA, LocalRfc3161TSA
 from habitable.vault import OFFLOAD_CONTAINER_SUFFIX, Vault
+from habitable.verify import verify_packet
 
 
 def _case(make_vault: Callable[..., Vault], make_jpeg: Callable[..., Path]) -> tuple[Vault, str]:
@@ -392,3 +397,271 @@ def test_the_storage_breakdown_separates_offloaded_from_never_held(
     assert [(entry.capture_id, entry.sealed_bytes) for entry in footprint.offloaded] == [
         (capture_id, sealed_bytes)
     ]
+
+
+# --- what an offloaded original does to a packet (issue #296) -----------------
+
+
+def _two_capture_case(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    tsa: LocalRfc3161TSA,
+) -> tuple[Vault, str, str]:
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", room="bathroom", title="Mold", issue_id="i1")
+    first = capture(vault, make_jpeg("a.jpg"), issue_id=issue, tsa=tsa)
+    second = capture(vault, make_jpeg("b.jpg"), issue_id=issue, tsa=tsa)
+    vault.save()
+    return vault, first.capture_id, second.capture_id
+
+
+def test_export_refuses_by_default_and_names_the_offloaded_item(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """Refusing is the default because restoring is one command away.
+
+    The message has to carry the capture id and the way back, or a tenant is
+    told her export failed and not what to do about it.
+    """
+    vault, first, _ = _two_capture_case(make_vault, make_jpeg, local_tsa)
+    drive = tmp_path / "usb"
+    drive.mkdir()
+    offload_item(vault, first, drive)
+
+    with pytest.raises(PacketError) as excinfo:
+        build_packet(vault, tmp_path / "packet", generated_at="2026-01-02T00:10:00Z")
+    message = str(excinfo.value)
+    assert first in message
+    assert "habitable restore" in message
+    assert "--allow-offloaded" in message
+    assert not (tmp_path / "packet").exists()
+
+
+def test_an_offloaded_packet_names_the_item_and_is_not_evidence_ready(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """The third `Done when`, mapped onto the verdicts this verifier actually has.
+
+    There is no READY-with-limits tier: `structurally_intact`, `evidence_ready`
+    and the authority claim are the three, and #158 made "an item with no
+    evidence bytes" defeat the first of them. A packet is not allowed to buy
+    readiness back by declaring the absence, or any hand-crafted bundle could
+    write the same three keys. What the declaration buys is a true explanation:
+    the report names the item, says its original is on external storage, and
+    says this packet cannot check that.
+    """
+    vault, first, second = _two_capture_case(make_vault, make_jpeg, local_tsa)
+    drive = tmp_path / "usb"
+    drive.mkdir()
+    offload_item(vault, first, drive)
+
+    out = tmp_path / "packet"
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z", allow_offloaded=True)
+    report = verify_packet(out, trusted_certs=[local_tsa.certificate])
+
+    assert report.signature_ok and report.custody_ok
+    assert not report.structurally_intact
+    assert not report.evidence_ready
+    verdicts = {item.capture_id: item for item in report.items}
+    offloaded = verdicts[first]
+    assert offloaded.offload_declared
+    assert not offloaded.evidence_present
+    assert "moved to external storage" in " ".join(offloaded.notes)
+    assert "cannot check that claim" in " ".join(offloaded.notes)
+    # Everything the token covers still verifies for the offloaded item.
+    assert offloaded.timestamp_verified and offloaded.timestamp_authority_trusted
+    # And the item whose bytes are here is untouched.
+    assert verdicts[second].structurally_intact and verdicts[second].evidence_ready
+
+
+def test_the_bundle_and_appendix_count_the_offloaded_item(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """`offloaded_count` is emitted on every packet, so zero is a statement."""
+    vault, first, _ = _two_capture_case(make_vault, make_jpeg, local_tsa)
+    drive = tmp_path / "usb"
+    drive.mkdir()
+    offload_item(vault, first, drive)
+    out = tmp_path / "packet"
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z", allow_offloaded=True)
+
+    bundle = json.loads((out / "bundle.json").read_text(encoding="utf-8"))
+    assert bundle["appendix"]["offloaded_count"] == 1
+    items = {item["capture_id"]: item for item in bundle["items"]}
+    offloaded = items[first]
+    assert offloaded["offload"] == {
+        "state": "offloaded",
+        "offloaded_at": offloaded["offload"]["offloaded_at"],
+        "container_hash": offloaded["offload"]["container_hash"],
+    }
+    assert offloaded["shared_name"] == "" and offloaded["has_original"] is False
+    assert offloaded["content_hash"] and offloaded["timestamp"] is not None
+    # The key is present only on the item it describes; the other item does not
+    # carry an empty one that a reader could mistake for "checked, not offloaded".
+    others = [item for capture_id, item in items.items() if capture_id != first]
+    assert others and all("offload" not in item for item in others)
+
+
+def test_a_packet_with_no_offload_still_states_the_zero(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """The absent-key trap: "nothing is offloaded" must be said, not inferred."""
+    vault, _, _ = _two_capture_case(make_vault, make_jpeg, local_tsa)
+    out = tmp_path / "packet"
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z")
+    bundle = json.loads((out / "bundle.json").read_text(encoding="utf-8"))
+    assert bundle["appendix"]["offloaded_count"] == 0
+    assert all("offload" not in item for item in bundle["items"])
+
+
+def test_the_offloaded_item_gets_no_bytes_even_under_include_originals(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """`--include-originals` says what the export was asked to do; `has_original`
+    says what is in the directory. For this item nothing is, and the packet must
+    not claim an embedded original a verifier would then fail to hash."""
+    vault, first, second = _two_capture_case(make_vault, make_jpeg, local_tsa)
+    drive = tmp_path / "usb"
+    drive.mkdir()
+    offload_item(vault, first, drive)
+    out = tmp_path / "packet"
+    build_packet(
+        vault,
+        out,
+        generated_at="2026-01-02T00:10:00Z",
+        include_originals=True,
+        allow_offloaded=True,
+    )
+    bundle = json.loads((out / "bundle.json").read_text(encoding="utf-8"))
+    items = {item["capture_id"]: item for item in bundle["items"]}
+    assert items[first]["has_original"] is False
+    assert items[second]["has_original"] is True
+    assert not (out / "originals" / first).exists()
+    assert (out / "originals" / second).exists()
+
+
+def test_the_disclosures_count_shared_copies_not_items(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """The packet's headline claim must not say it carries bytes it does not."""
+    vault, first, _ = _two_capture_case(make_vault, make_jpeg, local_tsa)
+    drive = tmp_path / "usb"
+    drive.mkdir()
+    offload_item(vault, first, drive)
+    out = tmp_path / "packet"
+    result = build_packet(vault, out, generated_at="2026-01-02T00:10:00Z", allow_offloaded=True)
+    joined = " | ".join(result.disclosures)
+    assert "1 of 2 media item(s) included as shared copies" in joined
+    assert "1 item(s) carry NO evidence bytes in this packet" in joined
+
+
+def test_the_human_packet_says_why_the_photo_is_not_there(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """packet.html is what a recipient actually opens; an empty figure is not an answer."""
+    vault, first, _ = _two_capture_case(make_vault, make_jpeg, local_tsa)
+    drive = tmp_path / "usb"
+    drive.mkdir()
+    offload_item(vault, first, drive)
+    out = tmp_path / "packet"
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z", allow_offloaded=True)
+
+    html = (out / "packet.html").read_text(encoding="utf-8")
+    assert "moved to external storage" in html
+    assert "NONE — sealed original on external storage" in html
+
+
+def test_the_spanish_packet_says_it_in_spanish(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """EN/ES packet copy for the offloaded state is in this issue's own scope."""
+    vault, first, _ = _two_capture_case(make_vault, make_jpeg, local_tsa)
+    vault.document.set_meta("language", "es")
+    vault.config = replace(vault.config, language="es")
+    drive = tmp_path / "usb"
+    drive.mkdir()
+    offload_item(vault, first, drive)
+    out = tmp_path / "packet"
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z", allow_offloaded=True)
+    html = (out / "packet.html").read_text(encoding="utf-8")
+    assert "almacenamiento externo" in html
+
+
+def test_an_unrecognized_offload_claim_is_not_an_excuse(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    local_tsa: LocalRfc3161TSA,
+    tmp_path: Path,
+) -> None:
+    """A bundle is attacker-controlled: only the one defined state counts.
+
+    Every field here can be written by anyone, so the verifier must not treat an
+    arbitrary `offload` value as the recognized declaration. The verdict is
+    identical either way -- this pins the *explanation* to a claim the
+    vocabulary defines, so a bundle cannot make a byteless item read as a
+    deliberate, understood state by writing `offload: true`.
+    """
+    vault, first, _ = _two_capture_case(make_vault, make_jpeg, local_tsa)
+    drive = tmp_path / "usb"
+    drive.mkdir()
+    offload_item(vault, first, drive)
+    out = tmp_path / "packet"
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z", allow_offloaded=True)
+
+    bundle_path = out / "bundle.json"
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+    for item in bundle["items"]:
+        if item["capture_id"] == first:
+            item["offload"] = {"state": "somewhere-else"}
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
+
+    report = verify_packet(out, trusted_certs=[local_tsa.certificate])
+    verdict = next(item for item in report.items if item.capture_id == first)
+    assert not verdict.offload_declared
+    assert not verdict.evidence_present
+    assert "carries no checkable evidence bytes" in " ".join(verdict.notes)
+
+
+def test_sync_refuses_rather_than_dying_on_a_missing_sealed_original(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    tmp_path: Path,
+) -> None:
+    """Sync sends bytes this device holds; an offloaded original is not one of them."""
+    sender = make_vault("sender")
+    receiver = make_vault("receiver")
+    issue = sender.document.add_issue(category="mold", room="bath", title="Mold", issue_id="i1")
+    result = capture(sender, make_jpeg("a.jpg"), issue_id=issue, tsa=DevTSA())
+    sender.save()
+    drive = tmp_path / "usb"
+    drive.mkdir()
+    offload_item(sender, result.capture_id, drive)
+
+    with pytest.raises(SyncError) as excinfo:
+        export_message(sender, receiver.identity.public())
+    assert result.capture_id in str(excinfo.value)
+    assert "habitable restore" in str(excinfo.value)
