@@ -9,6 +9,55 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **A full phone no longer means deleting evidence: `habitable offload` moves a sealed
+  original to a USB stick and leaves the chain behind** (#296, RR-08). Video fills a
+  low-end phone first, and until now the only way to reclaim that space was to delete
+  a photograph, which deletes the case — `docs/mobile.md` said so, after correcting
+  its own advice to "export finished issues to an external drive", an operation that
+  *adds* a copy and removes nothing.
+
+  **What leaves is bytes; what stays is the evidence.** `habitable offload <item> --to
+  <folder>` writes the sealed original into an AEAD container on the drive and keeps
+  the content hash the timestamp token covers, every token, and the whole chain of
+  custody in the vault. `habitable restore <item> --from <folder>` re-attaches it.
+  The chain is *extended*, not rewritten: a `note_added` entry records the move and a
+  second records the return, so the log says where the bytes have been rather than
+  pretending they never left, and every entry that existed before a round trip is
+  byte-identical after it.
+
+  **Ordering is the safety argument.** The container is written, read back off the
+  drive, re-hashed and decrypted, and only then is the sealed original deleted — and
+  the container key is persisted before the delete, not after, so a crash fails
+  towards two copies rather than zero. `Vault.open` collapses that state. A drive that
+  cannot be written to costs nothing.
+
+  **The container has its own key, and that is not an accident.** `key rotate-dek`
+  re-encrypts every sealed original under a new data key and cannot reach a USB stick,
+  so a container sealed under the DEK would be lost for good at the next rotation.
+  Each container gets a fresh key stored inside the vault blob rotation does
+  re-encrypt. A restore compares the container's SHA-256 with the one recorded when it
+  was written *before* decrypting anything, so altered bytes are refused by name.
+
+  **A packet cannot carry bytes that are not here, and does not pretend to.**
+  `habitable export` refuses while an original is offloaded and names the captures to
+  restore. `--allow-offloaded` exports anyway: the item then carries `item.offload`
+  (`state`, `offloaded_at`, `container_hash` — never which drive, which stays in the
+  vault-only half of the custody entry beside the tenant's own filenames),
+  `appendix.offloaded_count` counts them on every packet including as `0`, and
+  `packet.html` says in EN and ES why the photograph is not there.
+
+  **The verifier changes its sentence and never its verdict.** A declared offload
+  leaves `evidence_present` false, so the packet is *not* evidence-ready — granting
+  readiness on the strength of a field the bundle supplies would undo #158 from the
+  other direction, since anyone hand-crafting a bundle could write the same three
+  keys. What the declaration buys is a true explanation instead of "this item carries
+  no checkable evidence bytes", which reads as a broken export rather than as
+  something the tenant chose. `docs/verifier-decision-table.md` §4.2c is the row.
+  An unrecognized `offload` value gets the ordinary byteless treatment.
+
+  **`habitable sync` refuses too**, naming the items, rather than dying inside the
+  exporter on a file the tenant deliberately moved.
+
 - **A landlord's email is now readable evidence, and its attachments are their own
   items** (#304). Sealing an `.eml` already worked — `habitable artifact reply.eml`
   hashed, encrypted, custody-bound and RFC 3161 timestamped it like any other
@@ -158,10 +207,26 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   dropping the denominator, dropping the unmeasured rows, and reversing the sort
   each turned exactly the predicted test red.
 
-  **Offload and restore — the other half of #296 — are still not built.** This
-  makes the cost legible; it does not add a way to reclaim the space.
+  **Offload and restore — the other half of #296 — are not built by this change.**
+  It makes the cost legible; it does not add a way to reclaim the space. (They
+  landed later in this same unreleased cycle; see the `habitable offload` entry
+  above.)
 
 ### Fixed
+
+- **A packet's headline disclosure counted items, not shared copies** (found while
+  building #296). `"N media item(s) included as shared copies"` was `len(items)`, so a
+  packet whose only item had an embedded original and no shared preview — the
+  `--include-originals`-on-an-unsanitizable-type case `docs/verifier-decision-table.md`
+  §4.2b already describes — claimed a shared copy it did not carry. It now reads
+  `"N of M"`, and a packet carrying none of them says `0 of M`.
+
+- **`status --storage` reported an offloaded capture as one whose original is simply
+  not on this device.** Both are absent from `originals/`, and collapsing them would
+  tell a tenant who had just freed 400 MB that her photograph was missing.
+  `StorageFootprint.offloaded` is now its own list, carrying the size recorded when
+  each original left, and the breakdown ends with the operation that reclaims space
+  rather than only naming the capture that is filling the phone.
 
 - **The published packet schema rejected the genesis link of every custody chain,
   so it rejected every packet this project has ever produced.**

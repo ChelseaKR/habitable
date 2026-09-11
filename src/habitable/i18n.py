@@ -503,10 +503,42 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "no captures yet, so nothing here takes space beyond the case data above"
         ),
         "status_storage_no_original": "sealed original not on this device — nothing to measure",
+        # An offloaded capture and one this device has simply never held are both
+        # absent from originals/, and saying the same thing about both would tell
+        # a tenant who freed space that her photograph is missing (issue #296).
+        "status_storage_offloaded": (
+            "moved to external storage — {size} freed here; the hash and timestamp stay"
+        ),
+        "status_storage_offload_hint": (
+            "to free the space a capture takes without losing it, move its sealed original "
+            "to a USB stick or SD card: `habitable offload <capture> --to <folder>`. The "
+            "hash, the timestamp and the chain of custody stay on this device; only the "
+            "file leaves, and `habitable restore` brings it back."
+        ),
         "status_storage_delete_note": (
             "deleting this case frees the space above and destroys the evidence with it. "
             "A packet you have already exported is a separate copy in the folder you chose: "
             "it is not counted here and deleting the case does not remove it."
+        ),
+        # --- offload / restore (issue #296, RR-08) ---
+        "offload_done": (
+            "{item}: the sealed original is now on external storage — {size} of sealed "
+            "original removed from this device. Its hash, its timestamp and the chain of "
+            "custody stay here."
+        ),
+        "offload_on_disk": "this case now takes {on_disk} on this device",
+        "offload_keep_drive": (
+            "keep the drive at {path}: it holds the only copy of this file. Deleting the "
+            "container there deletes the photograph; the record of it would remain, with "
+            "nothing behind it."
+        ),
+        "offload_export_note": (
+            "`habitable export` will refuse while this is offloaded, and tell you to run "
+            "`habitable restore` first — a packet cannot carry bytes that are not here."
+        ),
+        "restore_done": "{item}: the sealed original is back on this device and re-hashed",
+        "restore_drive_note": (
+            "the container on the drive is now a spare copy; you may delete it or keep it."
         ),
         # RR-07: "is this case on more than one device?" Counted from receipts a
         # peer signed, never from the pairing list -- a paired peer that has never
@@ -770,10 +802,43 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
         "status_storage_no_original": (
             "el original sellado no está en este dispositivo — no hay nada que medir"
         ),
+        "status_storage_offloaded": (
+            "trasladado a un almacenamiento externo — se liberaron {size} aquí; el hash y "
+            "el sello de tiempo se quedan"
+        ),
+        "status_storage_offload_hint": (
+            "para liberar el espacio que ocupa una captura sin perderla, traslade su "
+            "original sellado a una memoria USB o una tarjeta SD: "
+            "`habitable offload <captura> --to <carpeta>`. El hash, el sello de tiempo y la "
+            "cadena de custodia se quedan en este dispositivo; solo se va el archivo, y "
+            "`habitable restore` lo trae de vuelta."
+        ),
         "status_storage_delete_note": (
             "borrar este caso libera el espacio indicado arriba y destruye con él las pruebas. "
             "Un paquete que usted ya haya exportado es una copia aparte, en la carpeta que "
             "eligió: no se cuenta aquí y borrar el caso no lo elimina."
+        ),
+        "offload_done": (
+            "{item}: el original sellado ya está en el almacenamiento externo — se quitaron "
+            "{size} de original sellado de este dispositivo. Su hash, su sello de tiempo y la "
+            "cadena de custodia se quedan aquí."
+        ),
+        "offload_on_disk": "este caso ahora ocupa {on_disk} en este dispositivo",
+        "offload_keep_drive": (
+            "conserve la unidad en {path}: allí está la única copia de este archivo. Si borra "
+            "el contenedor, borra la fotografía; quedaría el registro de que existió, sin nada "
+            "detrás."
+        ),
+        "offload_export_note": (
+            "`habitable export` se negará mientras esté trasladado y le dirá que ejecute "
+            "antes `habitable restore` — un expediente no puede llevar bytes que no están aquí."
+        ),
+        "restore_done": (
+            "{item}: el original sellado volvió a este dispositivo y se verificó su hash"
+        ),
+        "restore_drive_note": (
+            "el contenedor de la unidad queda ahora como copia de repuesto; puede borrarlo "
+            "o conservarlo."
         ),
         "status_sync_alone": (
             "copias: solo este dispositivo — ningún otro dispositivo ha confirmado que "

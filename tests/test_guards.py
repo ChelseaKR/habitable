@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 
 from habitable.capture import capture
+from habitable.offload import offload_item
 from habitable.packet import build_packet
 from habitable.sync import LocalDirTransport, sync
 from habitable.tsa import LocalRfc3161TSA
@@ -118,10 +119,20 @@ def test_packet_ids_do_not_encode_wall_clock_or_node_id(
     vault.document.add_timeline_entry(issue, "observed", "mold spreading after roof leak")
     vault.save()
     capture(vault, make_jpeg("evidence.jpg"), issue_id=issue, tsa=local_tsa)
+    drive = tmp_path / "usb"
+    drive.mkdir()
+
+    # An offloaded item publishes a fourth timestamp, `item.offload.offloaded_at`
+    # (issue #296), and it reaches a packet like every other exported field. The
+    # first draft wrote the HLC there, which encodes both of the things this test
+    # exists to keep out; the guard could not see it because no packet it built
+    # contained an offloaded item. It does now.
+    offload_item(vault, vault.document.captures()[0].capture_id, drive)
 
     out = tmp_path / "packet"
-    build_packet(vault, out, generated_at=_GENERATED_AT)
+    build_packet(vault, out, generated_at=_GENERATED_AT, allow_offloaded=True)
     bundle = (out / "bundle.json").read_text(encoding="utf-8")
+    assert '"offload"' in bundle  # the state this test is here to cover was reached
 
     # No field encodes the raw HLC (15-digit ms . 6-digit counter . node_id) ...
     assert re.search(r"\d{15}\.\d{6}\.", bundle) is None

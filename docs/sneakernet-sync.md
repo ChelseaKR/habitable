@@ -79,6 +79,42 @@ To keep two people in step, the recipient exports a delta back the same way
 (`sync-export --peer <A-public-id>`) and hands the stick back, or carries a fresh
 one to the next meeting.
 
+## Carrying a sealed original on the stick instead of a delta
+
+The deltas above move the *case*. `habitable offload` moves one file's **bytes**, for
+a different reason: a phone that is full (issue #296, RR-08). It writes the sealed
+original into an encrypted container on the stick and leaves the custody-bound stub
+in the vault — the content hash the timestamp token covers, every token, and the
+whole chain of custody.
+
+```sh
+habitable offload cap-… --vault ~/case --to /Volumes/STICK/habitable --label "green stick"
+habitable restore cap-… --vault ~/case --from /Volumes/STICK/habitable
+```
+
+The container is named `<item-id>.habitable-offload`, and it is not a delta: it is
+not sealed to anybody, it carries no case state, and no other device can import it.
+
+- **The key is not on the stick.** Each container has its own AEAD key, generated at
+  offload time and stored inside the vault, so a found stick is ciphertext and a
+  `key rotate-dek` — which cannot reach a drive — leaves it readable.
+- **The stick holds the only copy.** Unlike a delta, which is a copy of something
+  still on the device, an offload container *is* the file. Deleting it destroys the
+  photograph and leaves the record of it with nothing behind.
+- **Restoring re-hashes before it re-attaches.** The container's SHA-256 is compared
+  with the one recorded when it was written, before anything is decrypted, and the
+  plaintext is checked against the content hash after. Altered bytes are refused by
+  name and nothing in the vault changes.
+- **A drive that is not the right one is named, not guessed at.** A missing container
+  is a refusal that says so.
+- **Offloaded items do not travel.** `habitable sync` and `habitable sync-export`
+  refuse while any original is offloaded, because this device cannot send bytes it
+  does not hold, and a peer refuses a message whose originals neither side has.
+  Restore first, then sync.
+- **`habitable export` refuses too.** See [`mobile.md`](mobile.md#storage-footprint--what-a-case-costs-on-this-device-r-03)
+  for the `--allow-offloaded` escape hatch and what a verifier says about the
+  resulting packet.
+
 ## What a lost or tampered stick means
 
 - **Lost stick → no leak.** Every delta is end-to-end encrypted and sealed to a

@@ -34,6 +34,7 @@ from .disclosure import (
     scope_statement,
     shared_metadata_may_be_retained,
 )
+from .evidence import OFFLOAD_ITEM_KEY, OFFLOAD_STATE_OFFLOADED
 from .sensor import series_extent, series_loss, series_summary
 
 __all__ = ["render_inspector_html", "render_packet_html"]
@@ -864,7 +865,7 @@ def _evidence_figure(
     out.extend(body)
 
     if not rendered_evidence_bytes:
-        out.append(_no_evidence_bytes_notice(item))
+        out.append(_no_evidence_bytes_notice(item, lang))
     out.append(
         f"<figcaption>Captured {escape(captured_at)} · "
         f"hash {escape(content_hash[:16])}… · {escape(stamp)}</figcaption>"
@@ -972,9 +973,38 @@ def _video_audio_body(
     return out, rendered_evidence_bytes
 
 
-def _no_evidence_bytes_notice(item: Mapping[str, JSONValue]) -> str:
+#: Packet copy for an item whose sealed original is on external storage
+#: (issue #296). Separate from the generic byteless warning because the two say
+#: different things to a recipient: one is "something went wrong with this
+#: export", the other is "the person who made this packet had moved the file to
+#: a drive, and the hash and timestamp over it are still here."
+_OFFLOAD_NOTICE_TEXT = {
+    "en": (
+        "No photo, recording, or file was included for this item. The packet states "
+        "that its sealed original was moved to external storage{when}, so the bytes "
+        "are not here. Its content hash and timestamp are included and verify "
+        "normally — what they cover is what this packet cannot show you. Ask the "
+        "person who sent it to re-export with the drive attached. Nothing in this "
+        "packet can confirm that a file is on that drive."
+    ),
+    "es": (
+        "No se incluyó ninguna foto, grabación ni archivo para este elemento. El "
+        "expediente indica que su original sellado se trasladó a un almacenamiento "
+        "externo{when}, así que los bytes no están aquí. Su hash de contenido y su "
+        "sello de tiempo sí se incluyen y se verifican con normalidad — lo que "
+        "cubren es justamente lo que este expediente no puede mostrarle. Pida a "
+        "quien se lo envió que lo vuelva a exportar con la unidad conectada. Nada "
+        "en este expediente puede confirmar que el archivo esté en esa unidad."
+    ),
+}
+
+_OFFLOAD_WHEN_TEXT = {"en": " on {at}", "es": " el {at}"}
+
+
+def _no_evidence_bytes_notice(item: Mapping[str, JSONValue], lang: str = "en") -> str:
     """The visible fallback for an item with no rendered evidence bytes (issue
-    #158, decision 3): a link to the embedded original if one exists, else a
+    #158, decision 3): a link to the embedded original if one exists, the
+    offloaded-original notice if the bundle declares one (issue #296), else a
     plain warning that nothing was included at all. Never a silently empty
     figure -- see :func:`_evidence_figure`."""
     if item.get("has_original") is True:
@@ -986,6 +1016,12 @@ def _no_evidence_bytes_notice(item: Mapping[str, JSONValue]) -> str:
             "(verify its hash against bundle.json before opening; it may retain full "
             "metadata, including location).</p>"
         )
+    offload = item.get(OFFLOAD_ITEM_KEY)
+    if isinstance(offload, dict) and offload.get("state") == OFFLOAD_STATE_OFFLOADED:
+        key = "es" if lang.lower().startswith("es") else "en"
+        at = offload.get("offloaded_at")
+        when = _OFFLOAD_WHEN_TEXT[key].format(at=escape(at)) if isinstance(at, str) and at else ""
+        return f'<p class="warning">{_OFFLOAD_NOTICE_TEXT[key].format(when=when)}</p>'
     return (
         '<p class="warning">No photo, recording, or file was included for this '
         "item. Its content hash and timestamp exist, but there are no evidence "
@@ -1171,6 +1207,13 @@ def _item_media_status(item: Mapping[str, JSONValue]) -> str:
         return "included"
     if item.get("has_original") is True:
         return "original only (no shared preview)"
+    offload = item.get(OFFLOAD_ITEM_KEY)
+    if isinstance(offload, dict) and offload.get("state") == OFFLOAD_STATE_OFFLOADED:
+        # Still "none", stated as such, with the reason attached. The appendix
+        # table is the one place a recipient counts what arrived, so an
+        # offloaded item must not read as included -- and must not read as an
+        # unexplained hole either (issue #296).
+        return "NONE — sealed original on external storage"
     return "NONE — no evidence bytes"
 
 

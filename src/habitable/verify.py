@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, BinaryIO
 from .canonical import JSONValue, canonical_json, sha256_bytes
 from .crypto import verify as verify_signature
 from .errors import VerificationError
-from .evidence import CustodyLog
+from .evidence import OFFLOAD_ITEM_KEY, OFFLOAD_STATE_OFFLOADED, CustodyLog
 from .timeline import EVENT_TYPES, SOURCES, normalize_occurred_at
 from .tsa import TimestampInfo, TimestampToken, verify_archive_chain, verify_token
 
@@ -328,6 +328,12 @@ _ITEM_DETAIL_TEXT = {
             "no photo, recording, or file was included for this item — only its "
             "content hash and timestamp"
         ),
+        "no_evidence_offloaded": (
+            "no photo, recording, or file was included for this item: the packet says "
+            "the sealed original was moved to external storage. Its content hash and "
+            "timestamp are here; this packet cannot show what they cover, and nothing "
+            "in it can confirm where the file went"
+        ),
         "shared_media": "shared media is missing or does not match its recorded hash",
         "custody_binding": "shared media is not bound to the original by custody",
         "original_fixity": "embedded original does not match its recorded hash",
@@ -341,6 +347,13 @@ _ITEM_DETAIL_TEXT = {
         "no_evidence": (
             "no se incluyó ninguna foto, grabación o archivo para este elemento — solo "
             "su hash de contenido y sello de tiempo"
+        ),
+        "no_evidence_offloaded": (
+            "no se incluyó ninguna foto, grabación o archivo para este elemento: el "
+            "expediente indica que el original sellado se trasladó a un almacenamiento "
+            "externo. Su hash de contenido y su sello de tiempo sí están aquí; este "
+            "expediente no puede mostrar lo que cubren, y nada en él confirma adónde "
+            "fue el archivo"
         ),
         "shared_media": "falta el archivo compartido o no coincide con su hash registrado",
         "custody_binding": "la custodia no vincula el archivo compartido con el original",
@@ -426,6 +439,14 @@ class ItemVerdict:
     # every pre-existing caller that builds an ItemVerdict without naming this
     # field keeps its prior meaning.
     evidence_present: bool = True
+    # Whether the bundle *states* this item's sealed original was moved to
+    # external storage (issue #296). It is a claim the packet makes and nothing
+    # here can check it -- the drive is not in the packet -- so it changes the
+    # explanation for a byteless item and never a verdict. Granting readiness to
+    # an item on the strength of a field the item itself supplies would undo
+    # #158 from the other direction: anyone hand-crafting a bundle could write
+    # the same three keys.
+    offload_declared: bool = False
 
     @property
     def structurally_intact(self) -> bool:
@@ -468,7 +489,9 @@ class ItemVerdict:
         text = _item_detail_text(language)
         reasons: list[str] = []
         if not self.evidence_present:
-            reasons.append(text["no_evidence"])
+            reasons.append(
+                text["no_evidence_offloaded" if self.offload_declared else "no_evidence"]
+            )
         if not self.shared_media_ok:
             reasons.append(text["shared_media"])
         if not self.custody_binding_ok:
@@ -743,6 +766,7 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
     poster_hash = _s(item, "poster_hash")
     transcript = _s(item, "transcript")
     has_original = item.get("has_original") is True
+    offload_declared, offload_detail = _declared_offload(item)
     notes: list[str] = []
 
     if not inspect_references and (shared_name or poster_name or has_original):
@@ -926,10 +950,25 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
     #    separately, above, by shared_media_ok / original_fixity_ok.
     evidence_present = bool(shared_name) or has_original
     if not evidence_present:
-        notes.append(
-            "no shared media and no embedded original: this item carries no "
-            "checkable evidence bytes"
-        )
+        if offload_declared:
+            # Same verdict, a true reason. Before this branch the only sentence
+            # available said "this item carries no checkable evidence bytes",
+            # which is correct and unhelpful: it reads as a defect in the export
+            # rather than as the thing the tenant chose to do to fit the case on
+            # her phone. The wording stays careful about what is known -- the
+            # bundle *says* the original was offloaded, and no packet can show
+            # that a file is on a drive somewhere.
+            notes.append(
+                "no shared media and no embedded original: the bundle states this "
+                "item's sealed original was moved to external storage "
+                f"({offload_detail}). Its content hash and timestamp are present; "
+                "its bytes are not, and this packet cannot check that claim"
+            )
+        else:
+            notes.append(
+                "no shared media and no embedded original: this item carries no "
+                "checkable evidence bytes"
+            )
 
     return ItemVerdict(
         capture_id=capture_id,
@@ -947,7 +986,35 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
         timestamp_present=timestamp_present,
         timestamp_kind=timestamp_kind,
         evidence_present=evidence_present,
+        offload_declared=offload_declared,
     )
+
+
+def _declared_offload(item: Mapping[str, JSONValue]) -> tuple[bool, str]:
+    """Read the item's offload claim, defensively (issue #296).
+
+    Every field here is attacker-controlled, so the block only counts when it is
+    an object whose ``state`` is the one value this vocabulary defines. A bundle
+    that writes ``offload: true``, or an unknown state, gets the ordinary
+    byteless treatment -- an unrecognized claim must not become a recognized
+    excuse.
+
+    The returned detail is for a human reading the report; it never reaches a
+    verdict. ``container_hash`` is echoed truncated so a reader holding the drive
+    can compare it with the file in front of them, which is the one check this
+    packet genuinely enables.
+    """
+    raw = item.get(OFFLOAD_ITEM_KEY)
+    if not isinstance(raw, dict) or raw.get("state") != OFFLOAD_STATE_OFFLOADED:
+        return False, ""
+    at = raw.get("offloaded_at")
+    container = raw.get("container_hash")
+    parts = []
+    if isinstance(at, str) and at:
+        parts.append(f"recorded at {at}")
+    if isinstance(container, str) and len(container) == 64:
+        parts.append(f"container sha256 {container[:12]}…")
+    return True, "; ".join(parts) or "no further detail given"
 
 
 def _hash_packet_reference(  # noqa: C901 -- security checks are intentionally linear

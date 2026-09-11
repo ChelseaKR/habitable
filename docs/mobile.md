@@ -96,13 +96,40 @@ what stops a list covering part of the case from reading as a list covering the
 case. A case with no captures at all gets its own sentence rather than an empty
 list, for the same reason.
 
-**There is no way to reclaim space inside a case today, and exporting is not one.**
-An export *adds* a copy; it removes nothing from the vault, and the sealed originals
-are the copy that must survive, so deleting one by hand destroys the evidence the
-custody chain and the timestamp token were built over. Moving a sealed original to
-external storage while leaving a custody-bound stub behind — the operation a tenant
-on a full phone actually needs — is not built: it is issue #296. Until it is, keep
-the vault somewhere durable and plan the device's space for the whole case.
+**Exporting is not how you reclaim space.** An export *adds* a copy; it removes
+nothing from the vault, and the sealed originals are the copy that must survive, so
+deleting one by hand destroys the evidence the custody chain and the timestamp token
+were built over.
+
+**`habitable offload` is how** (issue #296). It moves one sealed original into an
+encrypted container on a USB stick, an SD card, or an external disk, and leaves the
+custody-bound stub behind: the content hash the timestamp token covers, every token,
+and the whole chain of custody stay on the device.
+
+```sh
+habitable status --vault ~/case --storage          # which capture is large
+habitable offload cap-… --vault ~/case --to /Volumes/STICK/habitable
+habitable restore cap-… --vault ~/case --from /Volumes/STICK/habitable
+```
+
+Four things to know before you use it.
+
+- **The container on the drive is the only copy of that file.** Deleting it deletes
+  the photograph. The record of it would remain, with nothing behind it.
+- **The key stays in the vault, not on the drive.** The container is unreadable
+  without this vault, and a passphrase change or a `key rotate-dek` keeps it readable.
+- **`habitable export` refuses while an original is offloaded**, and names the
+  captures to restore. `--allow-offloaded` exports anyway; the packet then says which
+  items carry no evidence bytes, and a verifier will not report it as evidence-ready.
+  Plugging the drive in and restoring first is the complete packet.
+- **`habitable sync` refuses too**, for the same reason: this device cannot send
+  bytes it does not hold.
+
+**It frees the sealed original's bytes, not quite that many.** The offload record and
+the two custody entries are themselves stored, so the vault shrinks by a little less
+than the file; for a very small capture it can grow. `habitable offload` prints what
+left *and* re-measures the case, so the second number is the one to compare against
+the phone's own storage screen.
 
 ## Data cost and metered links (R-18, R-19)
 

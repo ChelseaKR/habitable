@@ -157,6 +157,23 @@ def export_message(
             "unfinished feature: restoring it needs a versioned, rehashed custody-view "
             "format that binds its own scope, plus independent crypto review (issue #262)."
         )
+    offloaded = [record.capture_id for record in vault.offloaded_records()]
+    if offloaded:
+        # Sync sends the sealed originals a peer does not already hold, and the
+        # recipient refuses a message whose bytes neither side has
+        # (_validate_capture). An offloaded original is not on this device, so
+        # the exporter would die inside `read_original` on a file the tenant
+        # deliberately moved. Refuse here instead, naming the items and the way
+        # back, rather than surfacing a storage decision as a vault corruption
+        # error deep in the protocol (issue #296).
+        raise SyncError(
+            "cannot sync: the sealed original for "
+            + ", ".join(offloaded)
+            + " is on external storage, so this device cannot send its bytes. Plug the "
+            "drive in and run `habitable restore <capture> --from <path>` first. "
+            "Carrying an offloaded item across sync needs a protocol change that lets a "
+            "peer accept a byteless record; it is not supported today."
+        )
     vault.document.attest_unsigned_fields()
     selected_state = dict(state) if state is not None else vault.document.to_state()
     if selected_state.get("case_id") != vault.document.case_id:

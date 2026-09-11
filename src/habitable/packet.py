@@ -41,7 +41,7 @@ from .config import SharingPolicy
 from .correspondence import MESSAGE_MEDIA_TYPE, parse_message, summarize
 from .disclosure import ScopeStatement, proof_statement, scope_statement
 from .errors import CaptureError, PacketError, TimestampError
-from .evidence import CustodyAction, CustodyLog
+from .evidence import OFFLOAD_ITEM_KEY, CustodyAction, CustodyLog
 from .exif import make_shared_copy
 from .handoff import build_handoff_manifest, render_handoff_html
 from .media import extract_poster_frame, make_shared_media_copy
@@ -52,7 +52,7 @@ from .sensor import parse_sensor_csv
 from .syncstate import SyncRedundancy
 from .tsa import TimestampAuthority, verify_token
 from .usecases import get_profile, profile_expired
-from .vault import Vault
+from .vault import OffloadRecord, Vault
 
 __all__ = ["PACKET_VERSION", "PacketResult", "SealOutcome", "build_packet"]
 
@@ -151,6 +151,7 @@ def build_packet(
     generated_at: str | None = None,
     policy: SharingPolicy | None = None,
     tsa: TimestampAuthority | None = None,
+    allow_offloaded: bool = False,
 ) -> PacketResult:
     """Assemble and publish a complete packet without exposing partial output.
 
@@ -182,6 +183,8 @@ def build_packet(
             "independent crypto review (issue #262)."
         )
 
+    _require_offloaded_originals_present(vault, allow_offloaded=allow_offloaded)
+
     sharing = policy or vault.config.sharing
     if sharing.export_custody_identities:
         raise PacketError(
@@ -211,6 +214,7 @@ def build_packet(
             generated_at=generated_at,
             policy=sharing,
             tsa=tsa,
+            allow_offloaded=allow_offloaded,
         )
         vault.save()
         vault_saved = True
@@ -255,6 +259,7 @@ def _build_packet_in_dir(  # noqa: C901 -- packet staging keeps one rollback bou
     generated_at: str | None,
     policy: SharingPolicy | None,
     tsa: TimestampAuthority | None = None,
+    allow_offloaded: bool = False,
 ) -> PacketResult:
     """Build every packet artifact inside a new, unpublished directory."""
     sharing = policy or vault.config.sharing
@@ -292,6 +297,7 @@ def _build_packet_in_dir(  # noqa: C901 -- packet staging keeps one rollback bou
                 workspace,
                 include_originals=include_originals,
                 actor=actor,
+                allow_offloaded=allow_offloaded,
             )
             _require_shareable_bytes(item, capture.capture_id, capture.media_type)
             items.append(item)
@@ -309,6 +315,7 @@ def _build_packet_in_dir(  # noqa: C901 -- packet staging keeps one rollback bou
                 workspace,
                 include_originals=include_originals,
                 actor=actor,
+                allow_offloaded=allow_offloaded,
             )
             _require_shareable_bytes(item, artifact.artifact_id, artifact.media_type)
             items.append(item)
@@ -418,6 +425,13 @@ def _build_packet_in_dir(  # noqa: C901 -- packet staging keeps one rollback bou
             "timeline_count": len(timeline_entries),
             "custody_bound_timeline_count": len(timeline_entries),
             "artifact_count": sum(1 for item in items if item.get("record_kind") == "artifact"),
+            # How many items in this packet carry no evidence bytes because
+            # their sealed original is on external storage (issue #296). Zero on
+            # every packet this project has ever produced before now, and
+            # emitted unconditionally so that "no items are offloaded" is a
+            # statement the bundle makes rather than one a reader infers from a
+            # key that is not there.
+            "offloaded_count": sum(1 for item in items if item.get(OFFLOAD_ITEM_KEY)),
             "relationship_count": len(relationships),
             "redundancy": _redundancy_json(vault.sync_redundancy()),
         },
@@ -514,6 +528,33 @@ def _publish_staged_packet(staged: Path, target: Path) -> None:
         raise
 
 
+def _require_offloaded_originals_present(vault: Vault, *, allow_offloaded: bool) -> None:
+    """Refuse a packet whose bytes are on a USB stick, unless asked twice (#296).
+
+    An offloaded original is *temporarily* detached: the container is on the
+    drive and one `habitable restore` puts it back. That makes it different from
+    the permanently unexportable case `_require_shareable_bytes` handles, and it
+    makes refusing the right default -- producing a packet with holes when a
+    complete one is one command away would be a worse answer than saying so.
+
+    The opt-in exists because the drive is not always to hand. It produces a
+    packet that names each byteless item as offloaded; `habitable verify` reports
+    it that way and still withholds readiness, so the escape hatch cannot be used
+    to make a thinner packet look like a whole one.
+    """
+    offloaded = [record.capture_id for record in vault.offloaded_records()]
+    if not offloaded or allow_offloaded:
+        return
+    listed = ", ".join(offloaded)
+    raise PacketError(
+        f"cannot export: the sealed original for {listed} is on external storage, so "
+        "the packet would carry no evidence bytes for it. Plug the drive in and run "
+        "`habitable restore <capture> --from <path>` first. To export without those "
+        "bytes anyway, re-run with --allow-offloaded: the packet will name each "
+        "missing item and a verifier will not call it evidence-ready."
+    )
+
+
 def _require_shareable_bytes(item: dict[str, JSONValue], record_id: str, media_type: str) -> None:
     """Refuse to publish a packet item carrying neither a shared copy nor an
     embedded original (issue #158, decision 1).
@@ -537,6 +578,15 @@ def _require_shareable_bytes(item: dict[str, JSONValue], record_id: str, media_t
     """
     if item.get("shared_name") or item.get("has_original"):
         return
+    if item.get(OFFLOAD_ITEM_KEY):
+        # An offloaded item is byteless for a declared reason the packet carries
+        # and the verifier reads (#296). The caller already passed
+        # --allow-offloaded to get here, and nothing about that exemption makes
+        # the item ready: `evidence_present` stays False on the other side, so
+        # the packet is reported as not evidence-ready and says which item is
+        # why. What is suppressed here is the *whole-packet refusal*, not the
+        # verdict.
+        return
     raise PacketError(
         f"cannot export capture {record_id} (media type {media_type!r}): it would "
         "carry neither a metadata-stripped shared copy nor an embedded original, "
@@ -558,12 +608,19 @@ def _build_item(
     *,
     include_originals: bool,
     actor: str,
+    allow_offloaded: bool = False,
 ) -> dict[str, JSONValue]:
     capture_id = capture.capture_id
     content_hash = capture.content_hash
     media_type = capture.media_type
     issue_id = capture.issue_id
     captured_at = capture.captured_at
+
+    offload = vault.offload_record(capture_id)
+    if offload is not None:
+        if not allow_offloaded:  # pragma: no cover - build_packet refuses first
+            raise PacketError(f"sealed original for {capture_id} is offloaded")
+        return _offloaded_item(_capture_item_base(vault, capture), offload)
 
     original_bytes = vault.read_original(capture_id, content_hash)
     ext = _EXT_BY_TYPE.get(media_type, "")
@@ -680,8 +737,15 @@ def _build_artifact_item(
     *,
     include_originals: bool,
     actor: str,
+    allow_offloaded: bool = False,
 ) -> dict[str, JSONValue]:
     """Build a packet item for a sealed document-like artifact."""
+    offload = vault.offload_record(artifact.artifact_id)
+    if offload is not None:
+        if not allow_offloaded:  # pragma: no cover - build_packet refuses first
+            raise PacketError(f"sealed original for {artifact.artifact_id} is offloaded")
+        return _offloaded_item(_artifact_item_base(vault, artifact), offload)
+
     original_bytes = vault.read_original(artifact.artifact_id, artifact.content_hash)
     image_ext = _EXT_BY_TYPE.get(artifact.media_type, "")
     document_ext = _DOCUMENT_EXT_BY_TYPE.get(artifact.media_type, "")
@@ -759,6 +823,101 @@ def _build_artifact_item(
                 CustodyAction.ARTIFACT_ADDED,
             ),
         },
+    }
+
+
+def _capture_item_base(vault: Vault, capture: Capture) -> dict[str, JSONValue]:
+    """The fields of a capture item that do not depend on its bytes."""
+    capture_id = capture.capture_id
+    token = vault.get_token(capture_id)
+    return {
+        "record_kind": "capture",
+        "capture_id": capture_id,
+        "issue_id": capture.issue_id,
+        "content_hash": capture.content_hash,
+        "media_type": capture.media_type,
+        "captured_at": capture.captured_at,
+        "transcript": capture.transcript,
+        "timestamp": cast(JSONValue, token.to_dict()) if token is not None else None,
+        "archive_timestamps": cast(
+            JSONValue, [t.to_dict() for t in vault.get_archive_tokens(capture_id)]
+        ),
+        "additional_timestamps": cast(
+            JSONValue, [t.to_dict() for t in vault.get_additional_tokens(capture_id)]
+        ),
+    }
+
+
+def _artifact_item_base(vault: Vault, artifact: Artifact) -> dict[str, JSONValue]:
+    """The fields of an artifact item that do not depend on its bytes.
+
+    The commitment and its custody binding are derived from the artifact's
+    *semantic payload*, not from the file, so they are as true for an offloaded
+    artifact as for a present one and are built here rather than skipped.
+    """
+    artifact_id = artifact.artifact_id
+    token = vault.get_token(artifact_id)
+    return {
+        "record_kind": "artifact",
+        "capture_id": artifact_id,
+        "issue_id": artifact.issue_id,
+        "content_hash": artifact.content_hash,
+        "media_type": artifact.media_type,
+        "captured_at": artifact.occurred_at,
+        "transcript": artifact.accessible_description,
+        "timestamp": cast(JSONValue, token.to_dict()) if token is not None else None,
+        "archive_timestamps": cast(
+            JSONValue, [t.to_dict() for t in vault.get_archive_tokens(artifact_id)]
+        ),
+        "additional_timestamps": cast(
+            JSONValue, [t.to_dict() for t in vault.get_additional_tokens(artifact_id)]
+        ),
+        "artifact": cast(JSONValue, artifact.semantic_payload()),
+        "integrity": {
+            "algorithm": "sha256",
+            "commitment": artifact.commitment(),
+            "custody_action": "artifact_added",
+            "binding_stage": _extended_binding_stage(
+                vault,
+                artifact_id,
+                "artifact_commitment",
+                artifact.commitment(),
+                CustodyAction.ARTIFACT_ADDED,
+            ),
+        },
+    }
+
+
+def _offloaded_item(base: dict[str, JSONValue], offload: OffloadRecord) -> dict[str, JSONValue]:
+    """A packet item whose sealed original is on external storage (issue #296).
+
+    Everything the timestamp token covers is here -- the content hash, the token,
+    its archives and its redundant authorities -- and none of the bytes are.
+
+    **Every content-derived field on this item reads as absent, and the
+    ``offload`` block is why.** ``shared_name``/``shared_hash``/``stripped``,
+    the poster frame, ``sensor`` and ``correspondence`` are all derived by
+    reading the original, so an offloaded ``.eml`` artifact emits
+    ``"correspondence": null`` not because it is not a message but because
+    nothing here could look. Reading any of those nulls as a fact about the
+    content is a mistake the ``offload`` block exists to prevent, and
+    `docs/bundle-schema.md` says so beside the field.
+
+    ``has_original`` is ``false`` even under ``--include-originals``: the flag
+    says what the export was asked to do, this field says what is in the
+    directory, and for this item nothing is.
+    """
+    return {
+        **base,
+        "shared_name": "",
+        "shared_hash": "",
+        "stripped": "not applicable (the sealed original is not on this device)",
+        "poster_name": "",
+        "poster_hash": "",
+        "has_original": False,
+        "sensor": None,
+        "correspondence": None,
+        OFFLOAD_ITEM_KEY: cast(JSONValue, offload.packet_json()),
     }
 
 
@@ -1033,9 +1192,17 @@ def _disclosures(
             "shared-copy policy permits embedded metadata, including location, to be "
             "retained in still-image shared copies"
         )
+    # Two numbers, not one. This line used to read "{len(items)} media item(s)
+    # included as shared copies", which counts items rather than shared copies --
+    # already wrong for the `--include-originals`-on-an-unsanitizable-type case
+    # that §4.2b of the verifier decision table describes (an embedded original,
+    # no shared preview), and wrong for every offloaded item, which has no bytes
+    # in the packet at all. A packet that carried none of its shared copies would
+    # have said it carried all of them.
+    shared_copies = sum(1 for item in items if item.get("shared_name"))
     notes = [
         *scope.lines(),
-        f"{len(items)} media item(s) included as shared copies",
+        f"{shared_copies} of {len(items)} media item(s) included as shared copies",
         metadata,
     ]
     if forced and not sharing.strip_all_metadata:
@@ -1047,6 +1214,15 @@ def _disclosures(
             "the video/audio sanitizer has no retain mode"
         )
     notes.append("custody identities not exported")
+    offloaded = sum(1 for item in items if item.get(OFFLOAD_ITEM_KEY))
+    if offloaded:
+        notes.append(
+            f"{offloaded} item(s) carry NO evidence bytes in this packet: their sealed "
+            "originals are on external storage and the export was run with "
+            "--allow-offloaded. Each one's content hash and timestamp are included and "
+            "verify normally; a verifier will not report this packet as evidence-ready, "
+            "and this packet cannot show what those hashes cover"
+        )
     data_items = sum(1 for item in items if item.get("sensor") is not None)
     if data_items:
         notes.append(
