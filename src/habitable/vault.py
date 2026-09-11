@@ -45,13 +45,20 @@ from .crypto import (
     open_keyfile,
 )
 from .errors import CryptoError, FixityError, TimestampError, VaultError
-from .evidence import CustodyAction, CustodyLog
+from .evidence import OFFLOAD_STATE_OFFLOADED, CustodyAction, CustodyLog
 from .model import CaseDocument
 from .syncstate import PeerAuthorization, SyncRedundancy, redundancy_from_peers
 from .threshold import create_recovery_bundle, recover_dek
 from .tsa import TimestampToken
 
-__all__ = ["CaptureSize", "DeferredItem", "StorageFootprint", "Vault", "human_bytes"]
+__all__ = [
+    "CaptureSize",
+    "DeferredItem",
+    "OffloadRecord",
+    "StorageFootprint",
+    "Vault",
+    "human_bytes",
+]
 
 _CONFIG = "config.toml"
 _KEYFILE = "keyfile.json"
@@ -86,7 +93,16 @@ _PEER_HAVE = "peer_have.enc"
 # Pairing keys, exact allowlisted identities, replay ids, receipts, and imported
 # source-custody proofs. This is encrypted local policy state, never CRDT-merged.
 _SYNC_SECURITY = "sync_security.enc"
-_SAVE_BLOBS = (_CASE, _CUSTODY, _DEFERRED, _PEER_HAVE, _SYNC_SECURITY)
+# Local-only record of the sealed originals this device has moved to external
+# encrypted storage (issue #296), and the per-container keys that can read them
+# back. Device-local on purpose and never CRDT-merged: "the bytes are on a USB
+# stick rather than in originals/" is a fact about *this* phone, and a peer that
+# still holds its own copy must not be told its original is elsewhere. It is
+# listed in _SAVE_BLOBS (and therefore in _blob_plaintexts) so a DEK rotation
+# re-encrypts the container keys along with everything else -- a key left behind
+# under the old DEK would make every offloaded original unreadable for good.
+_OFFLOAD = "offload.enc"
+_SAVE_BLOBS = (_CASE, _CUSTODY, _DEFERRED, _PEER_HAVE, _SYNC_SECURITY, _OFFLOAD)
 _SAVE_JOURNAL = ".save-transaction.json"
 _MAX_SAVE_JOURNAL_BYTES = 4096
 _SAVE_TRANSACTION_ID = re.compile(r"^[0-9a-f]{32}$")
@@ -123,6 +139,95 @@ class CaptureSize:
     sealed_bytes: int
 
 
+#: The filename suffix of an offload container on external media. Deliberately
+#: self-describing: a tenant looking at a USB stick months later should be able
+#: to tell what the file is for, and `docs/sneakernet-sync.md` names it.
+OFFLOAD_CONTAINER_SUFFIX = ".habitable-offload"
+
+#: Upper bound on an offload container read back from external media. The bytes
+#: come from a removable device and are attacker-controlled until the AEAD tag
+#: says otherwise, so the size is checked by `stat` before anything is read into
+#: memory. It is generous rather than tight because the thing inside is a sealed
+#: video original, which `read_original` already holds in memory in one piece.
+_MAX_OFFLOAD_CONTAINER_BYTES = 4 * 1024**3
+
+#: Length of a container key, matching the ChaCha20-Poly1305 key SymmetricKey takes.
+_OFFLOAD_KEY_BYTES = 32
+
+
+@dataclass(frozen=True, slots=True)
+class OffloadRecord:
+    """The custody-bound stub left in the vault when a sealed original moves out.
+
+    Everything needed to prove the item is still the same item stays here: the
+    ``content_hash`` the timestamp token covers, and the SHA-256 of the container
+    that was written. ``key_hex`` is the container's own AEAD key -- not the
+    vault DEK -- so that a DEK rotation, which cannot reach a USB stick, leaves
+    every offloaded original readable: the key travels inside the vault blob that
+    rotation re-encrypts.
+
+    ``target_label`` is whatever the tenant typed to remind herself which drive
+    this is. It is vault-only. It never reaches the custody entry's exported
+    ``details`` and never reaches a packet, because "the green USB stick in the
+    kitchen drawer" is a fact about a person's home, and a verifier does not need
+    it to read the record.
+    """
+
+    capture_id: str
+    content_hash: str
+    container_name: str
+    container_hash: str
+    key_hex: str
+    sealed_bytes: int
+    offloaded_at: str
+    target_label: str = ""
+
+    def to_json(self) -> dict[str, JSONValue]:
+        return {
+            "capture_id": self.capture_id,
+            "content_hash": self.content_hash,
+            "container_name": self.container_name,
+            "container_hash": self.container_hash,
+            "key_hex": self.key_hex,
+            "sealed_bytes": self.sealed_bytes,
+            "offloaded_at": self.offloaded_at,
+            "target_label": self.target_label,
+        }
+
+    @classmethod
+    def from_json(cls, raw: JSONValue) -> OffloadRecord:
+        if not isinstance(raw, dict):
+            raise VaultError("corrupt offload record")
+        try:
+            sealed_bytes = int(cast(int, raw["sealed_bytes"]))
+            return cls(
+                capture_id=str(raw["capture_id"]),
+                content_hash=str(raw["content_hash"]),
+                container_name=str(raw["container_name"]),
+                container_hash=str(raw["container_hash"]),
+                key_hex=str(raw["key_hex"]),
+                sealed_bytes=sealed_bytes,
+                offloaded_at=str(raw["offloaded_at"]),
+                target_label=str(raw.get("target_label", "")),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise VaultError("corrupt offload record") from exc
+
+    def packet_json(self) -> dict[str, JSONValue]:
+        """The subset a packet publishes about this offload.
+
+        Three facts and no more: that the original is offloaded, when, and the
+        hash of the container holding it. The container hash is the only thing a
+        later holder of the drive can check the file against without the vault,
+        so it earns its place; the label and the key do not travel.
+        """
+        return {
+            "state": OFFLOAD_STATE_OFFLOADED,
+            "offloaded_at": self.offloaded_at,
+            "container_hash": self.container_hash,
+        }
+
+
 @dataclass(frozen=True, slots=True)
 class StorageFootprint:
     """How much space a case occupies on the device, and what an export would add
@@ -147,6 +252,15 @@ class StorageFootprint:
     omitted, so a breakdown can say how many captures it measured *and* how many it
     could have: a capture with no ``.enc`` under ``originals/`` has no row at all, and
     a missing row is indistinguishable from a zero-byte one to any reader of the list.
+
+    ``offloaded`` splits one specific reason out of that remainder (issue #296).
+    A capture whose original this device *deliberately moved* to external storage
+    and a capture whose original this device has simply never held are both
+    absent from ``originals/``, and collapsing them would tell a tenant who just
+    freed 400 MB that her photo is missing. The size in an ``offloaded`` row is
+    the size recorded when the original left, so the breakdown can still say what
+    was reclaimed; those bytes are **not** in ``sealed_originals_bytes`` or
+    ``on_disk_bytes``, which stay measurements of what is under the vault path now.
     """
 
     sealed_originals_bytes: int
@@ -156,6 +270,7 @@ class StorageFootprint:
     projected_total_with_export_bytes: int
     per_capture: tuple[CaptureSize, ...]
     captures_without_a_sealed_original: tuple[str, ...] = ()
+    offloaded: tuple[CaptureSize, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,6 +498,7 @@ class Vault:
         deferred: list[DeferredItem],
         peer_have: Mapping[str, Iterable[str]] | None = None,
         sync_peers: Mapping[str, PeerAuthorization] | None = None,
+        offloaded: Mapping[str, OffloadRecord] | None = None,
     ) -> None:
         self.path = path
         self.config = config
@@ -395,6 +511,7 @@ class Vault:
             fingerprint: set(capture_ids) for fingerprint, capture_ids in (peer_have or {}).items()
         }
         self._sync_peers = dict(sync_peers or {})
+        self._offload: dict[str, OffloadRecord] = dict(offloaded or {})
         self._legacy_token_migration_complete = False
 
     # --- lifecycle ------------------------------------------------------------
@@ -478,6 +595,7 @@ class Vault:
         ]
         peer_have = _load_peer_have(path, dek)
         sync_peers = _load_sync_peers(path, dek)
+        offloaded = _load_offload(path, dek)
         vault = cls(
             path,
             config,
@@ -488,7 +606,16 @@ class Vault:
             deferred,
             peer_have,
             sync_peers,
+            offloaded,
         )
+        # An offload is two durable steps: persist the container key, then delete
+        # the sealed original. A crash between them leaves both the record and
+        # the bytes, and `is_offloaded` would then disagree with `has_original`.
+        # Finishing it here is safe in the direction that matters -- the record
+        # only exists because the container was written, read back, decrypted and
+        # re-hashed first -- and it keeps the invariant total: a record exists iff
+        # the sealed original does not.
+        vault._finish_interrupted_offloads()
         # Successful unlock is the authority to migrate pre-encryption token JSON.
         # Publishing the encrypted aggregate precedes plaintext cleanup, so a crash
         # leaves either the legacy generation or a recoverable both-present state.
@@ -807,6 +934,7 @@ class Vault:
             (_NODE, canonical_json({"node_id": self.document.clock.node_id})),
             (_PEER_HAVE, canonical_json(peer_have_json)),
             (_SYNC_SECURITY, canonical_json(sync_security_json)),
+            (_OFFLOAD, canonical_json(self._offload_json())),
         ]
 
     def export_recovery(self, recovery_passphrase: str) -> str:
@@ -872,6 +1000,7 @@ class Vault:
             (_DEFERRED, canonical_json(deferred_json)),
             (_PEER_HAVE, canonical_json(peer_have_json)),
             (_SYNC_SECURITY, canonical_json(sync_security_json)),
+            (_OFFLOAD, canonical_json(self._offload_json())),
         )
         encrypted = tuple(
             (name, self._dek.encrypt(plaintext, aad=name.encode()))
@@ -1054,6 +1183,15 @@ class Vault:
         sealed_name = f"{capture_id}.enc"
         aad = f"original:{capture_id}:{content_hash}".encode()
         (self.path / _ORIGINALS / sealed_name).write_bytes(self._dek.encrypt(raw, aad=aad))
+        # The bytes are on this device again, so nothing about this item is
+        # offloaded any more. Clearing the record here rather than at each call
+        # site makes the invariant total -- an offload record exists iff the
+        # sealed original does not -- and closes a real hole: a peer syncing the
+        # original back (sync._apply_captures reaches this method whenever
+        # has_original is False) would otherwise leave a record claiming the
+        # bytes are on a USB stick sitting beside the bytes, and the next
+        # Vault.open would "finish the interrupted offload" by deleting them.
+        self._offload.pop(capture_id, None)
         return sealed_name
 
     def has_original(self, capture_id: str) -> bool:
@@ -1069,6 +1207,167 @@ class Vault:
         if sha256_bytes(raw) != content_hash:
             raise FixityError(f"sealed original for {capture_id} failed fixity on read")
         return raw
+
+    # --- offload to external encrypted storage (RR-08 / issue #296) -----------
+
+    def is_offloaded(self, capture_id: str) -> bool:
+        """Whether this device has moved this item's sealed original off itself."""
+        return capture_id in self._offload
+
+    def offload_record(self, capture_id: str) -> OffloadRecord | None:
+        return self._offload.get(capture_id)
+
+    def offloaded_records(self) -> tuple[OffloadRecord, ...]:
+        """Every offloaded item, ordered by capture id so output is stable."""
+        return tuple(self._offload[key] for key in sorted(self._offload))
+
+    def _offload_json(self) -> JSONValue:
+        return {key: self._offload[key].to_json() for key in sorted(self._offload)}
+
+    def _finish_interrupted_offloads(self) -> int:
+        """Delete any sealed original whose offload record is already durable.
+
+        See the call site in :meth:`open` for why this direction is the safe one.
+        Returns the number of files removed so a test can assert it did something
+        rather than inferring that from an absence.
+        """
+        finished = 0
+        for capture_id in sorted(self._offload):
+            sealed = self.path / _ORIGINALS / f"{capture_id}.enc"
+            if sealed.exists():
+                sealed.unlink()
+                finished += 1
+        return finished
+
+    def offload_original(
+        self,
+        capture_id: str,
+        content_hash: str,
+        destination: Path,
+        *,
+        label: str = "",
+        offloaded_at: str,
+    ) -> OffloadRecord:
+        """Move one sealed original into an encrypted container on external media.
+
+        The order is the whole safety argument, and it is deliberately not the
+        obvious one:
+
+        1. read and re-verify the sealed original (:meth:`read_original` raises on
+           a fixity failure, so a corrupt original is never the thing that gets
+           carried away);
+        2. encrypt it under a **fresh** container key and write the container;
+        3. read the container back off the destination, re-hash it, decrypt it and
+           re-check the plaintext against ``content_hash`` -- the write is proven
+           before anything is destroyed, not after;
+        4. record the container key in the vault;
+        5. only then delete the sealed original.
+
+        Steps 4 and 5 are not one transaction. Doing 5 first would mean a crash
+        loses both the bytes and the only key that could read the container back:
+        the ordering here fails towards two copies, never zero, and
+        :meth:`_finish_interrupted_offloads` collapses that state on the next
+        open. The caller persists the record with :meth:`save`.
+        """
+        _validate_capture_id(capture_id)
+        if capture_id in self._offload:
+            raise VaultError(
+                f"{capture_id} is already offloaded; restore it before offloading it again"
+            )
+        if not destination.is_dir():
+            raise VaultError(
+                f"offload destination is not a directory: {destination} "
+                "(plug the drive in and point --to at a folder on it)"
+            )
+        container = destination / f"{capture_id}{OFFLOAD_CONTAINER_SUFFIX}"
+        if container.exists():
+            raise VaultError(f"an offload container for {capture_id} is already at {container}")
+
+        raw = self.read_original(capture_id, content_hash)
+        sealed_path = self.path / _ORIGINALS / f"{capture_id}.enc"
+        sealed_bytes = sealed_path.stat().st_size
+        # The container key is minted as raw bytes here rather than through
+        # SymmetricKey.generate(), because it has to be written down: crypto.py
+        # states that a SymmetricKey's bytes are never exposed, and reaching into
+        # it for them would be the wrong way to get an exception to that rule.
+        key_raw = secrets.token_bytes(_OFFLOAD_KEY_BYTES)
+        aad = _offload_aad(capture_id, content_hash)
+        ciphertext = SymmetricKey(key_raw).encrypt(raw, aad=aad)
+        container_hash = sha256_bytes(ciphertext)
+        _write_offload_container(container, ciphertext)
+
+        # Prove the container before destroying the only other copy. A drive that
+        # silently truncated the write, or that is mounted read-only behind a
+        # cache, fails here with the bytes still on the device.
+        written = container.read_bytes()
+        if sha256_bytes(written) != container_hash or (
+            SymmetricKey(key_raw).decrypt(written, aad=aad) != raw
+        ):
+            container.unlink(missing_ok=True)
+            raise VaultError(
+                f"the offload container written to {container} did not read back "
+                "as what was written; nothing was removed from this device"
+            )
+
+        record = OffloadRecord(
+            capture_id=capture_id,
+            content_hash=content_hash,
+            container_name=container.name,
+            container_hash=container_hash,
+            key_hex=key_raw.hex(),
+            sealed_bytes=sealed_bytes,
+            offloaded_at=offloaded_at,
+            target_label=label,
+        )
+        self._offload[capture_id] = record
+        self.save()
+        sealed_path.unlink(missing_ok=True)
+        return record
+
+    def restore_original(self, capture_id: str, source: Path) -> OffloadRecord:
+        """Re-attach an offloaded original from external media, or refuse.
+
+        ``source`` is the folder the container was written to, or the container
+        file itself. The container's SHA-256 is compared with the one recorded
+        when it was written **before** anything is decrypted, so altered bytes are
+        refused by name rather than by an opaque AEAD failure. The caller persists
+        the change with :meth:`save`.
+        """
+        record = self._offload.get(capture_id)
+        if record is None:
+            raise VaultError(f"{capture_id} is not offloaded, so there is nothing to restore")
+        container = source if source.is_file() else source / record.container_name
+        if not container.is_file():
+            raise VaultError(
+                f"no offload container for {capture_id} at {container} "
+                "(is the right drive plugged in?)"
+            )
+        size = container.stat().st_size
+        if size > _MAX_OFFLOAD_CONTAINER_BYTES:
+            raise VaultError(
+                f"offload container at {container} is {size} bytes, "
+                f"above the {_MAX_OFFLOAD_CONTAINER_BYTES}-byte limit"
+            )
+        data = container.read_bytes()
+        found = sha256_bytes(data)
+        if found != record.container_hash:
+            raise FixityError(
+                f"offload container for {capture_id} does not match the hash recorded "
+                f"when it was written: expected {record.container_hash[:12]}…, "
+                f"found {found[:12]}…"
+            )
+        try:
+            raw = SymmetricKey(bytes.fromhex(record.key_hex)).decrypt(
+                data, aad=_offload_aad(capture_id, record.content_hash)
+            )
+        except CryptoError as exc:
+            raise FixityError(
+                f"offload container for {capture_id} could not be decrypted: {exc}"
+            ) from exc
+        # store_original_bytes re-checks the plaintext against content_hash and
+        # clears the offload record, which is what makes the item present again.
+        self.store_original_bytes(capture_id, raw, record.content_hash)
+        return record
 
     # --- storage footprint (R-03) ---------------------------------------------
 
@@ -1108,10 +1407,19 @@ class Vault:
         # breakdown that silently covers 3 of 11 captures is a statement about 3
         # presented as a statement about the case.
         measured = {entry.capture_id for entry in per_capture}
+        # An offloaded capture is absent from originals/ for a reason this device
+        # knows, so it is reported as its own kind rather than as an unexplained
+        # gap (issue #296).
+        offloaded = tuple(
+            CaptureSize(capture_id=record.capture_id, sealed_bytes=record.sealed_bytes)
+            for record in self.offloaded_records()
+            if record.capture_id not in measured
+        )
+        offloaded_ids = {entry.capture_id for entry in offloaded}
         without_original = tuple(
             capture.capture_id
             for capture in self.document.captures()
-            if capture.capture_id not in measured
+            if capture.capture_id not in measured and capture.capture_id not in offloaded_ids
         )
         return StorageFootprint(
             sealed_originals_bytes=sealed,
@@ -1121,6 +1429,7 @@ class Vault:
             projected_total_with_export_bytes=on_disk + projected_shared,
             per_capture=tuple(per_capture),
             captures_without_a_sealed_original=without_original,
+            offloaded=offloaded,
         )
 
     # --- timestamp tokens -----------------------------------------------------
@@ -2693,6 +3002,51 @@ def _load_peer_have(path: Path, dek: SymmetricKey) -> dict[str, set[str]]:
             raise VaultError("corrupt peer-have record")
         result[fingerprint] = {cid for cid in capture_ids if isinstance(cid, str)}
     return result
+
+
+def _load_offload(path: Path, dek: SymmetricKey) -> dict[str, OffloadRecord]:
+    """Load this device's offload records; a vault that predates #296 has none."""
+    if not (path / _OFFLOAD).exists():
+        return {}
+    raw = _decode_json(_read_blob(path, dek, _OFFLOAD))
+    if not isinstance(raw, dict):
+        raise VaultError("corrupt offload record")
+    records: dict[str, OffloadRecord] = {}
+    for capture_id, entry in raw.items():
+        record = OffloadRecord.from_json(entry)
+        if record.capture_id != capture_id:
+            raise VaultError("offload record does not match its capture id")
+        records[capture_id] = record
+    return records
+
+
+def _offload_aad(capture_id: str, content_hash: str) -> bytes:
+    """Bind a container to the one item and the one content hash it holds.
+
+    A container renamed onto another capture's slot, or replayed against an item
+    whose bytes have since changed, fails the AEAD tag rather than decrypting
+    into the wrong record.
+    """
+    return f"offload:{capture_id}:{content_hash}".encode()
+
+
+def _write_offload_container(container: Path, ciphertext: bytes) -> None:
+    """Write a container to external media and flush it before anything is deleted.
+
+    Removable media is the case where a buffered write really does survive the
+    process and not the unmount, so the file and its directory are both fsynced
+    here; the caller then reads the file back before removing the only other copy.
+    """
+    with container.open("wb") as handle:
+        handle.write(ciphertext)
+        handle.flush()
+        os.fsync(handle.fileno())
+    directory = os.open(container.parent, os.O_RDONLY)
+    try:
+        with suppress(OSError):  # some removable filesystems cannot fsync a directory
+            os.fsync(directory)
+    finally:
+        os.close(directory)
 
 
 def _load_sync_peers(path: Path, dek: SymmetricKey) -> dict[str, PeerAuthorization]:

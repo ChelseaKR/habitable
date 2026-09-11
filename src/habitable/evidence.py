@@ -32,7 +32,11 @@ from .crypto import Identity, verify
 from .errors import CustodyError, FixityError
 
 __all__ = [
+    "CUSTODY_EVENT_OFFLOADED",
+    "CUSTODY_EVENT_RESTORED",
     "GENESIS_PREV_HASH",
+    "OFFLOAD_ITEM_KEY",
+    "OFFLOAD_STATE_OFFLOADED",
     "CustodyAction",
     "CustodyEntry",
     "CustodyLog",
@@ -59,6 +63,46 @@ class CustodyAction(StrEnum):
     NOTE_ADDED = "note_added"
     ARTIFACT_ADDED = "artifact_added"
     RELATIONSHIP_ADDED = "relationship_added"
+
+
+# --- offload vocabulary (issue #296) ------------------------------------------
+#
+# These three strings are the entire contract between the producer (which moves a
+# sealed original to external storage and writes the record) and the verifier
+# (which has to explain a packet item that carries no evidence bytes). They live
+# here, in a module the Apache-2.0 verification subset already imports, precisely
+# so that the two sides share one definition instead of restating it: a constant
+# put in the producer's own module would have to be copied into `verify.py`, and
+# a constant put in a producer-only module would drag that module into the
+# verifier's import closure and break
+# `test_verifier_imports_stay_within_apache_subset`.
+#
+# No new `CustodyAction` member is minted for offload/restore. The published
+# schema (`docs/packet-bundle.schema.json`) closes `custodyEntry.action` to eight
+# values, and whether a feature may add a ninth inside `packet_version` 4 is an
+# open maintainer decision (#313). `NOTE_ADDED` carrying `details["event"]`
+# validates against the published schema exactly as it stands today, so the
+# chain entry is recorded now rather than waiting on that call.
+
+#: ``details["event"]`` on the ``note_added`` custody entry written when a sealed
+#: original is moved to external encrypted storage.
+CUSTODY_EVENT_OFFLOADED = "offloaded"
+
+#: ``details["event"]`` on the ``note_added`` custody entry written when an
+#: offloaded original is re-attached after its bytes re-hash to ``content_hash``.
+CUSTODY_EVENT_RESTORED = "restored"
+
+#: The packet-item key carrying the offload record. ``item`` is
+#: ``additionalProperties: true`` in the published schema, so this is additive
+#: and a consumer that does not know the key ignores it -- which is the correct
+#: reading, because the item it hangs off already declares its own absence of
+#: bytes through ``shared_name`` and ``has_original``.
+OFFLOAD_ITEM_KEY = "offload"
+
+#: The only value ``item[OFFLOAD_ITEM_KEY]["state"]`` takes today. An item whose
+#: original has been restored carries no offload block at all, rather than a
+#: second state, so "present" and "offloaded" cannot disagree.
+OFFLOAD_STATE_OFFLOADED = "offloaded"
 
 
 # --- content fixity -----------------------------------------------------------
