@@ -9,6 +9,7 @@ custody all stay, and the chain is extended rather than rewritten.
 
 from __future__ import annotations
 
+import importlib
 import json
 from collections.abc import Callable
 from dataclasses import replace
@@ -790,3 +791,43 @@ def test_a_failed_container_write_leaves_the_sealed_original_alone(
     assert vault.has_original(capture_id)
     assert not vault.is_offloaded(capture_id)
     assert vault.read_original(capture_id, content_hash) == before
+
+
+def test_a_container_that_reads_back_wrong_costs_nothing(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The readback step, exercised. Written because a control found it uncovered.
+
+    `offload_original` re-reads the container off the drive, re-hashes it and
+    decrypts it before deleting the only other copy. Sabotaging that check ran
+    the whole suite green, which means nothing reached it: a real drive that
+    truncates a write silently is exactly the failure the step exists for, and
+    no fixture produces one. A writer that drops the last eight bytes does.
+
+    The module handle comes from ``importlib`` rather than ``from ... import``,
+    so patching cannot silently miss a re-bound name.
+    """
+    vault_module = importlib.import_module("habitable.vault")
+    vault, capture_id = _case(make_vault, make_jpeg)
+    content_hash = vault.document.captures()[0].content_hash
+    before = vault.read_original(capture_id, content_hash)
+    drive = tmp_path / "usb"
+    drive.mkdir()
+
+    real = vault_module._write_offload_container
+
+    def truncating_write(container: Path, ciphertext: bytes) -> None:
+        real(container, ciphertext[:-8])
+
+    monkeypatch.setattr(vault_module, "_write_offload_container", truncating_write)
+    with pytest.raises(VaultError, match="did not read back"):
+        offload_item(vault, capture_id, drive)
+
+    assert vault.has_original(capture_id)
+    assert not vault.is_offloaded(capture_id)
+    assert vault.read_original(capture_id, content_hash) == before
+    # The half-written container is removed rather than left to be restored from.
+    assert list(drive.iterdir()) == []

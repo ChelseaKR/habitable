@@ -204,9 +204,10 @@ def test_status_storage_states_how_many_captures_it_measured_and_names_the_rest(
     issue = vault.document.add_issue(category="mold", room="bath", issue_id="i1")
     present = capture(vault, make_jpeg("p.jpg"), issue_id=issue, tsa=dev_tsa).capture_id
     gone = capture(vault, make_jpeg("q.jpg"), issue_id=issue, tsa=dev_tsa).capture_id
-    # Offloading is #296's other half and does not exist yet; removing the sealed
-    # file is the state this reader has to be honest about either way (a restore
-    # from backup, a partial sync, a hand-deleted file).
+    # A sealed file that is simply gone -- a restore from backup, a partial sync,
+    # a hand-deleted file. This is deliberately NOT the offload state #296 added:
+    # an offloaded capture has a record explaining where it went and is reported
+    # in `StorageFootprint.offloaded` instead (tests/test_offload.py).
     (vault.path / "originals" / f"{gone}.enc").unlink()
 
     fp = vault.storage_footprint()
