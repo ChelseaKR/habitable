@@ -115,6 +115,14 @@ auditability, accessibility, and saying plainly what the tool does not do.
   repair-request / notice letter to the landlord (accessible HTML + PDF), with jurisdiction-aware
   *framing only* and a standing "not legal advice" disclaimer (`docs/letter-generator.md`). Its
   wording and delivery workflow have not been validated by legal counsel or a pilot partner.
+- **Seals the reply, and everything attached to it.** The outbound half of *did the landlord
+  know* is the letter above; the inbound half is what came back. `habitable correspondence`
+  seals an email export (`.eml`) and **each of its attachments as its own custody-bound item**,
+  joined by typed relationships, and the packet renders the message body with a summary of the
+  headers. Those headers are the sender's claims and are labelled as such: habitable checks no
+  DKIM or ARC signature, so a `Date:` header is never treated as a time — the only time bound
+  on any item is its RFC 3161 token. The sealed original keeps the signatures intact for an
+  expert who can evaluate them.
 
 ```console
 $ habitable export --vault ./case-vault --out ./4B-packet

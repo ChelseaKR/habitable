@@ -38,8 +38,9 @@ from typing import cast
 
 from .canonical import JSONValue, canonical_json, sha256_bytes, sha256_file
 from .config import SharingPolicy
+from .correspondence import MESSAGE_MEDIA_TYPE, parse_message, summarize
 from .disclosure import ScopeStatement, proof_statement, scope_statement
-from .errors import PacketError, TimestampError
+from .errors import CaptureError, PacketError, TimestampError
 from .evidence import CustodyAction, CustodyLog
 from .exif import make_shared_copy
 from .handoff import build_handoff_manifest, render_handoff_html
@@ -661,6 +662,11 @@ def _build_item(
         "archive_timestamps": cast(JSONValue, [a.to_dict() for a in archives]),
         "additional_timestamps": cast(JSONValue, [a.to_dict() for a in additional]),
         "sensor": sensor,
+        # A media capture is never a sealed message: the two paths accept disjoint
+        # media types. Emitted as an explicit null rather than omitted so that every
+        # item in a v4 packet answers the question, and "this item is not
+        # correspondence" is never read off a missing key (issue #304).
+        "correspondence": None,
     }
 
 
@@ -739,6 +745,7 @@ def _build_artifact_item(
             [token.to_dict() for token in vault.get_additional_tokens(artifact.artifact_id)],
         ),
         "sensor": None,
+        "correspondence": _correspondence_summary(artifact.media_type, original_bytes),
         "artifact": cast(JSONValue, artifact.semantic_payload()),
         "integrity": {
             "algorithm": "sha256",
@@ -753,6 +760,33 @@ def _build_artifact_item(
             ),
         },
     }
+
+
+def _correspondence_summary(media_type: str, original_bytes: bytes) -> JSONValue:
+    """Derive ``item.correspondence`` from the sealed message, or ``None`` (issue #304).
+
+    The bytes handed in are the ones ``vault.read_original`` has just returned, which
+    it only does after re-deriving their SHA-256 and matching it against the record.
+    So this summary is a function of the hashed evidence and nothing else -- a
+    recipient with the original can recompute it and contradict it, which a summary
+    stored at capture time could not offer. Same slot and same reasoning as
+    ``item.sensor`` (EXP-09).
+
+    A message that cannot be parsed returns ``None`` rather than raising, and that
+    path is reachable: ``habitable artifact reply.eml`` sealed messages long before
+    anything validated them, so a vault can hold an ``.eml`` that
+    :func:`capture_correspondence` would refuse today. An export must not die on
+    evidence that is already sealed and already hashed. ``null`` there is the same
+    statement a photo item makes -- this item carries no message summary -- and the
+    sealed bytes are unaffected either way.
+    """
+    if media_type != MESSAGE_MEDIA_TYPE:
+        return None
+    try:
+        message = parse_message(original_bytes)
+    except CaptureError:
+        return None
+    return cast(JSONValue, summarize(message).to_dict())
 
 
 def _relationship_json(

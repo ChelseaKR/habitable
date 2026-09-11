@@ -1,2 +1,20 @@
 # Generated PDFs are binary release/site artifacts. Do not text-diff or normalize them.
 *.pdf binary
+
+# Committed evidence whose bytes are hash-anchored. `bundle.json` records the
+# SHA-256 of every file beside it and `habitable verify` re-derives them, so any
+# line-ending normalisation on the way into (or out of) the object store makes a
+# fixture fail in a fresh clone while passing on the machine that wrote it.
+#
+# This is not hypothetical: `git add` of an RFC 5322 message under
+# `core.autocrlf=input` staged a blob with ZERO carriage returns where the file
+# on disk had 29 (issue #304). CRLF is mandatory in a mail header block, so the
+# committed packet would have verified locally and failed in CI on a byte no
+# renderer touched. The warning `git add` prints scrolls past in a wall of `A `
+# lines.
+#
+# Check by comparing the STAGED BLOB to the worktree file, never `git hash-object`
+# against your intention -- that applies the same filter and agrees with itself:
+#     git cat-file -p "$(git ls-files -s <path> | awk '{print $2}')" | tr -dc '\r' | wc -c
+/tests/golden/** -text
+/site/sample-packet/** -text

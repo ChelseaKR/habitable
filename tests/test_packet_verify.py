@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 from typing import cast
@@ -23,6 +24,7 @@ from habitable.vault import Vault
 from habitable.verify import (
     VerificationReport,
     _verify_appendix_redundancy,
+    _verify_correspondence,
     _verify_item,
     verify_packet,
 )
@@ -811,3 +813,154 @@ def test_a_stated_device_count_must_agree_with_its_own_arithmetic(
     """
     problems = _verify_appendix_redundancy({"redundancy": redundancy})
     assert any(expected in problem for problem in problems), problems
+
+
+# ----------------------------------------------------------------------------------
+# item.correspondence — a summary the verifier cannot re-derive either (issue #304)
+# ----------------------------------------------------------------------------------
+
+
+def _summary(**overrides: JSONValue) -> dict[str, JSONValue]:
+    """A well-formed correspondence block, with one field replaced per test.
+
+    Written out rather than parsed from a message on purpose: these tests are about
+    what a *packet* may say, including packets nothing in this repository produced.
+    """
+    block: dict[str, JSONValue] = {
+        "correspondence_schema": 1,
+        "from_header": {"name": "From", "state": "present", "value": "a@example.test"},
+        "date_header": {"name": "Date", "state": "absent", "value": ""},
+        "subject": {"name": "Subject", "state": "unreadable", "value": ""},
+        "message_id": {"name": "Message-ID", "state": "present", "value": "<x@y.test>"},
+        "attachment_count": 2,
+        "attachments_readable": 1,
+        "attachments": [
+            {"index": 1, "filename": "a.png", "media_type": "image/png"},
+            {"index": 2, "filename": "b.txt", "media_type": "text/plain"},
+        ],
+        "body": {
+            "state": "not_plain_text",
+            "media_type": "text/html",
+            "text": "",
+            "characters": 0,
+            "truncated": False,
+        },
+        "header_dates_are_claims": True,
+        "warnings": ["attachment 2 of 2 (b.txt, text/plain) could not be decoded"],
+    }
+    block.update(overrides)
+    return block
+
+
+def test_an_item_that_is_not_a_message_raises_no_correspondence_problem() -> None:
+    """Absence and an explicit null are both accepted, and both have to be.
+
+    Every packet exported before issue #304 omits the field, including all seven
+    fixtures committed before this one, and every photo item in every packet since
+    carries it as ``null``. Requiring it would break the compatibility guarantee
+    ``tests/test_golden.py`` exists for on the day an optional field shipped.
+    """
+    assert _verify_correspondence({"capture_id": "cap-1"}) == []
+    assert _verify_correspondence({"capture_id": "cap-1", "correspondence": None}) == []
+
+
+def test_a_well_formed_message_summary_raises_no_problem() -> None:
+    assert _verify_correspondence({"correspondence": _summary()}) == []
+
+
+@pytest.mark.parametrize(
+    ("block", "expected"),
+    [
+        pytest.param("not an object", "correspondence is not an object", id="scalar"),
+        pytest.param(
+            _summary(header_dates_are_claims=False),
+            "header_dates_are_claims must be true",
+            id="a-header-date-promoted-to-a-proved-time",
+        ),
+        pytest.param(
+            _summary(correspondence_schema=2),
+            "correspondence_schema must be 1",
+            id="a-schema-this-verifier-does-not-know",
+        ),
+        pytest.param(
+            _summary(subject={"name": "Subject", "state": "withheld", "value": ""}),
+            "subject.state is not one of",
+            id="state-outside-the-vocabulary",
+        ),
+        pytest.param(
+            _summary(subject={"name": "Subject", "state": "absent", "value": "leak"}),
+            "carries a value while stating it is not present",
+            id="a-value-under-a-state-that-says-there-is-none",
+        ),
+        pytest.param(
+            _summary(attachment_count="two"),
+            "are not counts",
+            id="a-count-as-a-string",
+        ),
+        pytest.param(
+            _summary(attachments_readable=3),
+            "exceeds the attachment_count the message itself declares",
+            id="more-read-than-the-message-declares",
+        ),
+        pytest.param(
+            _summary(attachments=[{"index": 1, "filename": "a.png", "media_type": "image/png"}]),
+            "does not list every attachment the message declares",
+            id="an-inventory-shorter-than-its-own-count",
+        ),
+        pytest.param(
+            _summary(body={"state": "rendered", "media_type": "", "text": ""}),
+            "body.state is not one of",
+            id="body-state-outside-the-vocabulary",
+        ),
+        pytest.param(
+            _summary(from_header="Manager <m@example.test>"),
+            "from_header is not an object",
+            id="a-header-flattened-into-a-bare-string",
+        ),
+        pytest.param(
+            _summary(subject={"name": "Subject", "state": "present", "value": 7}),
+            "subject.value is not a string",
+            id="a-header-value-that-is-not-text",
+        ),
+        pytest.param(
+            _summary(body="the whole message, as a string"),
+            "body is not an object",
+            id="a-body-flattened-into-a-bare-string",
+        ),
+        pytest.param(
+            _summary(attachments={"1": "a.png"}),
+            "attachments is not an array",
+            id="an-inventory-that-is-not-a-list",
+        ),
+    ],
+)
+def test_a_stated_message_summary_must_agree_with_itself(block: JSONValue, expected: str) -> None:
+    """The verifier cannot re-parse the message: a packet exported without
+    ``--include-originals`` does not carry the bytes. What it can refuse is a block
+    that contradicts itself or has been edited into a stronger claim than the format
+    allows -- above all one asserting that its ``Date:`` header is a verified time.
+    """
+    problems = _verify_correspondence({"correspondence": block})
+    assert any(expected in problem for problem in problems), problems
+
+
+def test_the_whole_packet_reports_a_hand_edited_message_summary(tmp_path: Path) -> None:
+    """End to end, because `_verify_correspondence` being right is not the claim.
+
+    The claim is that a packet carrying an edited summary comes back with a problem
+    naming the item, which needs the call site as well as the function.
+    """
+    source = Path(__file__).resolve().parent / "golden" / "correspondence-packet-v4"
+    packet = tmp_path / "packet"
+    shutil.copytree(source, packet)
+    bundle = json.loads((packet / "bundle.json").read_text("utf-8"))
+    edited = next(item for item in bundle["items"] if item.get("correspondence"))
+    edited["correspondence"]["header_dates_are_claims"] = False
+    (packet / "bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
+
+    report = verify_packet(packet)
+    assert not report.structurally_intact
+    assert any(
+        edited["capture_id"] in problem and "header_dates_are_claims" in problem
+        for problem in report.problems
+    ), report.problems
