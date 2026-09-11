@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 from collections.abc import Callable
 from html import unescape
 from pathlib import Path
@@ -30,6 +31,7 @@ from PIL import Image
 
 from habitable.artifact import capture_artifact, capture_correspondence
 from habitable.correspondence import (
+    _TEXT,
     CORRESPONDENCE_BODY_STATES,
     CORRESPONDENCE_HEADER_STATES,
     CORRESPONDENCE_SCHEMA,
@@ -155,6 +157,33 @@ def test_an_unparseable_date_is_text_the_sender_wrote_not_an_unreadable_header()
     summary = summarize(parse_message(b"From: a@example.test\r\nDate: next Tuesday\r\n\r\nx\r\n"))
     assert summary.date_header.state == "present"
     assert summary.date_header.value == "next Tuesday"
+
+
+@pytest.mark.parametrize(
+    ("label", "subject"),
+    [
+        # Raw 8-bit bytes with no declared charset: non-conformant on the wire, and
+        # still something a real export can contain.
+        ("raw 8-bit", b"Subject: humedad y moho en el ba\xf1o\r\n"),
+        # The conformant way to be undecodable: an RFC 2047 encoded word whose
+        # payload is not valid in the charset it declares (Latin-1 labelled utf-8).
+        # The golden fixture uses this form, so its bytes stay 7-bit and UTF-8 clean.
+        (
+            "encoded word, base64",
+            b"Subject: =?utf-8?b?aHVtZWRhZCB5IG1vaG8gZW4gZWwgYmHxbw==?=\r\n",
+        ),
+        ("encoded word, quoted-printable", b"Subject: =?utf-8?q?ba=F1o?=\r\n"),
+    ],
+)
+def test_a_header_whose_bytes_cannot_become_characters_is_unreadable(
+    label: str, subject: bytes
+) -> None:
+    """Every route by which a header is present and cannot be decoded lands on one
+    state, and none of them publishes the replacement-character version of it."""
+    summary = summarize(parse_message(b"From: a@example.test\r\n" + subject + b"\r\nx\r\n"))
+    assert summary.subject.state == "unreadable", label
+    assert summary.subject.value == "", label
+    assert "\ufffd" not in json.dumps(summary.to_dict()), label
 
 
 def test_a_body_that_is_not_plain_text_is_declined_by_name_not_rendered_blank() -> None:
@@ -610,6 +639,9 @@ def test_html_and_the_bundle_agree_about_the_message(
     assert block["body"]["text"] in text
     assert "photo-1.png (image/png), photo-2.png (image/png)" in text
     assert "&lt;manager@example-landlord.test&gt;" in html, "escaped in the raw HTML"
+    # Named like every other table in the packet, so a screen reader announces
+    # what the rows are before it reads them.
+    assert "<caption>Headers as the message states them (unverified)</caption>" in html
 
 
 def test_the_spanish_packet_renders_the_summary_in_spanish(tmp_path: Path) -> None:
@@ -624,3 +656,113 @@ def test_the_spanish_packet_renders_the_summary_in_spanish(tmp_path: Path) -> No
     assert "Resumen del mensaje" in html
     assert "no es un sello de tiempo" in html
     assert "Message summary (as the message states it)" not in html
+
+
+# --- 7. the renderer's own copy ------------------------------------------------
+
+#: EN and ES values that are identical **on purpose**, each with its reason. Written
+#: out rather than tolerated by a blanket "some may match": this project's i18n gate
+#: was measured blind to 128 verbatim-English strings, and a must-differ rule with no
+#: allowlist is the wrong repair -- the allowlist is the work.
+_IDENTICAL_BY_DESIGN = {
+    # A protocol token, not prose. "Message-ID" is the RFC 5322 field name and is
+    # what a recipient sees in their own mail client in either language; translating
+    # it would stop the row naming the thing it names.
+    "message_id",
+}
+
+
+def test_the_packet_renderers_message_copy_is_at_parity() -> None:
+    """EN/ES parity for this module's own labels, by the rule the repo already uses.
+
+    `scripts/check_i18n_parity.py` is the merge gate for `app/i18n/*.json`, the
+    browser app's bundle. It never reads the packet renderers, so their strings drift
+    silently -- a missing Spanish key raises `KeyError` mid-export, and a dropped
+    `{placeholder}` ships a Spanish sentence with a fact missing from it.
+    `test_profile_locale_text_is_at_parity` holds `htmlpacket._PROFILE_TEXT` to
+    exactly this; this is its sibling.
+    """
+    assert set(_TEXT) == {"en", "es"}
+    english, spanish = _TEXT["en"], _TEXT["es"]
+    assert set(english) == set(spanish)
+    assert english, "the copy is empty; this comparison reads nothing"
+
+    for locale, strings in (("en", english), ("es", spanish)):
+        for key, value in strings.items():
+            assert value.strip(), f"{locale}: {key} is empty"
+
+    for key in english:
+        assert set(re.findall(r"{(\w+)}", english[key])) == set(
+            re.findall(r"{(\w+)}", spanish[key])
+        ), key
+
+    # And the Spanish is actually Spanish. A catalog of verbatim English passes key
+    # parity, completeness and placeholder parity alike.
+    identical = {key for key in english if english[key] == spanish[key]}
+    assert identical == _IDENTICAL_BY_DESIGN, (
+        "these EN/ES values match with no recorded reason: "
+        f"{sorted(identical - _IDENTICAL_BY_DESIGN)}"
+    )
+
+
+def test_an_unknown_language_falls_back_to_english_rather_than_raising() -> None:
+    """A packet declaring a language this renderer does not carry still renders.
+
+    `_TEXT[lang]` would raise `KeyError` mid-export over a bundle that is otherwise
+    perfectly valid, and an export that dies is worse than one in the wrong language.
+    """
+    block = summarize(parse_message(_message(parts=0))).to_dict()
+    assert correspondence_view(block, "fr").heading == _TEXT["en"]["heading"]
+    # A regional tag resolves to its base language, as the rest of the packet does.
+    assert correspondence_view(block, "es-MX").heading == _TEXT["es"]["heading"]
+
+
+@pytest.mark.a11y
+def test_the_correspondence_packet_passes_axe_in_both_languages(tmp_path: Path) -> None:
+    """Without this, the message block is scanned by axe **zero** times.
+
+    `test_html_packet_passes_axe` builds a photo-only packet and `test_site_axe`
+    scans the committed site sample; neither holds a sealed message. This renders
+    the committed correspondence fixture -- whose second message carries every
+    state that is not "present": an absent header, an unreadable one, an HTML-only
+    body and an undecodable attachment -- and scans it in both languages, because
+    the Spanish rendering is the one that mixes localized labels with a sender's
+    untranslated header values.
+    """
+    pytest.importorskip("playwright.sync_api")
+    pytest.importorskip("axe_playwright_python.sync_playwright")
+    from axe_playwright_python.sync_playwright import Axe
+    from playwright.sync_api import Error as PlaywrightError
+    from playwright.sync_api import sync_playwright
+
+    source = Path(__file__).resolve().parent / "golden" / "correspondence-packet-v4"
+    bundle = json.loads((source / "bundle.json").read_text("utf-8"))
+    rendered: dict[str, Path] = {}
+    for language in ("en", "es"):
+        bundle["language"] = language
+        path = tmp_path / f"{language}.html"
+        render_packet_html(bundle, source / "media", path)
+        html = path.read_text("utf-8")
+        # The floor: two message blocks per page, or this scan examined nothing new.
+        assert html.count('<div class="correspondence">') == 2, language
+        rendered[language] = path
+
+    violations: dict[str, list[str]] = {}
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except PlaywrightError as exc:
+            pytest.skip(f"Chromium not available: {exc}")
+        try:
+            page = browser.new_page()
+            for language, path in rendered.items():
+                page.goto(path.as_uri(), wait_until="load")
+                results = Axe().run(page)
+                violations[language] = [
+                    v["id"]
+                    for v in results.response.get("violations", [])
+                    if v.get("impact") in {"moderate", "serious", "critical"}
+                ]
+        finally:
+            browser.close()
+    assert violations == {"en": [], "es": []}

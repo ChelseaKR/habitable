@@ -482,6 +482,7 @@ class CorrespondenceView:
     """
 
     heading: str
+    table_caption: str
     claim_note: str
     header_rows: tuple[tuple[str, str], ...]
     attachment_sentence: str
@@ -494,6 +495,7 @@ class CorrespondenceView:
 _TEXT: dict[str, dict[str, str]] = {
     "en": {
         "heading": "Message summary (as the message states it)",
+        "table_caption": "Headers as the message states them (unverified)",
         "claim_note": (
             "Every line below is a claim made by whoever sent this message, read out of "
             "its headers. habitable does not check DKIM or any other mail signature, so "
@@ -537,6 +539,7 @@ _TEXT: dict[str, dict[str, str]] = {
     },
     "es": {
         "heading": "Resumen del mensaje (según lo indica el propio mensaje)",
+        "table_caption": "Encabezados según los indica el mensaje (sin verificar)",
         "claim_note": (
             "Cada línea siguiente es una afirmación de quien envió este mensaje, leída de "
             "sus encabezados. habitable no comprueba DKIM ni ninguna otra firma de correo, "
@@ -686,6 +689,7 @@ def correspondence_view(block: Mapping[str, object], lang: str = "en") -> Corres
     )
     return CorrespondenceView(
         heading=words["heading"],
+        table_caption=words["table_caption"],
         claim_note=words["claim_note"],
         header_rows=tuple(rows),
         attachment_sentence=attachment_sentence,

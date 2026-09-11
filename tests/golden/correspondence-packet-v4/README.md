@@ -34,9 +34,13 @@ a record to say nothing:
 
 - **`Date` absent** — the message never carried the header. Not the same fact as a
   sender who left it empty, and not the same as one this reader could not decode.
-- **`Subject` unreadable** — raw 8-bit bytes with no charset declared. It is there,
-  and it cannot be turned into characters, so no value is published rather than a
-  damaged one.
+- **`Subject` unreadable** — an RFC 2047 encoded word whose bytes are not valid in
+  the charset it declares (Latin-1 labelled `utf-8`). It is there, and it cannot be
+  turned into characters, so no value is published rather than a damaged one. It is
+  an encoded word and not a raw 8-bit byte on purpose: a conformant message is 7-bit
+  on the wire, and the raw byte made this the one tracked file the repository's
+  UTF-8 gate (G1) rejected — correctly, over a file that did not need to be
+  non-conformant to prove the state.
 - **body `not_plain_text`** — an HTML-only mail. The bytes are in the sealed
   original; this packet declines to render attacker-supplied markup and says so
   instead of showing a blank body.

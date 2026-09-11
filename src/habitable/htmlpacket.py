@@ -918,7 +918,7 @@ def _correspondence_block(item: Mapping[str, JSONValue], lang: str) -> list[str]
         '<div class="correspondence">',
         f"<h4>{escape(view.heading)}</h4>",
         f'<p class="warning">{escape(view.claim_note)}</p>',
-        "<table><tbody>",
+        f"<table><caption>{escape(view.table_caption)}</caption><tbody>",
     ]
     out += [
         f'<tr><th scope="row">{escape(label)}</th><td>{escape(value)}</td></tr>'

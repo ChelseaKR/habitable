@@ -23,7 +23,8 @@ that parses:
 
 ``forwarded-fragment.eml``
     The complement, and the one that matters. Its ``Date:`` header is **absent**, its
-    ``Subject:`` is **unreadable** (raw 8-bit bytes, no charset declared), its body is
+    ``Subject:`` is **unreadable** (an encoded word whose bytes are not valid in the
+    charset it declares), its body is
     HTML with no plain-text alternative (**not_plain_text**), and of its two declared
     attachments **one cannot be decoded** (a ``text/plain`` part labelled with a
     charset that does not exist). Every state this format can be in that is not
@@ -128,9 +129,15 @@ def _fragment_eml() -> bytes:
         [
             b"From: Building Manager <manager@example-landlord.test>\r\n",
             b"To: tenant@example.test\r\n",
-            # Raw 8-bit bytes with no charset declared: readable as bytes, not as
-            # characters, which is what "unreadable" means here.
-            b"Subject: humedad y moho en el ba\xf1o\r\n",
+            # An RFC 2047 encoded word whose payload is not valid in the charset it
+            # declares: base64 of Latin-1 bytes labelled utf-8. The header is present
+            # and its bytes cannot become characters, which is what "unreadable" means
+            # here. Written as an encoded word rather than raw 8-bit bytes because a
+            # conformant message is 7-bit on the wire -- and because the raw byte made
+            # this fixture the one tracked file the repository's UTF-8 gate (G1)
+            # rejects, which is a gate firing correctly on a file that did not need
+            # to be non-conformant to prove the state.
+            b"Subject: =?utf-8?b?aHVtZWRhZCB5IG1vaG8gZW4gZWwgYmHxbw==?=\r\n",
             # No Date: header at all. Absent is not the same fact as unreadable, and
             # neither is the same as a sender who wrote an empty value.
             b"Message-ID: <20260102091500.4c11@example-landlord.test>\r\n",

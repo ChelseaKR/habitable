@@ -912,6 +912,26 @@ def test_a_well_formed_message_summary_raises_no_problem() -> None:
             "body.state is not one of",
             id="body-state-outside-the-vocabulary",
         ),
+        pytest.param(
+            _summary(from_header="Manager <m@example.test>"),
+            "from_header is not an object",
+            id="a-header-flattened-into-a-bare-string",
+        ),
+        pytest.param(
+            _summary(subject={"name": "Subject", "state": "present", "value": 7}),
+            "subject.value is not a string",
+            id="a-header-value-that-is-not-text",
+        ),
+        pytest.param(
+            _summary(body="the whole message, as a string"),
+            "body is not an object",
+            id="a-body-flattened-into-a-bare-string",
+        ),
+        pytest.param(
+            _summary(attachments={"1": "a.png"}),
+            "attachments is not an array",
+            id="an-inventory-that-is-not-a-list",
+        ),
     ],
 )
 def test_a_stated_message_summary_must_agree_with_itself(block: JSONValue, expected: str) -> None:
