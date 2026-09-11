@@ -763,3 +763,30 @@ def test_the_status_hint_tells_a_full_phone_what_it_can_do(
     out = capsys.readouterr().out
     assert "habitable offload <capture> --to <folder>" in out
     assert "habitable restore" in out
+
+
+def test_a_failed_container_write_leaves_the_sealed_original_alone(
+    make_vault: Callable[..., Vault], make_jpeg: Callable[..., Path], tmp_path: Path
+) -> None:
+    """The ordering argument, exercised: prove the container, then destroy the copy.
+
+    A drive that cannot be written to is the cheapest way to reach the failure
+    path. What matters is not the error but what survives it: the bytes are
+    still in the vault, no record claims otherwise, and a later export is a
+    complete one.
+    """
+    vault, capture_id = _case(make_vault, make_jpeg)
+    content_hash = vault.document.captures()[0].content_hash
+    before = vault.read_original(capture_id, content_hash)
+    drive = tmp_path / "readonly-usb"
+    drive.mkdir()
+    drive.chmod(0o500)
+    try:
+        with pytest.raises(OSError):
+            offload_item(vault, capture_id, drive)
+    finally:
+        drive.chmod(0o700)
+
+    assert vault.has_original(capture_id)
+    assert not vault.is_offloaded(capture_id)
+    assert vault.read_original(capture_id, content_hash) == before
