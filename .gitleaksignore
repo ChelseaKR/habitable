@@ -132,3 +132,4 @@ tests/golden/sensor-packet-v4/bundle.json:generic-api-key:1
 # commit, while the CI history scan reports `commit:file:rule:line`.
 tests/golden/correspondence-packet-v4/bundle.json:generic-api-key:1
 1020bb467d27118b75905ee4aaf31c8d4228a24d:tests/golden/correspondence-packet-v4/bundle.json:generic-api-key:1
+59d6e1e5472b74da7c9ce430128533c8d7498469:tests/golden/correspondence-packet-v4/bundle.json:generic-api-key:1
