@@ -17,13 +17,14 @@ from pathlib import Path
 import pytest
 
 from habitable.capture import capture
+from habitable.cli import main
 from habitable.errors import FixityError, HabitableError, PacketError, SyncError, VaultError
 from habitable.evidence import CUSTODY_EVENT_OFFLOADED, CUSTODY_EVENT_RESTORED
 from habitable.offload import offload_item, offloaded_item_ids, restore_item
 from habitable.packet import build_packet
 from habitable.sync import export_message
 from habitable.tsa import DevTSA, LocalRfc3161TSA
-from habitable.vault import OFFLOAD_CONTAINER_SUFFIX, Vault
+from habitable.vault import OFFLOAD_CONTAINER_SUFFIX, Vault, human_bytes
 from habitable.verify import verify_packet
 
 
@@ -665,3 +666,100 @@ def test_sync_refuses_rather_than_dying_on_a_missing_sealed_original(
         export_message(sender, receiver.identity.public())
     assert result.capture_id in str(excinfo.value)
     assert "habitable restore" in str(excinfo.value)
+
+
+# --- the CLI surface ----------------------------------------------------------
+
+
+def test_the_cli_round_trips_and_says_what_is_on_the_drive(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    dev_tsa: DevTSA,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`offload` never prints a saving; it prints what left and re-measures the device.
+
+    The vault grows by the record and the custody entries, so "you saved N" would
+    be a number the phone does not show. The measured `on_disk` line is the one a
+    tenant can check against her own storage screen.
+    """
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", room="bath", issue_id="i1")
+    item = capture(vault, make_jpeg("p.jpg"), issue_id=issue, tsa=dev_tsa).capture_id
+    vault.save()
+    drive = tmp_path / "usb"
+    drive.mkdir()
+    args = ["--vault", str(vault.path), "--passphrase", "test-passphrase"]
+
+    assert main(["offload", *args, item, "--to", str(drive), "--label", "green stick"]) == 0
+    out = capsys.readouterr().out
+    assert item in out
+    assert "on external storage" in out
+    assert "it holds the only copy of this file" in out
+    reopened = Vault.open(vault.path, "test-passphrase")
+    assert f"this case now takes {human_bytes(reopened.storage_footprint().on_disk_bytes)}" in out
+
+    assert main(["status", *args, "--storage"]) == 0
+    out = capsys.readouterr().out
+    assert "moved to external storage" in out
+    assert "sealed original not on this device" not in out
+
+    assert main(["restore", *args, item, "--from", str(drive)]) == 0
+    out = capsys.readouterr().out
+    assert "back on this device and re-hashed" in out
+    assert Vault.open(vault.path, "test-passphrase").has_original(item)
+
+
+def test_the_cli_refuses_an_altered_container_with_exit_1(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    dev_tsa: DevTSA,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", room="bath", issue_id="i1")
+    item = capture(vault, make_jpeg("p.jpg"), issue_id=issue, tsa=dev_tsa).capture_id
+    vault.save()
+    drive = tmp_path / "usb"
+    drive.mkdir()
+    args = ["--vault", str(vault.path), "--passphrase", "test-passphrase"]
+    assert main(["offload", *args, item, "--to", str(drive)]) == 0
+    capsys.readouterr()
+
+    container = next(drive.glob(f"*{OFFLOAD_CONTAINER_SUFFIX}"))
+    data = bytearray(container.read_bytes())
+    data[0] ^= 0xFF
+    container.write_bytes(bytes(data))
+
+    assert main(["restore", *args, item, "--from", str(drive)]) == 1
+    captured = capsys.readouterr()
+    assert "does not match the hash recorded" in captured.err
+    assert not Vault.open(vault.path, "test-passphrase").has_original(item)
+
+
+def test_the_status_hint_tells_a_full_phone_what_it_can_do(
+    make_vault: Callable[..., Vault],
+    make_jpeg: Callable[..., Path],
+    dev_tsa: DevTSA,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """RR-08's other half: naming the big capture is only useful with an action.
+
+    `docs/mobile.md` used to advise exporting a packet to reclaim space, which
+    adds a copy and removes nothing. The breakdown now ends with the operation
+    that does.
+    """
+    vault = make_vault()
+    issue = vault.document.add_issue(category="mold", room="bath", issue_id="i1")
+    capture(vault, make_jpeg("p.jpg"), issue_id=issue, tsa=dev_tsa)
+    vault.save()
+
+    assert (
+        main(["status", "--vault", str(vault.path), "--passphrase", "test-passphrase", "--storage"])
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert "habitable offload <capture> --to <folder>" in out
+    assert "habitable restore" in out
