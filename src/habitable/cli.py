@@ -36,6 +36,7 @@ from .i18n import DEFAULT_LOCALE, cli_text, format_datetime, language_name, reso
 from .letter import LetterOptions, RepairLetter, build_letter, render_letter_html
 from .model import ISSUE_CATEGORIES, ISSUE_CATEGORY_ALIASES, ISSUE_SEVERITIES
 from .obslog import configure_logging, enabled_from_env, log_event
+from .offload import offload_item, restore_item
 from .packet import build_packet
 from .pairing import accept_pairing_material, create_pairing_material
 from .patterns import (
@@ -336,6 +337,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="reserved: date-scoped packet exports are held closed for privacy, not unbuilt (#262)",
     )
     p_export.add_argument("--include-originals", action="store_true")
+    p_export.add_argument(
+        "--allow-offloaded",
+        action="store_true",
+        help="export even though some sealed originals are on external storage. The "
+        "packet names each item whose bytes are missing and a verifier will not call "
+        "it evidence-ready; restoring them first is the complete packet (#296)",
+    )
     p_export.add_argument("--no-pdf", action="store_true")
     p_export.add_argument(
         "--no-seal",
@@ -672,6 +680,39 @@ def _build_parser() -> argparse.ArgumentParser:
     p_app.add_argument("--no-timestamp", action="store_true", help="defer timestamping")
     p_app.add_argument("--no-browser", action="store_true", help="do not open a browser")
     p_app.set_defaults(func=_cmd_app)
+
+    p_offload = sub.add_parser(
+        "offload",
+        help="move a sealed original to external encrypted storage, keeping the chain",
+    )
+    add_vault(p_offload)
+    p_offload.add_argument("item", help="capture or artifact id from `habitable status`")
+    p_offload.add_argument(
+        "--to",
+        required=True,
+        type=Path,
+        help="a folder on the drive, SD card, or external disk to write the container to",
+    )
+    p_offload.add_argument(
+        "--label",
+        default="",
+        help="a reminder of which drive this is; stays in the vault and is never exported",
+    )
+    p_offload.set_defaults(func=_cmd_offload)
+
+    p_restore = sub.add_parser(
+        "restore", help="re-attach an offloaded original from external storage"
+    )
+    add_vault(p_restore)
+    p_restore.add_argument("item", help="capture or artifact id from `habitable status`")
+    p_restore.add_argument(
+        "--from",
+        dest="source",
+        required=True,
+        type=Path,
+        help="the folder the container was written to (or the container file itself)",
+    )
+    p_restore.set_defaults(func=_cmd_restore)
 
     p_key = sub.add_parser(
         "key",
@@ -1257,6 +1298,39 @@ def _cmd_status(args: argparse.Namespace) -> int:
 _TRANSPORT_KEYS = {"file": "sync_transport_file", "relay": "sync_transport_relay"}
 
 
+def _cmd_offload(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    locale = resolve_locale(vault.config.language)
+    result = offload_item(vault, args.item, args.to, label=args.label)
+    print(
+        "habitable: "
+        + cli_text(
+            "offload_done",
+            locale,
+            item=result.capture_id,
+            size=human_bytes(result.reclaimed_bytes),
+        )
+    )
+    # Re-measure rather than subtract. The offload record and its custody entry
+    # are themselves stored, so the vault does not shrink by the sealed size --
+    # for a small capture it can grow. Printing the measured figure keeps this
+    # from becoming a saving the tool claims and the device does not show.
+    footprint = vault.storage_footprint()
+    print("  " + cli_text("offload_on_disk", locale, on_disk=human_bytes(footprint.on_disk_bytes)))
+    print("  " + cli_text("offload_keep_drive", locale, path=str(args.to)))
+    print("  " + cli_text("offload_export_note", locale))
+    return 0
+
+
+def _cmd_restore(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    locale = resolve_locale(vault.config.language)
+    result = restore_item(vault, args.item, args.source)
+    print("habitable: " + cli_text("restore_done", locale, item=result.capture_id))
+    print("  " + cli_text("restore_drive_note", locale))
+    return 0
+
+
 def _print_storage_breakdown(footprint: StorageFootprint, locale: str) -> None:
     """Print the per-capture storage breakdown behind ``status --storage`` (RR-08).
 
@@ -1270,7 +1344,7 @@ def _print_storage_breakdown(footprint: StorageFootprint, locale: str) -> None:
     covering the case. The unmeasured ones are then named, never silently dropped.
     """
     measured = len(footprint.per_capture)
-    total = measured + len(footprint.captures_without_a_sealed_original)
+    total = measured + len(footprint.captures_without_a_sealed_original) + len(footprint.offloaded)
     if total == 0:
         print(f"  {cli_text('status_storage_no_captures', locale)}")
         return
@@ -1279,9 +1353,18 @@ def _print_storage_breakdown(footprint: StorageFootprint, locale: str) -> None:
         footprint.per_capture, key=lambda item: (-item.sealed_bytes, item.capture_id)
     ):
         print(f"    {entry.capture_id}: {human_bytes(entry.sealed_bytes)}")
+    # An offloaded capture is absent from originals/ for a reason the tenant
+    # chose, so it gets its own sentence and keeps its size (issue #296). Folded
+    # into the line below it would tell her the photograph she just moved to her
+    # SD card is missing.
+    for entry in footprint.offloaded:
+        detail = cli_text("status_storage_offloaded", locale, size=human_bytes(entry.sealed_bytes))
+        print(f"    {entry.capture_id}: {detail}")
     for capture_id in footprint.captures_without_a_sealed_original:
         print(f"    {capture_id}: {cli_text('status_storage_no_original', locale)}")
     print(f"  {cli_text('status_storage_delete_note', locale)}")
+    if measured:
+        print(f"  {cli_text('status_storage_offload_hint', locale)}")
 
 
 def _print_sync_redundancy(vault: Vault, locale: str) -> None:
@@ -1390,6 +1473,7 @@ def _cmd_export(args: argparse.Namespace) -> int:
         inspector_view=args.inspector_view,
         handoff_profile=args.handoff_profile,
         tsa=seal_tsa,
+        allow_offloaded=args.allow_offloaded,
     )
     locale = resolve_locale(vault.config.language)
     unit = vault.document.get_meta("unit") or vault.document.case_id
