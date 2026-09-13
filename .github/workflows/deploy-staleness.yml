@@ -49,10 +49,16 @@ on:
 # (CICD-04, the same scoping pages.yml and zizmor.yml use).
 permissions: {}
 
-# CI-CD-STANDARD.md 11c. This job writes -- it files, comments on or closes one issue --
-# so a run must never be cancelled mid-write, and a manual dispatch must never race the
-# Monday schedule onto the same issue. A constant group with cancel-in-progress: false
-# serialises them. Nothing here is a required status check.
+# CI-CD-STANDARD.md 11c, taken as the documented *converging* exception rather than the
+# per-commit key, and listed as such in tests/test_guards.py. The usual rule exists because
+# a ref-only key makes every push to `main` compete for one slot and a burst of merges
+# evicts a pending run with zero jobs, leaving a commit with no verdict. That cannot happen
+# here: this workflow has no `push` trigger at all, so no commit is ever waiting on it, and
+# it produces no required status check. What it does have is a write -- it files, comments
+# on or closes one issue -- so a run must never be cancelled mid-write, and a manual
+# dispatch must never race the Monday schedule onto the same issue. A constant group with
+# cancel-in-progress: false serialises them, and a superseded staleness measurement loses
+# nothing: the next run measures the same site again.
 concurrency:
   group: deploy-staleness
   cancel-in-progress: false
