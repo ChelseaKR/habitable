@@ -9,6 +9,47 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **Nothing in this repository was asking whether the live site is this site; now
+  something does** (#335 was the same shape one level down). `pages.yml` publishes on a
+  push that touches `site/**`, and every other gate here is offline, so the one question
+  no check could answer was whether habitable.chelseakr.com is serving what `main` holds.
+  A site frozen weeks behind `main` answers every existing gate correctly, every day.
+
+  **The obvious measurement is the wrong one here, and wrong in the direction that gets
+  a detector muted.** `pages.yml` is a *committed-tree* publisher: it hands
+  `actions/upload-pages-artifact` the `site/` directory exactly as committed and builds
+  nothing on the runner. So the deployed commit and `main` drift apart on every merge
+  that touches code, tests or docs — none of which a reader receives. On the day this
+  landed the live deployment was `b1c62e172` and `main` was `589e30c1a`, five commits
+  later, and `git rev-parse b1c62e172:site` and `git rev-parse 589e30c1a:site` were the
+  same tree object: a visitor had, byte for byte, what `main` had. A sentinel comparing
+  the deployed SHA against `main` would have called that three days and five commits of
+  drift, and been wrong, weekly, until someone turned it off.
+
+  `scripts/deploy_staleness.py` therefore compares the published *subtrees* — equal tree
+  object ids mean equal bytes however far apart the commits are — and reads which
+  directory that is out of `pages.yml` rather than assuming `site/`, because the
+  publisher's `path:` is itself a publication input: changing it changes what a reader
+  receives without changing one byte under `site/`.
+
+  **Age alone is never the verdict, in either direction.** Matching subtrees are current
+  regardless of how old the deployment is. When they differ, the clock runs from the
+  oldest unpublished change rather than from the last deploy, so a fortnight-old
+  deployment does not make this morning's edit overdue.
+
+  **Every unmeasurable case refuses rather than reporting a comfortable zero**: no
+  `github-pages` deployment, none whose newest status is `success` (a deployment row is a
+  request to publish, not a publish), a deployed commit a shallow clone does not contain,
+  a diverged history, a publisher whose upload path cannot be read. Those exit 2 and turn
+  the run red. A real measurement files, updates or closes one issue instead, because a
+  scheduled check that stays red while a deploy is outstanding is a check nobody reads.
+
+  `.github/workflows/deploy-staleness.yml` runs it weekly. It publishes nothing and
+  cannot: workflow-level `permissions: {}`, job-level `contents: read` +
+  `deployments: read` + `issues: write`, no `pages: write`, no `id-token: write`, and it
+  neither widens nor touches `pages.yml`'s path filter. Standard-library only on the
+  runner's bare `python3`, like the i18n gates.
+
 - **A full phone no longer means deleting evidence: `habitable offload` moves a sealed
   original to a USB stick and leaves the chain behind** (#296, RR-08). Video fills a
   low-end phone first, and until now the only way to reclaim that space was to delete

@@ -704,6 +704,10 @@ _WORKFLOW_DIR = Path(__file__).resolve().parent.parent / ".github" / "workflows"
 #: rather than of a commit. CI-CD-STANDARD.md 11c names this exception, and
 #: gives the test for it: none of these produces a required status check.
 _CONVERGING_WORKFLOWS = {
+    "deploy-staleness.yml": (
+        "weekly staleness report; no push trigger, so no commit ever waits on it, and "
+        "the newest measurement supersedes the last"
+    ),
     "pages.yml": "GitHub Pages deploy; the last deploy is the site",
     "release.yml": "publish; queued, never cancelled (11c / 8b)",
     "scorecard.yml": "OpenSSF score; a repository property, not a commit's",
