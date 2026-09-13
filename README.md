@@ -4,7 +4,7 @@
 
 | The local app (English / Español) | An exported, verifiable packet |
 | --- | --- |
-| ![The habitable Unit 4B repair trail showing reported and secured dates, follow-up actions, and the tenant-versus-review copy boundary](site/img/app-en.png) | ![An accessible habitability evidence packet with an issue, a captured photo, and an evidence appendix table](site/img/packet.png) |
+| ![The habitable Unit 4B repair trail showing reported and secured dates, follow-up actions, and the tenant-versus-review copy boundary](https://raw.githubusercontent.com/ChelseaKR/habitable/main/site/img/app-en.png) | ![An accessible habitability evidence packet with an issue, a captured photo, and an evidence appendix table](https://raw.githubusercontent.com/ChelseaKR/habitable/main/site/img/packet.png) |
 
 The app is bilingual (EN/ES) and has automated axe, keyboard, and reflow coverage; a human
 screen-reader pass remains open. Every export ships an axe-tested `packet.html`, a paginated PDF,
@@ -37,6 +37,27 @@ government system and not built for a government customer.
 
 See the current **[capability and claim ledger](docs/capabilities.md)** for the evidence behind each
 shipped, partial, planned, or externally unvalidated claim.
+
+## Install
+
+```console
+$ pip install habitable        # the library and the `habitable` CLI
+$ uv tool install habitable    # just the CLI
+```
+
+**Python 3.14 or newer is required, and that floor is real rather than cautious.** On
+3.12 or 3.13 the resolver reports `Requires-Python >=3.14` and installs nothing, which
+is the right outcome rather than an oversight: 7 of the 49 modules use the PEP 758
+parenthesis-free `except ValueError, OSError:` form, which is a `SyntaxError` on every
+earlier interpreter, so an installed copy could not import its own CLI. Nothing that
+would work on an older Python is being withheld from it.
+
+The deliberate exception is the standalone Apache-2.0 **verifier subset** —
+`habitable.verify`, `habitable.canonical`, and the embeddable `habitable.kernel`
+surface — which a court, a legal-aid group, or another civic tool can vendor without
+adopting this project's Python. CI byte-compiles that subset on 3.12 and 3.13 on every
+change; 3.12 is its own floor, because `canonical.py` uses PEP 695 `type` statements.
+See [`NOTICE`](NOTICE) and [`docs/evidence-kernel.md`](docs/evidence-kernel.md).
 
 ## Try it
 

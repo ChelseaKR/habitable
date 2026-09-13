@@ -197,6 +197,8 @@ jobs:
           version: "0.11.19"
       - name: Build distributions reproducibly
         run: make repro
+      - name: Read the built distributions' metadata (what PyPI would be told)
+        run: make dist-metadata
       - name: Smoke-test the installed wheel and packaged app
         run: |
           uv venv --python 3.14 /tmp/habitable-wheel-smoke
