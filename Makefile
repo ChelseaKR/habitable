@@ -10,7 +10,7 @@
 # quietly defeat the gate. CI runs serial, so this was latent rather than live; it is
 # now structural instead of conventional.
 .NOTPARALLEL:
-.PHONY: help bootstrap install lock-check fmt lint type test cov i18n i18n-usage doc-links markers readability fuzz perf-profile verify audit a11y integration demo site-sample build repro relay-repro clean
+.PHONY: help bootstrap install lock-check fmt lint type test cov i18n i18n-usage doc-links markers readability fuzz perf-profile verify audit a11y integration demo site-sample build repro dist-metadata relay-repro clean
 
 # The character class needs the digits. Without them this silently skipped
 # `i18n`, `i18n-usage` and `a11y` -- three documented targets, one of them a merge
@@ -171,6 +171,12 @@ build: ## Build the wheel + sdist
 
 repro: ## Verify a byte-identical rebuild of the wheel + sdist (builds twice, compares); writes dist/ on success
 	uv run python scripts/check_reproducible_build.py --out-dir dist
+
+dist-metadata: ## Read dist/'s wheel + sdist METADATA and fail on anything PyPI would render wrongly (run after `make build` or `make repro`)
+	# Deliberately the system interpreter, not `uv run`: this gate also runs in the
+	# release job against the exact artifacts about to be uploaded, so it must need
+	# nothing but the standard library and the files in dist/.
+	python3 scripts/check_dist_metadata.py dist
 
 relay-repro: ## Verify byte-identical no-cache relay OCI rebuilds
 	bash scripts/check_reproducible_relay_image.sh

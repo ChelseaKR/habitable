@@ -145,6 +145,11 @@ jobs:
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
       - name: Build wheel + sdist, verifying the build is reproducible
         run: make repro
+      - name: Read the metadata of the exact artifacts this release would upload
+        # Immutable once uploaded. The sibling `gauntlet-evals` 0.2.0 wheel shipped
+        # with no Project-URL lines at all because the tag predated the pyproject
+        # change, and every source-level check passed; this reads dist/ instead.
+        run: make dist-metadata
       - name: Build relay OCI archives twice, verifying byte-identical output
         run: make relay-repro
       - name: Smoke-test the installed wheel and packaged app
