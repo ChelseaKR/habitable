@@ -274,6 +274,32 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Fixed
 
+- **The published packet schema rejected valid v1 and v4 packets; it now accepts every
+  committed packet, and CI checks that with a real validator.**
+  `docs/packet-bundle.schema.json` had drifted from the packets in two ways that a relying
+  party running `jsonschema.validate`, as `docs/embedding-the-verifier.md` suggests, would
+  hit. The custody `action` enum lacked `artifact_added` and `relationship_added`, which
+  packet v4 emits, so the committed v4 packets failed on their custody entries. And every
+  item required `archive_timestamps`, which v1 packets never carried, so the v1 packet
+  failed.
+
+  The enum now lists all ten `CustodyAction` values, and a test pins set equality with the
+  code. `archive_timestamps` stays required, **from `packet_version` 2 onward**, through a
+  document-level `if`/`then` (owner decision, 2026-09-18: stricter, not optional
+  everywhere), so a v2+ item that drops it is still rejected. For a consumer pinned to the
+  schema's `$id` the change only widens what is accepted: v1 packets and v4 custody entries
+  now pass, and nothing that passed before fails.
+
+  `tests/test_packet_schema_conformance.py` validates every golden packet under
+  `tests/golden/` and the site's sample packet against the schema with `jsonschema`
+  (JSON Schema 2020-12), discovering the corpus rather than listing it. Negative controls
+  confirm an invalid packet fails: a v2+ item without `archive_timestamps`, the v1 item
+  under a v2 header, an unknown custody action, and an extra key on a closed object are
+  each rejected. `jsonschema` is a **dev-only** dependency; the runtime, `verify` and
+  `kernel` installs do not pull it. `docs/bundle-schema.md` no longer claims
+  `additionalProperties: true` holds on every object: it names the eleven closed objects,
+  and the test fails if the list stops matching the schema.
+
 - **A packet's headline disclosure counted items, not shared copies** (found while
   building #296). `"N media item(s) included as shared copies"` was `len(items)`, so a
   packet whose only item had an embedded original and no shared preview — the
