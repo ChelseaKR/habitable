@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +35,24 @@ _LOADER = _SITE / "analytics.js"
 _ID = "G-BMJYDCX015"
 _HOST = "habitable.chelseakr.com"
 _KEY = "habitable.chelseakr.com:analytics-opt-out"
-_SCRIPT = re.compile(r"<script\b[^>]*>")
+
+
+class _Scripts(HTMLParser):
+    """Every <script> start tag's attributes, as the browser's tokenizer would see them."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.scripts: list[dict[str, str | None]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "script":
+            self.scripts.append(dict(attrs))
+
+
+def _scripts(source: str) -> list[dict[str, str | None]]:
+    parser = _Scripts()
+    parser.feed(source)
+    return parser.scripts
 
 
 def _pages() -> list[Path]:
@@ -52,8 +70,8 @@ def test_the_site_pages_are_the_twelve_this_file_reasons_about() -> None:
 @pytest.mark.parametrize("page", _pages(), ids=lambda p: str(p.relative_to(_SITE)))
 def test_every_page_loads_the_one_loader_from_its_head(page: Path) -> None:
     source = page.read_text(encoding="utf-8")
-    loaders = [tag for tag in _SCRIPT.findall(source) if "analytics.js" in tag]
-    assert loaders == [f'<script src="{_prefix(page)}analytics.js" defer>'], loaders
+    loaders = [s for s in _scripts(source) if "analytics.js" in (s.get("src") or "")]
+    assert loaders == [{"src": f"{_prefix(page)}analytics.js", "defer": None}], loaders
     assert source.index("analytics.js") < source.index("</head>")
     assert "googletagmanager" not in source, "gtag.js must only ever be added by the loader"
 
