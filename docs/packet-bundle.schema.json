@@ -117,6 +117,14 @@
   },
   "allOf": [
     {
+      "if": { "properties": { "packet_version": { "minimum": 2 } } },
+      "then": {
+        "properties": {
+          "items": { "type": "array", "items": { "required": ["archive_timestamps"] } }
+        }
+      }
+    },
+    {
       "if": { "properties": { "packet_version": { "minimum": 3 } } },
       "then": {
         "properties": {
@@ -246,7 +254,7 @@
         "archive_timestamps": {
           "type": "array",
           "items": { "$ref": "#/$defs/timestampToken" },
-          "description": "Ordered archive (re-)timestamps chaining back to the primary token. Emitted from packet_version 2 onward and absent from v1 items, which is why it is not in this object's required list; verify.py reads it with .get() for the same reason."
+          "description": "Ordered archive (re-)timestamps chaining back to the primary token; may be empty. Required on every item from packet_version 2 onward, which the document-level allOf enforces, and absent from v1 items, which is why it is not in this object's own required list."
         },
         "additional_timestamps": {
           "type": "array",

@@ -3,10 +3,12 @@
 """The published schema must accept the custody hashes this project actually writes.
 
 `docs/packet-bundle.schema.json` is served under a public `$id` and
-`docs/embedding-the-verifier.md` sends third parties to it. Nothing in this repository
-validates a bundle against it, so a defect in the schema is invisible here and visible
-only to the relying party — a court clerk, an inspector, an opposing party — who does
-what the embedding guide tells them to.
+`docs/embedding-the-verifier.md` sends third parties to it. When this file was written
+nothing in this repository validated a bundle against it, so a defect in the schema was
+invisible here and visible only to the relying party — a court clerk, an inspector, an
+opposing party — who does what the embedding guide tells them to. Every committed packet
+is now validated in `tests/test_packet_schema_conformance.py`; the declaration-level
+guards below still matter where no committed packet exercises a value.
 
 One such defect was live: `custodyEntry.prev_hash` and `custodyProof.head_hash` were
 each declared as
