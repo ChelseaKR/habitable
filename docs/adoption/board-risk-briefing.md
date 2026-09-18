@@ -26,8 +26,11 @@ written to help you make an honest call, not to sell you anything. Read it along
 - **Accidental location leaks.** Packet shared-media copies strip embedded metadata by default.
   Sync/organizer sharing and packet `--include-originals` carry sealed originals with their
   metadata, so those higher-disclosure choices require separate review.
-- **Surveillance of your members.** No analytics, no telemetry, nothing phones home. The
-  union holds its own keys and its own data; no outside party can read, revoke, or seize it.
+- **Surveillance of your members.** No analytics, no telemetry, nothing phones home from the
+  app. The union holds its own keys and its own data; no outside party can read, revoke, or
+  seize it. (The project's documentation website is separate and does count visits with
+  Google Analytics; members can turn that off with Global Privacy Control, Do Not Track, or
+  the "Opt out of analytics" button at the bottom of any page.)
 
 ## What it explicitly does NOT do
 

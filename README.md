@@ -218,7 +218,10 @@ does not close: who the producer is, and an adversary who can reach the same aut
    implemented* — today the only at-rest protection is vault encryption, and when built that state
    will be a mitigation with documented limits, not a guarantee against a coercing or forensic
    adversary — and the tool collects no analytics and phones no home. The union decides what to
-   disclose and to whom, documented in `docs/threat-model.md`.
+   disclose and to whom, documented in `docs/threat-model.md`. (The documentation website at
+   habitable.chelseakr.com is not the tool: since 2026-09-17, by owner decision, it counts page
+   visits with Google Analytics 4, which does not load under Global Privacy Control, Do Not Track
+   or its footer opt-out; `site/trust-limitations/#analytics` says exactly what it receives.)
 
 ---
 
