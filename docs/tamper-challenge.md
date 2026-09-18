@@ -16,7 +16,7 @@ invite people to alter it without the verifier noticing.
 
 It requires no tenant data, no consent, and no legal review, because the subject of the
 photographs is irrelevant. The claim under test is about signing and verification, not
-about housing. The challenge substrate is synthetic and labelled as such.
+about housing. The challenge substrate is synthetic and labeled as such.
 
 ---
 
@@ -92,7 +92,7 @@ The publication date is the anchor that makes this hard. No authority will backd
 token, so any packet an entrant re-seals is provably younger than the challenge itself.
 That is the same protection a real recipient gets from the date they took delivery.
 
-A "break" found by *omitting* these flags is not a break — it is the documented behaviour
+A "break" found by *omitting* these flags is not a break — it is the documented behavior
 in §4, and it is why the flags exist.
 
 **In scope**

@@ -210,7 +210,7 @@ def challenge_packet(
         description="Original description as captured.",
         issue_id="i1",
     )
-    # Distinct colours: identical bytes would collapse to one hash and make the
+    # Distinct colors: identical bytes would collapse to one hash and make the
     # per-item custody bindings ambiguous.
     capture(vault, make_jpeg("a.jpg", color=(120, 30, 30)), issue_id=issue, tsa=local_tsa)
     capture(vault, make_jpeg("b.jpg", color=(30, 90, 140)), issue_id=issue, tsa=local_tsa)

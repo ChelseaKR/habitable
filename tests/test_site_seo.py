@@ -21,7 +21,7 @@ _DESCRIPTION = (
 )
 # A share card is only a share card at the shape the networks crop to. The site
 # shipped a 2200x3000 portrait screenshot as `og:image`, which LinkedIn, Slack,
-# and X centre-crop to a landscape box: the title and the packet both fell out
+# and X center-crop to a landscape box: the title and the packet both fell out
 # of frame. 1200x630 is the size every one of them renders whole.
 _SOCIAL_CARD = "img/social-card.png"
 _SOCIAL_CARD_URL = f"{_CANONICAL}{_SOCIAL_CARD}"

@@ -20,7 +20,7 @@
 > check, although the verifier implements all of them (`_verify_v3_timeline`,
 > `_verify_v4_workflows`). Until those rows exist, derive an expected verdict for a v3/v4-specific
 > case from the code and the committed golden corpus (`tests/golden/packet-v1`…`packet-v4`), not
-> from this file, and treat a gap here as a gap in the document rather than a licence the verifier
+> from this file, and treat a gap here as a gap in the document rather than a license the verifier
 > grants. This header previously read "normative for `SUPPORTED_PACKET_VERSION = 2`" while the
 > verifier had moved to 4 — an auditor or an embedder working from it was working from a contract
 > the verifier no longer implements (issue #160).
@@ -221,7 +221,7 @@ mechanically valid ones.
 tokens from *other* authorities over the **same** `content_hash` (not a chain). The verifier checks
 each, lists every authority that verified in `verified_authorities`, and treats the item as
 timestamped if **at least one** authority (primary *or* additional) verifies — so the proof never
-rests on a single TSA. With no `additional_timestamps`, behaviour is identical to a single-authority
+rests on a single TSA. With no `additional_timestamps`, behavior is identical to a single-authority
 packet: a failed/absent primary leaves the item not timestamp-verified unless a redundant token
 passes. A token over a *different* hash never satisfies the item. At least one valid token supplies
 mechanical timestamp verification; at least one valid **and anchored** token supplies authority

@@ -12,7 +12,7 @@ sender key appeared inside it. That protected confidentiality and detected byte
 tampering, but it did not answer the authorization question: *was this exact
 sender expected for this exact case?* Imports also made case checking optional,
 accepted the same message repeatedly, transferred only the primary timestamp,
-and produced no signed acknowledgement that a peer accepted a delta.
+and produced no signed acknowledgment that a peer accepted a delta.
 
 PR #53 proposed signing mutable CRDT fields. That is useful attribution, but a
 field signature alone does not authorize a device, bind a relationship to a

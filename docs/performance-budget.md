@@ -96,7 +96,7 @@ Timing tests are notorious for flaking. Two choices keep this one stable:
   nine independent processes inside a **0.11–0.15 % band**, and four of the five budgeted
   operations moved by **≤1 %** between a run at load average 25–33 and a run at load average
   88. It is not universal, though — packet assembly moved 10 % between those two runs — so
-  "a slow neighbour never fails the test" is true of the compute-bound rows and only mostly
+  "a slow neighbor never fails the test" is true of the compute-bound rows and only mostly
   true of the heaviest one. See *Finding 1*.
 - **Headroom of 8.8×–78× locally**, measured, not assumed. The ceilings above sit that far
   above the measured latency of each operation, so ordinary machine-to-machine variation (a
@@ -120,7 +120,7 @@ uv run python scripts/report_perf_profile.py --max-kdf-exponent 20
 2026-09-05 on an Apple M1 Pro (8 performance + 2 efficiency cores, 16 GB, macOS 26.4,
 CPython 3.14.5), which is faster than any CI runner this project uses and unlike any device
 a tenant owns. They are not a device measurement and they are not a substitute for one.
-What they *are* is a characterisation of each operation's **shape** — what its cost is made
+What they *are* is a characterization of each operation's **shape** — what its cost is made
 of — and shape is a property of the workload rather than of the machine, so it is the part
 of issue [#258](https://github.com/ChelseaKR/habitable/issues/258) that is answerable
 without the hardware.
@@ -147,10 +147,10 @@ claims it does — but only for some operations, which is Finding 1.
 **A difference smaller than ~0.2 % is not a difference.** Disk-touching probes are the
 exception and are noisy well beyond that; they are flagged where they appear.
 
-### Finding 1 — best-of-N immunises four operations against a busy machine, and does not immunise two
+### Finding 1 — best-of-N immunizes four operations against a busy machine, and does not immunize two
 
 Run B ran at roughly three times run A's load average. Best-of-N exists precisely so that a
-busy neighbour cannot change the answer, and for most of the local path it does not:
+busy neighbor cannot change the answer, and for most of the local path it does not:
 
 | Operation | Run A min | Run B min | Change |
 |-----------|----------:|----------:|-------:|
@@ -310,7 +310,7 @@ with no latency ceiling to check the new cost against.
 This is deliberately **not** fixed by adding a `kdf_unlock` row here, for two reasons worth
 stating rather than leaving as an omission. First, a device budget is a number about the
 device, and inventing one for the operation whose cost is *most* device-dependent would be
-the same modelling error this document is already trying to stop making. Second, asserting
+the same modeling error this document is already trying to stop making. Second, asserting
 it in CI would mean paying a quarter-second per repeat inside the gate that runs on every
 push — on the one operation whose minimum is demonstrably not load-stable, which is the
 recipe for a flaky gate — to defend a number nobody has justified. The right fix is a
@@ -364,7 +364,7 @@ cliff on the wrong axis.
   same blocker as mobile packaging in [`ROADMAP.md`](../ROADMAP.md).
 
 The suggested shape in the issue still stands: name a specific device, model and year; run
-the same operations; record the measured numbers beside the modelled ones here; and if the
+the same operations; record the measured numbers beside the modeled ones here; and if the
 per-operation ratios are not roughly flat — which the evidence above now predicts they will
 not be — replace the single scalar with per-operation factors. Until then the CI assertion
 guards against regressions in the *shape* of the local path, which is where the risk of an

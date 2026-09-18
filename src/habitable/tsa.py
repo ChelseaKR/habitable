@@ -111,7 +111,7 @@ CERT_VALIDITY_STATES = (
 #: only, never at ``now``, and only for the signing certificate, not for any
 #: anchor above it; basic constraints, key usage, extended key usage (including
 #: ``id-kp-timeStamping``), name constraints, and policy constraints are not
-#: enforced; and no revocation state (CRL/OCSP) is fetched or honoured.
+#: enforced; and no revocation state (CRL/OCSP) is fetched or honored.
 #:
 #: The practical consequence for anyone anchoring a real authority: supply the
 #: certificate that **issued** the responder certificate, or pin the responder

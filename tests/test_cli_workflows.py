@@ -253,14 +253,14 @@ class TestIssueFieldVocabularies:
         vault.save()
         assert main(["status", "--vault", str(vault.path), "--passphrase", "test-passphrase"]) == 0
 
-    def test_a_synonym_is_normalised_and_the_command_says_so(
+    def test_a_synonym_is_normalized_and_the_command_says_so(
         self, make_vault: Callable[..., Vault], capsys: pytest.CaptureFixture[str]
     ) -> None:
         """Issue #240: the corpus #206 surveyed was wider than the vocabulary it set.
 
         `no_heat`, `moisture` and `moho` are the same conditions under other names,
         and refusing them taught a tenant that their own word was wrong. They now
-        normalise to the member they mean -- and the command prints what it did,
+        normalize to the member they mean -- and the command prints what it did,
         because a record silently storing something the operator did not type is the
         failure mode the vocabulary existed to prevent.
         """

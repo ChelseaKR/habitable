@@ -159,7 +159,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "Add an issue to the case. The record is append-only: an issue cannot be "
             "edited or deleted afterwards, and habitable will not silently rewrite one, "
-            "so a mistyped value stays visible in the exported packet. To practise "
+            "so a mistyped value stays visible in the exported packet. To practice "
             "without marking a real case, run `habitable demo`."
         ),
     )
@@ -214,7 +214,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "Seal one RFC 5322 message and each of its attachments as separate, "
             "custody-bound items, joined by `supports` relationships. Header values "
-            "(sender, Date, Message-ID, Subject) are summarised into the packet as "
+            "(sender, Date, Message-ID, Subject) are summarized into the packet as "
             "the sender's CLAIMS: habitable does not verify DKIM or any other mail "
             "signature, and a Date header is never treated as a timestamp -- the only "
             "time bound on an item is its RFC 3161 token. A file that is not a "
@@ -851,7 +851,7 @@ def _build_parser() -> argparse.ArgumentParser:
         required=True,
         action="store_true",
         help=(
-            "operator acknowledgement, required so this export is never an accident: "
+            "operator acknowledgment, required so this export is never an accident: "
             "you have reviewed this release for differencing risk. Per-household "
             "consent is not taken from this flag -- it is read from each vault's own "
             "recorded consent (see `habitable consent`), and a vault without one is "
@@ -948,7 +948,7 @@ def _cmd_id(args: argparse.Namespace) -> int:
 def _cmd_issue(args: argparse.Namespace) -> int:
     # `other` is a real answer, not a way around the vocabulary: it has to say what
     # it means, exactly as `timeline --type other` requires `--other-label`. An
-    # unlabelled `other` is the free-text hole reopened under a different name.
+    # unlabeled `other` is the free-text hole reopened under a different name.
     if args.category == "other" and not args.other_label.strip():
         print(
             "habitable: error: --category other requires --other-label describing the condition",
@@ -963,7 +963,7 @@ def _cmd_issue(args: argparse.Namespace) -> int:
         return 2
 
     vault = _open(args)
-    # A synonym is normalised to the member it means (issue #240), and the command
+    # A synonym is normalized to the member it means (issue #240), and the command
     # says so rather than silently storing something the operator did not type.
     canonical = ISSUE_CATEGORY_ALIASES.get(args.category, args.category)
     if canonical != args.category:
@@ -1294,7 +1294,7 @@ def _cmd_status(args: argparse.Namespace) -> int:
 
 # Transport labels are protocol tokens, not prose. Only the ones this build ships
 # have a translation; anything else is printed verbatim rather than mapped to a
-# nearby-sounding phrase that would misdescribe how the case actually travelled.
+# nearby-sounding phrase that would misdescribe how the case actually traveled.
 _TRANSPORT_KEYS = {"file": "sync_transport_file", "relay": "sync_transport_relay"}
 
 
@@ -1593,7 +1593,7 @@ def _cmd_campaign_status(args: argparse.Namespace) -> int:
 def _campaign_seal_authority(
     args: argparse.Namespace, declined: dict[str, str]
 ) -> Callable[[Vault], TimestampAuthority | None] | None:
-    """Which authority seals each unit's packet, honouring that unit's own policy.
+    """Which authority seals each unit's packet, honoring that unit's own policy.
 
     ``campaign.py`` promises that a unit's packet is exactly what
     ``habitable export`` would produce from that vault. Since ADR 0011 that

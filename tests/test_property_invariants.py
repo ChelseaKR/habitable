@@ -903,7 +903,7 @@ def test_the_exported_bundle_is_already_canonical() -> None:
     starts, and one assertion states it.
 
     Why it matters: if the exported bytes were not canonical, every hash and
-    signature over them would be a claim about one particular serialisation
+    signature over them would be a claim about one particular serialization
     rather than about the content -- and a recipient who re-encoded before
     hashing, as any independent implementation might, would get a different
     answer and no way to tell which of them was wrong.
@@ -1226,7 +1226,7 @@ class HostilePacketSequences(RuleBasedStateMachine):
         # Always re-signed, unlike every other edit here, and for two reasons.
         # A truncation the signature already refuses is not the limit this rule
         # exists to state -- "a bundle edited after signing must not verify" is
-        # asserted by every other rule's unsigned draw. And an unparameterised
+        # asserted by every other rule's unsigned draw. And an unparameterized
         # rule is one hypothesis reaches far more often: with a `resign` draw
         # this rule took 7.4% of steps and its branch of the invariant 2.3% of
         # checks, which is not enough to call a limit pinned.

@@ -130,7 +130,7 @@ def test_status_cli_prints_storage_line(
     assert "sealed originals" in out and "case data" in out
     # The measured size is printed and the projection is printed as its own
     # sentence about a folder the reader has not named yet. Before this, the two
-    # were added together and the sum was labelled "total".
+    # were added together and the sum was labeled "total".
     assert human_bytes(fp.on_disk_bytes) in out
     assert "outside the vault and not counted above" in out
     assert human_bytes(fp.projected_total_with_export_bytes) not in out

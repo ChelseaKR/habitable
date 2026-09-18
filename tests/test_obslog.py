@@ -2,7 +2,7 @@
 # Copyright 2026 Chelsea Kelly-Reif
 """Opt-in, on-device, metadata-only structured logging for the CLI and app server.
 
-These tests pin the same contract the relay's logging honours, specialized to the
+These tests pin the same contract the relay's logging honors, specialized to the
 local surfaces: structured one-object-per-line JSON, off by default, and an absolute
 no-plaintext gate — no filenames, passphrases, media bytes, case ids, or key material
 ever reach the log stream.

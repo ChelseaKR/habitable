@@ -699,7 +699,7 @@ def test_a_handoff_section_with_no_member_records_does_not_render_a_count(
     # The headings survive: they are this recipient's expected reading order.
     for heading in ("Condition", "Notice", "Delivery", "Response", "Follow Up"):
         assert f"<h2>{heading}</h2>" in html
-    # The real, bundle-wide totals appear exactly once and are labelled as such.
+    # The real, bundle-wide totals appear exactly once and are labeled as such.
     assert html.count("These totals cover the whole packet.") == 1
     assert "1 evidence item(s), of which 1 document(s)" in html
 

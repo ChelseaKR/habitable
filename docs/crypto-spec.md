@@ -505,7 +505,7 @@ Stated plainly so a reviewer can target effort (and so the project isn't accused
   adversary who can reach an authority the recipient anchors re-seals a rewritten packet and passes
   everything except `seal_not_after`. Reviewers should weigh whether "the forgery is forced to carry
   its true creation time" is the right guarantee to have chosen — and whether a recipient will in
-  practice supply a date. A related judgement: a *missing* seal is not a failure by default, so a
+  practice supply a date. A related judgment: a *missing* seal is not a failure by default, so a
   recipient who never passes `require_packet_seal` is at the pre-seal baseline. The reasoning, and
   the fact that no in-packet marker can fix it, is
   [ADR 0011](adr/0011-authority-seal-over-the-whole-packet.md).

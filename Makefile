@@ -110,7 +110,7 @@ fuzz: ## Replay the OSS-Fuzz harnesses over their committed seed corpora (no Ath
 	uv run python fuzz/fuzz_verify_packet.py
 	uv run python fuzz/fuzz_timestamp_token.py
 
-perf-profile: ## Characterise each budgeted local-path operation (reports; never gates — issue #258)
+perf-profile: ## Characterize each budgeted local-path operation (reports; never gates — issue #258)
 	# Not in `verify`, for two reasons. Timing on a shared CI runner is not a
 	# measurement, and the one operation this most wants to watch -- scrypt -- is
 	# demonstrably the least load-stable thing in the tree (+38% under load), which

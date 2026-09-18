@@ -3,7 +3,7 @@
 Read-only triage of every open pull request against `origin/main` at
 `1c4d0a0 feat(joint): present several signed packets as one submission, merging nothing (#221)`.
 
-Nothing in this report was merged, closed, commented on, labelled, re-run or
+Nothing in this report was merged, closed, commented on, labeled, re-run or
 otherwise modified. The only write is this file.
 
 ## Counts
@@ -475,9 +475,9 @@ CI at all, on any commit.
 - **The CodeQL alert being a false positive.** The payload was read field by
   field and contains no credential, but CodeQL's taint path was not traced to its
   source. Treated as an owner decision, not resolved here.
-- **`ruff` 0.16.4's behaviour on current `main`.** The local environment has
+- **`ruff` 0.16.4's behavior on current `main`.** The local environment has
   0.16.3 and installing 0.16.4 would need network access, which this triage did
   not use. The recommendation to land #216 early is a precaution, not a
   reproduction of a failure.
-- **Whether the fork PR #213's author intends further commits.** The judgement is
+- **Whether the fork PR #213's author intends further commits.** The judgment is
   on the code as it stands today.

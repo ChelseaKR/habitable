@@ -148,7 +148,7 @@ def test_share_file_encoding_round_trips() -> None:
 
 # --- the scoped-share hardening behind the hold (issue #279) -------------------
 #
-# `export_share` refuses every scope, so none of the behaviour below is reachable
+# `export_share` refuses every scope, so none of the behavior below is reachable
 # from the CLI, the app, or `export_share` itself. These call `build_share_state`
 # directly for exactly that reason: the rules a scoped disclosure owes its
 # recipient have to be pinned by something other than the refusal, or lifting the
@@ -245,7 +245,7 @@ def test_a_scoped_state_withholds_the_case_salt(
 
     assert "case_salt" not in _object(state, "meta")
     assert salt.encode() not in canonical_json(state)
-    # Withholding the salt is not a licence to withhold the rest of the metadata:
+    # Withholding the salt is not a license to withhold the rest of the metadata:
     # a scoped share still says which unit it concerns unless asked to redact it.
     assert "unit" in _object(state, "meta")
 

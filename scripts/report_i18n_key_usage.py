@@ -33,10 +33,10 @@ The third route is the one a naive scan gets wrong, and it is not hypothetical
 here: ``app/app.js`` really does build ``"event_" + …`` and ``"source_" + …``
 before looking them up. A report that could not see route 3 would be the same
 class of defect as a fuzz assertion that can never fail (#257) — reassuring
-output that proves nothing — so route 3 is modelled explicitly, and the routes
+output that proves nothing — so route 3 is modeled explicitly, and the routes
 this script *cannot* see are printed on every run rather than left implied.
 
-How route 3 is modelled, and why it errs toward "live"
+How route 3 is modeled, and why it errs toward "live"
 ------------------------------------------------------
 Without a JavaScript parser (stdlib only, no dependency) the honest move is a
 conservative textual one. Any string literal adjacent to a ``+`` is collected as
@@ -57,8 +57,8 @@ Two findings that need different fixes
 The report separates them, because merging them would invite the wrong repair:
 
 * **unreferenced** — no route reaches it. Decide: delete it, or wire it up.
-* **also in the server catalogue** — the key is also defined in
-  ``src/habitable/i18n.py`` (``_CLI_MESSAGES``), which is a *separate* catalogue
+* **also in the server catalog** — the key is also defined in
+  ``src/habitable/i18n.py`` (``_CLI_MESSAGES``), which is a *separate* catalog
   for CLI output. These are not obviously dead; they may be a split that was
   never finished, and the two copies are often deliberately different (the CLI
   wants ``"minimal"`` mid-sentence, a badge wants ``"Minimal"``). Deleting the
@@ -95,7 +95,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _EN_BUNDLE = _REPO_ROOT / "app" / "i18n" / "en.json"
 _MARKUP = _REPO_ROOT / "app" / "index.html"
 _SCRIPT = _REPO_ROOT / "app" / "app.js"
-_SERVER_CATALOGUE = _REPO_ROOT / "src" / "habitable" / "i18n.py"
+_SERVER_CATALOG = _REPO_ROOT / "src" / "habitable" / "i18n.py"
 
 #: The attributes ``applyTranslations()`` in ``app/app.js`` reads. Kept in step
 #: with that function: a new attribute there without one here makes live keys
@@ -106,8 +106,8 @@ _KEY_ATTRIBUTES = ("data-i18n", "data-i18n-aria", "data-i18n-label")
 #: direct ``fm("key", …)`` is not missed.
 _LOOKUP_FUNCTIONS = ("t", "fm")
 
-#: The name of the CLI catalogue inside ``src/habitable/i18n.py``.
-_SERVER_CATALOGUE_NAME = "_CLI_MESSAGES"
+#: The name of the CLI catalog inside ``src/habitable/i18n.py``.
+_SERVER_CATALOG_NAME = "_CLI_MESSAGES"
 
 #: Keys are ``lower_snake_case``, so a concatenation fragment that builds one
 #: ends at a word boundary — an underscore. See the module docstring: fragments
@@ -285,16 +285,16 @@ def cover_fragments(fragments: Iterable[str], keys: Iterable[str]) -> list[Fragm
     return coverage
 
 
-# --- the other catalogue -----------------------------------------------------------
+# --- the other catalog -----------------------------------------------------------
 
 
-def server_catalogue_keys(path: Path, locale: str = "en") -> dict[str, str]:
-    """The CLI catalogue in ``src/habitable/i18n.py`` for *locale*.
+def server_catalog_keys(path: Path, locale: str = "en") -> dict[str, str]:
+    """The CLI catalog in ``src/habitable/i18n.py`` for *locale*.
 
     Parsed with ``ast`` rather than matched with a regex: this decides whether a
     key gets classified as "someone else already owns this string" instead of
     "delete me", and that call should not turn on quoting or line wrapping.
-    Returns an empty mapping when the catalogue cannot be found, and the report
+    Returns an empty mapping when the catalog cannot be found, and the report
     says so out loud rather than reporting every key as unique to the app.
     """
     tree = ast.parse(_read(path))
@@ -302,15 +302,15 @@ def server_catalogue_keys(path: Path, locale: str = "en") -> dict[str, str]:
         target = getattr(node, "target", None)
         if not isinstance(node, ast.AnnAssign) or not isinstance(target, ast.Name):
             continue
-        if target.id != _SERVER_CATALOGUE_NAME or not isinstance(node.value, ast.Dict):
+        if target.id != _SERVER_CATALOG_NAME or not isinstance(node.value, ast.Dict):
             continue
         return _locale_entries(node.value, locale)
     return {}
 
 
-def _locale_entries(catalogue: ast.Dict, locale: str) -> dict[str, str]:
+def _locale_entries(catalog: ast.Dict, locale: str) -> dict[str, str]:
     """``{locale: {key: message}}`` → the requested locale's messages."""
-    for locale_node, messages in zip(catalogue.keys, catalogue.values, strict=False):
+    for locale_node, messages in zip(catalog.keys, catalog.values, strict=False):
         if not isinstance(locale_node, ast.Constant) or locale_node.value != locale:
             continue
         if not isinstance(messages, ast.Dict):
@@ -343,7 +343,7 @@ class Report:
     coverage: list[FragmentCoverage]
     variable_calls: list[str]
     server: dict[str, str]
-    server_catalogue_path: Path
+    server_catalog_path: Path
 
     @property
     def key_prefixes(self) -> list[FragmentCoverage]:
@@ -382,7 +382,7 @@ class Report:
 
     @property
     def unreferenced(self) -> list[str]:
-        """No route reaches it, and no other catalogue claims it."""
+        """No route reaches it, and no other catalog claims it."""
         return sorted(self.unreachable - set(self.server))
 
     @property
@@ -411,8 +411,8 @@ def build_report(
         from_literal_call=literal_call_keys(script) | literal_call_keys(markup),
         coverage=cover_fragments(concatenation_fragments(script), bundle),
         variable_calls=variable_call_sites(script),
-        server=server_catalogue_keys(server_path),
-        server_catalogue_path=server_path,
+        server=server_catalog_keys(server_path),
+        server_catalog_path=server_path,
     )
 
 
@@ -456,7 +456,7 @@ def _route_lines(report: Report) -> list[str]:
             "    - a lookup reached through an alias or an indirect reference",
             "      (var translate = t; translate(key))",
             "    - any file this report does not read; it reads only the markup, the app",
-            "      script, and the server catalogue named below",
+            "      script, and the server catalog named below",
         ]
     )
     if report.variable_calls:
@@ -528,11 +528,11 @@ def _finding_lines(report: Report) -> list[str]:
     lines.append("")
 
     duplicates = report.server_duplicates
-    lines.append(f"ALSO IN THE SERVER CATALOGUE — {len(duplicates)} key(s) defined twice:")
+    lines.append(f"ALSO IN THE SERVER CATALOG — {len(duplicates)} key(s) defined twice:")
     lines.extend(
         _wrap(
             "No route in the app reaches these, but "
-            f"{report.server_catalogue_path.name} defines them too, for CLI output. That is "
+            f"{report.server_catalog_path.name} defines them too, for CLI output. That is "
             "a different fix: decide which copy is canonical before deleting either. The "
             "two values are often deliberately different, and the difference is the "
             "evidence — a lowercase CLI phrase and a Title Case badge label are two "
@@ -578,8 +578,8 @@ def format_report(report: Report) -> str:
     if not report.server:
         lines.extend(
             _wrap(
-                f"NOTE: no {_SERVER_CATALOGUE_NAME} catalogue was found in "
-                f"{report.server_catalogue_path}, so nothing could be classified as a "
+                f"NOTE: no {_SERVER_CATALOG_NAME} catalog was found in "
+                f"{report.server_catalog_path}, so nothing could be classified as a "
                 "duplicate. Every finding above is in the unreferenced bucket by default."
             )
         )
@@ -619,10 +619,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--markup", type=Path, default=_MARKUP, help="the app markup to scan")
     parser.add_argument("--script", type=Path, default=_SCRIPT, help="the app script to scan")
     parser.add_argument(
+        "--server-catalog",
+        # Deprecated British spelling, still accepted so existing invocations keep working.
         "--server-catalogue",
+        dest="server_catalog",
         type=Path,
-        default=_SERVER_CATALOGUE,
-        help="the Python module holding the CLI message catalogue",
+        default=_SERVER_CATALOG,
+        help="the Python module holding the CLI message catalog",
     )
     parser.add_argument(
         "--json", action="store_true", help="emit the findings as JSON instead of the report"
@@ -630,7 +633,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        report = build_report(args.bundle, args.markup, args.script, args.server_catalogue)
+        report = build_report(args.bundle, args.markup, args.script, args.server_catalog)
     except ReportError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

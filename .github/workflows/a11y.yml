@@ -42,7 +42,7 @@ concurrency:
   # slot, and a burst of merges deletes the verdict for whichever commit was
   # waiting -- not a failure anyone can see, an absence. `cancel-in-progress`
   # neither causes nor prevents that; it only decides whether the loss is
-  # visible (cancelled with jobs) or invisible (cancelled with zero jobs).
+  # visible (canceled with jobs) or invisible (canceled with zero jobs).
   # Carrying the SHA gives each commit its own slot; PR supersession is
   # unchanged, because pull requests still share a per-ref group.
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
@@ -130,7 +130,7 @@ jobs:
       - name: Docs-only change, scan not required
         if: steps.scope.outputs.docs_only == 'true'
         run: |
-          echo "Every changed path is prose or a licence file, so no UI surface can"
+          echo "Every changed path is prose or a license file, so no UI surface can"
           echo "have moved and the axe scan has nothing to assert about this change."
           echo "This job still reports the required context — once — so the pull"
           echo "request is not left waiting on a check that never arrives."

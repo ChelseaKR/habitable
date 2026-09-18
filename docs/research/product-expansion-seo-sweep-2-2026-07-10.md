@@ -120,7 +120,7 @@ The review loop produced material corrections; green first drafts were not treat
 - Further relay fault injection found an unterminated append that could poison the next restart,
   unbounded compaction crash debris, a Windows unlink difference, and a misleading 413 instruction
   to “fetch and clear” even though GET is non-destructive. The approved design repairs a partial
-  tail from live state before acknowledgement, has a separately bounded exact temporary namespace,
+  tail from live state before acknowledgment, has a separately bounded exact temporary namespace,
   documents its single-writer/Windows boundary, and tells peers to wait for TTL/retry or ask the
   operator to change capacity deliberately.
 - GitHub CodeQL then rejected a world-writable default in an adversarial `os.open` test shim. The
@@ -131,7 +131,7 @@ The review loop produced material corrections; green first drafts were not treat
 - A final relay restart reproduction showed acknowledged data loss after TTL cleanup failed: a new
   token was appended behind an expired old-token line and the restart rejected both as ambiguous.
   Expired records now validate and prune without establishing live TOFU identity; only conflicting
-  live records reject the journal. The exact cleanup-failure → rebind → acknowledgement → restart
+  live records reject the journal. The exact cleanup-failure → rebind → acknowledgment → restart
   sequence is a regression test.
 - The token change started with authenticated, encrypted, per-capture sidecars that consolidate the
   primary timestamp token, additional tokens, and archive records. Review made legacy plaintext
@@ -198,7 +198,7 @@ The review loop produced material corrections; green first drafts were not treat
 | Idea | Decision | Exit criteria |
 | --- | --- | --- |
 | Scoped packet/share restoration | Defer | New packet/sync versions define a derived, domain-separated, scope-bound custody view; golden compatibility, privacy tests, migration notes, and independent cryptographic review |
-| Signed acknowledgement and sync-receipt compaction | Defer | Acknowledgement cannot be forged or lost; replay/idempotence survives pruning; old peers retain compatibility |
+| Signed acknowledgment and sync-receipt compaction | Defer | Acknowledgment cannot be forged or lost; replay/idempotence survives pruning; old peers retain compatibility |
 | Production ledger / public anchoring | Defer | Machine-readable disclosure, privacy threat model, operator ownership, retention/erasure policy, and pilot demand |
 | Generic recipient handoff preflight | Defer | Start infrastructure-only; no claim of legal-aid/CMS integration without a real adopter and data-processing agreement |
 | Native phone distribution | Defer after spike | Signed on-device package, supported update path, device security review, accessibility pass, and field pilot; loopback web server is not a mobile distribution strategy |
@@ -213,7 +213,7 @@ The review loop produced material corrections; green first drafts were not treat
 - **Silently evict relay messages or destructively fetch them without an authenticated receipt.**
   Delivery and replay semantics must be explicit; capacity pressure is not permission to lose data.
 - **Prune sync receipts by age alone.** A disconnected peer can return after the local retention
-  window; pruning needs signed acknowledgement/protocol semantics.
+  window; pruning needs signed acknowledgment/protocol semantics.
 - **Treat BagIt validity as packet authenticity or evidence readiness.** Manifests can be rewritten
   by an active attacker; the signed packet and independently supplied trust roots remain separate.
 - **Publish a live national official-record scraper.** It creates freshness, privacy, terms, and
@@ -249,7 +249,7 @@ pages, improve useful ones, or reject a cluster; do not infer demand from public
 
 The following risks remain real after this batch and should be independently scoped:
 
-1. sync receipt history can grow without a signed compaction acknowledgement;
+1. sync receipt history can grow without a signed compaction acknowledgment;
 2. several normal key/config writes and DEK rotation still have weaker crash-transaction semantics
    than the main vault-save path. Rotation now makes staged data durable before committing the
    wrapped key and performs identity-exact cleanup, but it is still a multi-file publication rather

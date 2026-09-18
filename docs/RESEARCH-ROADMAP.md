@@ -9,7 +9,7 @@
 > for the evidence and hypotheses that motivated the work.
 
 > **Framing.** This roadmap is derived from two inputs: the **synthetic persona panel**
-> in [`USER-RESEARCH.md`](USER-RESEARCH.md) (clearly labelled synthetic — *not* real
+> in [`USER-RESEARCH.md`](USER-RESEARCH.md) (clearly labeled synthetic — *not* real
 > interviews and *not* evidence of demand), and **external, citable research** on
 > housing law, digital-evidence standards, the tenant-organizing movement, comparable
 > tools, and the access realities of low-income tenants (full reference list below, all

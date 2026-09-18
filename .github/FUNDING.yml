@@ -5,12 +5,12 @@
 # recording mold in their apartment for a contribution is the wrong ask.
 #
 # There is also deliberately no hosted service, so there is no bill to
-# socialise. Nothing here costs money to run for anyone but the person running
+# socialize. Nothing here costs money to run for anyone but the person running
 # it on their own machine.
 #
 # Every platform key below is present and explicitly empty. With no active
 # entries GitHub renders no Sponsor button, and this file overrides the
-# organisation-wide default in ChelseaKR/.github rather than merging with it.
+# organization-wide default in ChelseaKR/.github rather than merging with it.
 
 github:           # no GitHub Sponsors
 patreon:          # not used

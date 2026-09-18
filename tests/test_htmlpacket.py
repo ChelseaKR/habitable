@@ -225,7 +225,7 @@ def test_packet_html_carries_the_profiles_disclosures_and_review_state(
     # A real heading, not a styled paragraph, and nested under the page's one h1.
     assert "<h3>What this profile does not establish</h3>" in html
     assert html.count("<h1>") == 1
-    # The warning is carried by its words, never by the border colour alone.
+    # The warning is carried by its words, never by the border color alone.
     assert "<strong>External review required." in html
     # Read before the packet's own claims, not after them.
     assert html.index("Workflow profile") < html.index("What this packet proves")

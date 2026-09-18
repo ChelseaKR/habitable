@@ -3,7 +3,7 @@
 
 # Committed evidence whose bytes are hash-anchored. `bundle.json` records the
 # SHA-256 of every file beside it and `habitable verify` re-derives them, so any
-# line-ending normalisation on the way into (or out of) the object store makes a
+# line-ending normalization on the way into (or out of) the object store makes a
 # fixture fail in a fresh clone while passing on the machine that wrote it.
 #
 # This is not hypothetical: `git add` of an RFC 5322 message under

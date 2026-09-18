@@ -88,7 +88,7 @@ What that changes, and what it does not:
 - The `v*` tag ruleset (`.github/rulesets/release-tags.json`, live ruleset
   `18815834`) really does carry no bypass actor, and keeps none: a released tag
   must not be movable by anyone, owner included. The two rulesets differ on
-  purpose. Do not harmonise them in either direction.
+  purpose. Do not harmonize them in either direction.
 - `tests/test_release_workflow.py` asserts the owner's bypass on the committed
   branch ruleset and on the live one **independently**, rather than comparing
   the two to each other, because comparing them would report conformance on the

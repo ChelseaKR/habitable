@@ -272,7 +272,7 @@ def _build_packet_in_dir(  # noqa: C901 -- packet staging keeps one rollback bou
 
     # Packet v4 requires every timeline assertion and workflow record to be bound
     # into custody. New records are bound when written; legacy/imported records
-    # receive an explicitly labelled backfill binding here.
+    # receive an explicitly labeled backfill binding here.
     vault.ensure_timeline_custody(persist=False)
     _ensure_extended_custody(vault)
 
@@ -1262,7 +1262,7 @@ def _redundancy_json(redundancy: SyncRedundancy) -> dict[str, JSONValue]:
     :class:`SyncRedundancy` exists to make.
 
     ``as_of`` is omitted rather than defaulted when this device recorded no time
-    for the most recent acknowledgement -- the case
+    for the most recent acknowledgment -- the case
     :func:`cli._print_sync_redundancy` already prints its own line for. An epoch
     date beside a device count would date a redundancy claim to 1970.
     """

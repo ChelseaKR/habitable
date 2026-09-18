@@ -17,7 +17,7 @@ exports and cannot recall an aggregate that has already been published.
 It used to ask how many consenting households "reported no heat" and count
 issues stored under the category ``no_heat``. No supported path ever stored
 that string: #206 constrained ``--category`` to a vocabulary whose heat member
-is ``heat``, #240 made ``no_heat`` an *alias* normalised to ``heat`` before
+is ``heat``, #240 made ``no_heat`` an *alias* normalized to ``heat`` before
 storage, and the app's condition datalist offers ``heat``. The cohort was
 therefore structurally empty, and a consent-gated, k-anonymous aggregate that
 publishes an empty answer does not read as an error -- it reads as "no
@@ -190,7 +190,7 @@ def read_consent(document: CaseDocument, question: PatternQuestion) -> ConsentRe
 def superseded_consent_ids(document: CaseDocument) -> tuple[str, ...]:
     """Retired question ids this case still holds a stored consent record for.
 
-    Reported, never honoured. The value exists so that "this household has no
+    Reported, never honored. The value exists so that "this household has no
     consent record" can be distinguished, in a message a person reads, from
     "this household consented to a question that no longer exists" -- which is
     the state every mid-campaign vault is in after issue #276, and which would
@@ -274,6 +274,7 @@ class PatternSummary:
                 # A record stored against a retired question id is not consent
                 # to this one. Said in the file so a recipient can see that the
                 # cohort was not quietly topped up from older answers.
+                # British spelling kept on purpose: a published export key.
                 "superseded_records_honoured": False,
                 "withdrawal": (
                     "A household can withdraw consent in its own vault, which "
@@ -361,7 +362,7 @@ def _retired_record_hint(document: CaseDocument) -> str:
 
     Silence here would be correct but cruel: the household did answer, the
     organizer remembers them answering, and the refusal would look like a bug or
-    like a neighbour who changed their mind. Naming the retired question turns a
+    like a neighbor who changed their mind. Naming the retired question turns a
     blocked export into an instruction.
     """
     retired = superseded_consent_ids(document)

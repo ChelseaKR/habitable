@@ -203,7 +203,7 @@ tension with tight data caps, persona **P-06**). It is **not** an anonymity netw
 does not mix across senders and does not defeat IP-level correlation. Like all
 privacy-critical changes here, the traffic-analysis property has **not** yet had the
 external review the project's own principle (roadmap A) requires before it is relied upon
-— treat it as defence-in-depth on top of "run your own relay" and "bring your own
+— treat it as defense-in-depth on top of "run your own relay" and "bring your own
 Tor/VPN," not as a replacement for not using a relay.
 
 ---

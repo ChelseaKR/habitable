@@ -30,7 +30,7 @@ could catch it: that bullet named no issue, no version and no date, and what wen
 was the world rather than the text. `docs/good-first-issues.md` still carries it. Nothing
 here or in the scheduled workflow will ever notice, and the honest statement of coverage
 is that a maintainer grepping the tree before applying `good first issue` is still the
-only defence against that one.
+only defense against that one.
 """
 
 from __future__ import annotations

@@ -4,7 +4,7 @@
 
 This is not a substitute for axe + manual NVDA/VoiceOver review (tracked in the
 ACR), but it gates the structural mistakes that are cheap to catch: language,
-title, viewport, a skip link to a real target, labelled controls, alt text, no
+title, viewport, a skip link to a real target, labeled controls, alt text, no
 positive tabindex, landmarks, and a single h1.
 """
 
@@ -84,12 +84,12 @@ class _A11yParser(HTMLParser):
         if tag in {"input", "select", "textarea"}:
             input_type = d.get("type", "text")
             if not (tag == "input" and input_type in _EXEMPT_INPUT_TYPES):
-                labelled = (
+                labeled = (
                     bool(d.get("aria-label") or d.get("aria-labelledby") or d.get("title"))
                     or self._label_depth > 0
                 )
                 name = d.get("id") or input_type
-                self.controls.append((name, d.get("id", ""), labelled))
+                self.controls.append((name, d.get("id", ""), labeled))
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "title":
@@ -125,7 +125,7 @@ def test_skip_link_targets_a_real_element() -> None:
     assert p.main >= 1 and p.h1 == 1, "exactly one <h1> and a <main> landmark expected"
 
 
-def test_every_control_is_labelled() -> None:
+def test_every_control_is_labeled() -> None:
     p = _parse()
     unlabeled = [
         name
@@ -183,7 +183,7 @@ def _en_plural_branch(key: str, selector: str) -> str:
     """The ``one``/``other`` branch of an ICU plural message in ``en.json``.
 
     The browser test asserts on rendered copy, and copy moves. Deriving the
-    expectation from the shipped bundle keeps the assertion about *behaviour*
+    expectation from the shipped bundle keeps the assertion about *behavior*
     (the transition was announced) instead of freezing one English sentence into
     a test that a later plain-language pass would have to edit.
     """

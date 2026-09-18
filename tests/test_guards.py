@@ -59,7 +59,7 @@ def test_packet_ids_do_not_encode_passphrase_derived_material(
     assert "node_id" not in config_text
     assert leaked not in (vault.path / "keyfile.json").read_text(encoding="utf-8")
 
-    # ... nor in the exported packet the modelled adversary (opposing counsel) receives.
+    # ... nor in the exported packet the modeled adversary (opposing counsel) receives.
     out = tmp_path / "packet"
     build_packet(vault, out, generated_at=_GENERATED_AT)
     assert leaked not in (out / "bundle.json").read_text(encoding="utf-8")
@@ -444,7 +444,7 @@ def test_the_condition_datalist_suggests_only_categories_that_exist() -> None:
 
     A `<select>` was rejected on purpose -- a closed list cannot express a real
     condition outside the six, and forcing one into the wrong bucket is a wrong
-    record rather than an unvalidated one. A `<datalist>` normalises the common
+    record rather than an unvalidated one. A `<datalist>` normalizes the common
     case without taking the escape hatch away.
 
     That only works if the suggestions are real. Each option's `value` is stored
@@ -466,16 +466,16 @@ def test_the_condition_datalist_suggests_only_categories_that_exist() -> None:
     )
 
     # The stored value must not be translated; the label the tenant reads must be.
-    labelled = re.findall(r'<option value="([^"]+)"[^>]*data-i18n-label="([^"]+)"', block.group(0))
-    assert len(labelled) == len(suggested), "every suggestion needs a translated label"
+    labeled = re.findall(r'<option value="([^"]+)"[^>]*data-i18n-label="([^"]+)"', block.group(0))
+    assert len(labeled) == len(suggested), "every suggestion needs a translated label"
     for name in ("en", "es"):
         bundle = json.loads((_I18N / f"{name}.json").read_text(encoding="utf-8"))
-        missing = [key for _, key in labelled if key not in bundle]
+        missing = [key for _, key in labeled if key not in bundle]
         assert not missing, f"{name}.json has no label for {missing}"
 
 
 def test_category_aliases_are_synonyms_and_never_a_reclassification() -> None:
-    """Issue #240: `no_heat`, `moisture` and `moho` normalise; nothing else does.
+    """Issue #240: `no_heat`, `moisture` and `moho` normalize; nothing else does.
 
     An alias table is only safe while every entry means the same condition as its
     target. The moment one maps a distinct complaint onto a near-enough category --
@@ -491,7 +491,7 @@ def test_category_aliases_are_synonyms_and_never_a_reclassification() -> None:
     # adversarial review showed that `{"leak": "structural", "cockroaches":
     # "structural"}` satisfies every one of them and passes the whole suite --
     # precisely the silent refiling this docstring says is forbidden. Whether a word
-    # is a *synonym* of a category or a *different complaint* is a judgement no
+    # is a *synonym* of a category or a *different complaint* is a judgment no
     # assertion can make, so the table itself is pinned. Changing it then has to edit
     # this literal, and the reviewer of that diff is the check.
     assert ISSUE_CATEGORY_ALIASES == {
@@ -507,7 +507,7 @@ def test_category_aliases_are_synonyms_and_never_a_reclassification() -> None:
     )
     for alias, target in ISSUE_CATEGORY_ALIASES.items():
         assert target in ISSUE_CATEGORIES, (
-            f"{alias} normalises to {target}, which is not a category"
+            f"{alias} normalizes to {target}, which is not a category"
         )
         assert target != "other", f"{alias} -> other is a discard, not a synonym"
         assert alias not in ISSUE_CATEGORIES, f"{alias} is already a category; the alias shadows it"
@@ -519,7 +519,7 @@ def test_the_demo_seeds_a_severity_the_cli_would_accept() -> None:
     `high` is not in `ISSUE_SEVERITIES`. `uv run habitable demo` is the first
     command the README, CONTRIBUTING and the good-first-issue guide all tell a
     newcomer to run, and the packet it builds is the synthetic one published for
-    cold-read review -- so the project's own worked example modelled a value its
+    cold-read review -- so the project's own worked example modeled a value its
     own CLI refuses.
     """
     from habitable.model import ISSUE_SEVERITIES
@@ -709,7 +709,7 @@ _CONVERGING_WORKFLOWS = {
         "the newest measurement supersedes the last"
     ),
     "pages.yml": "GitHub Pages deploy; the last deploy is the site",
-    "release.yml": "publish; queued, never cancelled (11c / 8b)",
+    "release.yml": "publish; queued, never canceled (11c / 8b)",
     "scorecard.yml": "OpenSSF score; a repository property, not a commit's",
 }
 
@@ -745,7 +745,7 @@ def test_no_two_commits_share_a_concurrency_group() -> None:
     all, which is the harder thing to notice.
 
     Measured on this repository over the last 100 push-on-`main` runs of each
-    workflow: 37 cancelled runs, 5 of them with zero jobs dispatched, and 10
+    workflow: 37 canceled runs, 5 of them with zero jobs dispatched, and 10
     commits left with no successful `ci` run against 5 genuine failures. The
     worst was `e59c84d` (PR #213), which lost `ci`, `i18n` *and* `a11y` and
     reached `main` carrying a gate whose `main()` could not fail.
@@ -776,9 +776,9 @@ def test_cancel_in_progress_is_never_conditional_on_the_ref() -> None:
     was shipped here in #305 on exactly that reasoning. It does not work.
     Eviction of the *pending* run happens whatever this flag says; the flag only
     decides where the loss lands. `true` kills the running run, which at least
-    leaves a cancelled run with jobs in it. `false`, and every expression that
+    leaves a canceled run with jobs in it. `false`, and every expression that
     evaluates to `false` on the default branch, protects the running slot and
-    pushes every loss into the pending slot, where it appears as a cancelled run
+    pushes every loss into the pending slot, where it appears as a canceled run
     with zero jobs that nobody inspects. Ranked by how visible the loss is, the
     conditional is the worst of the three, and it makes a repository look fixed.
 

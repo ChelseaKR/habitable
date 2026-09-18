@@ -212,12 +212,12 @@ def canonical_category(raw: str) -> str:
     """The category a stored issue counts as, for grouping only.
 
     Three spellings can reach a stored issue and mean one condition. ``habitable
-    issue`` normalises a synonym at entry (``ISSUE_CATEGORY_ALIASES``, issue
+    issue`` normalizes a synonym at entry (``ISSUE_CATEGORY_ALIASES``, issue
     #240) and the app folds case before its own lookup, but neither rewrites a
     value that was already in the vault: an issue recorded as ``no_heat`` before
     #206 constrained the vocabulary, or as ``Moho`` by a client that predates
     #240, keeps the string it was written with. That is the right call for the
-    record -- their words, their capitalisation -- and the wrong one for a
+    record -- their words, their capitalization -- and the wrong one for a
     count.
 
     Grouping on the raw string splits one condition across two cells, and the
@@ -228,7 +228,7 @@ def canonical_category(raw: str) -> str:
     hide a condition behind a spelling.
 
     So the *lookup* folds case and surrounding space, and a folded form the
-    vocabulary recognises -- a member or one of its documented synonyms --
+    vocabulary recognizes -- a member or one of its documented synonyms --
     resolves to that member. Anything the vocabulary does not know is carried
     through as the tenant wrote it, stripped of surrounding space only. This is
     deliberately the same rule ``appserver.add_issue`` applies at entry: the

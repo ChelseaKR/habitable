@@ -140,7 +140,7 @@ auditability, accessibility, and saying plainly what the tool does not do.
   know* is the letter above; the inbound half is what came back. `habitable correspondence`
   seals an email export (`.eml`) and **each of its attachments as its own custody-bound item**,
   joined by typed relationships, and the packet renders the message body with a summary of the
-  headers. Those headers are the sender's claims and are labelled as such: habitable checks no
+  headers. Those headers are the sender's claims and are labeled as such: habitable checks no
   DKIM or ARC signature, so a `Date:` header is never treated as a time — the only time bound
   on any item is its RFC 3161 token. The sealed original keeps the signatures intact for an
   expert who can evaluate them.
@@ -582,7 +582,7 @@ exception is about embedding and redistribution.)
 
 ## Get involved — the project needs outside eyes
 
-habitable stays labelled **alpha** until independent reviewers have checked its claims —
+habitable stays labeled **alpha** until independent reviewers have checked its claims —
 that is the whole bargain of a *verify, don't trust* tool, and it is the current priority.
 If you can help, the **[call for reviewers](docs/recruitment/README.md)** has scoped briefs,
 the funding paths, and one-click intake for each role:

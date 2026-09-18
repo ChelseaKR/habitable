@@ -309,14 +309,14 @@ class AppServer:
         # form is what gets stored when it names a known category. The first cut of
         # this folded only for the alias lookup and stored the raw string otherwise,
         # which made the alias path more robust than the identity path: `Moho`
-        # normalised to `mold` while `Mold` stayed `Mold`. On iOS and Android the
+        # normalized to `mold` while `Mold` stayed `Mold`. On iOS and Android the
         # keyboard's default is sentence case, so a tenant typing "mold" on the
         # phone this tool is meant for stored a second `Mold` bucket beside `mold`
         # -- the exact split issue #240 set out to close, surviving in the likelier
         # direction.
         #
         # Anything the vocabulary does not know is stored as the tenant wrote it,
-        # minus surrounding space. Their words, their capitalisation.
+        # minus surrounding space. Their words, their capitalization.
         typed = _req_str(body, "category").strip()
         folded = typed.lower()
         if folded in ISSUE_CATEGORY_ALIASES:

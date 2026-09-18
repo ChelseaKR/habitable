@@ -62,7 +62,7 @@ def test_cli_letter_on_a_spanish_vault_says_the_letter_is_english(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Issue #161: a vault configured `--lang es` must not receive English prose
-    labelled Spanish, and the person generating it must be told, in Spanish."""
+    labeled Spanish, and the person generating it must be told, in Spanish."""
     vault = tmp_path / "vault"
     assert (
         main(

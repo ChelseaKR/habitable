@@ -257,13 +257,13 @@ class TestCanonicalCategory:
         assert canonical_category("moho") == "mold"
 
     def test_case_and_space_are_folded_for_the_lookup(self) -> None:
-        # A phone keyboard capitalises the first letter by default, which is how
+        # A phone keyboard capitalizes the first letter by default, which is how
         # a second `Heat` bucket appears beside `heat` (issue #240).
         assert canonical_category("  Heat ") == "heat"
         assert canonical_category("No_Heat") == "heat"
 
     def test_a_word_the_vocabulary_does_not_know_is_left_alone(self) -> None:
-        # Their words, their capitalisation. `plumbing` and `noise` were refused
+        # Their words, their capitalization. `plumbing` and `noise` were refused
         # as aliases on purpose (#240): mapping them would refile the record as
         # something the tenant did not report.
         assert canonical_category("plumbing") == "plumbing"

@@ -22,7 +22,7 @@ first line of the custody proof, which is the most trust-critical part of the ar
 These tests are deliberately **not** a JSON Schema implementation. A hand-rolled
 validator risks passing by quietly failing to understand a keyword, which is the same
 class of bug it would be checking for. Instead they evaluate one narrow keyword subset
-over declared leaves, and **refuse any branch shape they do not recognise** rather than
+over declared leaves, and **refuse any branch shape they do not recognize** rather than
 skipping it.
 """
 
@@ -89,7 +89,7 @@ def _resolve(schema: dict[str, Any], node: dict[str, Any]) -> dict[str, Any]:
 def _accepts_string(schema: dict[str, Any], branch: dict[str, Any], value: str) -> bool:
     """Does this branch accept `value`, a string?
 
-    Recognised keywords: `type`, `pattern`, `maxLength`, `minLength`, `const`, `enum`,
+    Recognized keywords: `type`, `pattern`, `maxLength`, `minLength`, `const`, `enum`,
     and a local `$ref` to a def built from them. Anything else raises, so a branch shape
     this guard cannot evaluate fails the test loudly instead of silently reading as a
     non-match — which would make an overlap look like a clean disjoint pair.
@@ -252,7 +252,7 @@ def test_the_schema_declares_the_device_count_this_project_actually_writes() -> 
 
     # What `packet._redundancy_json` writes unconditionally. `as_of` is
     # deliberately absent: it is omitted, never defaulted, when the producing
-    # device recorded no time for the most recent acknowledgement.
+    # device recorded no time for the most recent acknowledgment.
     assert set(declared["required"]) == {
         "state",
         "device_count",

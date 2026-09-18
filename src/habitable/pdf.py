@@ -6,7 +6,7 @@ The PDF is for people — a tenant, an organizer, a judge, an inspector. The
 machine-verifiable truth lives in ``bundle.json``; this document presents it. Text
 is real (selectable/searchable), the document language and title are set for
 assistive technology, and every visual status also appears in words, never by
-colour alone — the same accessibility discipline the project applies everywhere.
+color alone — the same accessibility discipline the project applies everywhere.
 """
 
 from __future__ import annotations
@@ -298,7 +298,7 @@ def _render_cover_sheet(story: list[Any], cover: CoverSheet, styles: Any) -> Non
         TableStyle(
             [
                 ("FONTSIZE", (0, 0), (-1, -1), 9),
-                ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.gray),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#eeeeee")),
             ]
@@ -400,7 +400,7 @@ def _render_integrity(story: list[Any], summary: IntegritySummary, styles: Any) 
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#222222")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.gray),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ]
         )
@@ -552,7 +552,7 @@ def _render_document_item(
     RFC 5322 message (issue #304), :func:`correspondence_view` supplies every
     sentence -- the same function the HTML renderer calls, because #311 was one
     bundle whose two renderings disagreed and a single source is the only structural
-    defence against that.
+    defense against that.
     """
     artifact = _map(item, "artifact")
     shared_name = _s(item, "shared_name")
@@ -595,7 +595,7 @@ def _render_correspondence_block(
 
     Every sentence comes from :func:`correspondence_view`, the same function
     ``packet.html`` calls: #311 was one bundle whose two renderings told a recipient
-    different things, and one copy of the wording is the only structural defence.
+    different things, and one copy of the wording is the only structural defense.
     """
     raw = item.get("correspondence")
     if not isinstance(raw, Mapping):
@@ -612,7 +612,7 @@ def _render_correspondence_block(
         TableStyle(
             [
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.gray),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ]
         )
@@ -700,7 +700,7 @@ def _render_sensor_item(
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#222222")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.gray),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ]
         )
@@ -741,7 +741,7 @@ def _sensor_chart_drawing(
         points.extend([pad + i * step, y_of(_f(reading, "value"))])
 
     drawing = Drawing(width, height)
-    drawing.add(Line(pad, pad, width - pad, pad, strokeColor=colors.grey, strokeWidth=0.5))
+    drawing.add(Line(pad, pad, width - pad, pad, strokeColor=colors.gray, strokeWidth=0.5))
     drawing.add(PolyLine(points, strokeColor=colors.HexColor("#1f4e5f"), strokeWidth=1.5))
     if n <= 60:
         for i in range(0, len(points), 2):
@@ -774,7 +774,7 @@ def _appendix_table(bundle: Mapping[str, JSONValue], styles: Any, trust: PacketT
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#222222")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.gray),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ]
         )

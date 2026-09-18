@@ -273,8 +273,8 @@ a { color: var(--carbon); text-underline-offset: .22em; }
   font-size: .72rem;
 }
 /* Issue #274: the per-condition record-strength counts. Deliberately plain text and
-   deliberately not colour-banded: the bands (minimal / developing / strong) would be
-   carried by colour alone, and the counts already say the same thing in words. */
+   deliberately not color-banded: the bands (minimal / developing / strong) would be
+   carried by color alone, and the counts already say the same thing in words. */
 .issue-strength {
   margin: 0;
   padding: 0 .15rem .7rem;

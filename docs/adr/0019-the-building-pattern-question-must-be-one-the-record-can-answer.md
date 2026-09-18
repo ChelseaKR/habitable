@@ -118,7 +118,7 @@ are inside it. Keeping the key stable while the sentence under it widens means
 the export claims a consent for a question nobody was asked. That is #182 again,
 committed more quietly: the difference between *the tool asserts consent it does
 not have* and *the tool reuses consent given for something else* is not one a
-household would recognise. And an id that keeps the word `no_heat` while
+household would recognize. And an id that keeps the word `no_heat` while
 counting `heat` is the same defect this ADR exists to fix, one layer down —
 habitable would have replaced a lying prompt with a lying key.
 
@@ -127,9 +127,9 @@ question makes `pattern` refuse the whole export and `consent show` print *not
 recorded*; nothing publishes half a cohort under a heading claiming consent.
 Against that, the cost is bounded, though not as absolutely as a first draft of
 this ADR claimed. Since #206 the **CLI** cannot store `no_heat`: `--category`
-rejected it outright, and now normalises it to `heat`. The **app** is a different
+rejected it outright, and now normalizes it to `heat`. The **app** is a different
 story — its Condition field is free text and always has been, and until the
-normalisation added alongside this work `appserver.add_issue` stored whatever was
+normalization added alongside this work `appserver.add_issue` stored whatever was
 typed. A household who typed `no_heat` into the app, exactly, would have been
 counted. So the honest statement is that a campaign conducted through the CLI
 cannot have had a non-empty export, and a campaign conducted through the app
@@ -146,11 +146,11 @@ actually be asked about them.
 To keep that refusal from looking like a bug, `SUPERSEDED_QUESTION_IDS` names
 the retired id, `superseded_consent_ids()` reports which retired records a case
 still holds, and the `ConsentMissingError` says so in a sentence a person reads.
-The record is reported, never honoured; no code path treats it as consent.
+The record is reported, never honored; no code path treats it as consent.
 
 **5. Spellings the vocabulary knows to be one condition are folded at
 aggregation, not by rewriting the vault.** `commons.canonical_category()` folds
-case and surrounding space for the *lookup* and resolves a recognised member or
+case and surrounding space for the *lookup* and resolves a recognized member or
 documented synonym to that member, carrying anything else through as the tenant
 wrote it — deliberately the same rule `appserver.add_issue` applies at entry, so
 the commons never invents a mapping the product would refuse to store. Nothing
@@ -200,7 +200,7 @@ first vault without a record, and writes no file. `habitable consent show`
 prints `consent: not recorded` for a household that consented before this
 release. If that household still holds the old record, the refusal says so and
 names the retired question, so it is clear this is a migration rather than a
-neighbour who changed their mind.
+neighbor who changed their mind.
 
 **What to do.** On each household's own device, run:
 

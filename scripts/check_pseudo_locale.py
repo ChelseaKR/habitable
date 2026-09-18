@@ -10,7 +10,7 @@ either does.
 ``RULE A`` -- the transform must not corrupt an ICU message.
     A pseudo-locale exists to be loaded into the running app, so a generator
     that mangles ``{count, plural, ...}`` would report a layout break that is
-    really its own bug. Every generated string is re-analysed with
+    really its own bug. Every generated string is re-analyzed with
     ``check_i18n_parity._analyze_message`` -- the same parser the EN/ES parity
     gate uses -- and must carry exactly the placeholders and plural categories
     of its English source.

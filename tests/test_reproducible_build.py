@@ -27,7 +27,7 @@ _SETUP_BUILDX_SHA = "37fe631027851001ddb9b187196cc803df7f5f0e"
 # relay-repro` archive diff, not assumed; leaving any one of them in the image
 # reintroduces the failure. The logs carry wall-clock times; aux-cache stores
 # per-library inode numbers and ctimes inside its own bytes, which is why
-# BuildKit's rewrite-timestamp does not neutralise it.
+# BuildKit's rewrite-timestamp does not neutralize it.
 _NONDETERMINISTIC_APT_PATHS = (
     "/var/log/apt",
     "/var/log/dpkg.log",

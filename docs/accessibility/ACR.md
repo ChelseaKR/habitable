@@ -4,8 +4,8 @@ Based on the **Voluntary Product Accessibility Template (VPAT) version 2.5 (Rev 
 
 > **Update (2026-07-23): the local web app is built and has automated accessibility gates.**
 > `habitable app` ships with semantic landmarks, a skip link, a single `h1`,
-> programmatically labelled controls, native entry dialogs, Reported/Secured date
-> labels, word-labelled proof and copy states, `lang`/`title`/viewport, an
+> programmatically labeled controls, native entry dialogs, Reported/Secured date
+> labels, word-labeled proof and copy states, `lang`/`title`/viewport, an
 > `aria-live` status region, visible focus, no positive `tabindex`, and mechanical
 > English/Spanish catalog parity. These are enforced in CI with: structural tests
 > (`tests/test_app_accessibility.py`, `tests/test_app_i18n.py`), **a
@@ -38,7 +38,7 @@ Based on the **Voluntary Product Accessibility Template (VPAT) version 2.5 (Rev 
 > (decided in [ADR 0004](../adr/0004-accessible-html-packet-as-conformant-rendering.md)).
 > A fully tagged PDF/UA file is revisited only if a suitable open-source tagging
 > toolchain becomes available; the PDF rows below describe its current best-effort
-> behaviour, not a conformance target.
+> behavior, not a conformance target.
 
 ## Name of Product / Version
 
@@ -209,7 +209,7 @@ emitted. That gap is tracked work and affects several rows below.
 | **1.4.4 Resize Text** (AA) | Not Evaluated (app); Partially Supports (PDF) | App target: 200% resize without loss. **PDF current:** text is real and zooms in a conforming reader without rasterization, but fixed-page layout limits reflow. |
 | **1.4.5 Images of Text** (AA) | Not Evaluated (app); Supports (PDF) | **PDF current:** text is rendered as real text, not images of text. Evidence photos are content, not text. |
 | **1.4.10 Reflow** (AA) | Not Evaluated (app); Partially Supports (PDF) | App target: reflow to a single column at 320 CSS px equivalent. **PDF current:** a paginated letter-size PDF does not reflow; mitigated by the machine-readable `bundle.json` companion that carries the same data in a structure-agnostic form. |
-| **1.4.11 Non-text Contrast** (AA) | Not Evaluated (app); Supports (PDF) | **PDF current:** the appendix table grid uses a grey line that, with surrounding contrast and adjacent text labels, conveys structure; no meaning rests on a low-contrast graphic alone. |
+| **1.4.11 Non-text Contrast** (AA) | Not Evaluated (app); Supports (PDF) | **PDF current:** the appendix table grid uses a gray line that, with surrounding contrast and adjacent text labels, conveys structure; no meaning rests on a low-contrast graphic alone. |
 | **1.4.12 Text Spacing** (AA) | Not Evaluated (app); Not Applicable (PDF) | App target. A fixed-layout PDF does not support author-overridable text spacing. |
 | **1.4.13 Content on Hover or Focus** (AA) | Not Applicable (PDF); Not Evaluated (app) | No hover/focus content in the PDF. App target. |
 | **2.4.5 Multiple Ways** (AA) | Not Evaluated (app) | App target. N/A to a single PDF document. |
