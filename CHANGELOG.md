@@ -9,6 +9,25 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **Google Analytics 4 on the documentation website, and only there** (owner decision,
+  2026-09-17: GA4 on every public site, with the privacy copy updated to match). The
+  app, the CLI and the relay keep the no-telemetry rule unchanged. `site/analytics.js`
+  loads gtag.js for `G-BMJYDCX015` only when the page is served from
+  habitable.chelseakr.com, the browser sends neither Global Privacy Control nor Do Not
+  Track, and the reader has not pressed "Opt out of analytics"; Consent Mode v2 denies ad
+  storage, ad user data and ad personalization everywhere and analytics storage in the
+  EEA, the UK and Switzerland; Google signals and ad personalization are off; one page
+  view per page carries the path plus `utm_*` tags. Each of the 12 site pages gains one
+  deferred loader script and a footer note linking the new `trust-limitations/#analytics`
+  disclosure, with the opt-out button (remembered in `localStorage` under
+  `habitable.chelseakr.com:analytics-opt-out`, and deleting the GA cookies). The
+  synthetic sample packet carries no loader. `tests/test_site_analytics.py` checks the
+  markup and, in real Chromium, every load and no-load case, the button, and a negative
+  control; the "no form, account, tracker" and "no analytics or tracking script" lines on
+  two guides, the audit's "also none on the Pages site", the roadmap non-goal, the README
+  hard rule and the board briefing now say which surface they mean. Landing-page footer
+  links are now white (`home.css`), which the new link needed for contrast.
+
 - **Nothing in this repository was asking whether the live site is this site; now
   something does** (#335 was the same shape one level down). `pages.yml` publishes on a
   push that touches `site/**`, and every other gate here is offline, so the one question

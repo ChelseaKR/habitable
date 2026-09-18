@@ -598,6 +598,8 @@ footer {
   font-size: .78rem;
 }
 footer p { margin: 0; }
+footer p + p { margin-block-start: .5rem; }
+footer a { color: var(--white); }
 
 @media (max-width: 900px) {
   .site-top {
