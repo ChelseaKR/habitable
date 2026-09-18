@@ -244,6 +244,16 @@ def test_content_page_uses_only_truthful_article_and_breadcrumb_schema(slug: str
     assert crumbs[-1]["item"] == canonical
 
 
+def _only_the_analytics_loader(parser: _ContentParser, slug: str) -> bool:
+    """The one script a content page may carry: the Google Analytics loader.
+
+    Owner decision, 2026-09-17 (see tests/test_site_analytics.py). Anything else --
+    another script, an inline one, a second loader -- still fails.
+    """
+    prefix = "../" * (slug.count("/") + 1)
+    return parser.non_json_scripts == [{"src": f"{prefix}analytics.js", "defer": ""}]
+
+
 @pytest.mark.parametrize("slug", _PAGE_META)
 def test_content_page_is_semantic_static_and_claim_safe(slug: str) -> None:
     parser = _parse(_SITE / slug / "index.html")
@@ -254,7 +264,7 @@ def test_content_page_is_semantic_static_and_claim_safe(slug: str) -> None:
     assert parser.h1_count == 1
     assert len(parser.h1_parts) > 0
     assert parser.collection_controls == []
-    assert parser.non_json_scripts == []
+    assert _only_the_analytics_loader(parser, slug), parser.non_json_scripts
     assert "not legal advice" in normalized or "legal boundary" in normalized
     assert "synthetic" in normalized
     assert "court-ready" not in normalized
@@ -423,7 +433,7 @@ def test_maintenance_request_guide_preserves_the_full_record_without_overclaimin
     assert "does not prove that a recipient received or read the request" in visible
     assert "does not by itself establish that notice was legally sufficient" in visible
     assert parser.collection_controls == []
-    assert parser.non_json_scripts == []
+    assert _only_the_analytics_loader(parser, slug), parser.non_json_scripts
 
     authoritative_sources = {
         "https://oag.ca.gov/node/554793",

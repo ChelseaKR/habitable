@@ -561,7 +561,10 @@ habitable will deliberately **never**:
 
 - Host tenants' data, photos, or cases on a server the project controls.
 - Run a central account system or any authority that can read or revoke a union's records.
-- Add analytics, telemetry, or "anonymous" usage reporting.
+- Add analytics, telemetry, or "anonymous" usage reporting to the app, the CLI or the relay.
+  (The documentation website is separate: since 2026-09-17, by owner decision, it counts page
+  visits with Google Analytics 4, with GPC, Do Not Track and a footer opt-out honoured and ad
+  features off. It never sees anything the tool handles.)
 - Promise admissibility or any court outcome, or become a substitute for legal advice.
 - Weaken tamper-evidence or end-to-end encryption for convenience.
 
