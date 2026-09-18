@@ -78,7 +78,7 @@ RECEIPT_VERSION = 2
 RECEIPT_TYPE = "habitable.evidence-receipt"
 
 #: The packet ``bundle.json`` schema this importer is pinned to (its ``$id``). A receipt
-#: names the exact schema it was verified against, honouring the packet's semver contract.
+#: names the exact schema it was verified against, honoring the packet's semver contract.
 PACKET_SCHEMA_ID = "https://chelseakr.github.io/habitable/schema/packet-bundle-v1.schema.json"
 
 #: Human/machine label for the tool that produced a receipt, recorded in every receipt.
@@ -122,7 +122,7 @@ class ImportResult:
 class ReceiptVerification:
     """The outcome of re-checking a signed receipt envelope."""
 
-    #: The receipt canonicalises to the ``receipt_sha256`` recorded in the envelope.
+    #: The receipt canonicalizes to the ``receipt_sha256`` recorded in the envelope.
     digest_ok: bool
     #: The Ed25519 signature over that digest verified against the embedded public key.
     signature_ok: bool
@@ -144,7 +144,7 @@ def import_packet(
     trusted_certs: list[x509.Certificate] | None = None,
     now: str | None = None,
 ) -> ImportResult:
-    """Verify a packet directory and distil the result into an evidence receipt.
+    """Verify a packet directory and distill the result into an evidence receipt.
 
     ``packet_dir`` is a habitable packet directory (contains ``bundle.json``). ``trusted_certs``
     is forwarded to the verifier to anchor RFC 3161 timestamp roots you trust. ``now`` is an

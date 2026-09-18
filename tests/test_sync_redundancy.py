@@ -22,6 +22,7 @@ from habitable.canonical import JSONValue, canonical_json
 from habitable.cli import main
 from habitable.crypto import PublicIdentity
 from habitable.errors import SyncError
+from habitable.packet import build_packet
 from habitable.pairing import accept_pairing_material, create_pairing_material
 from habitable.sync import (
     LocalDirTransport,
@@ -33,6 +34,7 @@ from habitable.sync import (
 )
 from habitable.syncstate import CLOCK_SKEW_TOLERANCE_MS, redundancy_from_peers
 from habitable.vault import Vault
+from habitable.verify import verify_packet
 
 # The same fixed epoch the rest of the suite pins to, kept local rather than
 # imported from conftest: `tests/` is not a package, so a relative import here
@@ -584,3 +586,130 @@ def _app_status(vault: Vault) -> dict[str, object]:
     # Round-trip through JSON: the app reads this over HTTP, so anything that
     # cannot survive serialization is not actually reported.
     return cast(dict[str, object], json.loads(json.dumps(status))["sync"])
+
+
+# --- the packet says it too, in a count and never a name (issue #297) -------------
+
+
+def _bundle_of(vault: Vault, out: Path) -> dict[str, JSONValue]:
+    build_packet(vault, out, generated_at="2026-01-02T00:10:00Z", make_pdf=False)
+    loaded = json.loads((out / "bundle.json").read_text(encoding="utf-8"))
+    assert isinstance(loaded, dict)
+    return cast("dict[str, JSONValue]", loaded)
+
+
+def _redundancy_of(bundle: dict[str, JSONValue]) -> dict[str, JSONValue]:
+    appendix = bundle["appendix"]
+    assert isinstance(appendix, dict)
+    field = appendix["redundancy"]
+    assert isinstance(field, dict)
+    return field
+
+
+def test_a_packet_from_a_lone_device_states_one_device(tmp_path: Path) -> None:
+    """A paired peer that has never synced does not become a copy in the packet either.
+
+    This is the same defect `test_a_paired_peer_that_never_synced_is_not_a_copy`
+    refuses on the CLI, asserted at the surface that actually leaves the device.
+    """
+    a, _b = _pair(tmp_path)
+    a.document.add_issue(category="mold", room="bath", issue_id="i1")
+    a.save()
+
+    redundancy = _redundancy_of(_bundle_of(a, tmp_path / "packet-alone"))
+
+    assert redundancy["state"] == "this_device_only"
+    assert redundancy["device_count"] == 1
+    assert redundancy["acknowledged_by"] == 0
+    assert redundancy["identities_included"] is False
+    assert "as_of" not in redundancy
+
+
+def test_a_packet_after_a_round_trip_states_two_devices_and_when(tmp_path: Path) -> None:
+    a, b = _pair(tmp_path)
+    a.document.add_issue(category="mold", room="bath", issue_id="i1")
+    a.save()
+    _round_trip(a, b)
+
+    out = tmp_path / "packet-two"
+    bundle = _bundle_of(a, out)
+    redundancy = _redundancy_of(bundle)
+
+    assert redundancy["state"] == "acknowledged"
+    assert redundancy["device_count"] == 2
+    assert redundancy["acknowledged_by"] == 1
+    as_of = redundancy["as_of"]
+    assert isinstance(as_of, str) and as_of.endswith("Z")
+    assert not as_of.startswith("1970")
+
+    html = (out / "packet.html").read_text(encoding="utf-8")
+    assert "Copies of this case" in html
+    assert "2 devices" in html
+    assert as_of in html
+
+
+def test_the_packet_counts_devices_and_never_names_one(tmp_path: Path) -> None:
+    """The scope note this feature was deferred behind, asserted rather than reviewed.
+
+    A peer fingerprint in a packet is a map of who is organizing in a building,
+    in a document whose whole purpose is to be handed to the other side. The
+    check is over the *whole* packet -- bundle and rendering -- rather than over
+    the redundancy object, because the field being absent from one object proves
+    nothing about the artifact.
+    """
+    a, b = _pair(tmp_path)
+    a.document.add_issue(category="mold", room="bath", issue_id="i1")
+    a.save()
+    _round_trip(a, b)
+    fingerprint = b.identity.public().fingerprint
+    assert fingerprint, "the peer has no fingerprint; this check would pass on nothing"
+
+    out = tmp_path / "packet-anonymous"
+    _bundle_of(a, out)
+    for name in ("bundle.json", "packet.html"):
+        assert fingerprint not in (out / name).read_text(encoding="utf-8"), name
+
+
+def test_a_count_this_device_cannot_date_is_carried_without_a_date(tmp_path: Path) -> None:
+    """Confirmed by signature, with no local record of when it arrived.
+
+    The vault reports ``last_observed_at_ms is None`` here rather than an epoch,
+    and the packet has to preserve that: a device count dated 1970-01-01 is a
+    redundancy claim a reader would rightly discount, over data that is current.
+    """
+    a, b = _pair(tmp_path)
+    a.document.add_issue(category="mold", room="bath", issue_id="i1")
+    a.save()
+    _round_trip(a, b)
+    record = a.sync_peer(b.identity.public())
+    assert record is not None
+    record.receipt_observations.clear()
+    assert a.sync_redundancy().last_observed_at_ms is None
+
+    out = tmp_path / "packet-undated"
+    redundancy = _redundancy_of(_bundle_of(a, out))
+    assert redundancy["state"] == "acknowledged"
+    assert redundancy["device_count"] == 2
+    assert "as_of" not in redundancy
+    html = (out / "packet.html").read_text(encoding="utf-8")
+    assert "1970" not in html
+    assert "recorded no time" in html
+
+
+def test_the_verifier_reads_the_device_count_a_real_export_writes(tmp_path: Path) -> None:
+    """The producer and the verifier, on the same packet, end to end.
+
+    The unit tests in `test_packet_verify.py` hand `_verify_appendix_redundancy`
+    shapes by hand, which proves the rule and not the wiring. This runs the whole
+    path over a vault with a paired-but-unsynced peer -- the state whose numbers
+    are easiest to get wrong -- and requires the verifier to accept what
+    `build_packet` actually wrote.
+    """
+    a, _b = _pair(tmp_path)
+    a.document.add_issue(category="mold", room="bath", issue_id="i1")
+    a.save()
+
+    out = tmp_path / "packet-verified"
+    _bundle_of(a, out)
+    report = verify_packet(out)
+    assert not [problem for problem in report.problems if "redundancy" in problem], report.problems

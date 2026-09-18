@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 from typing import cast
@@ -20,7 +21,13 @@ from habitable.exif import read_metadata
 from habitable.packet import build_packet
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
-from habitable.verify import VerificationReport, _verify_item, verify_packet
+from habitable.verify import (
+    VerificationReport,
+    _verify_appendix_redundancy,
+    _verify_correspondence,
+    _verify_item,
+    verify_packet,
+)
 
 
 def _case_with_two_captures(
@@ -679,3 +686,281 @@ def test_every_disclosure_lookup_resolves_a_regional_tag_the_same_way() -> None:
     # And the two languages are genuinely different text, so the assertions above
     # are not all trivially comparing English to English.
     assert scope_statement("es", scope_type="unit") != scope_statement("en", scope_type="unit")
+
+
+# ----------------------------------------------------------------------------------
+# appendix.redundancy — the one appendix figure the verifier cannot re-derive
+# ----------------------------------------------------------------------------------
+
+
+def test_a_packet_that_omits_the_device_count_still_verifies() -> None:
+    """Absence is accepted, and it has to be.
+
+    Every packet exported before issue #297 shipped omits ``redundancy``,
+    including all six committed golden fixtures. Requiring the field would turn
+    "every packet version we have emitted keeps verifying" -- the compatibility
+    guarantee `tests/test_golden.py` exists for -- into a promise this repository
+    broke the day it added an optional field.
+    """
+    assert _verify_appendix_redundancy({"item_count": 0}) == []
+
+
+def test_a_well_formed_device_count_raises_no_problem() -> None:
+    assert (
+        _verify_appendix_redundancy(
+            {
+                "redundancy": {
+                    "state": "acknowledged",
+                    "device_count": 3,
+                    "acknowledged_by": 2,
+                    "identities_included": False,
+                    "as_of": "2026-01-02T00:05:00Z",
+                }
+            }
+        )
+        == []
+    )
+    assert (
+        _verify_appendix_redundancy(
+            {
+                "redundancy": {
+                    "state": "this_device_only",
+                    "device_count": 1,
+                    "acknowledged_by": 0,
+                    "identities_included": False,
+                }
+            }
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    ("redundancy", "expected"),
+    [
+        pytest.param("not an object", "not an object", id="scalar"),
+        pytest.param(
+            {
+                "state": "everyone",
+                "device_count": 2,
+                "acknowledged_by": 1,
+                "identities_included": False,
+            },
+            "state is not one of",
+            id="state-outside-the-vocabulary",
+        ),
+        pytest.param(
+            {
+                "state": "acknowledged",
+                "device_count": "2",
+                "acknowledged_by": 1,
+                "identities_included": False,
+            },
+            "are not counts",
+            id="count-as-a-string",
+        ),
+        pytest.param(
+            {
+                "state": "acknowledged",
+                "device_count": 4,
+                "acknowledged_by": 1,
+                "identities_included": False,
+            },
+            "does not count the producing device plus",
+            id="arithmetic-a-hand-edit-would-carry",
+        ),
+        pytest.param(
+            {
+                "state": "this_device_only",
+                "device_count": 3,
+                "acknowledged_by": 2,
+                "identities_included": False,
+            },
+            "contradicts acknowledged_by",
+            id="word-and-number-disagree",
+        ),
+        pytest.param(
+            {
+                "state": "acknowledged",
+                "device_count": 2,
+                "acknowledged_by": 1,
+                "identities_included": True,
+            },
+            "counts devices and never names them",
+            id="identities-claimed",
+        ),
+        pytest.param(
+            {
+                "state": "acknowledged",
+                "device_count": 2,
+                "acknowledged_by": 1,
+                "identities_included": False,
+                "as_of": 1767312000,
+            },
+            "as_of is not a string",
+            id="epoch-instead-of-a-date",
+        ),
+    ],
+)
+def test_a_stated_device_count_must_agree_with_its_own_arithmetic(
+    redundancy: JSONValue, expected: str
+) -> None:
+    """Nothing in a packet says how many devices exist, so nothing re-derives this.
+
+    What is checkable is that the producer's three numbers and the word beside
+    them agree -- which is what refuses a hand-edited packet claiming four
+    devices over one acknowledgment.
+    """
+    problems = _verify_appendix_redundancy({"redundancy": redundancy})
+    assert any(expected in problem for problem in problems), problems
+
+
+# ----------------------------------------------------------------------------------
+# item.correspondence — a summary the verifier cannot re-derive either (issue #304)
+# ----------------------------------------------------------------------------------
+
+
+def _summary(**overrides: JSONValue) -> dict[str, JSONValue]:
+    """A well-formed correspondence block, with one field replaced per test.
+
+    Written out rather than parsed from a message on purpose: these tests are about
+    what a *packet* may say, including packets nothing in this repository produced.
+    """
+    block: dict[str, JSONValue] = {
+        "correspondence_schema": 1,
+        "from_header": {"name": "From", "state": "present", "value": "a@example.test"},
+        "date_header": {"name": "Date", "state": "absent", "value": ""},
+        "subject": {"name": "Subject", "state": "unreadable", "value": ""},
+        "message_id": {"name": "Message-ID", "state": "present", "value": "<x@y.test>"},
+        "attachment_count": 2,
+        "attachments_readable": 1,
+        "attachments": [
+            {"index": 1, "filename": "a.png", "media_type": "image/png"},
+            {"index": 2, "filename": "b.txt", "media_type": "text/plain"},
+        ],
+        "body": {
+            "state": "not_plain_text",
+            "media_type": "text/html",
+            "text": "",
+            "characters": 0,
+            "truncated": False,
+        },
+        "header_dates_are_claims": True,
+        "warnings": ["attachment 2 of 2 (b.txt, text/plain) could not be decoded"],
+    }
+    block.update(overrides)
+    return block
+
+
+def test_an_item_that_is_not_a_message_raises_no_correspondence_problem() -> None:
+    """Absence and an explicit null are both accepted, and both have to be.
+
+    Every packet exported before issue #304 omits the field, including all seven
+    fixtures committed before this one, and every photo item in every packet since
+    carries it as ``null``. Requiring it would break the compatibility guarantee
+    ``tests/test_golden.py`` exists for on the day an optional field shipped.
+    """
+    assert _verify_correspondence({"capture_id": "cap-1"}) == []
+    assert _verify_correspondence({"capture_id": "cap-1", "correspondence": None}) == []
+
+
+def test_a_well_formed_message_summary_raises_no_problem() -> None:
+    assert _verify_correspondence({"correspondence": _summary()}) == []
+
+
+@pytest.mark.parametrize(
+    ("block", "expected"),
+    [
+        pytest.param("not an object", "correspondence is not an object", id="scalar"),
+        pytest.param(
+            _summary(header_dates_are_claims=False),
+            "header_dates_are_claims must be true",
+            id="a-header-date-promoted-to-a-proved-time",
+        ),
+        pytest.param(
+            _summary(correspondence_schema=2),
+            "correspondence_schema must be 1",
+            id="a-schema-this-verifier-does-not-know",
+        ),
+        pytest.param(
+            _summary(subject={"name": "Subject", "state": "withheld", "value": ""}),
+            "subject.state is not one of",
+            id="state-outside-the-vocabulary",
+        ),
+        pytest.param(
+            _summary(subject={"name": "Subject", "state": "absent", "value": "leak"}),
+            "carries a value while stating it is not present",
+            id="a-value-under-a-state-that-says-there-is-none",
+        ),
+        pytest.param(
+            _summary(attachment_count="two"),
+            "are not counts",
+            id="a-count-as-a-string",
+        ),
+        pytest.param(
+            _summary(attachments_readable=3),
+            "exceeds the attachment_count the message itself declares",
+            id="more-read-than-the-message-declares",
+        ),
+        pytest.param(
+            _summary(attachments=[{"index": 1, "filename": "a.png", "media_type": "image/png"}]),
+            "does not list every attachment the message declares",
+            id="an-inventory-shorter-than-its-own-count",
+        ),
+        pytest.param(
+            _summary(body={"state": "rendered", "media_type": "", "text": ""}),
+            "body.state is not one of",
+            id="body-state-outside-the-vocabulary",
+        ),
+        pytest.param(
+            _summary(from_header="Manager <m@example.test>"),
+            "from_header is not an object",
+            id="a-header-flattened-into-a-bare-string",
+        ),
+        pytest.param(
+            _summary(subject={"name": "Subject", "state": "present", "value": 7}),
+            "subject.value is not a string",
+            id="a-header-value-that-is-not-text",
+        ),
+        pytest.param(
+            _summary(body="the whole message, as a string"),
+            "body is not an object",
+            id="a-body-flattened-into-a-bare-string",
+        ),
+        pytest.param(
+            _summary(attachments={"1": "a.png"}),
+            "attachments is not an array",
+            id="an-inventory-that-is-not-a-list",
+        ),
+    ],
+)
+def test_a_stated_message_summary_must_agree_with_itself(block: JSONValue, expected: str) -> None:
+    """The verifier cannot re-parse the message: a packet exported without
+    ``--include-originals`` does not carry the bytes. What it can refuse is a block
+    that contradicts itself or has been edited into a stronger claim than the format
+    allows -- above all one asserting that its ``Date:`` header is a verified time.
+    """
+    problems = _verify_correspondence({"correspondence": block})
+    assert any(expected in problem for problem in problems), problems
+
+
+def test_the_whole_packet_reports_a_hand_edited_message_summary(tmp_path: Path) -> None:
+    """End to end, because `_verify_correspondence` being right is not the claim.
+
+    The claim is that a packet carrying an edited summary comes back with a problem
+    naming the item, which needs the call site as well as the function.
+    """
+    source = Path(__file__).resolve().parent / "golden" / "correspondence-packet-v4"
+    packet = tmp_path / "packet"
+    shutil.copytree(source, packet)
+    bundle = json.loads((packet / "bundle.json").read_text("utf-8"))
+    edited = next(item for item in bundle["items"] if item.get("correspondence"))
+    edited["correspondence"]["header_dates_are_claims"] = False
+    (packet / "bundle.json").write_text(json.dumps(bundle), encoding="utf-8")
+
+    report = verify_packet(packet)
+    assert not report.structurally_intact
+    assert any(
+        edited["capture_id"] in problem and "header_dates_are_claims" in problem
+        for problem in report.problems
+    ), report.problems

@@ -32,7 +32,7 @@ def build_handoff_manifest(
     but nothing in the case model records which record belongs to which section,
     so no section can honestly claim membership. Section-scoped counts return
     when routing does; until then the only counts in this manifest are
-    ``counts``, which are bundle-wide and labelled as such.
+    ``counts``, which are bundle-wide and labeled as such.
 
     Issue #277 put the choice the other way round: either give the sections
     membership, or stop the profile summaries promising an ordering this manifest
@@ -107,7 +107,7 @@ def render_handoff_html(manifest: dict[str, JSONValue], out_path: Path, *, langu
             "This workflow is implemented for synthetic evaluation; it is not "
             "a legal, medical, inspector, or accessibility approval.</p>"
         )
-    # Bundle-wide, printed once, labelled as covering the whole handoff. Before
+    # Bundle-wide, printed once, labeled as covering the whole handoff. Before
     # issue #181 these same two numbers were printed under *every* section
     # heading, so a packet with no delivery receipt still read "Delivery -- 1
     # evidence item(s), 1 relationship(s)".

@@ -7,7 +7,392 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ## [Unreleased]
 
+### Added
+
+- **Google Analytics 4 on the documentation website, and only there** (owner decision,
+  2026-09-17: GA4 on every public site, with the privacy copy updated to match). The
+  app, the CLI and the relay keep the no-telemetry rule unchanged. `site/analytics.js`
+  loads gtag.js for `G-BMJYDCX015` only when the page is served from
+  habitable.chelseakr.com, the browser sends neither Global Privacy Control nor Do Not
+  Track, and the reader has not pressed "Opt out of analytics"; Consent Mode v2 denies ad
+  storage, ad user data and ad personalization everywhere and analytics storage in the
+  EEA, the UK and Switzerland; Google signals and ad personalization are off; one page
+  view per page carries the path plus `utm_*` tags. Each of the 12 site pages gains one
+  deferred loader script and a footer note linking the new `trust-limitations/#analytics`
+  disclosure, with the opt-out button (remembered in `localStorage` under
+  `habitable.chelseakr.com:analytics-opt-out`, and deleting the GA cookies). The
+  synthetic sample packet carries no loader. `tests/test_site_analytics.py` checks the
+  markup and, in real Chromium, every load and no-load case, the button, and a negative
+  control; the "no form, account, tracker" and "no analytics or tracking script" lines on
+  two guides, the audit's "also none on the Pages site", the roadmap non-goal, the README
+  hard rule and the board briefing now say which surface they mean. Landing-page footer
+  links are now white (`home.css`), which the new link needed for contrast.
+
+- **Nothing in this repository was asking whether the live site is this site; now
+  something does** (#335 was the same shape one level down). `pages.yml` publishes on a
+  push that touches `site/**`, and every other gate here is offline, so the one question
+  no check could answer was whether habitable.chelseakr.com is serving what `main` holds.
+  A site frozen weeks behind `main` answers every existing gate correctly, every day.
+
+  **The obvious measurement is the wrong one here, and wrong in the direction that gets
+  a detector muted.** `pages.yml` is a *committed-tree* publisher: it hands
+  `actions/upload-pages-artifact` the `site/` directory exactly as committed and builds
+  nothing on the runner. So the deployed commit and `main` drift apart on every merge
+  that touches code, tests or docs — none of which a reader receives. On the day this
+  landed the live deployment was `b1c62e172` and `main` was `589e30c1a`, five commits
+  later, and `git rev-parse b1c62e172:site` and `git rev-parse 589e30c1a:site` were the
+  same tree object: a visitor had, byte for byte, what `main` had. A sentinel comparing
+  the deployed SHA against `main` would have called that three days and five commits of
+  drift, and been wrong, weekly, until someone turned it off.
+
+  `scripts/deploy_staleness.py` therefore compares the published *subtrees* — equal tree
+  object ids mean equal bytes however far apart the commits are — and reads which
+  directory that is out of `pages.yml` rather than assuming `site/`, because the
+  publisher's `path:` is itself a publication input: changing it changes what a reader
+  receives without changing one byte under `site/`.
+
+  **Age alone is never the verdict, in either direction.** Matching subtrees are current
+  regardless of how old the deployment is. When they differ, the clock runs from the
+  oldest unpublished change rather than from the last deploy, so a fortnight-old
+  deployment does not make this morning's edit overdue.
+
+  **Every unmeasurable case refuses rather than reporting a comfortable zero**: no
+  `github-pages` deployment, none whose newest status is `success` (a deployment row is a
+  request to publish, not a publish), a deployed commit a shallow clone does not contain,
+  a diverged history, a publisher whose upload path cannot be read. Those exit 2 and turn
+  the run red. A real measurement files, updates or closes one issue instead, because a
+  scheduled check that stays red while a deploy is outstanding is a check nobody reads.
+
+  `.github/workflows/deploy-staleness.yml` runs it weekly. It publishes nothing and
+  cannot: workflow-level `permissions: {}`, job-level `contents: read` +
+  `deployments: read` + `issues: write`, no `pages: write`, no `id-token: write`, and it
+  neither widens nor touches `pages.yml`'s path filter. Standard-library only on the
+  runner's bare `python3`, like the i18n gates.
+
+- **A full phone no longer means deleting evidence: `habitable offload` moves a sealed
+  original to a USB stick and leaves the chain behind** (#296, RR-08). Video fills a
+  low-end phone first, and until now the only way to reclaim that space was to delete
+  a photograph, which deletes the case — `docs/mobile.md` said so, after correcting
+  its own advice to "export finished issues to an external drive", an operation that
+  *adds* a copy and removes nothing.
+
+  **What leaves is bytes; what stays is the evidence.** `habitable offload <item> --to
+  <folder>` writes the sealed original into an AEAD container on the drive and keeps
+  the content hash the timestamp token covers, every token, and the whole chain of
+  custody in the vault. `habitable restore <item> --from <folder>` re-attaches it.
+  The chain is *extended*, not rewritten: a `note_added` entry records the move and a
+  second records the return, so the log says where the bytes have been rather than
+  pretending they never left, and every entry that existed before a round trip is
+  byte-identical after it.
+
+  **Ordering is the safety argument.** The container is written, read back off the
+  drive, re-hashed and decrypted, and only then is the sealed original deleted — and
+  the container key is persisted before the delete, not after, so a crash fails
+  towards two copies rather than zero. `Vault.open` collapses that state. A drive that
+  cannot be written to costs nothing.
+
+  **The container has its own key, and that is not an accident.** `key rotate-dek`
+  re-encrypts every sealed original under a new data key and cannot reach a USB stick,
+  so a container sealed under the DEK would be lost for good at the next rotation.
+  Each container gets a fresh key stored inside the vault blob rotation does
+  re-encrypt. A restore compares the container's SHA-256 with the one recorded when it
+  was written *before* decrypting anything, so altered bytes are refused by name.
+
+  **A packet cannot carry bytes that are not here, and does not pretend to.**
+  `habitable export` refuses while an original is offloaded and names the captures to
+  restore. `--allow-offloaded` exports anyway: the item then carries `item.offload`
+  (`state`, `offloaded_at`, `container_hash` — never which drive, which stays in the
+  vault-only half of the custody entry beside the tenant's own filenames),
+  `appendix.offloaded_count` counts them on every packet including as `0`, and
+  `packet.html` says in EN and ES why the photograph is not there.
+
+  **The verifier changes its sentence and never its verdict.** A declared offload
+  leaves `evidence_present` false, so the packet is *not* evidence-ready — granting
+  readiness on the strength of a field the bundle supplies would undo #158 from the
+  other direction, since anyone hand-crafting a bundle could write the same three
+  keys. What the declaration buys is a true explanation instead of "this item carries
+  no checkable evidence bytes", which reads as a broken export rather than as
+  something the tenant chose. `docs/verifier-decision-table.md` §4.2c is the row.
+  An unrecognized `offload` value gets the ordinary byteless treatment.
+
+  **`habitable sync` refuses too**, naming the items, rather than dying inside the
+  exporter on a file the tenant deliberately moved.
+
+- **A landlord's email is now readable evidence, and its attachments are their own
+  items** (#304). Sealing an `.eml` already worked — `habitable artifact reply.eml`
+  hashed, encrypted, custody-bound and RFC 3161 timestamped it like any other
+  document — so the issue's premise that correspondence "can only be screenshotted"
+  was already wrong when it was written. Two things were genuinely missing, and both
+  are the half that decides whether the evidence is usable.
+
+  **The message was opaque.** A packet carried a sealed blob a recipient had to
+  download and open in a mail client; the PDF rendering did not even do that, because
+  a document artifact reached reportlab's `Image(...)` and **killed the export**
+  (`UnidentifiedImageError`, no packet produced at all — measured against `main` with
+  a single captured `notice.pdf`, and not specific to messages). `bundle.json` now
+  carries `item.correspondence` for a `message/rfc822` artifact, and both renderings
+  print the sender, the `Date:` header, the subject, the `Message-ID`, the attachment
+  inventory and the body, in EN and ES from one source.
+
+  **Its attachments were inside it.** `habitable correspondence reply.eml` seals the
+  message *and* each attachment as its own custody-bound item, joined back with a
+  `supports` relationship whose assertion names which part of which message it was.
+  An `.eml` with two attachments is three items — the issue's own acceptance
+  criterion, and the shape of #158, where evidence present in the bytes reached no
+  evidence list and still verified clean.
+
+  **Every line of it is the sender's claim, and the packet says so.** habitable
+  verifies no DKIM or ARC signature — the same honesty EXIF already gets — so
+  `header_dates_are_claims` is a schema `const: true` that the verifier refuses to
+  see set otherwise, the `Date:` row carries that warning in its own label, and an
+  item whose summary holds a perfectly good-looking date and no token is still
+  *awaiting timestamp*. A header date appears in none of `captured_at`, `timestamp`,
+  `archive_timestamps` or `additional_timestamps`, and a test asserts exactly that
+  over a packet built with no TSA, which is the packet where the two could be
+  confused.
+
+  **Three states for a header, four for a body, because the differences are the
+  evidence.** `absent` (the message never carried it), `unreadable` (it is there and
+  could not be decoded — no damaged value is published) and `present`, which includes
+  a sender who wrote nothing; a body adds `not_plain_text` for an HTML-only mail this
+  packet declines to render rather than showing a blank. `unreadable` is about
+  decoding and not about meaning: `Date: next Tuesday` is *present*, because this code
+  never turns a `Date:` header into a time and suppressing it would delete evidence.
+
+  **Two attachment counts, always both.** `attachment_count` comes from the message's
+  own part walk and `attachments_readable` from what could be decoded; a part that
+  cannot be decoded is named in `warnings` and counted, never dropped. A single count
+  taken from the items created cannot tell a two-part message from a five-part one
+  whose other three were lost.
+
+  A malformed `.eml` is refused **before anything is sealed**, with a sentence per
+  fault naming the file: empty, no header line at all, a header block with no blank
+  line before the body, a multipart whose boundary never appears. A message sealed
+  by an older version that would be refused today still exports, with a `null`
+  summary — an export must not die on evidence already sealed and already hashed.
+
+  The summary is derived from the sealed original at export, not stored at capture:
+  `vault.read_original` has already re-derived and matched its SHA-256, so a
+  recipient holding the bytes can recompute the summary and contradict it. Same slot
+  and same argument as `item.sensor` (EXP-09).
+
+  `tests/golden/correspondence-packet-v4/` is the first committed bundle carrying one
+  — before it, the surface shipped pinned by nothing, which is the state #314 found
+  instrument data in one directory over. Its second message carries every state that
+  is not "present" at once. Not minted, deliberately: no new timeline `source` (an
+  inbound email is already `message`) and no `attachment_of` relationship type
+  (`supports` plus a precise assertion validates against the published schema today);
+  both are recorded as owner decisions rather than taken.
+
+- **The packet cover sheet says how many devices hold this case** (the deferred
+  half of #297, RR-07). "If this tenant loses her phone, does the case still
+  exist?" has been answerable on the producer's own screen since the sync-receipt
+  work landed, and nowhere in the artifact that actually reaches an inspector, a
+  clerk or an adviser. `bundle.json` now carries `appendix.redundancy`, and both
+  renderings print it as a *Copies of this case* row.
+
+  It was deferred on the belief that `appendix` was one of the seven objects in
+  `docs/packet-bundle.schema.json` that set `additionalProperties: false`, so that
+  adding a field would need a `packet_version` decision. It is not one of them:
+  `appendix` is open, which is where every other count in this packet already
+  lives, and the field validates against the published schema unchanged.
+
+  **A count, and never an identity.** A peer fingerprint in a document whose whole
+  purpose is to be handed to the other side is a map of who is organizing in a
+  building. `identities_included` is a schema `const: false`, so the only honest
+  way to change that is a different field with its own contract, and a test asserts
+  over the whole packet — bundle and HTML — that the paired peer's fingerprint
+  appears in neither.
+
+  **Four states, because three of them are not "one device".** `acknowledged` and
+  `this_device_only` are measurements a producer wrote down; a merely *paired* peer
+  that has never completed an exchange is not counted, because counting it would
+  answer "your case is on 3 devices" for a vault that has never synced. `not_stated`
+  is every packet exported before the field existed — including all six committed
+  golden fixtures — and rendering that as `1` would publish this project's most
+  alarming redundancy claim on behalf of a producer who claimed nothing.
+  `unreadable` is a field present in a shape the reader cannot parse. Both reader
+  states carry no counts at all, because there is no number to round down to.
+
+  `as_of` is **omitted, never defaulted**, when the producing device recorded no
+  time for the most recent acknowledgment — the case `status` already prints its
+  own line for. An epoch date beside a device count dates the claim to 1970.
+
+  The verifier **cannot re-derive this figure**: nothing inside a packet knows how
+  many devices exist. So it does the checkable thing instead — the producer's three
+  numbers must agree with each other and with the word beside them, which refuses a
+  hand-edited packet claiming four devices over one acknowledgment — and it accepts
+  absence, because requiring the field would have broken the backward-compatibility
+  guarantee `tests/test_golden.py` exists for on the day an optional field shipped.
+
+  Four negative controls, each asserted landed by `git hash-object` and each
+  restored to its baseline hash afterwards. Reading an absent field as one device
+  reddened **only** `test_a_packet_that_says_nothing_about_copies_does_not_say_one_device`
+  — the six golden packets, which all omit the field, went on verifying and
+  rendering while stating a copy count nobody wrote. Counting paired peers instead
+  of acknowledged ones reddened the producer test and the end-to-end verifier test.
+  Defaulting `as_of` to the epoch reddened the two tests about that distinction.
+  And smuggling a fingerprint list in *beside* an unchanged `identities_included:
+  false` reddened exactly one test — the privacy assertion — where flipping the flag
+  as well reddened nine, which is the measurement worth keeping: the schema const is
+  enforced everywhere, and the fingerprint itself is caught in one place.
+
+  **The metered-data half of #297 needs nothing further** — it shipped with the
+  data-cost work — so what remains on that issue is nothing this adds to.
+
+- **`habitable status --storage` breaks the storage line down per capture, largest
+  first** (the storage-visibility half of #296, RR-08). The aggregate line answers
+  "does this case fit on my phone"; it cannot answer "which capture is filling it",
+  which is the question a tenant on a full device has to act on. The per-capture
+  sizes were already measured — `StorageFootprint.per_capture` has existed since
+  R-03 — and nothing surfaced them.
+
+  **The header states two numbers, and that is the substantive part.**
+  `per_capture` is built from the files under `originals/`, so a capture whose
+  sealed original is not on this device has **no row at all** — and a missing row is
+  indistinguishable from a zero-byte row to anyone reading the list. The breakdown
+  therefore prints *"N captures measured of M in this case"* and then names each
+  unmeasured capture as *"sealed original not on this device — nothing to
+  measure"*, rather than dropping it. `StorageFootprint` gains
+  `captures_without_a_sealed_original` to carry that denominator.
+
+  A case with no captures gets its own sentence instead of an empty list, because
+  an empty breakdown and a breakdown that failed to read the vault look identical.
+
+  The flag also prints what deleting the case does **not** reach: a packet already
+  exported is a separate copy in a folder the vault does not own, so deleting the
+  case frees the space shown and leaves that copy where it is.
+
+  Three negative controls, each asserted landed by `git hash-object` before the run:
+  dropping the denominator, dropping the unmeasured rows, and reversing the sort
+  each turned exactly the predicted test red.
+
+  **Offload and restore — the other half of #296 — are not built by this change.**
+  It makes the cost legible; it does not add a way to reclaim the space. (They
+  landed later in this same unreleased cycle; see the `habitable offload` entry
+  above.)
+
 ### Fixed
+
+- **A packet's headline disclosure counted items, not shared copies** (found while
+  building #296). `"N media item(s) included as shared copies"` was `len(items)`, so a
+  packet whose only item had an embedded original and no shared preview — the
+  `--include-originals`-on-an-unsanitizable-type case `docs/verifier-decision-table.md`
+  §4.2b already describes — claimed a shared copy it did not carry. It now reads
+  `"N of M"`, and a packet carrying none of them says `0 of M`.
+
+- **`status --storage` reported an offloaded capture as one whose original is simply
+  not on this device.** Both are absent from `originals/`, and collapsing them would
+  tell a tenant who had just freed 400 MB that her photograph was missing.
+  `StorageFootprint.offloaded` is now its own list, carrying the size recorded when
+  each original left, and the breakdown ends with the operation that reclaims space
+  rather than only naming the capture that is filling the phone.
+
+- **The published packet schema rejected the genesis link of every custody chain,
+  so it rejected every packet this project has ever produced.**
+  `docs/packet-bundle.schema.json` is served under a public `$id` and
+  `docs/embedding-the-verifier.md` sends third parties to it, but nothing in this
+  repository validates a bundle against it — so the defect was invisible here and
+  visible only to the relying party.
+
+  `custodyEntry.prev_hash` and `custodyProof.head_hash` were each declared
+  `oneOf: [hexSha256, ^0{64}$]`, and `hexSha256` is `^[0-9a-f]{64}$`, which matches
+  64 zeros. `oneOf` requires **exactly one** matching branch, so the sentinel the
+  description itself names matched both and was refused. Every chain opens with it:
+  measured with a throwaway validator, **all seven committed bundles** — `packet-v1`
+  through `packet-v4`, `scoped-packet-v3`, `sensor-packet-v4` and the sample packet
+  published on the site — failed at `custody_proof/entries/0/prev_hash`, which is
+  the first line of the custody proof and the part of the artifact a court clerk or
+  opposing party has most reason to check.
+
+  The second branch accepted a strict subset of the first, so it constrained nothing
+  under any reading. It is collapsed into the `$ref`, leaving the accept-set
+  identical for every value except the sentinel, which is now accepted as the
+  description always said it was. `head_hash` carried the same defect latently: no
+  committed fixture has an empty chain, so only a declaration-level assertion could
+  have caught it.
+
+  `tests/test_packet_schema_contract.py` pins three things: the corpus's real
+  genesis values, the documented empty-chain head, and the general rule that no
+  `oneOf` in the schema may have two branches accepting one value. Run against
+  unmodified `origin/main` all three go red — the defect was live, so no sabotage
+  was needed to demonstrate the guard.
+
+- **The rename guard over the app's payload covered three of thirty-five reads.**
+  `app/app.js` is hand-written JavaScript against a `mypy --strict` Python server,
+  and no type system spans the boundary: renaming a field is safe on the Python
+  side, where strict mypy finds every caller, and finds none of the JavaScript
+  ones. The idiomatic read is `status.capture_count || 0`, so the browser does
+  not throw, does not warn, and renders a confident **0** — the status panel
+  telling a tenant her case is empty.
+
+  `test_the_app_reads_only_storage_keys_the_server_actually_sends` closed this
+  for the storage figures by matching `\bs\.([a-z_]+_bytes)\b`: one object, one
+  suffix, three keys. The app reads **32 more** off the same `AppServer.status()`
+  payload — `status.*` (15), `sync.*` (6), `capture.*` (7), `rs.*` (4) — every one
+  with the same fallback and none of them checked.
+  `test_the_app_reads_only_payload_keys_the_server_actually_sends` now reads the
+  key names out of the script and checks them against a payload the server really
+  built, from a vault carrying a real issue and a real capture so neither half is
+  vacuous. No mismatch exists today; the hole did.
+
+  Two identifiers are deliberately not covered, for a measured reason rather than
+  an oversight: `s` is bound four times in that file and `issue` five, so a
+  file-wide scan collects `s.textContent` and `issue.value` — DOM properties, not
+  payload keys. A companion test asserts the four covered names stay
+  unambiguous, so a future `var sync = document.getElementById(...)` fails here
+  instead of quietly widening the probe.
+
+- **The i18n merge gate could not see an untranslated string, and the test named
+  `test_spanish_is_actually_translated` passed with 128 of 260 strings in
+  English.** Key parity, the non-empty rule and placeholder parity are all
+  satisfied by a `es.json` value that is verbatim its own English source — the
+  key is there, the value is not blank, and the placeholders are identical by
+  construction. Nothing compared a value to its source. Measured on the shipped
+  bundles: planting one full English sentence in `es.json` left `make i18n`
+  green and the "actually translated" test passing; the test's rule was "at
+  least half the shared strings differ", so it only flips at 129 of 260, and the
+  merge gate never flipped at all.
+
+  `scripts/check_i18n_parity.py` now compares every shared value against its
+  source, and the test asserts the same property per key. Strings that are
+  genuinely identical in both languages carry a written reason in
+  `scripts/i18n-identical-by-design.json` — today the product name, twice. No
+  predicate can separate a product name from a word somebody forgot to
+  translate, so a person writes down which is which; the list is held to the
+  catalogs (a key the bundles no longer share, a string since translated, or a
+  missing reason each fail the gate) and a malformed list is an operator error
+  rather than "no exemptions", so the escape hatch cannot disarm the rule it
+  serves. The gate also refuses to report success when it compared no keys, and
+  gained `--en` / `--es` / `--identical-by-design` seams so the controls can
+  point it at a deliberately broken catalog.
+- **The document that records which i18n gates are live said a merge-blocking
+  gate did not exist.** `docs/I18N.md`'s AUTO-GATES table carried
+  `G9 | Pseudolocale overflow | **DEFERRED** (frontend-depth phase) | —` while
+  `scripts/check_pseudo_locale.py` ran in `make verify` and in
+  `.github/workflows/i18n.yml` — in a step the workflow itself names `G9`, with
+  the `Makefile`'s help text advertising "pseudo-locale expansion (G9)" beside
+  it. A conformance document that understates an enforced gate disagrees with
+  the build exactly as much as one that overstates it, and this one is the
+  record a reader consults instead of the recipe.
+
+  The row now says **PARTIAL** and says which half: the offline check (ICU
+  integrity, plus compact chrome within 60 characters at the transform's real
+  expansion) is enforced and has four negative controls behind it; the
+  standard's own measure — a DOM-overflow assertion over the rendered views —
+  is not wired, and the row says so rather than claiming the gate whole.
+
+  `tests/test_i18n_gate_inventory.py` is the repair. It derives the table's
+  claims from the `Makefile` recipe and the workflow's own `run:` lines, holds
+  i18n.yml to its header's claim that it mirrors `make i18n` "byte-for-byte",
+  and fails in both directions: a gate the build runs and the table does not
+  record, and a gate the table calls deferred while the build runs it. Every
+  collector carries a non-empty floor, and an unrecognized status word is an
+  error rather than a default, so the module cannot pass by having stopped
+  reading. Run against unmodified `main` it named
+  `scripts/check_pseudo_locale.py` on its first execution. The `Makefile` help
+  and the workflow's parity step also name G5 now, which
+  `scripts/check_i18n_parity.py` has enforced since FIX-12.
 
 - **`inspector.html` told the reader location metadata had been removed from a
   packet whose own signed disclosures said it had been kept.** Issue #104 made the
@@ -61,7 +446,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   reddens on an unpatchable CVE blocks every merge on an upstream this project
   does not control. What changed is that the header now says plainly what the
   gate cannot see, and a second Trivy step reports the unfixed set with
-  `exit-code: 0`, labelled as reporting and explicitly not counted as a gate.
+  `exit-code: 0`, labeled as reporting and explicitly not counted as a gate.
   A guard test pins the pair — exactly one step blocks, exactly one reports, and
   neither has quietly become the other — so loosening the threshold, deleting the
   reporting step, or restoring the header's old claim each turn it red.
@@ -123,7 +508,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   prints "markers searched: 8 of 9", names what it could not search under its own
   heading, and refuses to report PASS — a marker never searched for supports no
   claim about the wire. The existing test asserted this defect as intended
-  behaviour under the comment "*Every documented marker was actually searched*",
+  behavior under the comment "*Every documented marker was actually searched*",
   which was false of the assertion beneath it; it now checks the searched set.
 
 - **A repair letter dropped the timestamp clause instead of stating it.** Issue
@@ -222,13 +607,13 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   reader saw it as advice about a different control. `aria-describedby` was
   correct, so screen readers were unaffected and the existing reflow test passed:
   nothing overflowed, the text simply landed in the wrong place. The audit found
-  one more the issue had not named, and the guard generalises past both — it walks
+  one more the issue had not named, and the guard generalizes past both — it walks
   every described control in a real viewport and fails on interposition, so there
   is no pixel threshold to tune.
 
 - **Four guards an adversarial review proved could not fail.** Each was planted
   with the exact defect it names and passed. A phone keyboard's sentence case
-  defeated the category vocabulary — `Moho` normalised to `mold` while `Mold`
+  defeated the category vocabulary — `Moho` normalized to `mold` while `Mold`
   stayed `Mold`, opening a second bucket in the likelier direction; the alias
   guard could not detect the reclassification its own docstring forbids
   (`{"leak": "structural"}` passed the whole suite); the published-artifact guard
@@ -250,7 +635,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   The same divergence had reached both of the project's own worked examples.
   `demo.py` and `prove.py` seeded `severity="high"` — the first command the
   README, `CONTRIBUTING.md` and the good-first-issue guide all tell a newcomer to
-  run modelled a value its own CLI refuses. And `scripts/make_site_sample.py`
+  run modeled a value its own CLI refuses. And `scripts/make_site_sample.py`
   seeded `category="moisture"` with severities `high` and `urgent`, so the
   synthetic packet published on the site — the one review task LA-01 (#122) asks
   a housing lawyer to cold-read — demonstrated one category and two severities a
@@ -336,7 +721,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 - **Shared links no longer show a cropped slice of a portrait screenshot.** Every
   page advertised `img/app-en.png` — 2200×3000 — as its `og:image`, with
   `twitter:card` set to `summary`. LinkedIn, Slack, and X all fit a share card to
-  a landscape box, so what reached a reader was a centre crop of a phone-shaped
+  a landscape box, so what reached a reader was a center crop of a phone-shaped
   screenshot with the project name outside the frame. The site now ships
   `site/img/social-card.png` at 1200×630, the size all three render whole, and
   `twitter:card` is `summary_large_image`. The landing page's `og:image:width`,
@@ -416,7 +801,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   a computed, shipped assessment reached no one and its caveat qualified nothing.
   Deleting it would have closed the ticket by discarding a capability rather than
   fixing a rendering bug. Three more are defined twice,
-  here and in the CLI catalogue, with deliberately different casing for two
+  here and in the CLI catalog, with deliberately different casing for two
   surfaces — an open decision, not a duplicate.
 
   The report states what it **cannot** see as well as what it can, because the
@@ -424,7 +809,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   `"event_" + type` and `"source_" + source`, covering 15 keys that are live only
   because the markup happens to name them too.
 
-- **Category synonyms normalise instead of being refused** (#240). The corpus
+- **Category synonyms normalize instead of being refused** (#240). The corpus
   #206 surveyed was wider than the vocabulary it set: `no_heat`, `moisture` and
   `moho` are the same conditions under other names, and refusing them taught a
   tenant that their own word was wrong — `moho` in particular, since habitable
@@ -456,7 +841,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   (#239). #206 left the app's free-text `<input>` as a documented scope boundary.
   It stays free text — a `<select>` would force a real condition into the wrong
   bucket, and a wrong record is worse than an unvalidated one — but it now offers
-  the six categories through a `<datalist>`, so the common case normalises itself
+  the six categories through a `<datalist>`, so the common case normalizes itself
   while a tenant whose condition is not on the list can still name it. The
   option's `value` is the stored category and is never translated; the `label`
   the tenant reads is, through a new `data-i18n-label` pass in
@@ -488,7 +873,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   find the defect where each operation is individually sound and the *composition*
   is not — the shape of both #163 and #204. `HostilePacketSequences` drives a live
   copy of the v4 golden packet through 11 rules in three classes: meaning-preserving
-  (re-canonicalise, archive re-timestamp, append custody, re-sign with a fresh key),
+  (re-canonicalize, archive re-timestamp, append custody, re-sign with a fresh key),
   unrepairable (byte flips, retargeted digests, stripped tokens, reordered custody),
   and the one honest limit (truncation, which the chain proves only as a prefix).
   Every bundle-editing rule draws a `resign` boolean, because re-signing is exactly
@@ -594,7 +979,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   context `axe-core WCAG scan (merge gate)` with nothing but an `echo`. Its own
   comment claimed the real scan "finishing later, its result governs" — an
   assumption about job duration, not an invariant, and a re-run of the twin alone
-  or a cancelled scan left a green that had asserted nothing on a PR that did
+  or a canceled scan left a green that had asserted nothing on a PR that did
   touch the UI. The twin now collects the PR's changed files and fails unless
   every path is one it may answer for, cross-checking the API list against
   `changed_files` so neither the 3000-file cap nor a stale re-run payload can lie
@@ -604,7 +989,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   **extracts that script from the YAML and executes it** — the proof the old step
   could never offer — including against an empty list, so a vacuous pass is itself
   a failure. Three lists are now held in lockstep: the real scan's `paths-ignore`,
-  the twin's `paths`, and the twin's own globs. *Behaviour change worth knowing:*
+  the twin's `paths`, and the twin's own globs. *Behavior change worth knowing:*
   on a mixed docs+code PR the twin now goes red, and the real scan normally
   overwrites it. The worst case has inverted from "a green that checked nothing"
   to "a blocked merge a human clears". The required-checks topology is untouched;
@@ -682,7 +1067,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   wait, work around it, or file a bug. All three refusals (`packet.py`,
   `share.py`, `sync.py`) and the three `--help` strings now name the reason, say
   a truncated chain must never be presented as a complete one, and point at the
-  restoration work and its independent-review gate (#262). The behaviour is
+  restoration work and its independent-review gate (#262). The behavior is
   unchanged; only the explanation is.
 
 - **The mobile packaging spike carries a dated re-check** (#260). The 2026-07-09
@@ -853,7 +1238,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   bytes, which is the same digest the member's signature covers and an
   authority seals. `habitable joint check` then re-derives every recorded claim
   from the packets themselves: it recomputes the digest and throws away the
-  recorded readiness in favour of a fresh `verify_packet` verdict. A doctored
+  recorded readiness in favor of a fresh `verify_packet` verdict. A doctored
   index therefore cannot produce a passing verdict, and a packet directory
   present beside the index but missing from it is reported and fails the check
   rather than being absorbed. A submission subdirectory with no `bundle.json`
@@ -1083,7 +1468,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 - **`twitter:image:alt` was on the homepage and nowhere else.** The other
   eleven pages set `twitter:image` with no alternative text for it, so a card
-  rendered from one offered a screen-reader user an unlabelled image. Each now
+  rendered from one offered a screen-reader user an unlabeled image. Each now
   mirrors the `og:image:alt` it already carried.
 
 - **Three references to the move-out and deposit-dispute record cited ADR 0013,
@@ -1132,7 +1517,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   failing archives layer by layer found exactly one file differing between two
   builds of an identical package set: `/var/cache/ldconfig/aux-cache`, which
   stores each shared library's inode number and ctime *inside its own bytes* and
-  therefore survives BuildKit's `rewrite-timestamp` normalisation of file
+  therefore survives BuildKit's `rewrite-timestamp` normalization of file
   mtimes. The four apt/dpkg logs were the visible half of the problem and had
   already been removed; aux-cache was the half keeping the gate red. Removing it
   too makes the rebuild byte-identical on both `linux/amd64` and `linux/arm64`,
@@ -1183,7 +1568,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   The `v*` tag ruleset (`.github/rulesets/release-tags.json`, live ruleset
   `18815834`) is **unchanged and stays at no bypass actor**: a released tag must
   not be movable by anyone, owner included. Both JSON `_comment` fields now say
-  the two rulesets differ on purpose and must not be harmonised in either
+  the two rulesets differ on purpose and must not be harmonized in either
   direction.
 
   `tests/test_release_workflow.py` no longer compares the two sides to each
@@ -1297,7 +1682,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   A case is never silently dropped, because a silently smaller cohort still
   publishes. `build_no_heat_weekly_summary` no longer accepts a caller-supplied
   household token at all — it derives one from the consent record's own
-  provenance — so no caller can reintroduce a synthesised token. The emitted
+  provenance — so no caller can reintroduce a synthesized token. The emitted
   block (`schema_version` 2) now reports the mechanism that exists, the number
   of records actually read, and `"explicit_per_export": false`; the field is
   kept, with the opposite value, so a reader who saw an old file sees the
@@ -1346,7 +1731,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   manifest version 2 stops pretending otherwise: sections carry `section_id` and
   nothing else, a `section_membership: "not_recorded"` field says why, and the
   only counts in the document are the bundle-wide `counts`, printed once under
-  "This handoff as a whole" and labelled as covering the whole packet. The
+  "This handoff as a whole" and labeled as covering the whole packet. The
   section headings stay — they are the recipient's expected reading order — with
   no count attached. Packet v1 manifests still verify; the verifier's handoff
   checks are structural and never read `sections`.
@@ -1360,7 +1745,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   tests only the TOTAL row — one pooled number. Measured on the committed
   `coverage.xml`: `crypto.py` 100.00%, `tsa.py` 98.72%, `verify.py` 95.57%,
   `vault.py` **94.42%**, pooled TOTAL **95.56% — green**. `crypto.py` was
-  subsidising the largest module in the set, and the one that holds the
+  subsidizing the largest module in the set, and the one that holds the
   encrypted store at rest. `vault.py` could have fallen to roughly 91% before
   the build turned red. `make cov` now runs one `--fail-under=95` per module and
   reports every module before failing, so one pass names each module below the
@@ -1372,7 +1757,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   identity that does not decode, and a peer filed under a fingerprint that is
   not its own (`tests/test_vault_legacy_and_corruption.py`).
 
-- **`human_bytes` labelled petabyte-scale sizes with a terabyte-scale number.**
+- **`human_bytes` labeled petabyte-scale sizes with a terabyte-scale number.**
   The unit loop divides once per entry in `("KB", "MB", "GB", "TB")` and the
   fallback returned that same terabyte-scaled value with a `PB` suffix, so 2.5 PB
   rendered as "2500.0 PB" — a number and a unit that disagree by a factor of a
@@ -1424,7 +1809,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
     the audit doc gained a manual-recovery section (§4.8) instead of the relay
     silently deciding to ignore or delete a union's sync traffic.
   - **The access log recorded `status: 200` for a request that returned
-    nothing.** `_status` was initialised to `200` before routing and logged from
+    nothing.** `_status` was initialized to `200` before routing and logged from
     a `finally`, so an exception escaping the route left the peer with
     `RemoteDisconnected` and the attestable log with `200`. The status is now set
     only by the code that writes the response, and each line carries
@@ -1533,7 +1918,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
     configured `language = "es"` produced byte-identical English prose under a
     Spanish language tag — a WCAG 3.1.1 failure that makes a screen reader
     pronounce English with Spanish phonetics. The letter is now always emitted
-    and labelled `lang="en"`, and `habitable letter` prints the unmet request
+    and labeled `lang="en"`, and `habitable letter` prints the unmet request
     **in the requested language**. The translation is deliberately not
     machine-generated: this document carries legal framing and goes out under a
     tenant's name, so a legal-register Spanish version needs a Spanish-speaking
@@ -2115,7 +2500,7 @@ materials an external auditor, accessibility tester, or pilot partner needs.
 ### Changed
 
 - The verification subset (`verify`/`tsa`/`exif`) now writes its multi-type `except`
-  clauses with explicit parentheses — behaviour-identical, but valid on every
+  clauses with explicit parentheses — behavior-identical, but valid on every
   Python 3 and unambiguous to auditors and legal-aid embedders of the Apache-2.0
   verifier (no reliance on the PEP 758 syntax that 3.14 newly accepts).
 - `docs/governance.md` "Releases" reconciled with the actual signed/provenanced

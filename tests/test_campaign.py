@@ -245,7 +245,7 @@ class TestCampaignSeal:
         local_tsa: LocalRfc3161TSA,
         tmp_path: Path,
     ) -> None:
-        """The behaviour before this change, kept as the honest default when no
+        """The behavior before this change, kept as the honest default when no
         callback is supplied, and now visible rather than silent."""
         v1 = _ready_vault(make_vault, make_jpeg, local_tsa, name="v1", unit="4B")
 

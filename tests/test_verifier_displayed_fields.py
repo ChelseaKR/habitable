@@ -419,7 +419,7 @@ def test_the_packet_commits_the_authority_name_in_two_places(packet: Path) -> No
     ]
 
 
-def test_relabelling_the_authority_the_verdict_displays_is_refused(
+def test_relabeling_the_authority_the_verdict_displays_is_refused(
     packet: Path, local_tsa: LocalRfc3161TSA
 ) -> None:
     """The planted break: only the display label moves. Nothing cryptographic does.
@@ -459,7 +459,7 @@ def test_an_emptied_authority_label_is_refused_too(
     assert not report.structurally_intact
 
 
-def test_relabelling_both_statements_consistently_is_still_missed(
+def test_relabeling_both_statements_consistently_is_still_missed(
     packet: Path, local_tsa: LocalRfc3161TSA
 ) -> None:
     """The honest limit. This is a consistency check, not an attestation of who signed.
@@ -510,7 +510,7 @@ def test_a_malformed_item_does_not_stop_the_cross_check_or_crash_it(
 
     An entry in ``items`` that is not an object is already a `problems` entry
     ([§1](../docs/verifier-decision-table.md)); the authority cross-check has to
-    step over it rather than trip on it, and still refuse the relabelled item
+    step over it rather than trip on it, and still refuse the relabeled item
     beside it.
     """
 

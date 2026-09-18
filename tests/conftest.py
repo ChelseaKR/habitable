@@ -60,9 +60,10 @@ def make_jpeg(tmp_path: Path) -> Callable[..., Path]:
         color: tuple[int, int, int] = (120, 30, 30),
         with_location: bool = False,
         capture_time: str | None = "2026:01:02 03:04:05",
+        size: tuple[int, int] = (16, 16),
     ) -> Path:
         path = tmp_path / name
-        image = Image.new("RGB", (16, 16), color)
+        image = Image.new("RGB", size, color)
         exif: dict[int, object] = {}
         if capture_time is not None:
             exif[piexif.ExifIFD.DateTimeOriginal] = capture_time.encode("ascii")

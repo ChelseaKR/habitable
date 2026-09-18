@@ -18,7 +18,7 @@ concurrency:
   # slot, and a burst of merges deletes the verdict for whichever commit was
   # waiting -- not a failure anyone can see, an absence. `cancel-in-progress`
   # neither causes nor prevents that; it only decides whether the loss is
-  # visible (cancelled with jobs) or invisible (cancelled with zero jobs).
+  # visible (canceled with jobs) or invisible (canceled with zero jobs).
   # Carrying the SHA gives each commit its own slot; PR supersession is
   # unchanged, because pull requests still share a per-ref group.
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
@@ -45,7 +45,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           version: "0.11.19"
           enable-cache: true
@@ -125,7 +125,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           version: "0.11.19"
           enable-cache: true
@@ -161,7 +161,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           version: "0.11.19"
           enable-cache: true
@@ -191,12 +191,14 @@ jobs:
         with:
           persist-credentials: false
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           enable-cache: true
           version: "0.11.19"
       - name: Build distributions reproducibly
         run: make repro
+      - name: Read the built distributions' metadata (what PyPI would be told)
+        run: make dist-metadata
       - name: Smoke-test the installed wheel and packaged app
         run: |
           uv venv --python 3.14 /tmp/habitable-wheel-smoke

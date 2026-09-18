@@ -60,7 +60,7 @@ def _require_review_date(value: str, key: str) -> None:
 
 # Public, free RFC 3161 timestamp authorities are configured by default so a union
 # never has to pay for or host one. The dev authority is for offline tests/demos
-# only and is clearly labelled as non-production everywhere it appears.
+# only and is clearly labeled as non-production everywhere it appears.
 _DEFAULT_TSAS = (
     ("freetsa", "rfc3161", "https://freetsa.org/tsr"),
     ("digicert", "rfc3161", "http://timestamp.digicert.com"),

@@ -20,7 +20,7 @@
 > check, although the verifier implements all of them (`_verify_v3_timeline`,
 > `_verify_v4_workflows`). Until those rows exist, derive an expected verdict for a v3/v4-specific
 > case from the code and the committed golden corpus (`tests/golden/packet-v1`…`packet-v4`), not
-> from this file, and treat a gap here as a gap in the document rather than a licence the verifier
+> from this file, and treat a gap here as a gap in the document rather than a license the verifier
 > grants. This header previously read "normative for `SUPPORTED_PACKET_VERSION = 2`" while the
 > verifier had moved to 4 — an auditor or an embedder working from it was working from a contract
 > the verifier no longer implements (issue #160).
@@ -221,7 +221,7 @@ mechanically valid ones.
 tokens from *other* authorities over the **same** `content_hash` (not a chain). The verifier checks
 each, lists every authority that verified in `verified_authorities`, and treats the item as
 timestamped if **at least one** authority (primary *or* additional) verifies — so the proof never
-rests on a single TSA. With no `additional_timestamps`, behaviour is identical to a single-authority
+rests on a single TSA. With no `additional_timestamps`, behavior is identical to a single-authority
 packet: a failed/absent primary leaves the item not timestamp-verified unless a redundant token
 passes. A token over a *different* hash never satisfies the item. At least one valid token supplies
 mechanical timestamp verification; at least one valid **and anchored** token supplies authority
@@ -300,6 +300,7 @@ content hash and a timestamp with nothing behind them are not evidence a human c
 | --- | --- | --- |
 | item has a non-empty `shared_name` | `True` | — |
 | item has no `shared_name` but `has_original` is `true` (an embedded original was included) | `True` | — |
+| item has neither, and declares `offload.state = "offloaded"` ([§4.2c](#42c-a-declared-offload-explains-a-byteless-item-and-never-excuses-it)) | **`False`** | `no shared media and no embedded original: the bundle states this item's sealed original was moved to external storage (…). Its content hash and timestamp are present; its bytes are not, and this packet cannot check that claim` |
 | item has neither a `shared_name` nor an embedded original | `False` | `no shared media and no embedded original: this item carries no checkable evidence bytes` |
 
 `evidence_present` folds directly into `structurally_intact` ([§0](#0-the-three-verdicts)), so a
@@ -315,6 +316,48 @@ True` and can reach `evidence_ready`, and `packet.html` visibly renders it as an
 with no shared preview, with a link to the original and a metadata-retention warning, rather than
 silently rendering an empty figure (see README "Originals are sealed; sharing is a deliberate,
 minimizing act").
+
+#### 4.2c A declared offload explains a byteless item and never excuses it
+
+Added for issue #296. `habitable offload` moves a sealed original onto external
+encrypted storage and leaves a custody-bound stub in the vault. A packet exported while
+an item is in that state (`habitable export --allow-offloaded`) carries the item's
+`content_hash`, its timestamp token and its whole custody chain, and **none of its
+bytes**.
+
+| Condition | `offload_declared` | effect on any verdict |
+| --- | --- | --- |
+| no `offload` key on the item | `False` | none |
+| `offload` is not an object, or `offload.state` is any value other than `"offloaded"` | `False` | none — an unrecognized claim gets the ordinary byteless note |
+| `offload.state = "offloaded"` | `True` | **none.** `evidence_present` stays `False`, so `structurally_intact` and `evidence_ready` stay `False` |
+
+This is the whole rule, and it is deliberate in both directions.
+
+- **It changes the sentence, not the verdict.** Without it the only available note —
+  *"this item carries no checkable evidence bytes"* — reads as a defect in the export
+  rather than as the thing the tenant chose to do to fit the case on her phone.
+- **It cannot buy readiness.** Every field in a bundle is attacker-controlled. If a
+  declared offload lifted `evidence_present`, anyone hand-crafting a bundle could write
+  three keys and get a byteless item past [§4.2b](#42b-evidence-bytes-present-evidence_present) —
+  which is #158 undone from the other direction. Nothing in a packet can show that a
+  file is on a drive somewhere, and the verifier says so in the note rather than
+  implying otherwise by staying silent.
+
+There is no "READY with limits" verdict in this verifier, and this feature does not add
+one. A packet containing an offloaded item is **not evidence-ready**, its report names
+the item, and `habitable export` refuses to produce such a packet at all unless asked
+twice.
+
+The `container_hash` the item publishes is the one check the packet genuinely enables:
+a reader who later holds the drive can hash the container and compare. Everything else
+about the claim is unverifiable from the packet.
+
+**Every other content-derived field on an offloaded item reads as absent** —
+`shared_name`, `shared_hash`, `poster_name`/`poster_hash`, `sensor` and
+`correspondence` — because the producer could not read the bytes, not because the
+content lacks them. An offloaded `.eml` artifact publishes `"correspondence": null`;
+that null means *not looked at*, and the `offload` block is how a reader tells the two
+apart.
 
 ### 4.3 Custody binding (`custody_binding_ok`)
 

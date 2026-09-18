@@ -116,7 +116,7 @@ about which summary fields are load-bearing, and a scoped format cannot afford t
   withheld link with any value `P`, follow it with a fabricated disclosed entry whose
   `prev_hash` is `P`, then another withheld link set to the *real* chain's value at that
   point, and the walk still terminates at the real head. The reconstruction proves only
-  that disclosed entries chain to their immediate disclosed neighbours. Recording it
+  that disclosed entries chain to their immediate disclosed neighbors. Recording it
   here because it is the obvious reading of "never delete a link", it looks like a proof,
   and it is not one.
 - **Restore the selectors now and document the risk.** Rejected: a disclosure the reader
@@ -317,7 +317,7 @@ them:
   packets (`tests/golden/packet-v1` … `packet-v4`) are whole-unit — `scope.type == "unit"`,
   empty `issue_id` and `since`. Historical *scoped* v1/v2 packets are described in
   [`../bundle-schema.md`](../bundle-schema.md) and are precisely the artifact this ADR
-  replaces, but nothing pins their behaviour. "Old scoped packets keep verifying" is an
+  replaces, but nothing pins their behavior. "Old scoped packets keep verifying" is an
   untested claim until such a fixture is committed.
 - **Sync:** a v2 peer rejects a v3 message on the protocol string before any merge; a v3
   peer accepts a v2 message unchanged.
@@ -377,7 +377,7 @@ Executable, in order. Every item, not a subset.
    extending the pattern `tests/test_share.py` already uses for the unit label.
 7. Adversarial integrity tests: a fabricated disclosed entry, a moved `source_seq`, an
    understated `source.length`, a malformed or wrong-length `audit_path`, a duplicated
-   leaf, a relabelled scope, and a view chain re-rooted at 64 zeros each fail — and the
+   leaf, a relabeled scope, and a view chain re-rooted at 64 zeros each fail — and the
    view joins the stateful hostile-packet harness, since the defects that matter here are
    compositional.
 8. Atomic-publication tests: a scoped export that fails after appending

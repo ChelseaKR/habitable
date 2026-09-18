@@ -24,7 +24,7 @@ An artifact commits to its neutral metadata and original content hash. A
 relationship commits to its type, endpoints, assertion, issue, and recorded time.
 Packet v4 includes the commitments and requires matching `artifact_added` or
 `relationship_added` custody entries. Imports that predate a local binding get an
-honestly labelled `import_binding`; the exporter never claims original-time
+honestly labeled `import_binding`; the exporter never claims original-time
 protection it did not observe.
 
 `items[].record_kind` distinguishes captures from artifacts. Artifact items retain
@@ -44,7 +44,7 @@ inspector, accessibility, or adopter review is unfinished travel with
 
 The application can stop offering profile/artifact creation without rewriting
 vaults. Existing case-schema v3 records remain readable and syncable. Packet v4
-must not be relabelled as v3; a rollback release must retain the v4 verifier or
+must not be relabeled as v3; a rollback release must retain the v4 verifier or
 clearly refuse those packets. Artifact originals use the same encrypted storage
 layout and can be exported for recovery by their recorded ids and hashes.
 

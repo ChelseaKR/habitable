@@ -4,7 +4,7 @@
 
 | The local app (English / Español) | An exported, verifiable packet |
 | --- | --- |
-| ![The habitable Unit 4B repair trail showing reported and secured dates, follow-up actions, and the tenant-versus-review copy boundary](site/img/app-en.png) | ![An accessible habitability evidence packet with an issue, a captured photo, and an evidence appendix table](site/img/packet.png) |
+| ![The habitable Unit 4B repair trail showing reported and secured dates, follow-up actions, and the tenant-versus-review copy boundary](https://raw.githubusercontent.com/ChelseaKR/habitable/main/site/img/app-en.png) | ![An accessible habitability evidence packet with an issue, a captured photo, and an evidence appendix table](https://raw.githubusercontent.com/ChelseaKR/habitable/main/site/img/packet.png) |
 
 The app is bilingual (EN/ES) and has automated axe, keyboard, and reflow coverage; a human
 screen-reader pass remains open. Every export ships an axe-tested `packet.html`, a paginated PDF,
@@ -37,6 +37,27 @@ government system and not built for a government customer.
 
 See the current **[capability and claim ledger](docs/capabilities.md)** for the evidence behind each
 shipped, partial, planned, or externally unvalidated claim.
+
+## Install
+
+```console
+$ pip install habitable        # the library and the `habitable` CLI
+$ uv tool install habitable    # just the CLI
+```
+
+**Python 3.14 or newer is required, and that floor is real rather than cautious.** On
+3.12 or 3.13 the resolver reports `Requires-Python >=3.14` and installs nothing, which
+is the right outcome rather than an oversight: 7 of the 49 modules use the PEP 758
+parenthesis-free `except ValueError, OSError:` form, which is a `SyntaxError` on every
+earlier interpreter, so an installed copy could not import its own CLI. Nothing that
+would work on an older Python is being withheld from it.
+
+The deliberate exception is the standalone Apache-2.0 **verifier subset** —
+`habitable.verify`, `habitable.canonical`, and the embeddable `habitable.kernel`
+surface — which a court, a legal-aid group, or another civic tool can vendor without
+adopting this project's Python. CI byte-compiles that subset on 3.12 and 3.13 on every
+change; 3.12 is its own floor, because `canonical.py` uses PEP 695 `type` statements.
+See [`NOTICE`](NOTICE) and [`docs/evidence-kernel.md`](docs/evidence-kernel.md).
 
 ## Try it
 
@@ -115,6 +136,14 @@ auditability, accessibility, and saying plainly what the tool does not do.
   repair-request / notice letter to the landlord (accessible HTML + PDF), with jurisdiction-aware
   *framing only* and a standing "not legal advice" disclaimer (`docs/letter-generator.md`). Its
   wording and delivery workflow have not been validated by legal counsel or a pilot partner.
+- **Seals the reply, and everything attached to it.** The outbound half of *did the landlord
+  know* is the letter above; the inbound half is what came back. `habitable correspondence`
+  seals an email export (`.eml`) and **each of its attachments as its own custody-bound item**,
+  joined by typed relationships, and the packet renders the message body with a summary of the
+  headers. Those headers are the sender's claims and are labeled as such: habitable checks no
+  DKIM or ARC signature, so a `Date:` header is never treated as a time — the only time bound
+  on any item is its RFC 3161 token. The sealed original keeps the signatures intact for an
+  expert who can evaluate them.
 
 ```console
 $ habitable export --vault ./case-vault --out ./4B-packet
@@ -189,7 +218,10 @@ does not close: who the producer is, and an adversary who can reach the same aut
    implemented* — today the only at-rest protection is vault encryption, and when built that state
    will be a mitigation with documented limits, not a guarantee against a coercing or forensic
    adversary — and the tool collects no analytics and phones no home. The union decides what to
-   disclose and to whom, documented in `docs/threat-model.md`.
+   disclose and to whom, documented in `docs/threat-model.md`. (The documentation website at
+   habitable.chelseakr.com is not the tool: since 2026-09-17, by owner decision, it counts page
+   visits with Google Analytics 4, which does not load under Global Privacy Control, Do Not Track
+   or its footer opt-out; `site/trust-limitations/#analytics` says exactly what it receives.)
 
 ---
 
@@ -550,7 +582,7 @@ exception is about embedding and redistribution.)
 
 ## Get involved — the project needs outside eyes
 
-habitable stays labelled **alpha** until independent reviewers have checked its claims —
+habitable stays labeled **alpha** until independent reviewers have checked its claims —
 that is the whole bargain of a *verify, don't trust* tool, and it is the current priority.
 If you can help, the **[call for reviewers](docs/recruitment/README.md)** has scoped briefs,
 the funding paths, and one-click intake for each role:

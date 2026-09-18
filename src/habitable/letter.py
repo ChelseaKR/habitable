@@ -21,12 +21,12 @@ via the ``[letter]`` block in ``config.toml`` (see :mod:`habitable.config`), whi
 the right place to encode locally-verified, jurisdiction-specific wording. The letter
 carries a standing "this is not legal advice" disclaimer.
 
-English only, and labelled as such
+English only, and labeled as such
 ----------------------------------
 Everything the rest of habitable produces is bilingual (EN/ES). The letter is not:
 every string in this module is an English literal. It is emitted in English,
 declares ``lang="en"`` whatever the vault's configured language, and reports the
-unmet request rather than quietly relabelling English prose as Spanish. See
+unmet request rather than quietly relabeling English prose as Spanish. See
 :data:`LETTER_LANGUAGE` for why a legal-register translation is a review task
 rather than a code task, and ``docs/letter-generator.md`` for the user-facing
 statement of the same limit.
@@ -249,8 +249,8 @@ _NO_LOCAL_LAW = LocalLawReview(state="absent")
 # possibly a court's -- hands, it carries legal framing, and a legal-register
 # Spanish translation needs a Spanish-speaking legal-aid reviewer before this
 # project may put it in a tenant's name. Until that review happens the honest
-# behaviour is the one this project applies elsewhere: decline to claim the
-# language rather than assert it. The letter is emitted in English, labelled
+# behavior is the one this project applies elsewhere: decline to claim the
+# language rather than assert it. The letter is emitted in English, labeled
 # English, and the unmet request is reported to the person generating it
 # (`RepairLetter.language_limitation`, surfaced by `habitable letter`).
 #

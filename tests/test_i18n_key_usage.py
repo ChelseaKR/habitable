@@ -25,7 +25,7 @@ The tests here pin the properties that make the report worth trusting:
   it, because "I checked for dynamic keys and found only a CSS class" is a claim
   a reader should be able to verify rather than take on faith.
 * it **keeps the two findings apart**. "Nothing renders this" and "the CLI
-  catalogue in ``src/habitable/i18n.py`` defines this too" need different fixes,
+  catalog in ``src/habitable/i18n.py`` defines this too" need different fixes,
   and merging them invites deleting the copy the CLI still uses.
 * it **never fails a build**. A fixture where every key is dead still exits 0.
   That is the #271 decision: the backlog predates the report, and a red build on
@@ -74,7 +74,7 @@ def _fixture(
         f"--bundle={bundle_path}",
         f"--markup={markup_path}",
         f"--script={script_path}",
-        f"--server-catalogue={server_path}",
+        f"--server-catalog={server_path}",
     ]
 
 
@@ -183,8 +183,8 @@ def test_every_translated_attribute_counts_as_a_reference(tmp_path: Path) -> Non
     assert payload["reached_by_markup"] == 3
 
 
-def test_a_key_the_cli_catalogue_also_defines_is_bucketed_separately(tmp_path: Path) -> None:
-    """Two catalogues, two different fixes — so two different buckets.
+def test_a_key_the_cli_catalog_also_defines_is_bucketed_separately(tmp_path: Path) -> None:
+    """Two catalogs, two different fixes — so two different buckets.
 
     ``strength_level_minimal`` is unreferenced by the app *and* defined in
     ``src/habitable/i18n.py`` for CLI output. Filing it under "delete me" would
@@ -207,6 +207,23 @@ def test_a_key_the_cli_catalogue_also_defines_is_bucketed_separately(tmp_path: P
     printed = " ".join(_run(*args).stdout.split())
     assert "app 'Minimal'" in printed
     assert "server 'minimal'" in printed
+
+
+def test_the_deprecated_british_catalog_flag_still_works(tmp_path: Path) -> None:
+    """``--server-catalogue`` was the flag's name before the American-English pass.
+
+    It stays accepted as an alias so an existing invocation does not break.
+    """
+    bundle = {"strength_level_minimal": "Minimal"}
+    server = "_CLI_MESSAGES: dict[str, dict[str, str]] = {'en': {'strength_level_minimal': 'x'}}\n"
+    args = [
+        arg.replace("--server-catalog=", "--server-catalogue=")
+        for arg in _fixture(tmp_path, bundle, server=server)
+    ]
+    assert any(arg.startswith("--server-catalogue=") for arg in args)
+    payload = _payload(_run("--json", *args))
+
+    assert payload["server_duplicates"] == ["strength_level_minimal"]
 
 
 def test_a_key_the_app_asks_for_but_the_bundle_lacks_is_reported(tmp_path: Path) -> None:

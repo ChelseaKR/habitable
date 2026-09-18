@@ -39,14 +39,49 @@ from typing import TYPE_CHECKING, BinaryIO
 from .canonical import JSONValue, canonical_json, sha256_bytes
 from .crypto import verify as verify_signature
 from .errors import VerificationError
-from .evidence import CustodyLog
+from .evidence import OFFLOAD_ITEM_KEY, OFFLOAD_STATE_OFFLOADED, CustodyLog
 from .timeline import EVENT_TYPES, SOURCES, normalize_occurred_at
 from .tsa import TimestampInfo, TimestampToken, verify_archive_chain, verify_token
 
 if TYPE_CHECKING:
     from cryptography import x509
 
-__all__ = ["ItemVerdict", "SealVerdict", "VerificationReport", "verify_packet"]
+__all__ = [
+    "CORRESPONDENCE_BODY_STATES",
+    "CORRESPONDENCE_HEADER_STATES",
+    "CORRESPONDENCE_SCHEMA",
+    "REDUNDANCY_STATES",
+    "ItemVerdict",
+    "SealVerdict",
+    "VerificationReport",
+    "verify_packet",
+]
+
+#: The words a *producer* may write into ``appendix.redundancy.state`` in an
+#: exported packet (issue #297, RR-07).
+#:
+#: It lives in the verifier rather than beside :class:`SyncRedundancy`, which owns
+#: the concept, and the reason is a license boundary rather than a dependency one.
+#: ``tests/test_guards.py`` pins the exact module set the Apache-2.0 verification
+#: subset may load, and ``syncstate`` is AGPL-only; importing it here would pull an
+#: AGPL module into the embeddable verifier's closure. The constant is one tuple, so
+#: it comes to the subset instead of the subset widening to reach it. The producer
+#: (`packet`) and the reader (`bundleview`) are both AGPL and may import from here.
+REDUNDANCY_STATES = ("acknowledged", "this_device_only")
+
+#: The vocabulary of ``item.correspondence`` (issue #304), here for the same license
+#: reason as ``REDUNDANCY_STATES`` above: ``habitable.correspondence`` is AGPL-only and
+#: importing it would pull it into the closure ``tests/test_guards.py`` pins for the
+#: Apache-2.0 verifier subset. The producer (`packet`), the parser (`correspondence`)
+#: and both renderers are AGPL and import these from here.
+#:
+#: A header has three states and a body four, and the fourth is the one worth naming:
+#: a message whose body exists in a form this packet declines to render (HTML, most
+#: often) is not a message with no body. Every state that is not "present" carries an
+#: empty value, and they are different facts.
+CORRESPONDENCE_SCHEMA = 1
+CORRESPONDENCE_HEADER_STATES = ("present", "absent", "unreadable")
+CORRESPONDENCE_BODY_STATES = ("present", "absent", "not_plain_text", "unreadable")
 
 _BUNDLE = "bundle.json"
 _SIGNATURE = "bundle.sig.json"
@@ -293,6 +328,12 @@ _ITEM_DETAIL_TEXT = {
             "no photo, recording, or file was included for this item — only its "
             "content hash and timestamp"
         ),
+        "no_evidence_offloaded": (
+            "no photo, recording, or file was included for this item: the packet says "
+            "the sealed original was moved to external storage. Its content hash and "
+            "timestamp are here; this packet cannot show what they cover, and nothing "
+            "in it can confirm where the file went"
+        ),
         "shared_media": "shared media is missing or does not match its recorded hash",
         "custody_binding": "shared media is not bound to the original by custody",
         "original_fixity": "embedded original does not match its recorded hash",
@@ -306,6 +347,13 @@ _ITEM_DETAIL_TEXT = {
         "no_evidence": (
             "no se incluyó ninguna foto, grabación o archivo para este elemento — solo "
             "su hash de contenido y sello de tiempo"
+        ),
+        "no_evidence_offloaded": (
+            "no se incluyó ninguna foto, grabación o archivo para este elemento: el "
+            "expediente indica que el original sellado se trasladó a un almacenamiento "
+            "externo. Su hash de contenido y su sello de tiempo sí están aquí; este "
+            "expediente no puede mostrar lo que cubren, y nada en él confirma adónde "
+            "fue el archivo"
         ),
         "shared_media": "falta el archivo compartido o no coincide con su hash registrado",
         "custody_binding": "la custodia no vincula el archivo compartido con el original",
@@ -391,6 +439,14 @@ class ItemVerdict:
     # every pre-existing caller that builds an ItemVerdict without naming this
     # field keeps its prior meaning.
     evidence_present: bool = True
+    # Whether the bundle *states* this item's sealed original was moved to
+    # external storage (issue #296). It is a claim the packet makes and nothing
+    # here can check it -- the drive is not in the packet -- so it changes the
+    # explanation for a byteless item and never a verdict. Granting readiness to
+    # an item on the strength of a field the item itself supplies would undo
+    # #158 from the other direction: anyone hand-crafting a bundle could write
+    # the same three keys.
+    offload_declared: bool = False
 
     @property
     def structurally_intact(self) -> bool:
@@ -433,7 +489,9 @@ class ItemVerdict:
         text = _item_detail_text(language)
         reasons: list[str] = []
         if not self.evidence_present:
-            reasons.append(text["no_evidence"])
+            reasons.append(
+                text["no_evidence_offloaded" if self.offload_declared else "no_evidence"]
+            )
         if not self.shared_media_ok:
             reasons.append(text["shared_media"])
         if not self.custody_binding_ok:
@@ -708,6 +766,7 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
     poster_hash = _s(item, "poster_hash")
     transcript = _s(item, "transcript")
     has_original = item.get("has_original") is True
+    offload_declared, offload_detail = _declared_offload(item)
     notes: list[str] = []
 
     if not inspect_references and (shared_name or poster_name or has_original):
@@ -891,10 +950,25 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
     #    separately, above, by shared_media_ok / original_fixity_ok.
     evidence_present = bool(shared_name) or has_original
     if not evidence_present:
-        notes.append(
-            "no shared media and no embedded original: this item carries no "
-            "checkable evidence bytes"
-        )
+        if offload_declared:
+            # Same verdict, a true reason. Before this branch the only sentence
+            # available said "this item carries no checkable evidence bytes",
+            # which is correct and unhelpful: it reads as a defect in the export
+            # rather than as the thing the tenant chose to do to fit the case on
+            # her phone. The wording stays careful about what is known -- the
+            # bundle *says* the original was offloaded, and no packet can show
+            # that a file is on a drive somewhere.
+            notes.append(
+                "no shared media and no embedded original: the bundle states this "
+                "item's sealed original was moved to external storage "
+                f"({offload_detail}). Its content hash and timestamp are present; "
+                "its bytes are not, and this packet cannot check that claim"
+            )
+        else:
+            notes.append(
+                "no shared media and no embedded original: this item carries no "
+                "checkable evidence bytes"
+            )
 
     return ItemVerdict(
         capture_id=capture_id,
@@ -912,7 +986,35 @@ def _verify_item(  # noqa: C901 -- P1-4 follow-up: extract per-check helpers; le
         timestamp_present=timestamp_present,
         timestamp_kind=timestamp_kind,
         evidence_present=evidence_present,
+        offload_declared=offload_declared,
     )
+
+
+def _declared_offload(item: Mapping[str, JSONValue]) -> tuple[bool, str]:
+    """Read the item's offload claim, defensively (issue #296).
+
+    Every field here is attacker-controlled, so the block only counts when it is
+    an object whose ``state`` is the one value this vocabulary defines. A bundle
+    that writes ``offload: true``, or an unknown state, gets the ordinary
+    byteless treatment -- an unrecognized claim must not become a recognized
+    excuse.
+
+    The returned detail is for a human reading the report; it never reaches a
+    verdict. ``container_hash`` is echoed truncated so a reader holding the drive
+    can compare it with the file in front of them, which is the one check this
+    packet genuinely enables.
+    """
+    raw = item.get(OFFLOAD_ITEM_KEY)
+    if not isinstance(raw, dict) or raw.get("state") != OFFLOAD_STATE_OFFLOADED:
+        return False, ""
+    at = raw.get("offloaded_at")
+    container = raw.get("container_hash")
+    parts = []
+    if isinstance(at, str) and at:
+        parts.append(f"recorded at {at}")
+    if isinstance(container, str) and len(container) == 64:
+        parts.append(f"container sha256 {container[:12]}…")
+    return True, "; ".join(parts) or "no further detail given"
 
 
 def _hash_packet_reference(  # noqa: C901 -- security checks are intentionally linear
@@ -1191,6 +1293,138 @@ def _verify_appendix_item_counts(
     return problems
 
 
+def _verify_appendix_redundancy(appendix: Mapping[str, JSONValue]) -> list[str]:
+    """Hold ``appendix.redundancy`` to its own arithmetic. Issue #297 (RR-07).
+
+    Unlike every other appendix figure this module re-derives, a device count is
+    **not** a fact about the bundle: nothing inside the packet says how many
+    devices hold the case, so nothing here can recompute it. What can be checked
+    is that the producer's own three numbers agree with each other and with the
+    word beside them, which is what stops a hand-edited packet claiming "4
+    devices" over ``acknowledged_by: 0``.
+
+    Absence is accepted and deliberately not a problem. Every packet exported
+    before this field existed -- including all six committed golden fixtures --
+    omits it, and `bundleview.packet_redundancy` renders that omission as "not
+    stated" rather than as a count. Requiring the field would make a backward
+    compatibility guarantee fail on the day a new optional field shipped.
+    """
+    if "redundancy" not in appendix:
+        return []
+    raw = appendix.get("redundancy")
+    if not isinstance(raw, Mapping):
+        return ["appendix.redundancy is not an object"]
+    problems: list[str] = []
+    state = raw.get("state")
+    if state not in REDUNDANCY_STATES:
+        problems.append(f"appendix.redundancy.state is not one of {list(REDUNDANCY_STATES)}")
+    devices = raw.get("device_count")
+    acknowledged = raw.get("acknowledged_by")
+    counted = [
+        value
+        for value in (devices, acknowledged)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0
+    ]
+    if len(counted) != 2:
+        problems.append("appendix.redundancy device_count/acknowledged_by are not counts")
+        return problems
+    assert isinstance(devices, int) and isinstance(acknowledged, int)
+    if devices != acknowledged + 1:
+        problems.append(
+            "appendix.redundancy.device_count does not count the producing device plus "
+            "its acknowledged peers"
+        )
+    if state in REDUNDANCY_STATES and (state == "this_device_only") != (acknowledged == 0):
+        problems.append("appendix.redundancy.state contradicts acknowledged_by")
+    if raw.get("identities_included") is not False:
+        problems.append(
+            "appendix.redundancy.identities_included must be false; this packet counts "
+            "devices and never names them"
+        )
+    as_of = raw.get("as_of")
+    if as_of is not None and not isinstance(as_of, str):
+        problems.append("appendix.redundancy.as_of is not a string")
+    return problems
+
+
+def _verify_correspondence(item: Mapping[str, JSONValue]) -> list[str]:  # noqa: C901
+    """Hold ``item.correspondence`` to what a producer can honestly have written.
+
+    Issue #304. Like the device count, this is not a fact the verifier can re-derive:
+    the summary comes from parsing the sealed original, and a packet exported without
+    ``--include-originals`` does not carry those bytes. What is checkable is that the
+    block is internally consistent and that it has not been edited into a stronger
+    claim than the format allows, which is what stops a hand-edited packet asserting
+    that its ``Date:`` header is a verified time.
+
+    ``header_dates_are_claims`` is therefore refused unless it is exactly ``true``.
+    It is the same shape as ``redundancy.identities_included`` being pinned false: a
+    constant whose whole purpose is that a document cannot say the other thing, so the
+    honest way to change it is a different field with its own contract.
+
+    Absence is accepted. Every packet exported before this field existed omits it, and
+    so does every item that is not a sealed message.
+    """
+    if "correspondence" not in item:
+        return []
+    raw = item.get("correspondence")
+    if raw is None:
+        return []
+    if not isinstance(raw, Mapping):
+        return ["correspondence is not an object"]
+    problems: list[str] = []
+    if raw.get("correspondence_schema") != CORRESPONDENCE_SCHEMA:
+        problems.append(f"correspondence_schema must be {CORRESPONDENCE_SCHEMA}")
+    if raw.get("header_dates_are_claims") is not True:
+        problems.append(
+            "correspondence.header_dates_are_claims must be true; a message header is "
+            "the sender's claim and this packet never presents one as a time it can prove"
+        )
+    for key in ("from_header", "date_header", "subject", "message_id"):
+        header = raw.get(key)
+        if not isinstance(header, Mapping):
+            problems.append(f"correspondence.{key} is not an object")
+            continue
+        if header.get("state") not in CORRESPONDENCE_HEADER_STATES:
+            problems.append(
+                f"correspondence.{key}.state is not one of {list(CORRESPONDENCE_HEADER_STATES)}"
+            )
+        value = header.get("value")
+        if not isinstance(value, str):
+            problems.append(f"correspondence.{key}.value is not a string")
+        elif value and header.get("state") != "present":
+            problems.append(f"correspondence.{key} carries a value while stating it is not present")
+    body = raw.get("body")
+    if not isinstance(body, Mapping):
+        problems.append("correspondence.body is not an object")
+    elif body.get("state") not in CORRESPONDENCE_BODY_STATES:
+        problems.append(
+            f"correspondence.body.state is not one of {list(CORRESPONDENCE_BODY_STATES)}"
+        )
+    counts = [
+        raw.get("attachment_count"),
+        raw.get("attachments_readable"),
+    ]
+    if not all(isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in counts):
+        problems.append("correspondence attachment_count/attachments_readable are not counts")
+        return problems
+    declared, readable = counts
+    assert isinstance(declared, int) and isinstance(readable, int)
+    if readable > declared:
+        problems.append(
+            "correspondence.attachments_readable exceeds the attachment_count the message "
+            "itself declares"
+        )
+    listed = raw.get("attachments")
+    if not isinstance(listed, list):
+        problems.append("correspondence.attachments is not an array")
+    elif len(listed) != declared:
+        problems.append(
+            "correspondence.attachments does not list every attachment the message declares"
+        )
+    return problems
+
+
 def _verify_v4_workflows(  # noqa: C901 -- ordered fail-closed checks remain linear
     bundle: Mapping[str, JSONValue], custody: CustodyLog
 ) -> list[str]:
@@ -1221,6 +1455,9 @@ def _verify_v4_workflows(  # noqa: C901 -- ordered fail-closed checks remain lin
             problems.append(f"item {item_id or '<missing>'}: record_kind is invalid")
             continue
         endpoints[item_id] = (_s(raw, "issue_id"), kind)
+        problems.extend(
+            f"item {item_id or '<missing>'}: {message}" for message in _verify_correspondence(raw)
+        )
         if kind == "artifact":
             artifact_count += 1
             problems.extend(
@@ -1232,6 +1469,7 @@ def _verify_v4_workflows(  # noqa: C901 -- ordered fail-closed checks remain lin
         problems.append("appendix.artifact_count does not match artifact items")
     if appendix.get("relationship_count") != len(raw_relationships):
         problems.append("appendix.relationship_count does not match relationships")
+    problems.extend(_verify_appendix_redundancy(appendix))
 
     graphs: dict[str, dict[str, set[str]]] = {}
     seen_relationships: set[str] = set()
@@ -1855,7 +2093,7 @@ def _verify_packet_seal(
     2. **An absent seal is a state, not a failure**, until the caller says
        otherwise. Requiring it by default would fail every offline export and every
        packet in the golden corpus, in exchange for a guarantee an attacker
-       sidesteps by deleting one JSON key. ``required`` is where that judgement
+       sidesteps by deleting one JSON key. ``required`` is where that judgment
        belongs — with the recipient.
     3. **Every assertion fails closed.** An unparseable ``not_after``, or either
        assertion made against a packet with no seal, is a problem, never a

@@ -259,7 +259,7 @@ dependency), emitting one JSON object per line. There are four kinds of line:
   in milliseconds. `response` is `complete` (status line and whole body sent),
   `partial` (status line sent, body did not finish), or `none` — and when it is
   `none` the `status` field is **absent**, because no status line was ever written
-  and the peer saw a dropped connection. Until 2026-08 the status was initialised to
+  and the peer saw a dropped connection. Until 2026-08 the status was initialized to
   `200` before routing and logged from a `finally`, so a request that raised out of
   the route (an `OSError` escaping persistence, say) was logged as `200` having sent
   nothing at all. An access log an operator attests to their union may not record a
@@ -383,7 +383,7 @@ at-rest ciphertext JSONL journal as a **best-effort restart aid**. Attest to it 
   lines are compacted away before startup completes; a stale-only, zero-byte, or blank-only
   canonical journal is identity-checked and removed. This prevents repeated clean restarts
   from accumulating expired lines ahead of a newer live append.
-- **Honest durability limit.** Appends are not fsynced and there is no acknowledgement
+- **Honest durability limit.** Appends are not fsynced and there is no acknowledgment
   protocol with the host storage device. A process/host/storage failure can lose the most
   recent accepted append or leave a malformed partial record. Startup skips and counts
   that record, may load earlier valid same-room/same-token records, and leaves the mixed source
@@ -415,7 +415,7 @@ writable volume and set the env var deliberately.
 
 `/healthz` carries `startup_replay` and `startup_replay_reason` alongside the
 counters; the four states and their effect on `status` and `/readyz` are tabled in
-§3. The single fact worth memorising: **`rooms: 0` with `startup_replay: incomplete`
+§3. The single fact worth memorizing: **`rooms: 0` with `startup_replay: incomplete`
 is not an empty relay.** It is a relay that refused to read its own persistence
 directory and cannot tell you how much is in there.
 

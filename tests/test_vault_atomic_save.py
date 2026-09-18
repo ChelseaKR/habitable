@@ -19,8 +19,27 @@ import habitable.vault as vault_module
 from habitable.errors import VaultError
 from habitable.vault import Vault
 
-_STATE_FILES = ("case.enc", "custody.enc", "deferred.enc", "peer_have.enc", "sync_security.enc")
+# Derived, not typed. This was a hand-maintained copy of the five blob names, and
+# `offload.enc` (issue #296) made it six: `_transactionally_replace_save_blobs`
+# compares the tuple it is handed against `_SAVE_BLOBS` by equality, so a stale copy
+# here made a fault-injection test assert the wrong refusal and told a reader the
+# recovery path was broken. Reading the real tuple cannot go stale, and the
+# assertion below pins the shape rather than the membership.
+_STATE_FILES = vault_module._SAVE_BLOBS
 _JOURNAL = ".save-transaction.json"
+
+
+def test_every_save_blob_is_an_encrypted_state_file() -> None:
+    """A floor under the derived list, so it cannot silently become empty or wrong.
+
+    `_STATE_FILES` is now read from the module under test, which makes the tests
+    that use it immune to a new blob and blind to a broken `_SAVE_BLOBS`. This is
+    the one assertion that looks at the tuple itself.
+    """
+    assert len(_STATE_FILES) >= 5
+    assert len(set(_STATE_FILES)) == len(_STATE_FILES)
+    assert all(name.endswith(".enc") for name in _STATE_FILES)
+    assert _STATE_FILES[0] == "case.enc"
 
 
 def _snapshot(path: Path) -> dict[str, bytes]:

@@ -75,7 +75,41 @@ may carry one or not. A packet exported offline has none. See
 | `handoff_views` | array | Packet-v4 presentation-only manifests; `bundle.json` remains the source of truth. |
 | `custody_proof` | object | Identity-stripped chain-of-custody proof (see below). |
 | `disclosures` | array | Human-readable notes of what the packet reveals (shared-copy metadata handling, custody identities not exported, originals embedded). Also rendered, localized, in `packet.html`/`packet.pdf`. |
-| `appendix` | object | V4 adds `artifact_count` and `relationship_count` to the v3 counts. `timestamped_count` means a token record is attached; it does not assert token validity or authority trust. |
+| `appendix` | object | V4 adds `artifact_count` and `relationship_count` to the v3 counts. `timestamped_count` means a token record is attached; it does not assert token validity or authority trust. `redundancy` (see below) says how many devices held the case at export time. `offloaded_count` (issue #296) is how many items carry no evidence bytes because their sealed original was on external storage; it is emitted on **every** packet, including as `0`, so "nothing is offloaded" is something the bundle states rather than something a reader infers from a missing key. |
+
+### `appendix.redundancy` — how many devices hold this case
+
+RR-07's question, answered in the artifact rather than only on the producer's own
+screen: *if this tenant loses her phone, does the case still exist?* The packet
+carries `{state, device_count, acknowledged_by, identities_included, as_of?}`.
+
+It is a **count and never an identity**. A peer fingerprint in a document that
+reaches a landlord's solicitor is a map of who is organizing in the building, and
+the count answers the question without drawing it; `identities_included` is a
+schema `const: false` so that the only way to change that is a new field with its
+own contract.
+
+`acknowledged_by` counts paired devices that returned a **signed acknowledgment**
+of holding the case, not devices that are merely paired — a peer that has never
+completed an exchange holds nothing, and counting it would answer "your case is on
+three devices" for a vault that has never synced. `device_count` is that number
+plus the producing device, so `device_count == acknowledged_by + 1` always, and
+`state` is `"this_device_only"` exactly when `acknowledged_by` is zero. The
+verifier checks all three against each other; it cannot re-derive them, because
+nothing inside a packet knows how many devices exist.
+
+`as_of` is the producing device's own record of when the most recent
+acknowledgment arrived. It is **omitted, never defaulted**, when no time was
+recorded — the case `habitable status` already prints its own line for. An epoch
+date beside a device count would date a redundancy claim to 1970.
+
+**Absence is a fourth state, and it is not "one device".** `redundancy` was added
+after packet v4 shipped, so every packet exported before it — including all six
+committed golden fixtures — omits the field. A reader must render that as *not
+stated*; rendering it as `1` would publish a redundancy claim nobody made. This
+project's renderers therefore distinguish four states: the two a producer can
+write, the absent one, and a field present in a shape the reader cannot parse —
+also not "one device", and reported as a problem by `habitable verify`.
 
 ### Opaque identifiers (packet_version ≥ 2)
 
@@ -134,6 +168,41 @@ at the original occurrence or recording time.
 | `archive_timestamps` | array | Archive (re-)timestamps chaining back to the primary token. |
 | `additional_timestamps` | array | Optional redundant tokens naming other authorities over the same `content_hash` (not a chain). Token presence and authority names are untrusted metadata until the verifier validates each token against recipient-selected roots. Absent in single-authority packets. |
 | `sensor` | object \| null | Present (non-null) only for **instrument data-file** captures (EXP-09, e.g. a temperature-logger or moisture-meter CSV): the readings interpreted from the sealed original for accessible chart + table rendering. `null`/absent for photos and video. The CSV bytes themselves stay the hash-anchored evidence under `content_hash`. |
+| `correspondence` | object \| null | Present (non-null) only for a **sealed RFC 5322 message** artifact (`media_type` `message/rfc822`, issue #304): the header summary and body derived from the sealed original for rendering. `null` for every other item; absent from any packet exported before the field existed. Every value in it is the **sender's claim**. |
+| `offload` | object | Present **only** when this item's sealed original was on external storage at export time (issue #296). `{state: "offloaded", offloaded_at, container_hash}`. Absent from every other item and from any packet exported before the field existed. See below. |
+
+#### `item.offload` — the sealed original is not on the producer's device
+
+`habitable offload` moves a sealed original into an encrypted container on a USB
+stick or SD card and leaves the custody-bound stub in the vault. A packet exported
+in that state (only with `habitable export --allow-offloaded`) carries the item's
+`content_hash`, its tokens and its custody chain, and **none of its bytes**.
+
+Three fields, and no more. `state` is `"offloaded"` — the only value defined, because
+a restored item carries no block at all rather than a second state, so "present" and
+"offloaded" cannot disagree. `offloaded_at` is when. `container_hash` is the SHA-256
+of the container file, which is the one thing a reader who later holds the drive can
+check for themselves.
+
+**What is deliberately not here: which drive.** The label a tenant types
+(*"green USB stick"*) stays in the vault-only half of the custody entry, beside her
+source filenames. A verifier does not need it, and it is a fact about a person's home.
+
+**Every content-derived field on an offloaded item reads as absent because nothing
+could look, not because the content lacks it.** `shared_name`, `shared_hash`,
+`poster_name`/`poster_hash`, `sensor` and `correspondence` are all derived by reading
+the original. An offloaded `.eml` artifact therefore publishes `"correspondence":
+null`, which for any other item means *not a message* and here means *not read*. The
+`offload` block is how a consumer tells the two apart; a consumer that reads those
+nulls without checking for it will draw a false conclusion about the content.
+
+`has_original` is `false` on an offloaded item even under `--include-originals`: the
+flag says what the export was asked to do, the field says what is in `originals/`.
+
+The verifier's treatment is in
+[`verifier-decision-table.md` §4.2c](verifier-decision-table.md#42c-a-declared-offload-explains-a-byteless-item-and-never-excuses-it):
+it changes the explanation for a byteless item and never a verdict, so such a packet
+is **not evidence-ready**.
 
 For an artifact item, `artifact` carries schema version 1, id, issue, reviewed
 artifact type, neutral title, source/issuer assertions, occurrence/recording
@@ -193,6 +262,40 @@ a bundle written before it existed does not carry it, and a reader must treat it
 than as zero — the count exists there only inside a `warnings` sentence. Both renderers do exactly that
 (`series_loss` in `src/habitable/sensor.py`, issue #311).
 
+A **correspondence summary** (`item.correspondence`) is `{correspondence_schema, from_header,
+date_header, subject, message_id, attachment_count, attachments_readable, attachments[],
+body, header_dates_are_claims, warnings[]}`. It is what a sealed `.eml` says about itself, and
+**nothing in it is verified**: habitable checks no DKIM or ARC signature, and says so on the page
+rather than implying otherwise by silence. In particular `date_header` is what the sending
+program wrote; the only time bound on the item is its RFC 3161 token in `timestamp`.
+`header_dates_are_claims` is a schema `const: true` and the verifier refuses a packet that sets
+it otherwise — the same shape as `appendix.redundancy.identities_included` being pinned false.
+
+Like `item.sensor` it is **derived from the sealed original at export**, not stored at capture,
+so a recipient holding the bytes can recompute it and contradict it. A message that cannot be
+parsed at export time yields `null` rather than failing the export: `habitable artifact
+reply.eml` sealed messages long before anything validated them, and an export must not die on
+evidence that is already sealed and already hashed.
+
+Each summarized header carries its own `state` — `present`, `absent` (the message never had it)
+or `unreadable` (it is there and could not be decoded) — beside its `value`, because those are
+three different facts and only one of them is a sender who wrote nothing. `body.state` adds a
+fourth, `not_plain_text`, for a body this packet declines to render (an HTML-only mail): the
+bytes are in the sealed original, and a blank body would say the sender sent none. Neither
+`state` is an enum in this schema, deliberately — a closed vocabulary inside a document served
+under a pinned `$id` rejects a packet its own producer considers valid the day a member is
+added, so both are closed in `habitable.verify` instead
+(`CORRESPONDENCE_HEADER_STATES`, `CORRESPONDENCE_BODY_STATES`).
+
+Two attachment counts, deliberately: `attachment_count` is what the **message's own part walk**
+declares and `attachments_readable` is how many of those could be decoded — and therefore how
+many are sealed as their own custody-bound items, each joined back to the message with a
+`supports` relationship. A part that cannot be decoded is **named in `warnings` and counted**,
+never dropped; its bytes remain inside the sealed message. A single count taken from the items
+created cannot tell a two-part message from a five-part one whose other three were lost.
+`body.text` is capped at 5,000 characters with `body.characters` carrying the untruncated
+length, the same disclose-rather-than-silently-shorten rule the sensor series uses.
+
 ### `custody_proof` — integrity without identities
 
 The exported chain proves no insertion/deletion/reorder **without** disclosing who did what. It
@@ -242,7 +345,7 @@ distils a verification into a small, signed **evidence receipt**: a JSON object 
 and — crucially — `packet.bundle_sha256`, the same SHA-256 of the `bundle.json` bytes described above.
 Because a receipt names the exact bundle bytes it is about, a relying party can re-hash a packet's
 `bundle.json` and confirm a stored receipt refers to *this* packet. A signed receipt seals the receipt
-with the ingesting organisation's Ed25519 key using the identical "sign the ASCII hex of the SHA-256"
+with the ingesting organization's Ed25519 key using the identical "sign the ASCII hex of the SHA-256"
 convention, and pins itself to this document's `packet_version` contract via `receipt_version` and
 `packet_schema`. See [`../contrib/README.md`](../contrib/README.md) for the receipt shape and
 [`embedding-the-verifier.md`](embedding-the-verifier.md#reference-importer--signed-evidence-receipt-exp-10)

@@ -32,11 +32,17 @@ from typing import Any
 import pytest
 from PIL import Image
 
+from habitable.artifact import _DOCUMENT_TYPES
 from habitable.capture import capture
 from habitable.errors import PacketError
 from habitable.media import ffmpeg_available
 from habitable.media_types import REGISTRY, MediaTypeSpec
-from habitable.packet import _DATA_EXT_BY_TYPE, _EXT_BY_TYPE, build_packet
+from habitable.packet import (
+    _DATA_EXT_BY_TYPE,
+    _DOCUMENT_EXT_BY_TYPE,
+    _EXT_BY_TYPE,
+    build_packet,
+)
 from habitable.tsa import LocalRfc3161TSA
 from habitable.vault import Vault
 from habitable.verify import verify_packet
@@ -230,3 +236,34 @@ def test_every_registered_media_type_has_a_working_export_path(
     assert report.structurally_intact, report.items[0].notes
     assert report.evidence_ready
     assert all(v.evidence_present for v in report.items)
+
+
+def test_every_document_type_the_artifact_path_accepts_can_leave_a_packet() -> None:
+    """#158's lesson, applied to the *other* hand-maintained table (issue #304).
+
+    `media_types.REGISTRY` was created because the capture classifier and the packet
+    exporter each held their own copy and `.heic` reached only one of them. The
+    artifact path has a second such pair that the registry does not cover:
+    `artifact._DOCUMENT_TYPES` decides what MIME type a `.pdf` or an `.eml` is sealed
+    as, and `packet._DOCUMENT_EXT_BY_TYPE` decides what extension it leaves under
+    `media/`. Nothing held them to each other, so a document type taught to the first
+    and not the second would export as `<id>.bin` -- bytes a recipient's operating
+    system cannot open, with no error anywhere.
+
+    Measured today: every one of the eleven is covered, so this is a floor rather
+    than a repair. The floor is what stops the twelfth being the one that is not.
+    """
+    exportable = set(_EXT_BY_TYPE) | set(_DATA_EXT_BY_TYPE) | set(_DOCUMENT_EXT_BY_TYPE)
+    assert _DOCUMENT_TYPES, "the artifact classifier is empty; this comparison reads nothing"
+    stranded = sorted(
+        f"{suffix} -> {media_type}"
+        for suffix, media_type in _DOCUMENT_TYPES.items()
+        if media_type not in exportable
+    )
+    assert not stranded, "these artifact types would export as an unopenable .bin: " + ", ".join(
+        stranded
+    )
+    assert "message/rfc822" in _DOCUMENT_EXT_BY_TYPE, (
+        "the sealed-message type must keep its own extension; issue #304 depends on a "
+        "recipient being able to open the .eml the packet hands them"
+    )

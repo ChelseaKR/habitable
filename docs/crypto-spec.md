@@ -87,8 +87,8 @@ exception and never a distinguishable oracle beyond pass/fail.
 ### Normal save transaction and crash recovery
 
 `Vault.save` preserves the existing encrypted filenames and AEAD associated data, but publishes its
-five mutable state blobs (`case.enc`, `custody.enc`, `deferred.enc`, `peer_have.enc`, and
-`sync_security.enc`) as one recoverable generation:
+six mutable state blobs (`case.enc`, `custody.enc`, `deferred.enc`, `peer_have.enc`,
+`sync_security.enc`, and `offload.enc`) as one recoverable generation:
 
 1. Encrypt every new blob in memory. Write each ciphertext and an exact encrypted backup of every
    existing live blob to uniquely named siblings in the vault directory; flush and `fsync` each
@@ -96,7 +96,7 @@ five mutable state blobs (`case.enc`, `custody.enc`, `deferred.enc`, `peer_have.
 2. Atomically publish a small `.save-transaction.json` marker in the **prepared** phase. It contains
    only a random transaction id, the phase, and encrypted-state filenames—no case content, keys,
    identities, or record values.
-3. Replace the five live blobs with same-directory renames, then sync the vault directory where the
+3. Replace the six live blobs with same-directory renames, then sync the vault directory where the
    host/filesystem supports directory `fsync`.
 4. Atomically change the marker to **committed**, then remove the encrypted backups, unused staged
    files, and marker (the marker is removed last).
@@ -114,7 +114,7 @@ created before this protocol still open and keep the same blob names.
 This is a transaction for **normal mutable-state saves**, not a claim that every filesystem write in
 the project is transactional. Keyfile changes, sealed-original creation, and DEK rotation retain
 their separately documented write/recovery boundaries. Encrypted timestamp sidecars and their
-legacy migration use the narrower protocol below; they do not join the five-blob transaction. The
+legacy migration use the narrower protocol below; they do not join the six-blob transaction. The
 strongest crash guarantee assumes a local filesystem that honors same-directory atomic replacement
 and file/directory `fsync`. Directory syncing is best-effort on platforms that do not expose it;
 network/exotic filesystems, lying storage hardware, media failure, and concurrent processes writing
@@ -505,7 +505,7 @@ Stated plainly so a reviewer can target effort (and so the project isn't accused
   adversary who can reach an authority the recipient anchors re-seals a rewritten packet and passes
   everything except `seal_not_after`. Reviewers should weigh whether "the forgery is forced to carry
   its true creation time" is the right guarantee to have chosen — and whether a recipient will in
-  practice supply a date. A related judgement: a *missing* seal is not a failure by default, so a
+  practice supply a date. A related judgment: a *missing* seal is not a failure by default, so a
   recipient who never passes `require_packet_seal` is at the pre-seal baseline. The reasoning, and
   the fact that no in-packet marker can fix it, is
   [ADR 0011](adr/0011-authority-seal-over-the-whole-packet.md).

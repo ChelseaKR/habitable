@@ -108,7 +108,7 @@ plus the limit-stating strings named with their reasons in the script's
 of the headline number. They sit at grade 10.6 **on purpose**: "not
 evidence-ready" and "this does not decide admissibility" are dense because they
 are precise. If a threshold is ever added, that printed list is the exemption
-list it must honour.
+list it must honor.
 
 **Declaring a string is enough, whatever its length.** The exemption is applied
 before the string's shape is looked at, so a five-word verdict — `verify_failed`
@@ -156,7 +156,7 @@ them over `app/i18n/es.json` would produce a wrong number wearing a right
 number's clothes. Spanish needs a Spanish formula (Fernández Huerta / INFLESZ),
 which is its own piece of work — see item 2 of *What remains*.
 
-`tests/test_readability_report.py` keeps the script honest, and its centre is a
+`tests/test_readability_report.py` keeps the script honest, and its center is a
 hand-counted fixture: 25 words, 5 sentences, 40 syllables, 6 polysyllables, whose
 expected scores (Flesch–Kincaid **5.2**, reading ease **66.4**, SMOG **9.4**) are
 worked out from the published formulas inside the test, arithmetic shown. No

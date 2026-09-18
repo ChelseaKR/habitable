@@ -442,7 +442,7 @@ def test_every_harness_in_the_fuzz_directory_is_wired_into_the_build() -> None:
     build = (_FUZZ_DIR / "oss-fuzz" / "build.sh").read_text(encoding="utf-8")
     assert "fuzz/fuzz_*.py" in build, "the build script no longer globs the harnesses"
     assert "compile_python_fuzzer" in build, "the build script no longer compiles anything"
-    assert "seed_corpus" in build, "the build script no longer materialises the seed corpora"
+    assert "seed_corpus" in build, "the build script no longer materializes the seed corpora"
 
 
 def test_the_compiled_target_is_given_the_fixtures_it_reads() -> None:

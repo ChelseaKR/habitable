@@ -93,11 +93,20 @@ N/A is conformance.
   no-plaintext guarantee has its own documented proof procedure
   ([`prove-no-plaintext.md`](prove-no-plaintext.md)); sync has a dedicated threat model
   ([`sync-threat-model.md`](sync-threat-model.md)).
-- **What do we commit to?** No server-side personal data, no telemetry, no analytics (also
-  none on the Pages site); local-first encrypted storage; the relay sees only opaque
+- **What do we commit to?** No server-side personal data, no telemetry, no analytics in the
+  app, CLI or relay; local-first encrypted storage; the relay sees only opaque
   ciphertext and is documented against its own observability matrix
   ([`relay-observability-matrix.md`](relay-observability-matrix.md)); minimal-disclosure
   export scoping is self-documented in every packet.
+- **The Pages site is the exception, by owner decision (2026-09-17).** The documentation
+  website counts page visits with Google Analytics 4 (Google LLC as processor, property
+  554829447): the page path plus `utm_*` tags, title, referrer origin, and what gtag.js
+  collects (browser, screen, language, IP-derived approximate location), with `_ga` cookies
+  outside the EEA/UK/CH, ad features off, 14-month retention, and nothing loaded under Global
+  Privacy Control, Do Not Track or the footer opt-out (`site/analytics.js`,
+  `tests/test_site_analytics.py`). The site's audience includes tenants at risk of
+  retaliation, so the disclosure (`site/trust-limitations/#analytics`) tells them how to turn
+  it off before reading further.
 - **Enforcement.** AUTO — encryption, metadata-strip, disclosure-scoping, and
   tamper-evidence behavior are covered by the test suite in the merge gate; gitleaks runs
   pre-commit and in CI, TruffleHog weekly

@@ -1,0 +1,178 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Is the site a visitor gets at habitable.chelseakr.com the site this repository has?
+#
+# `pages.yml` is a *committed-tree* publisher: it checks the repository out and hands
+# `actions/upload-pages-artifact` the `site/` directory exactly as committed. Nothing
+# is rendered on the runner. That makes the obvious measurement -- deployed SHA versus
+# `main` -- the wrong one here, and wrong in the direction that gets a detector muted:
+# this repository merges code, tests and docs constantly and touches `site/` rarely, so
+# a SHA comparison would report drift almost every week while a reader was holding
+# byte-for-byte what `main` holds. On the day this was written the live deployment was
+# `b1c62e172` and `main` was `589e30c1a`, five commits later, with
+# `git rev-parse <either>:site` resolving to the same tree object.
+#
+# So `scripts/deploy_staleness.py` compares the published *subtrees*, and reads which
+# directory that is out of `pages.yml` rather than assuming `site/`, because the
+# publisher's `path:` is itself a publication input.
+#
+# This workflow publishes NOTHING and cannot: no `pages: write`, no `id-token: write`,
+# no deploy credential. It does not widen or touch `pages.yml`'s path filter -- whether
+# a given commit should publish is that file's decision and stays there.
+#
+# The output is an issue, not a red run. A scheduled check that stays red while a
+# deploy is outstanding is a check nobody reads. This run goes red only when the
+# comparison cannot be made at all: no github-pages deployment, none reporting a
+# successful status, a deployed commit this clone does not contain, a diverged history,
+# or a publisher whose upload path cannot be read. A detector that cannot tell must
+# look broken rather than report a comfortable zero.
+#
+# Shape follows `stale-invitations.yml`, this repository's precedent for a scheduled
+# network job: weekly cron plus manual dispatch, the canonical-repository guard so a
+# quiet fork does not email its owner about upstream's prose, and a bare `python3`
+# because the script is standard-library only and the runner's own interpreter is the
+# whole dependency list. Every action is pinned to a full 40-char commit SHA already in
+# use elsewhere in this repository.
+name: deploy-staleness
+
+on:
+  schedule:
+    - cron: "29 7 * * 1" # weekly, Monday 07:29 UTC
+  workflow_dispatch:
+    inputs:
+      max_age_days:
+        description: "Days an unpublished change to the published directory may wait"
+        required: false
+        default: "14"
+        type: string
+
+# Least privilege at the workflow level; the one job grants itself what it needs
+# (CICD-04, the same scoping pages.yml and zizmor.yml use).
+permissions: {}
+
+# CI-CD-STANDARD.md 11c, taken as the documented *converging* exception rather than the
+# per-commit key, and listed as such in tests/test_guards.py. The usual rule exists because
+# a ref-only key makes every push to `main` compete for one slot and a burst of merges
+# evicts a pending run with zero jobs, leaving a commit with no verdict. That cannot happen
+# here: this workflow has no `push` trigger at all, so no commit is ever waiting on it, and
+# it produces no required status check. What it does have is a write -- it files, comments
+# on or closes one issue -- so a run must never be canceled mid-write, and a manual
+# dispatch must never race the Monday schedule onto the same issue. A constant group with
+# cancel-in-progress: false serializes them, and a superseded staleness measurement loses
+# nothing: the next run measures the same site again.
+concurrency:
+  group: deploy-staleness
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    name: how far the published site is behind main
+    # Same reasoning as stale-invitations.yml: a fork's GITHUB_TOKEN is scoped to the
+    # fork, which has no github-pages deployment of its own, so the scheduled run there
+    # would refuse every week and email its owner about a site they do not publish.
+    if: github.repository == 'ChelseaKR/habitable' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # the checkout, and the git history and trees the comparison reads
+      deployments: read # which commit the published bytes came from, and whether it succeeded
+      issues: write # the report itself; nothing here writes anywhere else
+    steps:
+      # P1-3 (SEC-04): audit-mode egress monitoring; see ci.yml's Harden Runner step for
+      # the telemetry trade-off note. Worth more here than on an offline job, as this one
+      # deliberately talks to the API.
+      - name: Harden Runner (audit mode)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Required, not incidental. On a shallow clone the deployed commit is simply
+          # absent: its published subtree cannot be read and `git log <deployed>..HEAD`
+          # lists nothing, so the site reads as current. The script refuses that case
+          # rather than reporting it as zero, and this is what keeps it from having to.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Compare the published subtree against main
+        id: measure
+        env:
+          # Interpolated into `env:`, never into the script body (zizmor
+          # template-injection). GH_TOKEN buys the deployment record; it carries no
+          # grant this job's `permissions:` block does not list.
+          GH_TOKEN: ${{ github.token }}
+          MAX_AGE_DAYS: ${{ inputs.max_age_days || '14' }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        # `|| true` so a refusal reaches the reporting step below, which turns it into
+        # the red run with the reason attached, rather than ending the job here with no
+        # explanation. The step writes `measured` and `overdue` to $GITHUB_OUTPUT.
+        run: |
+          set -euo pipefail
+          python3 scripts/deploy_staleness.py \
+            --repo "$REPOSITORY" \
+            --head origin/main \
+            --max-age-days "$MAX_AGE_DAYS" \
+            > "$RUNNER_TEMP/report.txt" 2> "$RUNNER_TEMP/error.txt" || true
+          cat "$RUNNER_TEMP/report.txt" "$RUNNER_TEMP/error.txt"
+          {
+            echo "## Deploy staleness"
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/report.txt" "$RUNNER_TEMP/error.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: File, update or close the report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          MEASURED: ${{ steps.measure.outputs.measured }}
+          OVERDUE: ${{ steps.measure.outputs.overdue }}
+          TITLE: "The published site is behind main"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          existing=$(gh issue list --repo "$REPOSITORY" --state open \
+            --json number,title --jq "[.[] | select(.title == env.TITLE)] | .[0].number // empty")
+
+          # A refusal is the only red. The measurement itself, current or overdue, is
+          # reported as an issue -- see this file's header for why.
+          if [ "$MEASURED" != "true" ]; then
+            echo "::error::the staleness comparison could not be made; see the report above"
+            exit 1
+          fi
+
+          if [ "$OVERDUE" != "true" ]; then
+            if [ -n "$existing" ]; then
+              gh issue close "$existing" --repo "$REPOSITORY" --reason completed \
+                --comment "The published site is no longer overdue. ${RUN_URL}"
+              echo "closed #$existing"
+            else
+              echo "not overdue; no open report to close"
+            fi
+            exit 0
+          fi
+
+          {
+            echo '```'
+            cat "$RUNNER_TEMP/report.txt"
+            echo '```'
+            echo
+            echo "The published directory is committed, so catching up is a merge, not a"
+            echo "build: once a commit changing it is on \`main\`, \`pages.yml\` publishes it"
+            echo "on push. If that has already happened and this is still open, the publish"
+            echo "itself failed -- check the github-pages deployment statuses."
+            echo
+            echo "Measured by \`scripts/deploy_staleness.py\` in ${RUN_URL}."
+          } > "$RUNNER_TEMP/body.md"
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$REPOSITORY" --body-file "$RUNNER_TEMP/body.md"
+            echo "updated #$existing"
+          else
+            gh issue create --repo "$REPOSITORY" --title "$TITLE" \
+              --body-file "$RUNNER_TEMP/body.md"
+          fi

@@ -343,7 +343,7 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "is rather than starting the case over"
         ),
         "issue_practice_path": (
-            "to practise first, run `habitable demo` — a whole synthetic case in its own "
+            "to practice first, run `habitable demo` — a whole synthetic case in its own "
             "temporary folder, which never touches this one"
         ),
         "capture_timestamped": "timestamp token attached ({when})",
@@ -490,6 +490,56 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "exporting a packet writes about {shared} more — a shareable copy of each "
             "sealed original, in the folder you name, outside the vault and not counted above"
         ),
+        # RR-08. The breakdown states both numbers. A per-capture list only covers the
+        # captures whose sealed original is on this device, and a capture with no row
+        # is indistinguishable from a capture with a zero-byte row unless the header
+        # says how many of the case's captures were measured.
+        "status_storage_breakdown": (
+            "space used by each capture — {measured, plural, one {# capture} "
+            "other {# captures}} measured of {total, plural, one {# in this case} "
+            "other {# in this case}}, largest first"
+        ),
+        "status_storage_no_captures": (
+            "no captures yet, so nothing here takes space beyond the case data above"
+        ),
+        "status_storage_no_original": "sealed original not on this device — nothing to measure",
+        # An offloaded capture and one this device has simply never held are both
+        # absent from originals/, and saying the same thing about both would tell
+        # a tenant who freed space that her photograph is missing (issue #296).
+        "status_storage_offloaded": (
+            "moved to external storage — {size} freed here; the hash and timestamp stay"
+        ),
+        "status_storage_offload_hint": (
+            "to free the space a capture takes without losing it, move its sealed original "
+            "to a USB stick or SD card: `habitable offload <capture> --to <folder>`. The "
+            "hash, the timestamp and the chain of custody stay on this device; only the "
+            "file leaves, and `habitable restore` brings it back."
+        ),
+        "status_storage_delete_note": (
+            "deleting this case frees the space above and destroys the evidence with it. "
+            "A packet you have already exported is a separate copy in the folder you chose: "
+            "it is not counted here and deleting the case does not remove it."
+        ),
+        # --- offload / restore (issue #296, RR-08) ---
+        "offload_done": (
+            "{item}: the sealed original is now on external storage — {size} of sealed "
+            "original removed from this device. Its hash, its timestamp and the chain of "
+            "custody stay here."
+        ),
+        "offload_on_disk": "this case now takes {on_disk} on this device",
+        "offload_keep_drive": (
+            "keep the drive at {path}: it holds the only copy of this file. Deleting the "
+            "container there deletes the photograph; the record of it would remain, with "
+            "nothing behind it."
+        ),
+        "offload_export_note": (
+            "`habitable export` will refuse while this is offloaded, and tell you to run "
+            "`habitable restore` first — a packet cannot carry bytes that are not here."
+        ),
+        "restore_done": "{item}: the sealed original is back on this device and re-hashed",
+        "restore_drive_note": (
+            "the container on the drive is now a spare copy; you may delete it or keep it."
+        ),
         # RR-07: "is this case on more than one device?" Counted from receipts a
         # peer signed, never from the pairing list -- a paired peer that has never
         # completed an exchange holds nothing.
@@ -503,19 +553,19 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "{confirmed, plural, one {# paired peer has} other {# paired peers have}} "
             "acknowledged holding it"
         ),
-        "status_sync_last_seen": "last acknowledgement: {peer} — recorded here {when}",
+        "status_sync_last_seen": "last acknowledgment: {peer} — recorded here {when}",
         "status_sync_last_untimed": (
-            "last acknowledgement: {peer} — this device recorded no time for it"
+            "last acknowledgment: {peer} — this device recorded no time for it"
         ),
         "status_sync_via": "carried over: {transport}",
         "sync_transport_file": "a file or removable drive",
         "sync_transport_relay": "a relay server",
         "status_sync_peer_clock_unusable": (
-            "note: the acknowledgement from {peer} carries no usable clock of its own, "
+            "note: the acknowledgment from {peer} carries no usable clock of its own, "
             "so the time above is this device's own record of when it arrived"
         ),
         # Issue #161: the repair-request letter is the one surface that is not
-        # bilingual. It says so instead of relabelling English prose.
+        # bilingual. It says so instead of relabeling English prose.
         "letter_language_unavailable": (
             "note: this letter is written in English. habitable does not yet ship a "
             "reviewed {requested} translation of the repair-request letter, and will not "
@@ -739,6 +789,56 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "exportar un paquete escribe unos {shared} más — una copia compartible de cada "
             "original sellado, en la carpeta que usted indique, fuera de la bóveda y no "
             "incluida arriba"
+        ),
+        "status_storage_breakdown": (
+            "espacio que ocupa cada captura — se {measured, plural, one {midió # captura} "
+            "other {midieron # capturas}} de {total, plural, one {# que tiene este caso} "
+            "other {# que tiene este caso}}, de mayor a menor"
+        ),
+        "status_storage_no_captures": (
+            "todavía no hay capturas, así que aquí no ocupa espacio nada más allá de los "
+            "datos del caso indicados arriba"
+        ),
+        "status_storage_no_original": (
+            "el original sellado no está en este dispositivo — no hay nada que medir"
+        ),
+        "status_storage_offloaded": (
+            "trasladado a un almacenamiento externo — se liberaron {size} aquí; el hash y "
+            "el sello de tiempo se quedan"
+        ),
+        "status_storage_offload_hint": (
+            "para liberar el espacio que ocupa una captura sin perderla, traslade su "
+            "original sellado a una memoria USB o una tarjeta SD: "
+            "`habitable offload <captura> --to <carpeta>`. El hash, el sello de tiempo y la "
+            "cadena de custodia se quedan en este dispositivo; solo se va el archivo, y "
+            "`habitable restore` lo trae de vuelta."
+        ),
+        "status_storage_delete_note": (
+            "borrar este caso libera el espacio indicado arriba y destruye con él las pruebas. "
+            "Un paquete que usted ya haya exportado es una copia aparte, en la carpeta que "
+            "eligió: no se cuenta aquí y borrar el caso no lo elimina."
+        ),
+        "offload_done": (
+            "{item}: el original sellado ya está en el almacenamiento externo — se quitaron "
+            "{size} de original sellado de este dispositivo. Su hash, su sello de tiempo y la "
+            "cadena de custodia se quedan aquí."
+        ),
+        "offload_on_disk": "este caso ahora ocupa {on_disk} en este dispositivo",
+        "offload_keep_drive": (
+            "conserve la unidad en {path}: allí está la única copia de este archivo. Si borra "
+            "el contenedor, borra la fotografía; quedaría el registro de que existió, sin nada "
+            "detrás."
+        ),
+        "offload_export_note": (
+            "`habitable export` se negará mientras esté trasladado y le dirá que ejecute "
+            "antes `habitable restore` — un expediente no puede llevar bytes que no están aquí."
+        ),
+        "restore_done": (
+            "{item}: el original sellado volvió a este dispositivo y se verificó su hash"
+        ),
+        "restore_drive_note": (
+            "el contenedor de la unidad queda ahora como copia de repuesto; puede borrarlo "
+            "o conservarlo."
         ),
         "status_sync_alone": (
             "copias: solo este dispositivo — ningún otro dispositivo ha confirmado que "

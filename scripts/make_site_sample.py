@@ -53,7 +53,7 @@ def _counter_ms(start_ms: int) -> Callable[[], int]:
 
 
 def _save_synthetic_photo(path: Path, scene: str, capture_time: str) -> None:
-    """Draw a clearly labelled, never-real condition photo with removable EXIF."""
+    """Draw a clearly labeled, never-real condition photo with removable EXIF."""
     image = Image.new("RGB", (640, 420), (226, 220, 205))
     draw = ImageDraw.Draw(image)
 

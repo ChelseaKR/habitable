@@ -828,7 +828,7 @@ class TestPersistence:
         reborn = RelayStore(persist_dir=tmp_path, clock=lambda: now["t"])
         assert reborn.fetch("room") == [b"new"]
 
-    def test_retry_repairs_unterminated_partial_append_before_acknowledgement(
+    def test_retry_repairs_unterminated_partial_append_before_acknowledgment(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         store = RelayStore(persist_dir=tmp_path, clock=lambda: 1_000.0)
@@ -1677,9 +1677,9 @@ class TestOperatorSurfaceHonesty:
         assert str(tmp_path) not in rendered
 
     def test_a_request_that_returned_nothing_is_never_logged_as_200(self) -> None:
-        """The access log is evidence about the relay's own behaviour.
+        """The access log is evidence about the relay's own behavior.
 
-        `self._status` used to be initialised to 200 at the top of the request
+        `self._status` used to be initialized to 200 at the top of the request
         and logged from a `finally`, so a route that raised logged 200 while the
         peer got `RemoteDisconnected` and no response at all.
         """

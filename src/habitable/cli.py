@@ -25,7 +25,7 @@ from pathlib import Path
 from cryptography import x509
 
 from . import __version__, campaign, joint
-from .artifact import add_relationship, capture_artifact
+from .artifact import add_relationship, capture_artifact, capture_correspondence
 from .capsule import build_capsule, import_capsule, verify_capsule
 from .capture import capture, resolve_deferred, retimestamp_all
 from .commons import DEFAULT_K, build_commons, summarize_case
@@ -36,6 +36,7 @@ from .i18n import DEFAULT_LOCALE, cli_text, format_datetime, language_name, reso
 from .letter import LetterOptions, RepairLetter, build_letter, render_letter_html
 from .model import ISSUE_CATEGORIES, ISSUE_CATEGORY_ALIASES, ISSUE_SEVERITIES
 from .obslog import configure_logging, enabled_from_env, log_event
+from .offload import offload_item, restore_item
 from .packet import build_packet
 from .pairing import accept_pairing_material, create_pairing_material
 from .patterns import (
@@ -64,7 +65,7 @@ from .usecases import (
     list_profiles,
     profile_expired,
 )
-from .vault import Vault, human_bytes
+from .vault import StorageFootprint, Vault, human_bytes
 from .verify import verify_packet
 
 __all__ = ["main"]
@@ -158,7 +159,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "Add an issue to the case. The record is append-only: an issue cannot be "
             "edited or deleted afterwards, and habitable will not silently rewrite one, "
-            "so a mistyped value stays visible in the exported packet. To practise "
+            "so a mistyped value stays visible in the exported packet. To practice "
             "without marking a real case, run `habitable demo`."
         ),
     )
@@ -206,6 +207,43 @@ def _build_parser() -> argparse.ArgumentParser:
     p_artifact.add_argument("--dev-tsa", action="store_true", help="use the offline dev TSA")
     p_artifact.add_argument("--no-timestamp", action="store_true", help="defer timestamping")
     p_artifact.set_defaults(func=_cmd_artifact)
+
+    p_mail = sub.add_parser(
+        "correspondence",
+        help="capture an email (.eml) and its attachments as custody-bound evidence",
+        description=(
+            "Seal one RFC 5322 message and each of its attachments as separate, "
+            "custody-bound items, joined by `supports` relationships. Header values "
+            "(sender, Date, Message-ID, Subject) are summarized into the packet as "
+            "the sender's CLAIMS: habitable does not verify DKIM or any other mail "
+            "signature, and a Date header is never treated as a timestamp -- the only "
+            "time bound on an item is its RFC 3161 token. A file that is not a "
+            "readable message is refused before anything is sealed."
+        ),
+    )
+    add_vault(p_mail)
+    p_mail.add_argument("file", type=Path)
+    p_mail.add_argument("--issue", required=True)
+    p_mail.add_argument(
+        "--type",
+        default="landlord_response",
+        choices=sorted(ARTIFACT_TYPES),
+        help="artifact type for the message itself (default: landlord_response)",
+    )
+    p_mail.add_argument(
+        "--attachment-type",
+        default="other_document",
+        choices=sorted(ARTIFACT_TYPES),
+        help="artifact type for each sealed attachment (default: other_document)",
+    )
+    p_mail.add_argument("--title", required=True)
+    p_mail.add_argument("--source", required=True, help="neutral source assertion")
+    p_mail.add_argument("--issuer", default="", help="asserted issuer label")
+    p_mail.add_argument("--occurred-at", required=True)
+    p_mail.add_argument("--description", default="", help="accessible description")
+    p_mail.add_argument("--dev-tsa", action="store_true", help="use the offline dev TSA")
+    p_mail.add_argument("--no-timestamp", action="store_true", help="defer timestamping")
+    p_mail.set_defaults(func=_cmd_correspondence)
 
     p_relate = sub.add_parser("relate", help="add a typed relationship between evidence records")
     add_vault(p_relate)
@@ -258,6 +296,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="show a local, telemetry-free data-flow X-ray of what each component "
         "would expose externally (no network)",
     )
+    p_status.add_argument(
+        "--storage",
+        action="store_true",
+        help="break the storage line down per capture, largest first, and say what "
+        "deleting the case would and would not remove",
+    )
     p_status.set_defaults(func=_cmd_status)
 
     p_provenance = sub.add_parser(
@@ -293,6 +337,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="reserved: date-scoped packet exports are held closed for privacy, not unbuilt (#262)",
     )
     p_export.add_argument("--include-originals", action="store_true")
+    p_export.add_argument(
+        "--allow-offloaded",
+        action="store_true",
+        help="export even though some sealed originals are on external storage. The "
+        "packet names each item whose bytes are missing and a verifier will not call "
+        "it evidence-ready; restoring them first is the complete packet (#296)",
+    )
     p_export.add_argument("--no-pdf", action="store_true")
     p_export.add_argument(
         "--no-seal",
@@ -630,6 +681,39 @@ def _build_parser() -> argparse.ArgumentParser:
     p_app.add_argument("--no-browser", action="store_true", help="do not open a browser")
     p_app.set_defaults(func=_cmd_app)
 
+    p_offload = sub.add_parser(
+        "offload",
+        help="move a sealed original to external encrypted storage, keeping the chain",
+    )
+    add_vault(p_offload)
+    p_offload.add_argument("item", help="capture or artifact id from `habitable status`")
+    p_offload.add_argument(
+        "--to",
+        required=True,
+        type=Path,
+        help="a folder on the drive, SD card, or external disk to write the container to",
+    )
+    p_offload.add_argument(
+        "--label",
+        default="",
+        help="a reminder of which drive this is; stays in the vault and is never exported",
+    )
+    p_offload.set_defaults(func=_cmd_offload)
+
+    p_restore = sub.add_parser(
+        "restore", help="re-attach an offloaded original from external storage"
+    )
+    add_vault(p_restore)
+    p_restore.add_argument("item", help="capture or artifact id from `habitable status`")
+    p_restore.add_argument(
+        "--from",
+        dest="source",
+        required=True,
+        type=Path,
+        help="the folder the container was written to (or the container file itself)",
+    )
+    p_restore.set_defaults(func=_cmd_restore)
+
     p_key = sub.add_parser(
         "key",
         help="manage vault keys: rotate, harden, rotate-dek, backup, restore, share, recover",
@@ -767,7 +851,7 @@ def _build_parser() -> argparse.ArgumentParser:
         required=True,
         action="store_true",
         help=(
-            "operator acknowledgement, required so this export is never an accident: "
+            "operator acknowledgment, required so this export is never an accident: "
             "you have reviewed this release for differencing risk. Per-household "
             "consent is not taken from this flag -- it is read from each vault's own "
             "recorded consent (see `habitable consent`), and a vault without one is "
@@ -864,7 +948,7 @@ def _cmd_id(args: argparse.Namespace) -> int:
 def _cmd_issue(args: argparse.Namespace) -> int:
     # `other` is a real answer, not a way around the vocabulary: it has to say what
     # it means, exactly as `timeline --type other` requires `--other-label`. An
-    # unlabelled `other` is the free-text hole reopened under a different name.
+    # unlabeled `other` is the free-text hole reopened under a different name.
     if args.category == "other" and not args.other_label.strip():
         print(
             "habitable: error: --category other requires --other-label describing the condition",
@@ -879,7 +963,7 @@ def _cmd_issue(args: argparse.Namespace) -> int:
         return 2
 
     vault = _open(args)
-    # A synonym is normalised to the member it means (issue #240), and the command
+    # A synonym is normalized to the member it means (issue #240), and the command
     # says so rather than silently storing something the operator did not type.
     canonical = ISSUE_CATEGORY_ALIASES.get(args.category, args.category)
     if canonical != args.category:
@@ -976,6 +1060,40 @@ def _cmd_artifact(args: argparse.Namespace) -> int:
     state = "timestamped" if result.timestamped else "awaiting timestamp"
     print(f"habitable: captured artifact {result.artifact_id} ({args.type})")
     print(f"           content hash {result.content_hash[:16]}… · {state}")
+    return 0
+
+
+def _cmd_correspondence(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    tsa = None if args.no_timestamp else _tsa_for(vault, dev=args.dev_tsa)
+    result = capture_correspondence(
+        vault,
+        args.file,
+        issue_id=args.issue,
+        artifact_type=args.type,
+        title=args.title,
+        source_assertion=args.source,
+        issuer=args.issuer,
+        occurred_at=args.occurred_at,
+        accessible_description=args.description,
+        attachment_type=args.attachment_type,
+        tsa=tsa,
+        extra_tsas=() if args.no_timestamp else _extra_tsas_for(vault, dev=args.dev_tsa),
+    )
+    state = "timestamped" if result.message.timestamped else "awaiting timestamp"
+    print(f"habitable: captured message {result.message.artifact_id} ({args.type})")
+    print(f"           content hash {result.message.content_hash[:16]}… · {state}")
+    # Both numbers, always. "2 attachments sealed" over a five-part message and over a
+    # two-part message read identically, and only one of them is the whole message.
+    print(
+        f"           {len(result.attachments)} of {result.declared} declared attachment(s) "
+        f"sealed as their own items; {result.items} item(s) in total"
+    )
+    for note in result.unreadable:
+        print(
+            f"           NOT sealed separately: {note} — could not be decoded; its bytes "
+            "remain inside the sealed message"
+        )
     return 0
 
 
@@ -1166,6 +1284,8 @@ def _cmd_status(args: argparse.Namespace) -> int:
             shared=human_bytes(footprint.projected_shared_copy_bytes),
         )
     )
+    if getattr(args, "storage", False):
+        _print_storage_breakdown(footprint, locale)
     _print_sync_redundancy(vault, locale)
     if any_issues:
         print(f"  {cli_text('status_strength_caveat', locale)}")
@@ -1174,8 +1294,77 @@ def _cmd_status(args: argparse.Namespace) -> int:
 
 # Transport labels are protocol tokens, not prose. Only the ones this build ships
 # have a translation; anything else is printed verbatim rather than mapped to a
-# nearby-sounding phrase that would misdescribe how the case actually travelled.
+# nearby-sounding phrase that would misdescribe how the case actually traveled.
 _TRANSPORT_KEYS = {"file": "sync_transport_file", "relay": "sync_transport_relay"}
+
+
+def _cmd_offload(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    locale = resolve_locale(vault.config.language)
+    result = offload_item(vault, args.item, args.to, label=args.label)
+    print(
+        "habitable: "
+        + cli_text(
+            "offload_done",
+            locale,
+            item=result.capture_id,
+            size=human_bytes(result.reclaimed_bytes),
+        )
+    )
+    # Re-measure rather than subtract. The offload record and its custody entry
+    # are themselves stored, so the vault does not shrink by the sealed size --
+    # for a small capture it can grow. Printing the measured figure keeps this
+    # from becoming a saving the tool claims and the device does not show.
+    footprint = vault.storage_footprint()
+    print("  " + cli_text("offload_on_disk", locale, on_disk=human_bytes(footprint.on_disk_bytes)))
+    print("  " + cli_text("offload_keep_drive", locale, path=str(args.to)))
+    print("  " + cli_text("offload_export_note", locale))
+    return 0
+
+
+def _cmd_restore(args: argparse.Namespace) -> int:
+    vault = _open(args)
+    locale = resolve_locale(vault.config.language)
+    result = restore_item(vault, args.item, args.source)
+    print("habitable: " + cli_text("restore_done", locale, item=result.capture_id))
+    print("  " + cli_text("restore_drive_note", locale))
+    return 0
+
+
+def _print_storage_breakdown(footprint: StorageFootprint, locale: str) -> None:
+    """Print the per-capture storage breakdown behind ``status --storage`` (RR-08).
+
+    Three states, three sentences, because two of them look identical if they are
+    collapsed. A case with no captures at all, a case whose captures are all present,
+    and a case some of whose sealed originals are not on this device are different
+    facts, and only the last one has a number a reader could act on.
+
+    The header states both numbers -- how many captures this breakdown measured and
+    how many the case holds -- so a list covering 3 of 11 cannot read as a list
+    covering the case. The unmeasured ones are then named, never silently dropped.
+    """
+    measured = len(footprint.per_capture)
+    total = measured + len(footprint.captures_without_a_sealed_original) + len(footprint.offloaded)
+    if total == 0:
+        print(f"  {cli_text('status_storage_no_captures', locale)}")
+        return
+    print(f"  {cli_text('status_storage_breakdown', locale, measured=measured, total=total)}")
+    for entry in sorted(
+        footprint.per_capture, key=lambda item: (-item.sealed_bytes, item.capture_id)
+    ):
+        print(f"    {entry.capture_id}: {human_bytes(entry.sealed_bytes)}")
+    # An offloaded capture is absent from originals/ for a reason the tenant
+    # chose, so it gets its own sentence and keeps its size (issue #296). Folded
+    # into the line below it would tell her the photograph she just moved to her
+    # SD card is missing.
+    for entry in footprint.offloaded:
+        detail = cli_text("status_storage_offloaded", locale, size=human_bytes(entry.sealed_bytes))
+        print(f"    {entry.capture_id}: {detail}")
+    for capture_id in footprint.captures_without_a_sealed_original:
+        print(f"    {capture_id}: {cli_text('status_storage_no_original', locale)}")
+    print(f"  {cli_text('status_storage_delete_note', locale)}")
+    if measured:
+        print(f"  {cli_text('status_storage_offload_hint', locale)}")
 
 
 def _print_sync_redundancy(vault: Vault, locale: str) -> None:
@@ -1284,6 +1473,7 @@ def _cmd_export(args: argparse.Namespace) -> int:
         inspector_view=args.inspector_view,
         handoff_profile=args.handoff_profile,
         tsa=seal_tsa,
+        allow_offloaded=args.allow_offloaded,
     )
     locale = resolve_locale(vault.config.language)
     unit = vault.document.get_meta("unit") or vault.document.case_id
@@ -1403,7 +1593,7 @@ def _cmd_campaign_status(args: argparse.Namespace) -> int:
 def _campaign_seal_authority(
     args: argparse.Namespace, declined: dict[str, str]
 ) -> Callable[[Vault], TimestampAuthority | None] | None:
-    """Which authority seals each unit's packet, honouring that unit's own policy.
+    """Which authority seals each unit's packet, honoring that unit's own policy.
 
     ``campaign.py`` promises that a unit's packet is exactly what
     ``habitable export`` would produce from that vault. Since ADR 0011 that

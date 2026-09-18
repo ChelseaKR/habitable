@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright 2026 Chelsea Kelly-Reif
-"""CRDT case model: deterministic behaviour and property-based convergence."""
+"""CRDT case model: deterministic behavior and property-based convergence."""
 
 from __future__ import annotations
 

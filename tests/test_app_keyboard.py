@@ -288,7 +288,7 @@ def test_tabbing_at_speed_never_leaves_focus_off_screen(served_app: str) -> None
 # a bare <select> with no text still counts. An element is only interposing when
 # it lies wholly inside the vertical band between the control and its
 # description *and* overlaps the description horizontally: in a multi-column
-# grid the neighbouring column is beside the pair, not between them, and
+# grid the neighboring column is beside the pair, not between them, and
 # flagging it would make this check noise.
 _DESCRIBEDBY_ADJACENCY = """
 () => {

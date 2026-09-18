@@ -28,3 +28,12 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+
+# Not covered by any entry above, because Dependabot has no ecosystem for these
+# pins. Renovate's default `pyenv` and `github-actions` managers proposed bumps to
+# them until renovate.json was scoped to the standards bump (#342). They are now
+# a manual check:
+#   - `.python-version` (the local / uv interpreter), when adopting a new Python
+#     minor
+#   - the `version:` input to astral-sh/setup-uv in ci.yml, a11y.yml,
+#     release.yml and tsa-integration.yml, which pins the uv release CI installs

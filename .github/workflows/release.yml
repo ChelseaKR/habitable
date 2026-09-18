@@ -13,8 +13,8 @@ permissions:
   contents: read
 
 # A tag push and a manual re-run of the same tag must never race each other into
-# two concurrent publishes of the same release; queue them instead of cancelling
-# (cancelling a half-finished publish is worse than waiting).
+# two concurrent publishes of the same release; queue them instead of canceling
+# (canceling a half-finished publish is worse than waiting).
 concurrency:
   group: release
   cancel-in-progress: false
@@ -125,7 +125,7 @@ jobs:
 
       # --- REL-14/15: release re-runs the full merge gate before it ships --------
       - name: Install uv (pinned)
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           version: "0.11.19"
           enable-cache: false # this job runs once per release; a stale cache is not worth the risk
@@ -142,9 +142,14 @@ jobs:
         run: make verify
 
       - name: Set up Buildx with an OCI-export-capable builder
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4.4.0
       - name: Build wheel + sdist, verifying the build is reproducible
         run: make repro
+      - name: Read the metadata of the exact artifacts this release would upload
+        # Immutable once uploaded. The sibling `gauntlet-evals` 0.2.0 wheel shipped
+        # with no Project-URL lines at all because the tag predated the pyproject
+        # change, and every source-level check passed; this reads dist/ instead.
+        run: make dist-metadata
       - name: Build relay OCI archives twice, verifying byte-identical output
         run: make relay-repro
       - name: Smoke-test the installed wheel and packaged app

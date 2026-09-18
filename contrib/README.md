@@ -38,7 +38,7 @@ sys.path.insert(0, "contrib")          # or vendor the single file into your tre
 from cryptography import x509
 from legal_aid_importer import import_packet, sign_receipt, verify_receipt, generate_signing_key
 
-# 1. Verify with an authority certificate your organisation independently trusts.
+# 1. Verify with an authority certificate your organization independently trusts.
 root = x509.load_pem_x509_certificate(open("tsa-root.pem", "rb").read())
 result = import_packet(
     "4B-packet", trusted_certs=[root], now="2026-01-02T00:10:00Z"
@@ -46,7 +46,7 @@ result = import_packet(
 print(result.report.summary())
 receipt = result.receipt               # a plain dict you can store as JSON
 
-# 2. Seal it with your organisation's signing key so the stored record is tamper-evident.
+# 2. Seal it with your organization's signing key so the stored record is tamper-evident.
 private_seed, public_key = generate_signing_key()      # keep the seed secret; publish the key
 envelope = sign_receipt(receipt, private_seed)
 
@@ -122,7 +122,7 @@ stored receipt after signing changes the digest and fails `verify_receipt`.
 - Receipt version 2 separates structural integrity, mechanical timestamp verification,
   timestamp-authority trust, and evidence readiness. Its legacy `ok` field is a fail-closed alias
   for `evidence_ready`; version 1 consumers must migrate rather than infer old semantics.
-- The receipt canonicalises with the same encoder the packet signature relies on
+- The receipt canonicalizes with the same encoder the packet signature relies on
   (`habitable.canonical.canonical_json`: UTF-8, sorted keys, tight separators), so its digest is
   reproducible across machines and Python versions.
 - Like the verifier subset, this module uses only portable, parenthesized exception syntax and runs

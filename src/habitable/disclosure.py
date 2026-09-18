@@ -43,7 +43,7 @@ def _resolve_lang(lang: str, available: Iterable[str]) -> str:
     Mirrors ``habitable.i18n.normalize_locale`` (underscore and hyphen forms,
     case-insensitive) but is written locally: this module is rendered into
     packets and is deliberately free of i18n's runtime, and duplicating four
-    lines beats an import that widens what a renderer pulls in. The behaviours
+    lines beats an import that widens what a renderer pulls in. The behaviors
     are pinned against each other by test.
     """
     primary = lang.replace("_", "-").split("-", 1)[0].strip().lower()

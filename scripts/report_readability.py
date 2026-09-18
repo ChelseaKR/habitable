@@ -150,7 +150,7 @@ _ADDITIONAL_HONEST_LIMITS: dict[str, str] = {
 }
 
 #: Deliberately **not** in the list above, on the same reasoning: ``record_permanence_
-#: practice`` ("Want to practise first? Run habitable demo in a terminal."). It is the
+#: practice`` ("Want to practice first? Run habitable demo in a terminal."). It is the
 #: way out of the limit ``record_permanence_help`` states, not a limit of its own, and a
 #: plain instruction to run one command is exactly the copy the grade 6-8 target exists
 #: for. ``record_permanence_next`` *is* declared, because it says what habitable cannot

@@ -4,7 +4,17 @@
 
 from __future__ import annotations
 
-from habitable.bundleview import chronology, cover_sheet, integrity_summary, item_extent
+from string import Formatter
+
+from habitable.bundleview import (
+    _REDUNDANCY_SENTENCES,
+    chronology,
+    cover_sheet,
+    integrity_summary,
+    item_extent,
+    packet_redundancy,
+    redundancy_sentence,
+)
 from habitable.canonical import JSONValue
 
 # An hlc whose wall-clock part is 2026-01-02T00:00:00Z (1_767_312_000_000 ms).
@@ -215,3 +225,169 @@ def test_the_timestamped_count_can_never_exceed_the_item_count() -> None:
     assert full.item_count == 5  # the two non-dict entries are not items
     assert full.timestamped_count == 1  # only a mapping counts as a token
     assert full.awaiting == 4
+
+
+# ----------------------------------------------------------------------------------
+# appendix.redundancy — "is this case on more than one device?" (issue #297, RR-07)
+# ----------------------------------------------------------------------------------
+
+
+def _with_redundancy(value: JSONValue) -> dict[str, JSONValue]:
+    bundle = _bundle()
+    appendix = bundle["appendix"]
+    assert isinstance(appendix, dict)
+    appendix["redundancy"] = value
+    return bundle
+
+
+def test_a_packet_that_says_nothing_about_copies_does_not_say_one_device() -> None:
+    """The whole point of the fourth state.
+
+    Every packet exported before this field existed omits it, including all six
+    committed golden fixtures. Reading that omission as ``device_count == 1``
+    would publish "the evidence existed in one place" -- this project's most
+    alarming redundancy claim -- about a producer who claimed nothing at all.
+    """
+    redundancy = packet_redundancy(_bundle())
+    assert redundancy.state == "not_stated"
+    assert redundancy.device_count is None
+    assert redundancy.acknowledged_by is None
+    assert redundancy.stated is False
+    sentence = redundancy_sentence(redundancy, "en")
+    assert "not stated" in sentence
+    assert "which is not the same as one" in sentence
+
+
+def test_a_readable_count_is_carried_through_with_its_time() -> None:
+    redundancy = packet_redundancy(
+        _with_redundancy(
+            {
+                "state": "acknowledged",
+                "device_count": 3,
+                "acknowledged_by": 2,
+                "identities_included": False,
+                "as_of": "2026-01-02T00:05:00Z",
+            }
+        )
+    )
+    assert redundancy.state == "acknowledged"
+    assert redundancy.device_count == 3
+    assert redundancy.acknowledged_by == 2
+    assert redundancy.as_of == "2026-01-02T00:05:00Z"
+    assert redundancy.stated is True
+    sentence = redundancy_sentence(redundancy, "en")
+    assert "3 devices" in sentence
+    assert "2026-01-02T00:05:00Z" in sentence
+    assert "never named" in sentence
+
+
+def test_a_count_with_no_recorded_time_gets_its_own_sentence() -> None:
+    """Not an epoch date, and not the dated sentence with an empty slot in it."""
+    redundancy = packet_redundancy(
+        _with_redundancy(
+            {
+                "state": "acknowledged",
+                "device_count": 2,
+                "acknowledged_by": 1,
+                "identities_included": False,
+            }
+        )
+    )
+    assert redundancy.as_of == ""
+    for language in ("en", "es"):
+        sentence = redundancy_sentence(redundancy, language)
+        assert "1970" not in sentence
+        assert "{as_of}" not in sentence
+        assert "recorded no time" in sentence or "no registró la hora" in sentence
+
+
+def test_a_single_device_case_says_so_in_both_languages() -> None:
+    redundancy = packet_redundancy(
+        _with_redundancy(
+            {
+                "state": "this_device_only",
+                "device_count": 1,
+                "acknowledged_by": 0,
+                "identities_included": False,
+            }
+        )
+    )
+    assert redundancy.device_count == 1
+    assert "1 device." in redundancy_sentence(redundancy, "en")
+    assert "1 dispositivo." in redundancy_sentence(redundancy, "es")
+
+
+def test_every_malformed_shape_reads_as_unreadable_and_never_as_one_device() -> None:
+    """The asymmetry that decides this function's default.
+
+    A reader that fell back to ``this_device_only`` on a parse failure would
+    manufacture the alarming claim from a typo. Every rejection below therefore
+    lands on ``unreadable``, which carries no count at all.
+
+    The arithmetic rows are the ones a hand-edited packet would carry: a state
+    and a count that disagree, or a device count that does not include the
+    device that wrote it.
+    """
+    malformed: list[JSONValue] = [
+        "not an object",
+        [],
+        {},
+        {"state": "acknowledged"},
+        {"state": "everyone", "device_count": 2, "acknowledged_by": 1},
+        {"state": "acknowledged", "device_count": "2", "acknowledged_by": 1},
+        {"state": "acknowledged", "device_count": True, "acknowledged_by": 1},
+        {"state": "acknowledged", "device_count": -1, "acknowledged_by": -2},
+        # device_count must count the producing device too.
+        {"state": "acknowledged", "device_count": 2, "acknowledged_by": 2},
+        # ... and the word must agree with the number.
+        {"state": "this_device_only", "device_count": 3, "acknowledged_by": 2},
+        {"state": "acknowledged", "device_count": 1, "acknowledged_by": 0},
+    ]
+    for shape in malformed:
+        redundancy = packet_redundancy(_with_redundancy(shape))
+        assert redundancy.state == "unreadable", shape
+        assert redundancy.device_count is None, shape
+        assert redundancy.acknowledged_by is None, shape
+        assert redundancy.stated is False, shape
+        for language in ("en", "es"):
+            assert "verify" in redundancy_sentence(redundancy, language)
+
+
+def test_the_cover_sheet_carries_the_sentence_in_the_packets_own_language() -> None:
+    spanish = _with_redundancy(
+        {
+            "state": "this_device_only",
+            "device_count": 1,
+            "acknowledged_by": 0,
+            "identities_included": False,
+        }
+    )
+    spanish["language"] = "es"
+    assert "dispositivo" in cover_sheet(spanish).copies
+    english = dict(spanish)
+    english["language"] = "en"
+    assert "device" in cover_sheet(english).copies
+
+
+def test_no_sentence_names_a_peer_or_carries_a_placeholder() -> None:
+    """A count, never an identity -- asserted over every sentence, not by review.
+
+    The fingerprint is the field that must never reach a packet. It is not in
+    ``PacketRedundancy`` at all, so this is a check on the copy: a sentence that
+    later grew a ``{peer}`` slot would have nothing to fill it from, and would
+    ship the brace to a court.
+    """
+    for language, sentences in _REDUNDANCY_SENTENCES.items():
+        assert language in {"en", "es"}
+        assert set(sentences) == {
+            "acknowledged",
+            "acknowledged_undated",
+            "this_device_only",
+            "not_stated",
+            "unreadable",
+        }
+        for key, sentence in sentences.items():
+            fields = {name for _, name, _, _ in Formatter().parse(sentence) if name}
+            assert fields <= {"devices", "acknowledged", "as_of"}, (language, key)
+            assert "peer" not in sentence
+            assert "fingerprint" not in sentence

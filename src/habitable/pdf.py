@@ -6,7 +6,7 @@ The PDF is for people — a tenant, an organizer, a judge, an inspector. The
 machine-verifiable truth lives in ``bundle.json``; this document presents it. Text
 is real (selectable/searchable), the document language and title are set for
 assistive technology, and every visual status also appears in words, never by
-colour alone — the same accessibility discipline the project applies everywhere.
+color alone — the same accessibility discipline the project applies everywhere.
 """
 
 from __future__ import annotations
@@ -42,6 +42,7 @@ from .bundleview import (
     item_extent,
 )
 from .canonical import JSONValue
+from .correspondence import correspondence_view
 from .disclosure import (
     PacketTrustText,
     packet_trust_text,
@@ -286,6 +287,8 @@ def _render_cover_sheet(story: list[Any], cover: CoverSheet, styles: Any) -> Non
         ("Chain-of-custody entries", str(cover.custody_length)),
         ("Date range of evidence", span),
         ("Sealed originals embedded", "yes" if cover.includes_originals else "no"),
+        # Issue #297 (RR-07); see the note in `htmlpacket._cover_section`.
+        ("Copies of this case", cover.copies),
     ]
     rows: list[list[Any]] = [
         [_para(label, styles["Small"]), _para(value, styles["Small"])] for label, value in facts
@@ -295,7 +298,7 @@ def _render_cover_sheet(story: list[Any], cover: CoverSheet, styles: Any) -> Non
         TableStyle(
             [
                 ("FONTSIZE", (0, 0), (-1, -1), 9),
-                ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.gray),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#eeeeee")),
             ]
@@ -397,7 +400,7 @@ def _render_integrity(story: list[Any], summary: IntegritySummary, styles: Any) 
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#222222")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.gray),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ]
         )
@@ -449,11 +452,12 @@ def _render_issue(
             )
         story.append(Spacer(1, 0.1 * inch))
 
+    lang = _s(bundle, "language") or "en"
     for item in items_by_issue.get(issue_id, []):
         if item.get("sensor") is not None:
             _render_sensor_item(story, item, styles, trust)
         else:
-            _render_evidence_item(story, item, media_dir, styles, trust)
+            _render_evidence_item(story, item, media_dir, styles, trust, lang)
 
 
 def _render_evidence_item(
@@ -462,6 +466,7 @@ def _render_evidence_item(
     media_dir: Path,
     styles: Any,
     trust: PacketTrustText,
+    lang: str = "en",
 ) -> None:
     media_type = _s(item, "media_type")
     shared_name = _s(item, "shared_name")
@@ -474,6 +479,19 @@ def _render_evidence_item(
         f"Captured {_s(item, 'captured_at')} · hash {_s(item, 'content_hash')[:16]}… · "
         f"{timestamp_status}"
     )
+
+    # A document artifact -- a PDF notice, a sealed .eml, a text export -- is not an
+    # image and never was. It used to fall through to `Image(...)` below, and because
+    # reportlab reads the file at *build* time rather than at construction, the
+    # `except Exception` around that call never saw the failure: `habitable export`
+    # died with `UnidentifiedImageError` naming a file under a temporary staging
+    # directory, and no packet was produced at all. Measured against `main` before
+    # this branch with a single captured `notice.pdf`. `packet.html` has always had
+    # this branch (`_document_artifact_body`); `packet.pdf` did not, so the two
+    # renderings disagreed about a whole class of evidence -- one of them by crashing.
+    if _s(item, "record_kind") == "artifact" and not media_type.startswith("image/"):
+        _render_document_item(story, item, styles, caption, lang)
+        return
 
     # Video/audio (EXP-07): never embedded as playable media in a static PDF --
     # show the poster frame (video only) and the plain-text transcript, the same
@@ -518,6 +536,97 @@ def _render_evidence_item(
             story.append(Paragraph("[image could not be rendered]", styles["Small"]))
     story.append(_para(caption, styles["Small"]))
     story.append(Spacer(1, 0.12 * inch))
+
+
+def _render_document_item(
+    story: list[Any],
+    item: Mapping[str, JSONValue],
+    styles: Any,
+    caption: str,
+    lang: str = "en",
+) -> None:
+    """Render a document artifact: its assertions, its message summary, its file.
+
+    Mirrors ``htmlpacket._document_artifact_body`` field for field, so the two
+    renderings of one bundle carry the same claims. Where the document is a sealed
+    RFC 5322 message (issue #304), :func:`correspondence_view` supplies every
+    sentence -- the same function the HTML renderer calls, because #311 was one
+    bundle whose two renderings disagreed and a single source is the only structural
+    defense against that.
+    """
+    artifact = _map(item, "artifact")
+    shared_name = _s(item, "shared_name")
+    transcript = _s(item, "transcript")
+    story.append(_para(_s(artifact, "title") or "Supporting document", styles["Heading3"]))
+    story.append(
+        _para(
+            f"{_s(artifact, 'artifact_type').replace('_', ' ')} \u00b7 "
+            f"Source assertion: {_s(artifact, 'source') or '\u2014'} \u00b7 "
+            f"Issuer assertion: {_s(artifact, 'issuer') or '\u2014'}",
+            styles["Small"],
+        )
+    )
+    if transcript:
+        story.append(_para(transcript, styles["Small"]))
+    _render_correspondence_block(story, item, styles, lang)
+    if shared_name:
+        story.append(
+            _para(
+                f"Shared document file: {shared_name} (verify its hash against "
+                "bundle.json before opening)",
+                styles["Small"],
+            )
+        )
+    else:
+        story.append(
+            _para("No shared copy of this document is included in this packet.", styles["Small"])
+        )
+    story.append(_para(caption, styles["Small"]))
+    story.append(Spacer(1, 0.15 * inch))
+
+
+def _render_correspondence_block(
+    story: list[Any],
+    item: Mapping[str, JSONValue],
+    styles: Any,
+    lang: str = "en",
+) -> None:
+    """Append a sealed message's header summary and body. A no-op for anything else.
+
+    Every sentence comes from :func:`correspondence_view`, the same function
+    ``packet.html`` calls: #311 was one bundle whose two renderings told a recipient
+    different things, and one copy of the wording is the only structural defense.
+    """
+    raw = item.get("correspondence")
+    if not isinstance(raw, Mapping):
+        return
+    view = correspondence_view(raw, lang)
+    story.append(_para(view.heading, styles["Heading4"]))
+    story.append(_para(view.claim_note, styles["Small"]))
+    rows: list[list[Any]] = [
+        [_para(label, styles["Small"]), _para(value, styles["Small"])]
+        for label, value in view.header_rows
+    ]
+    table = Table(rows, colWidths=[2.2 * inch, 3.6 * inch])
+    table.setStyle(
+        TableStyle(
+            [
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.gray),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    story.append(table)
+    story.append(_para(view.attachment_sentence, styles["Small"]))
+    story.append(_para(view.body_heading, styles["Heading4"]))
+    for block in view.body_text.split("\n\n"):
+        if block.strip():
+            story.append(_para(block.strip(), styles["Small"]))
+    if view.body_note:
+        story.append(_para(view.body_note, styles["Small"]))
+    for warning in view.warnings:
+        story.append(_para(warning, styles["Small"]))
 
 
 # A PDF page is finite; beyond this many rows the table is truncated (noted in text)
@@ -591,7 +700,7 @@ def _render_sensor_item(
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#222222")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.gray),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ]
         )
@@ -632,7 +741,7 @@ def _sensor_chart_drawing(
         points.extend([pad + i * step, y_of(_f(reading, "value"))])
 
     drawing = Drawing(width, height)
-    drawing.add(Line(pad, pad, width - pad, pad, strokeColor=colors.grey, strokeWidth=0.5))
+    drawing.add(Line(pad, pad, width - pad, pad, strokeColor=colors.gray, strokeWidth=0.5))
     drawing.add(PolyLine(points, strokeColor=colors.HexColor("#1f4e5f"), strokeWidth=1.5))
     if n <= 60:
         for i in range(0, len(points), 2):
@@ -665,7 +774,7 @@ def _appendix_table(bundle: Mapping[str, JSONValue], styles: Any, trust: PacketT
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#222222")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.gray),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ]
         )

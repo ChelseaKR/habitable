@@ -134,7 +134,13 @@ def test_survey_download_is_static_local_and_collects_nothing() -> None:
     ]
     assert _resolved_page(_SURVEY, downloads[0]["href"] or "") == _CSV
     assert not ({"form", "input", "textarea", "select", "button"} & set(parser.tags))
-    assert parser.scripts == [{"type": "application/ld+json"}]
+    # JSON-LD, plus the Google Analytics loader every site page carries since the owner's
+    # 2026-09-17 decision (tests/test_site_analytics.py). It counts page visits only; nothing
+    # entered in the downloaded worksheet reaches this site or Google.
+    assert parser.scripts == [
+        {"type": "application/ld+json"},
+        {"src": "../../analytics.js", "defer": None},
+    ]
 
 
 def test_survey_explains_every_safety_and_interpretation_boundary() -> None:

@@ -37,8 +37,22 @@ breaks:
    missing key (or an extra one) fails `make verify`. This is what guarantees no
    user is ever shown a half-translated screen.
 2. **No empty values** — every string is non-empty after trimming.
-3. **Actually translated** — a sanity check that a non-English bundle is not just
-   a copy of English (at least half the shared strings must differ).
+3. **Actually translated** — *every* string must differ from its English source,
+   key by key. This used to be "at least half the shared strings differ", which
+   meant 128 of 260 strings could sit in the Spanish bundle in English with the
+   whole build green. If a string really is the same word in both languages,
+   add it to `scripts/i18n-identical-by-design.json` with a sentence saying why:
+
+   ```json
+   {
+     "app_name": "The product name. \"habitable\" is what this program is called…"
+   }
+   ```
+
+   That file is checked too — an entry for a key that no longer exists, one whose
+   string has since been translated, and one with no reason all fail the build,
+   so it stays a short list of real cases rather than a place to put strings you
+   have not got to yet.
 
 So the workflow has a hard, automatic floor: **you cannot ship an incomplete
 language.** Use that — run the test early and often.

@@ -18,7 +18,7 @@ forever. `tests/test_tsa_real_authority.py` loads it.
 | `freetsa-cacert.pem` | FreeTSA's published root CA certificate, fetched from the authority, not derived from the token. |
 | `freetsa-responder.pem` | FreeTSA's published TSA responder certificate, likewise. |
 
-Certificates are public artefacts and carry no private key material. The token
+Certificates are public artifacts and carry no private key material. The token
 is a signature over a hash, and the hash is of a fixed synthetic string — no
 tenant data, no real evidence, was involved in producing it.
 

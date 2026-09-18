@@ -12,7 +12,7 @@ versions, and findings in `docs/audits/`.
 - A live **axe-core** scan of the running app in EN and ES, blocking on any
   moderate/serious/critical violation (`tests/test_app_axe.py`, the `a11y` CI job).
 - Structure: language, title, viewport, skip link to a real target, one `h1`,
-  landmarks, labelled controls, alt text, no positive `tabindex`
+  landmarks, labeled controls, alt text, no positive `tabindex`
   (`tests/test_app_accessibility.py`).
 - EN/ES string parity (`tests/test_app_i18n.py`) and PWA installability
   (`tests/test_app_pwa.py`).
@@ -42,7 +42,7 @@ condition-first flow:
 Run at least one Windows and one Apple/Linux reader:
 - **NVDA + Firefox** (Windows), **VoiceOver + Safari** (macOS/iOS), and
   **Orca + Firefox** (Linux) as available.
-- Each landmark (banner, the labelled alpha-warning region, main, contentinfo)
+- Each landmark (banner, the labeled alpha-warning region, main, contentinfo)
   is announced; headings form a coherent outline.
 - Every field's label and required state is announced. Dialog names, descriptions,
   validation errors, and the control that receives focus on open are understandable.
@@ -80,7 +80,7 @@ tests whether that target works in practice. The PDF is a print convenience and 
   and VoiceOver (macOS/iOS). Confirm: a single `h1`; landmarks/headings let you jump
   between issues and the evidence appendix; the appendix table announces its column
   headers with each cell; every evidence image has a meaningful text alternative or an
-  adjacent real-text caption; evidence status is announced in words, never by colour
+  adjacent real-text caption; evidence status is announced in words, never by color
   alone; and the page is fully operable and readable in EN and ES.
 - **PDF — convenience check only.** Confirm it opens with the document *title* shown
   (not the file name) and the correct language, and that text is selectable and reads in

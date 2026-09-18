@@ -153,7 +153,7 @@ jurisdiction-specific legal claims, and this project does not do that without a 
 reviewer. See [ADR 0013](adr/0013-dated-expiring-letter-jurisdiction-framing.md),
 "What this does not do".
 
-## Language: English only, and labelled English
+## Language: English only, and labeled English
 
 Everything else habitable produces is bilingual (EN/ES). **The letter is not.** Every
 string the generator emits — the profile framing, the hedged legal reference, the

@@ -18,11 +18,22 @@ _EN = _APP / "i18n" / "en.json"
 _ES = _APP / "i18n" / "es.json"
 _STYLES = _APP / "styles.css"
 _APP_JS = _APP / "app.js"
+_SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
+_PARITY_SCRIPT = _SCRIPTS / "check_i18n_parity.py"
+_IDENTICAL_BY_DESIGN = _SCRIPTS / "i18n-identical-by-design.json"
 
 
 def _load(path: Path) -> dict[str, str]:
     assert path.is_file(), f"missing translation bundle: {path}"
     data = json.loads(path.read_text(encoding="utf-8"))
+    assert isinstance(data, dict)
+    return {str(k): str(v) for k, v in data.items()}
+
+
+def _identical_by_design() -> dict[str, str]:
+    """The reasoned list of keys whose value is the same in both languages."""
+    assert _IDENTICAL_BY_DESIGN.is_file(), f"missing exemption list: {_IDENTICAL_BY_DESIGN}"
+    data = json.loads(_IDENTICAL_BY_DESIGN.read_text(encoding="utf-8"))
     assert isinstance(data, dict)
     return {str(k): str(v) for k, v in data.items()}
 
@@ -81,13 +92,44 @@ def test_missing_timestamp_action_copy_is_plain_and_consistent() -> None:
 
 
 def test_spanish_is_actually_translated() -> None:
-    """A sanity check that es is not just a copy of en (most strings differ)."""
+    """Every shared key's Spanish value differs from its English source.
+
+    This test used to read ``differing >= len(shared) // 2`` and was described,
+    in its own docstring and in ``docs/localization-guide.md``, as the safety
+    net that catches "a copy of English". Measured on the shipped bundles:
+    **128 of the 260 shared strings could be replaced by their English source
+    and this test still passed** (it flips at 129), while `make i18n` — the
+    merge gate — stayed green at every count, because nothing in it compared a
+    value to its source at all.
+
+    The rule is now per key. The keys that really are the same word in both
+    languages are listed with a written reason in
+    ``scripts/i18n-identical-by-design.json``; ``scripts/check_i18n_parity.py``
+    enforces the same thing in ``make verify`` and holds that list to the
+    catalogs.
+    """
     en, es = _load(_EN), _load(_ES)
-    shared = set(en) & set(es)
-    if not shared:
-        pytest.skip("no shared keys")
-    differing = sum(1 for k in shared if en[k] != es[k])
-    assert differing >= len(shared) // 2
+    shared = sorted(set(en) & set(es))
+    assert shared, "the bundles share no keys; this assertion would be vacuous"
+    exempt = _identical_by_design()
+    untranslated = [key for key in shared if en[key] == es[key] and key not in exempt]
+    assert not untranslated, (
+        f"es.json values that are verbatim English: {untranslated}. Translate them, or "
+        f"record why each is identical in {_IDENTICAL_BY_DESIGN.name}."
+    )
+
+
+def test_the_identical_by_design_list_still_describes_the_catalogs() -> None:
+    """An exemption for a key that is gone, or since translated, must not linger.
+
+    Without this the list only grows, stops describing the catalogs, and becomes
+    the drawer an untranslated string is swept into.
+    """
+    en, es = _load(_EN), _load(_ES)
+    for key, reason in _identical_by_design().items():
+        assert key in en and key in es, f"stale exemption {key!r}: no such key in both bundles"
+        assert en[key] == es[key], f"stale exemption {key!r}: es.json now differs; delete it"
+        assert reason.strip(), f"exemption {key!r} carries no written reason"
 
 
 # --- RTL readiness + text-expansion robustness (R-48) ----------------------
@@ -609,3 +651,133 @@ def test_pseudo_locale_gate_fails_when_the_transform_corrupts_a_placeholder(
         "a generator that rewrites placeholder names passed the gate:\n" + result.stdout
     )
     assert "RULE A" in result.stdout
+
+
+# --- The parity gate must be able to fail on an untranslated value -------------
+#
+# `make i18n` was green with a full English sentence sitting in `es.json`: key
+# parity, non-emptiness and placeholder parity are each satisfied by a value
+# that is verbatim its own source. Every control below asserts the mutation
+# landed before asserting the verdict, because a sabotage that silently no-ops
+# reads as a pass.
+
+
+def _run_parity_gate(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(_PARITY_SCRIPT), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=_PARITY_SCRIPT.parent.parent,
+    )
+
+
+def _bundles(tmp_path: Path, *, es_overrides: dict[str, str]) -> tuple[Path, Path]:
+    """The shipped bundles, with *es_overrides* applied to the Spanish copy."""
+    en, es = _load(_EN), dict(_load(_ES))
+    es.update(es_overrides)
+    en_path, es_path = tmp_path / "en.json", tmp_path / "es.json"
+    en_path.write_text(json.dumps(en, ensure_ascii=False), encoding="utf-8")
+    es_path.write_text(json.dumps(es, ensure_ascii=False), encoding="utf-8")
+    return en_path, es_path
+
+
+def test_parity_gate_passes_on_the_shipped_bundles() -> None:
+    result = _run_parity_gate()
+    assert result.returncode == 0, (
+        f"gate failed on the shipped bundles:\n{result.stdout}\n{result.stderr}"
+    )
+    assert "every Spanish value translated" in result.stdout
+
+
+def test_parity_gate_fails_on_a_spanish_value_that_is_verbatim_english(tmp_path: Path) -> None:
+    """One real sentence replaced by its English source. This is the shape a
+    missed string actually has: not a blank, not a missing key, not a broken
+    placeholder — a complete, well-formed value in the wrong language."""
+    en = _load(_EN)
+    key = "next_intro"
+    assert _load(_ES)[key] != en[key], "fixture is wrong: that key is already identical"
+    en_path, es_path = _bundles(tmp_path, es_overrides={key: en[key]})
+
+    result = _run_parity_gate("--en", str(en_path), "--es", str(es_path))
+    assert result.returncode == 1, (
+        f"the gate accepted an English value in es.json:\n{result.stdout}"
+    )
+    assert key in result.stdout
+    assert "identical to its English source" in result.stdout
+
+
+def test_parity_gate_accepts_an_identical_value_that_carries_a_written_reason(
+    tmp_path: Path,
+) -> None:
+    """The exemption is what keeps the rule usable — and it is the same rule
+    that must not become a blanket must-differ check. `app_name` is the product
+    name in both languages and ships identical today."""
+    result = _run_parity_gate()
+    assert result.returncode == 0
+    exempt = _identical_by_design()
+    en, es = _load(_EN), _load(_ES)
+    assert exempt, "the list is empty, so this test proves nothing about exemptions"
+    for key in exempt:
+        assert en[key] == es[key], f"{key} is not actually identical; the fixture is wrong"
+
+
+def test_parity_gate_fails_on_an_exemption_for_a_key_that_no_longer_exists(
+    tmp_path: Path,
+) -> None:
+    listing = tmp_path / "identical.json"
+    listing.write_text(
+        json.dumps({"a_key_that_was_deleted": "a reason nobody revisited"}), encoding="utf-8"
+    )
+    result = _run_parity_gate("--identical-by-design", str(listing))
+    assert result.returncode == 1, result.stdout
+    assert "stale exemption" in result.stdout
+    assert "a_key_that_was_deleted" in result.stdout
+
+
+def test_parity_gate_fails_on_an_exemption_whose_string_has_since_been_translated(
+    tmp_path: Path,
+) -> None:
+    listing = tmp_path / "identical.json"
+    listing.write_text(
+        json.dumps({"next_intro": "kept long after the translation landed"}), encoding="utf-8"
+    )
+    result = _run_parity_gate("--identical-by-design", str(listing))
+    assert result.returncode == 1, result.stdout
+    assert "stale exemption" in result.stdout and "next_intro" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("payload", "why"),
+    [
+        ("{ not json", "a malformed list must not read as 'no exemptions'"),
+        ('["app_name"]', "a list of keys carries no reasons and must be refused"),
+        ('{"app_name": "   "}', "a blank reason is an exemption with a hiding place"),
+    ],
+)
+def test_parity_gate_refuses_an_unusable_exemption_list(
+    tmp_path: Path, payload: str, why: str
+) -> None:
+    """Operator error, exit 2 — never an empty mapping. A list that fails open
+    turns the rule it feeds into a check that cannot fail."""
+    listing = tmp_path / "identical.json"
+    listing.write_text(payload, encoding="utf-8")
+    result = _run_parity_gate("--identical-by-design", str(listing))
+    assert result.returncode == 2, f"{why}:\n{result.stdout}\n{result.stderr}"
+
+
+def test_parity_gate_reports_rather_than_passes_when_it_compares_nothing(
+    tmp_path: Path,
+) -> None:
+    """A rule that examines nothing prints the same green line as a rule that
+    examined everything and found nothing. Two disjoint bundles must fail."""
+    en_path, es_path = tmp_path / "en.json", tmp_path / "es.json"
+    en_path.write_text(json.dumps({"only_en": "value"}), encoding="utf-8")
+    es_path.write_text(json.dumps({"only_es": "valor"}), encoding="utf-8")
+    listing = tmp_path / "identical.json"
+    listing.write_text(json.dumps({}), encoding="utf-8")
+    result = _run_parity_gate(
+        "--en", str(en_path), "--es", str(es_path), "--identical-by-design", str(listing)
+    )
+    assert result.returncode == 1
+    assert "compared no keys" in result.stdout

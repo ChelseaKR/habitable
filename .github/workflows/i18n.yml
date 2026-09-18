@@ -18,7 +18,7 @@ concurrency:
   # slot, and a burst of merges deletes the verdict for whichever commit was
   # waiting -- not a failure anyone can see, an absence. `cancel-in-progress`
   # neither causes nor prevents that; it only decides whether the loss is
-  # visible (cancelled with jobs) or invisible (cancelled with zero jobs).
+  # visible (canceled with jobs) or invisible (canceled with zero jobs).
   # Carrying the SHA gives each commit its own slot; PR supersession is
   # unchanged, because pull requests still share a per-ref group.
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
@@ -41,7 +41,7 @@ jobs:
         run: python3 scripts/check_i18n_utf8.py
       - name: G3 — BCP 47 validity of every authored language tag
         run: python3 scripts/check_bcp47.py
-      - name: G6 — EN/ES bundle key-parity
+      - name: G5/G6 — EN/ES completeness, placeholder/plural parity and key-parity
         run: python3 scripts/check_i18n_parity.py
       # The job name is a required check in the branch ruleset, so it is left
       # alone; G9 is added as a step inside it rather than as a new context.

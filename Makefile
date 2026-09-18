@@ -10,7 +10,7 @@
 # quietly defeat the gate. CI runs serial, so this was latent rather than live; it is
 # now structural instead of conventional.
 .NOTPARALLEL:
-.PHONY: help bootstrap install lock-check fmt lint type test cov i18n i18n-usage doc-links markers readability fuzz perf-profile verify audit a11y integration demo site-sample build repro relay-repro clean
+.PHONY: help bootstrap install lock-check fmt lint type test cov i18n i18n-usage doc-links markers readability fuzz perf-profile verify audit a11y integration demo site-sample build repro dist-metadata relay-repro clean
 
 # The character class needs the digits. Without them this silently skipped
 # `i18n`, `i18n-usage` and `a11y` -- three documented targets, one of them a merge
@@ -97,7 +97,7 @@ cov: ## Run tests with coverage (85% floor overall, per-module 95% on the eviden
 integration: ## Run the network integration tests (real public TSAs)
 	uv run pytest -m integration -v
 
-i18n: ## Mechanical i18n gates: UTF-8 (G1), BCP 47 validity (G3), EN/ES key-parity (G6), pseudo-locale expansion (G9) — offline, stdlib-only
+i18n: ## Mechanical i18n gates: UTF-8 (G1), BCP 47 validity (G3), EN/ES completeness + placeholder/plural parity (G5), key-parity (G6), pseudo-locale expansion (G9, offline half) — offline, stdlib-only
 	uv run python scripts/check_i18n_utf8.py
 	uv run python scripts/check_bcp47.py
 	uv run python scripts/check_i18n_parity.py
@@ -110,7 +110,7 @@ fuzz: ## Replay the OSS-Fuzz harnesses over their committed seed corpora (no Ath
 	uv run python fuzz/fuzz_verify_packet.py
 	uv run python fuzz/fuzz_timestamp_token.py
 
-perf-profile: ## Characterise each budgeted local-path operation (reports; never gates — issue #258)
+perf-profile: ## Characterize each budgeted local-path operation (reports; never gates — issue #258)
 	# Not in `verify`, for two reasons. Timing on a shared CI runner is not a
 	# measurement, and the one operation this most wants to watch -- scrypt -- is
 	# demonstrably the least load-stable thing in the tree (+38% under load), which
@@ -171,6 +171,12 @@ build: ## Build the wheel + sdist
 
 repro: ## Verify a byte-identical rebuild of the wheel + sdist (builds twice, compares); writes dist/ on success
 	uv run python scripts/check_reproducible_build.py --out-dir dist
+
+dist-metadata: ## Read dist/'s wheel + sdist METADATA and fail on anything PyPI would render wrongly (run after `make build` or `make repro`)
+	# Deliberately the system interpreter, not `uv run`: this gate also runs in the
+	# release job against the exact artifacts about to be uploaded, so it must need
+	# nothing but the standard library and the files in dist/.
+	python3 scripts/check_dist_metadata.py dist
 
 relay-repro: ## Verify byte-identical no-cache relay OCI rebuilds
 	bash scripts/check_reproducible_relay_image.sh

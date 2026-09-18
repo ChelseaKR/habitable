@@ -32,7 +32,7 @@ for harness in "$SRC"/habitable/fuzz/fuzz_*.py; do
     --add-data "$SRC/habitable/tests/golden:habitable-golden"
 
   # Each harness ships its own seed corpus as code, so the seeds are reviewed
-  # in the same diff as the harness and cannot drift from it. Materialise them
+  # in the same diff as the harness and cannot drift from it. Materialize them
   # here into the zip libFuzzer picks up.
   seed_dir="$WORK/$name-seeds"
   rm -rf "$seed_dir"

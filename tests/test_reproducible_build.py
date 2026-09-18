@@ -20,14 +20,14 @@ _CONTAINER_WORKFLOW = (
 _RELEASE_WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "release.yml"
 _DOCKERIGNORE = Path(__file__).resolve().parent.parent / ".dockerignore"
 _RELAY_DOCKERFILE = Path(__file__).resolve().parent.parent / "relay" / "Dockerfile"
-_SETUP_BUILDX_SHA = "37fe631027851001ddb9b187196cc803df7f5f0e"
+_SETUP_BUILDX_SHA = "594f3bf4285d9ea8dc53c9a0c9c4092420091003"
 
 # Paths apt and dpkg write that differ between two builds installing the
 # identical package set. Each was found by bisecting a failing `make
 # relay-repro` archive diff, not assumed; leaving any one of them in the image
 # reintroduces the failure. The logs carry wall-clock times; aux-cache stores
 # per-library inode numbers and ctimes inside its own bytes, which is why
-# BuildKit's rewrite-timestamp does not neutralise it.
+# BuildKit's rewrite-timestamp does not neutralize it.
 _NONDETERMINISTIC_APT_PATHS = (
     "/var/log/apt",
     "/var/log/dpkg.log",
