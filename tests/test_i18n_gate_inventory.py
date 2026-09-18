@@ -76,7 +76,7 @@ def _gate_rows() -> dict[str, tuple[str, str]]:
         bold = re.search(r"\*\*(.+?)\*\*", cells[2])
         assert bold is not None, f"{cells[0]}: status cell has no bolded status word: {cells[2]!r}"
         word = bold.group(1).strip().upper()
-        assert word in _RUNS, f"{cells[0]}: unrecognised status {word!r}; classify it in _RUNS"
+        assert word in _RUNS, f"{cells[0]}: unrecognized status {word!r}; classify it in _RUNS"
         rows[cells[0]] = (word, cells[3])
     assert len(rows) >= 12, f"parsed {len(rows)} gate rows; the table declares G1-G12"
     return rows

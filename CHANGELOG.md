@@ -215,13 +215,13 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   states carry no counts at all, because there is no number to round down to.
 
   `as_of` is **omitted, never defaulted**, when the producing device recorded no
-  time for the most recent acknowledgement — the case `status` already prints its
+  time for the most recent acknowledgment — the case `status` already prints its
   own line for. An epoch date beside a device count dates the claim to 1970.
 
   The verifier **cannot re-derive this figure**: nothing inside a packet knows how
   many devices exist. So it does the checkable thing instead — the producer's three
   numbers must agree with each other and with the word beside them, which refuses a
-  hand-edited packet claiming four devices over one acknowledgement — and it accepts
+  hand-edited packet claiming four devices over one acknowledgment — and it accepts
   absence, because requiring the field would have broken the backward-compatibility
   guarantee `tests/test_golden.py` exists for on the day an optional field shipped.
 
@@ -387,7 +387,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   i18n.yml to its header's claim that it mirrors `make i18n` "byte-for-byte",
   and fails in both directions: a gate the build runs and the table does not
   record, and a gate the table calls deferred while the build runs it. Every
-  collector carries a non-empty floor, and an unrecognised status word is an
+  collector carries a non-empty floor, and an unrecognized status word is an
   error rather than a default, so the module cannot pass by having stopped
   reading. Run against unmodified `main` it named
   `scripts/check_pseudo_locale.py` on its first execution. The `Makefile` help
@@ -446,7 +446,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   reddens on an unpatchable CVE blocks every merge on an upstream this project
   does not control. What changed is that the header now says plainly what the
   gate cannot see, and a second Trivy step reports the unfixed set with
-  `exit-code: 0`, labelled as reporting and explicitly not counted as a gate.
+  `exit-code: 0`, labeled as reporting and explicitly not counted as a gate.
   A guard test pins the pair — exactly one step blocks, exactly one reports, and
   neither has quietly become the other — so loosening the threshold, deleting the
   reporting step, or restoring the header's old claim each turn it red.
@@ -508,7 +508,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   prints "markers searched: 8 of 9", names what it could not search under its own
   heading, and refuses to report PASS — a marker never searched for supports no
   claim about the wire. The existing test asserted this defect as intended
-  behaviour under the comment "*Every documented marker was actually searched*",
+  behavior under the comment "*Every documented marker was actually searched*",
   which was false of the assertion beneath it; it now checks the searched set.
 
 - **A repair letter dropped the timestamp clause instead of stating it.** Issue
@@ -607,13 +607,13 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   reader saw it as advice about a different control. `aria-describedby` was
   correct, so screen readers were unaffected and the existing reflow test passed:
   nothing overflowed, the text simply landed in the wrong place. The audit found
-  one more the issue had not named, and the guard generalises past both — it walks
+  one more the issue had not named, and the guard generalizes past both — it walks
   every described control in a real viewport and fails on interposition, so there
   is no pixel threshold to tune.
 
 - **Four guards an adversarial review proved could not fail.** Each was planted
   with the exact defect it names and passed. A phone keyboard's sentence case
-  defeated the category vocabulary — `Moho` normalised to `mold` while `Mold`
+  defeated the category vocabulary — `Moho` normalized to `mold` while `Mold`
   stayed `Mold`, opening a second bucket in the likelier direction; the alias
   guard could not detect the reclassification its own docstring forbids
   (`{"leak": "structural"}` passed the whole suite); the published-artifact guard
@@ -635,7 +635,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   The same divergence had reached both of the project's own worked examples.
   `demo.py` and `prove.py` seeded `severity="high"` — the first command the
   README, `CONTRIBUTING.md` and the good-first-issue guide all tell a newcomer to
-  run modelled a value its own CLI refuses. And `scripts/make_site_sample.py`
+  run modeled a value its own CLI refuses. And `scripts/make_site_sample.py`
   seeded `category="moisture"` with severities `high` and `urgent`, so the
   synthetic packet published on the site — the one review task LA-01 (#122) asks
   a housing lawyer to cold-read — demonstrated one category and two severities a
@@ -721,7 +721,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 - **Shared links no longer show a cropped slice of a portrait screenshot.** Every
   page advertised `img/app-en.png` — 2200×3000 — as its `og:image`, with
   `twitter:card` set to `summary`. LinkedIn, Slack, and X all fit a share card to
-  a landscape box, so what reached a reader was a centre crop of a phone-shaped
+  a landscape box, so what reached a reader was a center crop of a phone-shaped
   screenshot with the project name outside the frame. The site now ships
   `site/img/social-card.png` at 1200×630, the size all three render whole, and
   `twitter:card` is `summary_large_image`. The landing page's `og:image:width`,
@@ -801,7 +801,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   a computed, shipped assessment reached no one and its caveat qualified nothing.
   Deleting it would have closed the ticket by discarding a capability rather than
   fixing a rendering bug. Three more are defined twice,
-  here and in the CLI catalogue, with deliberately different casing for two
+  here and in the CLI catalog, with deliberately different casing for two
   surfaces — an open decision, not a duplicate.
 
   The report states what it **cannot** see as well as what it can, because the
@@ -809,7 +809,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   `"event_" + type` and `"source_" + source`, covering 15 keys that are live only
   because the markup happens to name them too.
 
-- **Category synonyms normalise instead of being refused** (#240). The corpus
+- **Category synonyms normalize instead of being refused** (#240). The corpus
   #206 surveyed was wider than the vocabulary it set: `no_heat`, `moisture` and
   `moho` are the same conditions under other names, and refusing them taught a
   tenant that their own word was wrong — `moho` in particular, since habitable
@@ -841,7 +841,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   (#239). #206 left the app's free-text `<input>` as a documented scope boundary.
   It stays free text — a `<select>` would force a real condition into the wrong
   bucket, and a wrong record is worse than an unvalidated one — but it now offers
-  the six categories through a `<datalist>`, so the common case normalises itself
+  the six categories through a `<datalist>`, so the common case normalizes itself
   while a tenant whose condition is not on the list can still name it. The
   option's `value` is the stored category and is never translated; the `label`
   the tenant reads is, through a new `data-i18n-label` pass in
@@ -873,7 +873,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   find the defect where each operation is individually sound and the *composition*
   is not — the shape of both #163 and #204. `HostilePacketSequences` drives a live
   copy of the v4 golden packet through 11 rules in three classes: meaning-preserving
-  (re-canonicalise, archive re-timestamp, append custody, re-sign with a fresh key),
+  (re-canonicalize, archive re-timestamp, append custody, re-sign with a fresh key),
   unrepairable (byte flips, retargeted digests, stripped tokens, reordered custody),
   and the one honest limit (truncation, which the chain proves only as a prefix).
   Every bundle-editing rule draws a `resign` boolean, because re-signing is exactly
@@ -979,7 +979,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   context `axe-core WCAG scan (merge gate)` with nothing but an `echo`. Its own
   comment claimed the real scan "finishing later, its result governs" — an
   assumption about job duration, not an invariant, and a re-run of the twin alone
-  or a cancelled scan left a green that had asserted nothing on a PR that did
+  or a canceled scan left a green that had asserted nothing on a PR that did
   touch the UI. The twin now collects the PR's changed files and fails unless
   every path is one it may answer for, cross-checking the API list against
   `changed_files` so neither the 3000-file cap nor a stale re-run payload can lie
@@ -989,7 +989,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   **extracts that script from the YAML and executes it** — the proof the old step
   could never offer — including against an empty list, so a vacuous pass is itself
   a failure. Three lists are now held in lockstep: the real scan's `paths-ignore`,
-  the twin's `paths`, and the twin's own globs. *Behaviour change worth knowing:*
+  the twin's `paths`, and the twin's own globs. *Behavior change worth knowing:*
   on a mixed docs+code PR the twin now goes red, and the real scan normally
   overwrites it. The worst case has inverted from "a green that checked nothing"
   to "a blocked merge a human clears". The required-checks topology is untouched;
@@ -1067,7 +1067,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   wait, work around it, or file a bug. All three refusals (`packet.py`,
   `share.py`, `sync.py`) and the three `--help` strings now name the reason, say
   a truncated chain must never be presented as a complete one, and point at the
-  restoration work and its independent-review gate (#262). The behaviour is
+  restoration work and its independent-review gate (#262). The behavior is
   unchanged; only the explanation is.
 
 - **The mobile packaging spike carries a dated re-check** (#260). The 2026-07-09
@@ -1238,7 +1238,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   bytes, which is the same digest the member's signature covers and an
   authority seals. `habitable joint check` then re-derives every recorded claim
   from the packets themselves: it recomputes the digest and throws away the
-  recorded readiness in favour of a fresh `verify_packet` verdict. A doctored
+  recorded readiness in favor of a fresh `verify_packet` verdict. A doctored
   index therefore cannot produce a passing verdict, and a packet directory
   present beside the index but missing from it is reported and fails the check
   rather than being absorbed. A submission subdirectory with no `bundle.json`
@@ -1468,7 +1468,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 - **`twitter:image:alt` was on the homepage and nowhere else.** The other
   eleven pages set `twitter:image` with no alternative text for it, so a card
-  rendered from one offered a screen-reader user an unlabelled image. Each now
+  rendered from one offered a screen-reader user an unlabeled image. Each now
   mirrors the `og:image:alt` it already carried.
 
 - **Three references to the move-out and deposit-dispute record cited ADR 0013,
@@ -1517,7 +1517,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   failing archives layer by layer found exactly one file differing between two
   builds of an identical package set: `/var/cache/ldconfig/aux-cache`, which
   stores each shared library's inode number and ctime *inside its own bytes* and
-  therefore survives BuildKit's `rewrite-timestamp` normalisation of file
+  therefore survives BuildKit's `rewrite-timestamp` normalization of file
   mtimes. The four apt/dpkg logs were the visible half of the problem and had
   already been removed; aux-cache was the half keeping the gate red. Removing it
   too makes the rebuild byte-identical on both `linux/amd64` and `linux/arm64`,
@@ -1568,7 +1568,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   The `v*` tag ruleset (`.github/rulesets/release-tags.json`, live ruleset
   `18815834`) is **unchanged and stays at no bypass actor**: a released tag must
   not be movable by anyone, owner included. Both JSON `_comment` fields now say
-  the two rulesets differ on purpose and must not be harmonised in either
+  the two rulesets differ on purpose and must not be harmonized in either
   direction.
 
   `tests/test_release_workflow.py` no longer compares the two sides to each
@@ -1682,7 +1682,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   A case is never silently dropped, because a silently smaller cohort still
   publishes. `build_no_heat_weekly_summary` no longer accepts a caller-supplied
   household token at all — it derives one from the consent record's own
-  provenance — so no caller can reintroduce a synthesised token. The emitted
+  provenance — so no caller can reintroduce a synthesized token. The emitted
   block (`schema_version` 2) now reports the mechanism that exists, the number
   of records actually read, and `"explicit_per_export": false`; the field is
   kept, with the opposite value, so a reader who saw an old file sees the
@@ -1731,7 +1731,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   manifest version 2 stops pretending otherwise: sections carry `section_id` and
   nothing else, a `section_membership: "not_recorded"` field says why, and the
   only counts in the document are the bundle-wide `counts`, printed once under
-  "This handoff as a whole" and labelled as covering the whole packet. The
+  "This handoff as a whole" and labeled as covering the whole packet. The
   section headings stay — they are the recipient's expected reading order — with
   no count attached. Packet v1 manifests still verify; the verifier's handoff
   checks are structural and never read `sections`.
@@ -1745,7 +1745,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   tests only the TOTAL row — one pooled number. Measured on the committed
   `coverage.xml`: `crypto.py` 100.00%, `tsa.py` 98.72%, `verify.py` 95.57%,
   `vault.py` **94.42%**, pooled TOTAL **95.56% — green**. `crypto.py` was
-  subsidising the largest module in the set, and the one that holds the
+  subsidizing the largest module in the set, and the one that holds the
   encrypted store at rest. `vault.py` could have fallen to roughly 91% before
   the build turned red. `make cov` now runs one `--fail-under=95` per module and
   reports every module before failing, so one pass names each module below the
@@ -1757,7 +1757,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
   identity that does not decode, and a peer filed under a fingerprint that is
   not its own (`tests/test_vault_legacy_and_corruption.py`).
 
-- **`human_bytes` labelled petabyte-scale sizes with a terabyte-scale number.**
+- **`human_bytes` labeled petabyte-scale sizes with a terabyte-scale number.**
   The unit loop divides once per entry in `("KB", "MB", "GB", "TB")` and the
   fallback returned that same terabyte-scaled value with a `PB` suffix, so 2.5 PB
   rendered as "2500.0 PB" — a number and a unit that disagree by a factor of a
@@ -1809,7 +1809,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
     the audit doc gained a manual-recovery section (§4.8) instead of the relay
     silently deciding to ignore or delete a union's sync traffic.
   - **The access log recorded `status: 200` for a request that returned
-    nothing.** `_status` was initialised to `200` before routing and logged from
+    nothing.** `_status` was initialized to `200` before routing and logged from
     a `finally`, so an exception escaping the route left the peer with
     `RemoteDisconnected` and the attestable log with `200`. The status is now set
     only by the code that writes the response, and each line carries
@@ -1918,7 +1918,7 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
     configured `language = "es"` produced byte-identical English prose under a
     Spanish language tag — a WCAG 3.1.1 failure that makes a screen reader
     pronounce English with Spanish phonetics. The letter is now always emitted
-    and labelled `lang="en"`, and `habitable letter` prints the unmet request
+    and labeled `lang="en"`, and `habitable letter` prints the unmet request
     **in the requested language**. The translation is deliberately not
     machine-generated: this document carries legal framing and goes out under a
     tenant's name, so a legal-register Spanish version needs a Spanish-speaking
@@ -2500,7 +2500,7 @@ materials an external auditor, accessibility tester, or pilot partner needs.
 ### Changed
 
 - The verification subset (`verify`/`tsa`/`exif`) now writes its multi-type `except`
-  clauses with explicit parentheses — behaviour-identical, but valid on every
+  clauses with explicit parentheses — behavior-identical, but valid on every
   Python 3 and unambiguous to auditors and legal-aid embedders of the Apache-2.0
   verifier (no reliance on the PEP 758 syntax that 3.14 newly accepts).
 - `docs/governance.md` "Releases" reconciled with the actual signed/provenanced

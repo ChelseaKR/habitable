@@ -288,7 +288,7 @@
   // where the device supports it, plus a brief visual pulse on the announcer.
   // Both are supplementary — the aria-live text stays the primary signal, so a
   // user who has neither vibration nor sight of the pulse still hears/reads the
-  // announcement. The pulse honours prefers-reduced-motion via CSS.
+  // announcement. The pulse honors prefers-reduced-motion via CSS.
   function signalSuccess() {
     if (navigator.vibrate) {
       try {
@@ -874,7 +874,7 @@
     for (var i = 0; i < STATUS_READOUTS.length; i++) {
       setText(STATUS_READOUTS[i], unknown);
     }
-    // An intact/broken colour is a verdict; there is no verdict to show.
+    // An intact/broken color is a verdict; there is no verdict to show.
     var custody = document.getElementById("st-custody");
     if (custody) { custody.className = ""; }
     var sealedBar = document.getElementById("storage-sealed");
@@ -884,7 +884,7 @@
     // renderStatus() picks this paragraph, and its unrendered fallback asserts
     // "your photo is already sealed and safe on this device" -- a claim about the
     // reader's own evidence, made by an app that has just said it cannot reach its
-    // own server. The neighbouring empty states ("Add a condition ... to begin")
+    // own server. The neighboring empty states ("Add a condition ... to begin")
     // stay: an invitation to act is true either way; this is not.
     setHidden("st-awaiting-help", true);
     var panel = document.getElementById("status-error");
@@ -1352,7 +1352,7 @@
   // Issue #275. The contract, in one place so that no call site has to remember it:
   //
   //   While `fn` is in flight the button is genuinely `disabled` -- inert, not
-  //   merely labelled inert. When `fn` settles the button is re-enabled and, if it
+  //   merely labeled inert. When `fn` settles the button is re-enabled and, if it
   //   held focus at the moment it was disabled and focus has since fallen to
   //   <body>, focus is put back on it.
   //
@@ -1378,8 +1378,8 @@
   // * still rendered -- the button may have been removed, or hidden with the panel
   //   it lived in (the #status-retry case). Focus stays where it is; moving it to
   //   some arbitrary survivor is worse than leaving it at <body>, and choosing a
-  //   sensible replacement is a judgement only the call site can make. See
-  //   wireRefreshButton(), which makes exactly that judgement for its own button.
+  //   sensible replacement is a judgment only the call site can make. See
+  //   wireRefreshButton(), which makes exactly that judgment for its own button.
   //
   // Ordering is load-bearing: this restores focus *before* the caller's own `.then`
   // runs. The dialog forms close their dialog there, and a native <dialog> returns
@@ -2009,7 +2009,7 @@
       // deliberately declines to guess at: a successful retry hides the panel this
       // button sits in, and a control with no client rects cannot be focused. That
       // leaves a keyboard reader with no position at all, so this call site makes
-      // the judgement withBusy() cannot -- fall back to the other refresh control,
+      // the judgment withBusy() cannot -- fall back to the other refresh control,
       // which does the same job and is still on screen (WCAG 2.4.3). When withBusy()
       // has already restored focus, the activeElement check below returns early.
       var hadFocus = document.activeElement === btn;

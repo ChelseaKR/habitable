@@ -343,7 +343,7 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "is rather than starting the case over"
         ),
         "issue_practice_path": (
-            "to practise first, run `habitable demo` — a whole synthetic case in its own "
+            "to practice first, run `habitable demo` — a whole synthetic case in its own "
             "temporary folder, which never touches this one"
         ),
         "capture_timestamped": "timestamp token attached ({when})",
@@ -553,19 +553,19 @@ _CLI_MESSAGES: dict[str, dict[str, str]] = {
             "{confirmed, plural, one {# paired peer has} other {# paired peers have}} "
             "acknowledged holding it"
         ),
-        "status_sync_last_seen": "last acknowledgement: {peer} — recorded here {when}",
+        "status_sync_last_seen": "last acknowledgment: {peer} — recorded here {when}",
         "status_sync_last_untimed": (
-            "last acknowledgement: {peer} — this device recorded no time for it"
+            "last acknowledgment: {peer} — this device recorded no time for it"
         ),
         "status_sync_via": "carried over: {transport}",
         "sync_transport_file": "a file or removable drive",
         "sync_transport_relay": "a relay server",
         "status_sync_peer_clock_unusable": (
-            "note: the acknowledgement from {peer} carries no usable clock of its own, "
+            "note: the acknowledgment from {peer} carries no usable clock of its own, "
             "so the time above is this device's own record of when it arrived"
         ),
         # Issue #161: the repair-request letter is the one surface that is not
-        # bilingual. It says so instead of relabelling English prose.
+        # bilingual. It says so instead of relabeling English prose.
         "letter_language_unavailable": (
             "note: this letter is written in English. habitable does not yet ship a "
             "reviewed {requested} translation of the repair-request letter, and will not "

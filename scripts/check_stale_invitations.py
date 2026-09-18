@@ -71,7 +71,7 @@ from pathlib import Path
 # The pages a contributor actually reads to decide what to work on. `docs/**` and
 # `site/**` are the scope issue #273 names; the three root files are here because
 # ROADMAP.md is where two of b67b44a's four stale reservations lived, and a guard that
-# could not see the document that failed would be theatre.
+# could not see the document that failed would be theater.
 _SCANNED_TREES = (("docs", "*.md"), ("site", "*.html"))
 _SCANNED_ROOT_FILES = ("README.md", "ROADMAP.md", "CONTRIBUTING.md")
 
@@ -195,7 +195,7 @@ def _normalize(text: str) -> str:
     plain = re.sub(r"\s+", " ", plain).strip()
     # Leading decoration a template puts in front of the words -- arrows, bullets,
     # dashes -- is not part of what the link says. `#` and `(` are kept, because
-    # "#159" and "(#123)" are exactly the record shapes this has to recognise.
+    # "#159" and "(#123)" are exactly the record shapes this has to recognize.
     return re.sub(r"^[^\w#(]+", "", plain)
 
 

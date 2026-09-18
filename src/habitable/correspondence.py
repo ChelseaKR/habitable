@@ -99,7 +99,7 @@ _MAX_BODY_CHARS = 5_000
 #: Parser defects that mean the bytes are not a message this project will seal.
 #:
 #: Every member is matched **by name** and the tuple is exhaustive over what
-#: :func:`_refusals` inspects; an unrecognised defect class is reported under its own
+#: :func:`_refusals` inspects; an unrecognized defect class is reported under its own
 #: sentence rather than folded into the last one. A trailing catch-all reads exactly
 #: like a match and would tell a tenant to fix the wrong thing (the ceqa-preflight
 #: lesson: one sentence over five different facts).
@@ -342,7 +342,7 @@ def _header(message: EmailMessage, name: str) -> MessageHeader:
     decides what a recipient is shown. ``Date: next Tuesday sometime`` records an
     ``InvalidDateDefect`` and is *not* unreadable here: this module never turns a
     ``Date:`` header into a time, so an unparseable date is simply the text the
-    sender wrote, and suppressing it would delete evidence in the name of rigour.
+    sender wrote, and suppressing it would delete evidence in the name of rigor.
     What makes a header unreadable is bytes that could not be turned into
     characters -- a decoding defect, or a value carrying U+FFFD, which is what an
     undecodable byte becomes on the way through.

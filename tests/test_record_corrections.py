@@ -46,7 +46,7 @@ def test_a_corrected_field_would_be_invisible_in_the_packet(
     outgrown.
     """
     vault = make_vault()
-    issue_id = vault.document.add_issue(category="mold", room="bathrom", title="Mould")
+    issue_id = vault.document.add_issue(category="mold", room="bathrom", title="Mold")
     vault.document.update_issue(issue_id, room="bathroom")
     vault.save()
 
@@ -82,7 +82,7 @@ def test_a_stored_field_is_only_mutated_beside_an_append_only_record() -> None:
     timeline entry which *does* export, so a reader can reconstruct why the
     status changed from the record they were handed.
 
-    That is the rule ADR 0017 generalises rather than a special case: a stored
+    That is the rule ADR 0017 generalizes rather than a special case: a stored
     field may be mutated only alongside an append-only record, exported with the
     packet, that says it was. A second caller is not automatically wrong; it is
     automatically a decision, and this guard makes someone make it.

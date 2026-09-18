@@ -42,7 +42,7 @@ Four facts, each verified in the tree rather than assumed, decide this ADR.
    the losing value is gone from the state. No UI can display it, and no export
    can carry it, because it no longer exists to carry.
 4. **There is exactly one caller of `update_issue` in `src/`, and it is safe for
-   a reason worth generalising.** `vault.py`'s timeline path reopens an issue's
+   a reason worth generalizing.** `vault.py`'s timeline path reopens an issue's
    `status` when a `recurrence` event is recorded. That mutation is invisible in
    `_issue_json` — the packet shows `status: open` with no sign it was ever
    otherwise — but it is *accompanied by an append-only timeline entry that
@@ -92,7 +92,7 @@ is permitted because an append-only record travels beside it.
 3. **The rule the design must satisfy, stated now so the implementation is
    judged against it:** *a stored field may be mutated only alongside an
    append-only record, exported with the packet, that says it was.* This
-   generalises the one mutation already in the tree (fact 4) rather than
+   generalizes the one mutation already in the tree (fact 4) rather than
    inventing a new principle.
 4. **Superseded values stay visible in the packet.** Hiding them is what a
    skeptic would object to, and a correction the reader can see is stronger
@@ -113,7 +113,7 @@ is permitted because an append-only record travels beside it.
 - **Retention.** Unbounded growth is a real cost on the target device. The bound
   is deferred to the implementing ADR, which must state one; "keep everything
   forever" is a decision that has to be made deliberately, not by omission.
-- **Privacy.** An edit history is a behavioural record of the tenant — when they
+- **Privacy.** An edit history is a behavioral record of the tenant — when they
   were awake, how often they revised, what they took back. It is a new exposure
   *inside the vault* and a larger one in an exported packet. The implementing
   ADR must carry a threat-model section before any code, and the default should
@@ -137,7 +137,7 @@ is permitted because an append-only record travels beside it.
   protocol. **Shipped** — the add-condition dialog and `habitable issue` both
   state the append-only limit before and after the record is written, and say
   what to do about a mistake already in it. (c) `habitable demo` already provides
-  a synthetic case to practise on — the "scratch/practice mode" half of #241 —
+  a synthetic case to practice on — the "scratch/practice mode" half of #241 —
   and is simply not offered where someone needs it. **Shipped** — it is now
   offered in both of those places.
 - **What (b) and (c) did not do.** They add copy, not a mechanism. A saved entry

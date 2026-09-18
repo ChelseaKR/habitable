@@ -202,7 +202,7 @@ def test_the_plan_names_exactly_the_profiles_the_registry_calls_reviewed() -> No
     The first cut of this guard read every backticked id in the text *before* the
     `maintainer_reviewed` marker, which swept up the `move_out_deposit` mentioned
     two sentences earlier -- so restoring the four-name list still passed. It now
-    reads the parenthesised list attached to each claim, and the sabotage fails it.
+    reads the parenthesized list attached to each claim, and the sabotage fails it.
     """
     plan = (Path(__file__).resolve().parent.parent / "docs" / "novel-use-cases-plan.md").read_text(
         "utf-8"

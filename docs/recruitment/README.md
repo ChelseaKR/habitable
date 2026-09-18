@@ -30,7 +30,7 @@ written down rather than restated here:
   count; it is a trust threshold," and an independent security + cryptographic review,
   a recorded human screen-reader pass, and an independent threat-model review are
   three of its required boxes. Nothing on this page is busywork: each role checks a box
-  that keeps the project honestly labelled *alpha* until it is met.
+  that keeps the project honestly labeled *alpha* until it is met.
 
 The bus factor of one, the lack of funding, and the alpha label are stated plainly
 because that honesty is the point — a tool for at-risk tenants has to say what it is

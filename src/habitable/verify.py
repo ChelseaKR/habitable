@@ -61,7 +61,7 @@ __all__ = [
 #: exported packet (issue #297, RR-07).
 #:
 #: It lives in the verifier rather than beside :class:`SyncRedundancy`, which owns
-#: the concept, and the reason is a licence boundary rather than a dependency one.
+#: the concept, and the reason is a license boundary rather than a dependency one.
 #: ``tests/test_guards.py`` pins the exact module set the Apache-2.0 verification
 #: subset may load, and ``syncstate`` is AGPL-only; importing it here would pull an
 #: AGPL module into the embeddable verifier's closure. The constant is one tuple, so
@@ -69,7 +69,7 @@ __all__ = [
 #: (`packet`) and the reader (`bundleview`) are both AGPL and may import from here.
 REDUNDANCY_STATES = ("acknowledged", "this_device_only")
 
-#: The vocabulary of ``item.correspondence`` (issue #304), here for the same licence
+#: The vocabulary of ``item.correspondence`` (issue #304), here for the same license
 #: reason as ``REDUNDANCY_STATES`` above: ``habitable.correspondence`` is AGPL-only and
 #: importing it would pull it into the closure ``tests/test_guards.py`` pins for the
 #: Apache-2.0 verifier subset. The producer (`packet`), the parser (`correspondence`)
@@ -2093,7 +2093,7 @@ def _verify_packet_seal(
     2. **An absent seal is a state, not a failure**, until the caller says
        otherwise. Requiring it by default would fail every offline export and every
        packet in the golden corpus, in exchange for a guarantee an attacker
-       sidesteps by deleting one JSON key. ``required`` is where that judgement
+       sidesteps by deleting one JSON key. ``required`` is where that judgment
        belongs — with the recipient.
     3. **Every assertion fails closed.** An unparseable ``not_after``, or either
        assertion made against a packet with no seal, is a problem, never a

@@ -43,7 +43,7 @@ def test_html_packet_has_recipient_facing_sections(
     html = (out / "packet.html").read_text(encoding="utf-8")
     # Exactly one h1 even with the added sections (accessibility invariant).
     assert html.count("<h1>") == 1
-    # Cover sheet, chronology, and integrity sections are all present and labelled.
+    # Cover sheet, chronology, and integrity sections are all present and labeled.
     assert 'id="cover-heading">Cover sheet' in html
     assert 'id="chronology-heading">Chronological evidence timeline' in html
     assert "Chain of custody &amp; integrity" in html

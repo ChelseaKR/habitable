@@ -26,7 +26,7 @@ _DOWNLOAD_ARTIFACT_V8_SHA = "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
 #
 # The `v*` tag ruleset (18815834) is the opposite case and equally deliberate: it
 # really does carry no bypass actor, so a released tag cannot be moved by anyone,
-# owner included. The two are not to be harmonised in either direction.
+# owner included. The two are not to be harmonized in either direction.
 OWNER_BYPASS = {"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}
 
 
@@ -251,14 +251,14 @@ def test_both_sides_emptied_together_is_two_findings_not_zero() -> None:
     assert any("no longer records" in line for line in found), found
 
 
-def test_the_tag_ruleset_is_not_harmonised_with_the_branch_one() -> None:
+def test_the_tag_ruleset_is_not_harmonized_with_the_branch_one() -> None:
     """`release-tags.json` genuinely has no bypass actor and must keep none. The
     branch ruleset and the tag ruleset differ on purpose, and a later reader
-    "harmonising" them in either direction is the failure this pins down.
+    "harmonizing" them in either direction is the failure this pins down.
     """
     tag_ruleset = json.loads(_TAG_RULESET.read_text(encoding="utf-8"))
     main_ruleset = json.loads(_MAIN_RULESET.read_text(encoding="utf-8"))
     assert tag_ruleset["bypass_actors"] == []
     assert main_ruleset["bypass_actors"] == [OWNER_BYPASS]
-    assert "harmonise" in tag_ruleset["_comment"]
-    assert "harmonised" in main_ruleset["_comment"]
+    assert "harmonize" in tag_ruleset["_comment"]
+    assert "harmonized" in main_ruleset["_comment"]

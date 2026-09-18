@@ -247,7 +247,7 @@ def newest_successful_deployment(
 def published_path(workflow: str) -> str:
     """The directory `pages.yml` uploads, read out of the workflow itself.
 
-    Narrow by design. The alternative to refusing on an unrecognised shape is
+    Narrow by design. The alternative to refusing on an unrecognized shape is
     defaulting to `site`, and a default that happens to be right today is a
     detector that keeps answering confidently after the answer changes.
     """

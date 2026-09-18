@@ -152,7 +152,7 @@ def test_an_unparseable_date_is_text_the_sender_wrote_not_an_unreadable_header()
 
     This module never turns a `Date:` header into a time, so a date that is not a
     date is simply what the sender typed. Suppressing it would delete evidence in
-    the name of rigour, and the label beside it already says it proves nothing.
+    the name of rigor, and the label beside it already says it proves nothing.
     """
     summary = summarize(parse_message(b"From: a@example.test\r\nDate: next Tuesday\r\n\r\nx\r\n"))
     assert summary.date_header.state == "present"
@@ -166,7 +166,7 @@ def test_an_unparseable_date_is_text_the_sender_wrote_not_an_unreadable_header()
         # still something a real export can contain.
         ("raw 8-bit", b"Subject: humedad y moho en el ba\xf1o\r\n"),
         # The conformant way to be undecodable: an RFC 2047 encoded word whose
-        # payload is not valid in the charset it declares (Latin-1 labelled utf-8).
+        # payload is not valid in the charset it declares (Latin-1 labeled utf-8).
         # The golden fixture uses this form, so its bytes stay 7-bit and UTF-8 clean.
         (
             "encoded word, base64",
@@ -474,7 +474,7 @@ def test_a_header_date_never_appears_as_a_timestamp_and_verify_still_wants_a_tok
     assert "not a timestamp" in html, "the Date row carries its own warning"
 
 
-def test_the_rendered_date_row_is_labelled_a_claim_in_both_languages() -> None:
+def test_the_rendered_date_row_is_labeled_a_claim_in_both_languages() -> None:
     block = summarize(parse_message(_message(parts=0))).to_dict()
     english = correspondence_view(block, "en")
     spanish = correspondence_view(block, "es")
@@ -514,7 +514,7 @@ def test_the_reader_survives_a_block_that_is_all_wrong_types() -> None:
 
 
 def test_every_state_the_reader_knows_is_one_the_verifier_accepts() -> None:
-    """Two vocabularies that must be one. They live in the verifier for licence
+    """Two vocabularies that must be one. They live in the verifier for license
     reasons (`tests/test_guards.py` pins the Apache-2.0 subset's import closure), and
     this is the assertion that they are actually the vocabulary in use."""
     block = summarize(parse_message(_message(parts=0))).to_dict()

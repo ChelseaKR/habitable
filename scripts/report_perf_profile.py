@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright 2026 Chelsea Kelly-Reif
-"""Characterise the *shape* of every budgeted local-path operation — report, never gate (#258).
+"""Characterize the *shape* of every budgeted local-path operation — report, never gate (#258).
 
 ``docs/performance-budget.md`` converts a human-facing device budget into a CI ceiling by
 dividing by one number, ``LOW_END_SLOWDOWN = 10``. That number is a stated assumption, and
@@ -100,14 +100,14 @@ What this cannot tell you
 -------------------------
 - **It is not a device measurement.** No number here is from a phone, and no ratio here is
   the reference-device ratio. A slower core with less cache and less RAM can only be
-  characterised by running on it.
+  characterized by running on it.
 - **It cannot produce per-operation slowdown factors.** Establishing that the operations
   have different shapes shows a single scalar *must* be wrong; the factors that would
   replace it need two machines, one of which is the named device.
 - **It cannot see the ARM/x86 or the OS split.** Everything here is one CPU, one libc, one
   filesystem, one Python build.
 - **Its disk numbers are this disk's.** Flash on a cheap phone is a different device with
-  different latency under write pressure, and none of that is modelled.
+  different latency under write pressure, and none of that is modeled.
 
 Running it
 ----------
@@ -315,7 +315,7 @@ def _make_jpeg(path: Path) -> Path:
 
 def _populated_peer_state(root: Path, issues: int) -> dict[str, JSONValue]:
     """A peer replica's CRDT state carrying ``issues`` issues, each with a timeline entry
-    and a capture — the same shape ``tests/test_perf_budget.py`` merges, parameterised."""
+    and a capture — the same shape ``tests/test_perf_budget.py`` merges, parameterized."""
     peer = _make_vault(root, f"peer-{issues}", seq=issues + 2)
     for i in range(issues):
         issue = peer.document.add_issue(category="mold", issue_id=f"i{i}")
@@ -692,7 +692,7 @@ def _sweep_merge(root: Path) -> list[tuple[float, Timing]]:
 def _sweep_custody(root: Path) -> list[tuple[float, Timing]]:
     """``custody_append`` against a chain that keeps growing underneath it.
 
-    The chain is hash-linked, so an implementation that re-walked or re-serialised it on
+    The chain is hash-linked, so an implementation that re-walked or re-serialized it on
     every append would be O(n) in a log that only ever grows. Sweeping the chain length is
     how that shows up as a slope instead of as a surprise three years in.
     """
@@ -1024,7 +1024,7 @@ def section_headroom(root: Path) -> dict[str, object]:
     ops = build_budgeted_ops(root).as_mapping()
     print(
         f"{'operation':<20}{'measured ms':>13}{'CI ceiling':>12}"
-        f"{'headroom':>10}{'device budget':>15}{'modelled ms':>13}"
+        f"{'headroom':>10}{'device budget':>15}{'modeled ms':>13}"
     )
     print("-" * 83)
     rows: list[dict[str, object]] = []
@@ -1039,7 +1039,7 @@ def section_headroom(root: Path) -> dict[str, object]:
                 "ci_ceiling_ms": ceiling,
                 "headroom": round(ceiling / timing.min_ms, 3),
                 "device_budget_ms": budgets[name],
-                "modelled_device_ms": round(timing.min_ms * slowdown, 4),
+                "modeled_device_ms": round(timing.min_ms * slowdown, 4),
             }
         )
         print(
@@ -1109,7 +1109,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for key, value in machine.items():
         print(f"  {key}: {value}")
     print(
-        "\nNOTHING HERE WAS MEASURED ON A PHONE. This characterises the shape of each\n"
+        "\nNOTHING HERE WAS MEASURED ON A PHONE. This characterizes the shape of each\n"
         "operation on one machine; it cannot produce the reference-device ratio that\n"
         "docs/performance-budget.md still needs. See the module docstring."
     )

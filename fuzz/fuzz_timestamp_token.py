@@ -160,7 +160,7 @@ _RFC3161_TOKEN_DATA, _RFC3161_DIGEST = _golden_rfc3161_seed()
 
 #: How the first input byte is spent: which token the fuzzer's bytes are edited
 #: into, and which digest that token is asked about. The two empty bases keep the
-#: original behaviour -- fuzzer bytes as the *whole* token -- because the record
+#: original behavior -- fuzzer bytes as the *whole* token -- because the record
 #: and CMS parsers have failure modes (base64 alphabet, padding, truncated DER)
 #: that are reached from nowhere near a valid token.
 _CASES: tuple[tuple[str, bytes, str], ...] = (

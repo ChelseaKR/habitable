@@ -185,7 +185,7 @@ courtroom fails the people relying on it.
   fixed-size cover batches, so per-message **size** and real-message **count** (up to the batch
   size) stop tracking the real payload. It does **not** hide the **room id**, the **peer IP
   addresses**, or **that a room is active and roughly when**, and it is not an anonymity network
-  (no cross-sender mixing, no IP-correlation defence); it also has not yet had the external
+  (no cross-sender mixing, no IP-correlation defense); it also has not yet had the external
   traffic-analysis review such a claim requires. The only way to remove relay metadata **entirely**
   is to not use a relay (pure peer-to-peer). See `relay-observability-matrix.md` §4.5 for the exact
   residual.

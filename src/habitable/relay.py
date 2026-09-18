@@ -1249,11 +1249,11 @@ def _log_request(
     (the handler failed before responding and the peer saw a dropped
     connection).
 
-    Before issue #162 the status was initialised to ``200`` at the top of the
+    Before issue #162 the status was initialized to ``200`` at the top of the
     request and logged from a ``finally``, so a request that raised out of the
     route — an ``OSError`` escaping persistence, say — left the peer with
     ``RemoteDisconnected`` and the operator's attestable log with ``200``. An
-    access log is evidence about the relay's own behaviour; it may not record a
+    access log is evidence about the relay's own behavior; it may not record a
     response that was never sent.
     """
     _LOG.info(

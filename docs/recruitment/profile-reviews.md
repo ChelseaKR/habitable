@@ -126,7 +126,7 @@ carry.
 ## What the review is, and is not
 
 **It is:** a read of one profile's vocabulary, reading order, and disclosures against how
-your field actually works, and a judgement on whether anything it produces overclaims.
+your field actually works, and a judgment on whether anything it produces overclaims.
 
 **It is not:**
 
@@ -175,7 +175,7 @@ private assurance, and anyone can diff it across releases.
 2. **The profile's own fields** — `reviewer`, `reviewed_at`, and where relevant
    `jurisdiction` — are filled in from your review, and the review state stops saying
    external review is required. Those fields are signed into every packet exported
-   afterwards, so a recipient sees the review travelling with the evidence.
+   afterwards, so a recipient sees the review traveling with the evidence.
 3. **An expiry, if your read is jurisdiction- or practice-dependent.** A profile can carry
    `expires_at`; once it passes, selecting that profile is refused and an export that had
    already selected it falls back to no profile rather than presenting stale guidance

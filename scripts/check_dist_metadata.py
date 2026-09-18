@@ -173,7 +173,7 @@ def _check_license(msg: Message) -> list[Result]:
             f"License-Expression: {expression!r} (expected {LICENSE_EXPRESSION!r})",
         ),
         Result(
-            "no legacy License field, and none carrying licence text",
+            "no legacy License field, and none carrying license text",
             legacy is None,
             "License: absent"
             if legacy is None

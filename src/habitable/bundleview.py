@@ -232,12 +232,12 @@ _REDUNDANCY_SENTENCES: dict[str, dict[str, str]] = {
     "en": {
         "acknowledged": (
             "{devices} devices, as of {as_of}: the device that produced this packet, "
-            "and {acknowledged} paired device(s) that returned a signed acknowledgement "
+            "and {acknowledged} paired device(s) that returned a signed acknowledgment "
             "of holding this case. Devices are counted, never named."
         ),
         "acknowledged_undated": (
             "{devices} devices: the device that produced this packet, and {acknowledged} "
-            "paired device(s) that returned a signed acknowledgement of holding this "
+            "paired device(s) that returned a signed acknowledgment of holding this "
             "case. The producing device recorded no time for the most recent one. "
             "Devices are counted, never named."
         ),

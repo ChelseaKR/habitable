@@ -33,8 +33,8 @@ FROM python:3.14-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae
 #
 #   /var/cache/ldconfig/aux-cache stores each shared library's inode number
 #   and ctime inside the file's own bytes. BuildKit's rewrite-timestamp
-#   normalises file mtimes in the layer, so this one survives that
-#   normalisation and is why removing the logs alone still failed the gate.
+#   normalizes file mtimes in the layer, so this one survives that
+#   normalization and is why removing the logs alone still failed the gate.
 #
 # Neither costs anything at runtime: the logs are a build record, and
 # aux-cache is a cache ldconfig regenerates when it next runs.

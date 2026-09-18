@@ -415,7 +415,7 @@ _ISSUE_FIELDS = ("category", "room", "title", "status", "severity", "description
 #: *Are these the right six?* Yes, and they stay six. The corpus #206 surveyed
 #: also held ``no_heat``, ``moisture``, ``moho``, ``plumbing``, ``noise`` and
 #: ``threat``. The first three are the same conditions under other names and are
-#: normalised by ``ISSUE_CATEGORY_ALIASES`` below. The last three are not:
+#: normalized by ``ISSUE_CATEGORY_ALIASES`` below. The last three are not:
 #: ``plumbing`` names a building system rather than the condition a tenant
 #: observes (which is ``water``), and ``noise`` and ``threat`` are real
 #: complaints that are not habitability *conditions* -- they belong in the
@@ -426,7 +426,7 @@ _ISSUE_FIELDS = ("category", "room", "title", "status", "severity", "description
 #:
 #: *Does the app have to obey it?* Not by narrowing. The app's Condition field
 #: stays free text and now offers this vocabulary through a ``<datalist>``
-#: (``app/index.html``), so the common case normalises itself and a tenant whose
+#: (``app/index.html``), so the common case normalizes itself and a tenant whose
 #: condition is not on the list is still able to name it. A ``<select>`` would
 #: have forced a real condition into the wrong bucket, which is a wrong record
 #: rather than an unvalidated one -- the same reasoning that gave the CLI its
@@ -448,7 +448,7 @@ ISSUE_CATEGORIES = (
 #: because habitable ships a Spanish interface, and a Spanish-speaking tenant
 #: typing their own word for mold should not land in ``other``.
 #:
-#: Normalisation happens at CLI entry, alongside the rest of the validation, and
+#: Normalization happens at CLI entry, alongside the rest of the validation, and
 #: the command says what it did. Nothing rewrites a stored value: an issue
 #: recorded as ``moisture`` before this existed keeps that string.
 ISSUE_CATEGORY_ALIASES = {

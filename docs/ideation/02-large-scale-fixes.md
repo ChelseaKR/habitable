@@ -23,7 +23,7 @@ un-salted, fast SHA-256. That `node_id` is written to the **plaintext** `config.
 (`config.py` `default_config_toml`) and, because every HLC stamp encodes it and every
 `capture_id`/`issue_id`/timeline id embeds the HLC, it is exported into `bundle.json`
 (confirmed: the sample packet's `cap-…a561aba5562888f6`). An adversary who seizes the
-device, or the *literal modelled adversary* who receives a court packet, can compute
+device, or the *literal modeled adversary* who receives a court packet, can compute
 `sha256(case_id + guess)[:16]` at billions/sec and recover the passphrase — completely
 bypassing the scrypt KDF that protects `keyfile.json`. This breaks README Hard Rule #1
 and the threat-model §4 "confidentiality at rest" claim for anyone using a

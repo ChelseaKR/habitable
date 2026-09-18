@@ -805,7 +805,7 @@ def test_the_app_folds_case_and_space_before_the_vocabulary_lookup(app: App) -> 
     `Mold`. iOS and Android default their keyboards to sentence case, so a tenant
     typing "mold" on the phone this tool is built for opened a second `Mold` bucket
     beside `mold` -- the split this issue set out to close, surviving in the likelier
-    direction. This test's previous name claimed the app normalised "the same way the
+    direction. This test's previous name claimed the app normalized "the same way the
     CLI does", which its own body disproved: the CLI rejects `No_Heat` outright.
 
     Anything the vocabulary does not know is stored as the tenant wrote it, minus
@@ -822,7 +822,7 @@ def test_the_app_folds_case_and_space_before_the_vocabulary_lookup(app: App) -> 
     assert status == 200
     status, fifth = _call(app, "POST", "/api/issues", {"category": "  mold  "})
     assert status == 200
-    # ... and a free-text condition keeps the tenant's own capitalisation.
+    # ... and a free-text condition keeps the tenant's own capitalization.
     status, sixth = _call(app, "POST", "/api/issues", {"category": "Broken Lift"})
     assert status == 200
 

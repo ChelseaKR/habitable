@@ -1380,7 +1380,7 @@ class Vault:
         # bytes -- so there is no input reachable from here that decrypts wrong,
         # and a `CryptoError` handler would be a branch no test could ever enter.
         # If one is ever raised it is a defect in this file, and it should say so
-        # rather than be relabelled as the drive's fault.
+        # rather than be relabeled as the drive's fault.
         raw = SymmetricKey(bytes.fromhex(record.key_hex)).decrypt(
             data, aad=_offload_aad(capture_id, record.content_hash)
         )
@@ -1403,7 +1403,7 @@ class Vault:
         The shared copy is **not** one of those files and never has been. It is
         written at export time, into the packet directory the caller names, which is
         outside the vault and which she may delete without changing anything counted
-        here. Reporting it therefore has to be a projection, and is labelled as one:
+        here. Reporting it therefore has to be a projection, and is labeled as one:
         a case that has never been exported has no shared copy anywhere on the
         device. A packet built with ``--include-originals`` adds a further byte-exact
         copy that this projection does not count.

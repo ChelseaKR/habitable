@@ -104,7 +104,7 @@ Stated plainly, because a spike that overstates itself is worse than no spike.
 - **macOS only.** Windows and Linux were not attempted. Both look easier on the wheel
   evidence — `cryptography` publishes `win_amd64` and `manylinux` x86_64/aarch64
   wheels — but that is an inference, not a run.
-- **No signing or notarisation**, and no reproducible build recipe. An unsigned app
+- **No signing or notarization**, and no reproducible build recipe. An unsigned app
   shows a macOS user a security warning on first launch; that is a UX fact any
   eventual packaging must state rather than hide.
 
@@ -117,7 +117,7 @@ Continue, and in this order:
    and serves. That converts a dependency spike into a product spike.
 3. Decide the Intel-Mac question deliberately: ship arm64-only and say so, or take on
    a Rust-toolchain source build for x86_64. Do not discover it at release time.
-4. Only then: signing, notarisation, size, and a reproducible recipe — the project
+4. Only then: signing, notarization, size, and a reproducible recipe — the project
    already builds its wheel and relay image byte-identically twice and a desktop
    build should aim at the same bar or state why it cannot.
 

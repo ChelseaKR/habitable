@@ -13,8 +13,8 @@ permissions:
   contents: read
 
 # A tag push and a manual re-run of the same tag must never race each other into
-# two concurrent publishes of the same release; queue them instead of cancelling
-# (cancelling a half-finished publish is worse than waiting).
+# two concurrent publishes of the same release; queue them instead of canceling
+# (canceling a half-finished publish is worse than waiting).
 concurrency:
   group: release
   cancel-in-progress: false

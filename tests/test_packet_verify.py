@@ -809,7 +809,7 @@ def test_a_stated_device_count_must_agree_with_its_own_arithmetic(
 
     What is checkable is that the producer's three numbers and the word beside
     them agree -- which is what refuses a hand-edited packet claiming four
-    devices over one acknowledgement.
+    devices over one acknowledgment.
     """
     problems = _verify_appendix_redundancy({"redundancy": redundancy})
     assert any(expected in problem for problem in problems), problems

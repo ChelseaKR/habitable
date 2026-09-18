@@ -80,7 +80,7 @@ addition. A binding that is subtly incomplete is worse than the current honest g
 
 `verify_packet` gains two keyword arguments and `habitable verify` two flags:
 
-| Behaviour | Rule |
+| Behavior | Rule |
 | --- | --- |
 | No seal, nothing asserted | Reported as absent. Not a problem. `evidence_ready` unchanged. |
 | Seal present | **Always** verified: imprint against the recomputed bundle digest, and token signature. A seal that does not cover this packet is a problem regardless of flags. |
@@ -129,7 +129,7 @@ your own calendar.
   `sign_public` and require the key to predate the evidence it signs. Cheap and
   tempting — and it only *moves* the problem: an adversary mints their own key-birth
   token years in advance for the price of one HTTP request, and a genuine tenant who
-  replaces a lost phone looks like the attacker. Rejected as a security theatre risk; the
+  replaces a lost phone looks like the attacker. Rejected as a security theater risk; the
   seal subsumes its useful part.
 - **Timestamping the shared copy at capture.** Would bind the visible bytes with no new
   trust assumptions — and is impossible: the shared copy is produced by
@@ -167,7 +167,7 @@ recipient trusts.** That condition is stated exactly, not glossed.
   (`--seal-not-after`) and missed when the forgery precedes first delivery.
 - **Downgrade by stripping.** An attacker removes `packet_seal` and rewrites at will; a
   recipient who does not pass `--require-packet-seal` is back to the PR #193 baseline.
-  The default is a ratchet for honest producers, not a defence. The defence is the flag —
+  The default is a ratchet for honest producers, not a defense. The defense is the flag —
   which is why the flag needs no secret, and why the CLI names the absence out loud on
   every run instead of staying quiet about it.
 - **Nothing here concerns a dishonest producer.** Everything in a packet is authored on

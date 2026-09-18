@@ -46,7 +46,7 @@ _SCRIPT = _ROOT / "scripts" / "report_readability.py"
 #: it. ``not_a_sensitive_key`` is placed in a fixture *bundle* as well, because the
 #: report intersects the declared keys with the bundle — a key naming nothing in the
 #: bundle is dropped either way, so a guide-only decoy could never catch a parser that
-#: stopped honouring section boundaries.
+#: stopped honoring section boundaries.
 _FIXTURE_GUIDE = (
     "# fixture guide\n\n"
     "## Legally-sensitive strings\n\n"
@@ -141,7 +141,7 @@ def test_flesch_kincaid_matches_the_published_formula_on_a_hand_counted_corpus(
 
 
 def test_smog_matches_the_published_formula_on_the_same_corpus(tmp_path: Path) -> None:
-    """Pin SMOG's coefficient, its 30-sentence normalisation and its constant.
+    """Pin SMOG's coefficient, its 30-sentence normalization and its constant.
 
     ``_HAND_COUNTED`` holds **6 polysyllables** (document, evidence, condition,
     photograph, document, important — every word of three syllables or more) across

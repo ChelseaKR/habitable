@@ -555,7 +555,7 @@ def _executable_yaml(text: str) -> str:
     Written the first time this test ran, which it failed: the sentinel's header
     explains at length that it holds no `pages: write`, and the assertion read
     the explanation as the grant. A check whose verdict turns on a comment is
-    the always-green this repository keeps deleting, wearing the other colour.
+    the always-green this repository keeps deleting, wearing the other color.
     """
     kept = []
     for line in text.splitlines():
@@ -589,7 +589,7 @@ def test_the_sentinel_workflow_refuses_a_shallow_checkout() -> None:
     """`fetch-depth: 0` is the precondition the script refuses without.
 
     Without it the deployed commit is absent, its published subtree cannot be
-    read, and the run is red every week -- which is the designed behaviour, but
+    read, and the run is red every week -- which is the designed behavior, but
     a red that a one-line change prevents belongs in the file, not in a
     postmortem.
     """

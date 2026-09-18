@@ -20,9 +20,9 @@ organization, an organizer who has run a rent strike, a code-complaint campaign,
 collective repair demand. Someone who has had to answer "how many units, and since when?" in
 front of a landlord, a council member, an agency, or a reporter.
 
-The expertise wanted is **organizing judgement, not statistics**: whether this is a number
+The expertise wanted is **organizing judgment, not statistics**: whether this is a number
 you would use, and whether the consent model is one you would be willing to stand behind in
-front of your neighbours.
+front of your neighbors.
 
 ## What the profile actually asserts
 
@@ -60,7 +60,7 @@ And the machinery behind it, from [`src/habitable/patterns.py`](../../src/habita
   claimed the opposite; the field was kept, with the honest value, so a reader who saw the
   old file sees the correction.
 - **The organizer runs it over vaults they already hold keys to**, on their own machine, with
-  no network. `--confirm-consent` is a required flag: an acknowledgement by the operator that
+  no network. `--confirm-consent` is a required flag: an acknowledgment by the operator that
   they reviewed *this release* for differencing risk.
 - **A published aggregate cannot be recalled.** Withdrawal stops future exports and nothing
   else.
@@ -90,12 +90,12 @@ question 1 below, and it is the one this brief most wants your answer to.
    advance, per household — and then an organizer runs the export without asking again. Would
    your members read that as consent to *this* release? Would you want each household asked
    again before publication, and if so, would that ever actually happen in a campaign?
-5. **Is refuse-the-whole-export the right failure?** One neighbour who has not recorded
+5. **Is refuse-the-whole-export the right failure?** One neighbor who has not recorded
    consent blocks the entire summary. That is deliberate, so a smaller cohort never publishes
    under a heading claiming consent — but does it create pressure on the holdout, which is
    exactly the dynamic a consent model should avoid?
 6. **Who holds the keys, in your model?** The export reads vaults the organizer can already
-   unlock. Is one organizer holding neighbours' case keys something you would do, or is it
+   unlock. Is one organizer holding neighbors' case keys something you would do, or is it
    a concentration of risk (and of power) you would refuse? What happens when that organizer
    leaves, or is evicted, or falls out with the committee?
 7. **What do you do when someone withdraws after publication?** The number is out; it cannot
@@ -103,7 +103,7 @@ question 1 below, and it is the one this brief most wants your answer to.
    it before the first export rather than after?
 8. **Weekly releases add up.** Repeated overlapping releases can let a reader difference one
    against another and infer an individual household. Today that risk is a warning in the
-   file plus an operator acknowledgement flag. Is a warning enough for a real campaign, or
+   file plus an operator acknowledgment flag. Is a warning enough for a real campaign, or
    does it need a rule the tool enforces?
 
 ### If you only have twenty minutes
@@ -118,7 +118,7 @@ whether the key-holding shape is one an organizer should accept.
   a privacy-preserving feature becomes a way to publish about people who did not expect it.
 - The all-or-nothing refusal creates real pressure on a household that said no.
 - One organizer holding many households' keys is unsafe in a real campaign, especially where
-  the organizer is a neighbour, a member of a landlord-adjacent household, or under pressure.
+  the organizer is a neighbor, a member of a landlord-adjacent household, or under pressure.
 - The threshold makes the tool useless in small buildings, or fails to protect a household in
   a building of eight.
 

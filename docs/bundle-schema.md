@@ -89,7 +89,7 @@ the count answers the question without drawing it; `identities_included` is a
 schema `const: false` so that the only way to change that is a new field with its
 own contract.
 
-`acknowledged_by` counts paired devices that returned a **signed acknowledgement**
+`acknowledged_by` counts paired devices that returned a **signed acknowledgment**
 of holding the case, not devices that are merely paired — a peer that has never
 completed an exchange holds nothing, and counting it would answer "your case is on
 three devices" for a vault that has never synced. `device_count` is that number
@@ -99,7 +99,7 @@ verifier checks all three against each other; it cannot re-derive them, because
 nothing inside a packet knows how many devices exist.
 
 `as_of` is the producing device's own record of when the most recent
-acknowledgement arrived. It is **omitted, never defaulted**, when no time was
+acknowledgment arrived. It is **omitted, never defaulted**, when no time was
 recorded — the case `habitable status` already prints its own line for. An epoch
 date beside a device count would date a redundancy claim to 1970.
 
@@ -345,7 +345,7 @@ distils a verification into a small, signed **evidence receipt**: a JSON object 
 and — crucially — `packet.bundle_sha256`, the same SHA-256 of the `bundle.json` bytes described above.
 Because a receipt names the exact bundle bytes it is about, a relying party can re-hash a packet's
 `bundle.json` and confirm a stored receipt refers to *this* packet. A signed receipt seals the receipt
-with the ingesting organisation's Ed25519 key using the identical "sign the ASCII hex of the SHA-256"
+with the ingesting organization's Ed25519 key using the identical "sign the ASCII hex of the SHA-256"
 convention, and pins itself to this document's `packet_version` contract via `receipt_version` and
 `packet_schema`. See [`../contrib/README.md`](../contrib/README.md) for the receipt shape and
 [`embedding-the-verifier.md`](embedding-the-verifier.md#reference-importer--signed-evidence-receipt-exp-10)

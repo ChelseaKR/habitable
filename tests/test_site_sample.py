@@ -154,7 +154,7 @@ def test_every_published_artifact_uses_only_vocabulary_the_cli_accepts() -> None
     ]
     assert scripts, "no scripts found; this guard is reading nothing"
 
-    # Aliases are deliberately NOT accepted here. They are normalised at CLI and app
+    # Aliases are deliberately NOT accepted here. They are normalized at CLI and app
     # entry, but these generators call `add_issue` directly -- so a seed of
     # `category="moisture"` is stored verbatim as `moisture`, a string the CLI takes
     # as input and never stores. The first cut of this guard allowed alias spellings,

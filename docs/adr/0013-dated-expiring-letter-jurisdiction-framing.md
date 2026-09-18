@@ -24,7 +24,7 @@ in `config.toml` as the home for a **locally verified statutory citation**:
 > The `header`/`footer` are the right place to put a **locally-verified**
 > statutory citation; the generator itself will never invent one.
 
-That is the correct division of labour — habitable must not invent law — but it
+That is the correct division of labor — habitable must not invent law — but it
 leaves the one string in this project that can silently stop being true sitting
 in an undated field. A statute is amended; a local ordinance is repealed; a
 2026-verified citation is wrong by 2028. Meanwhile the letter is, by the

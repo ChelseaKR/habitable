@@ -26,7 +26,7 @@ concurrency:
   # slot, and a burst of merges deletes the verdict for whichever commit was
   # waiting -- not a failure anyone can see, an absence. `cancel-in-progress`
   # neither causes nor prevents that; it only decides whether the loss is
-  # visible (cancelled with jobs) or invisible (cancelled with zero jobs).
+  # visible (canceled with jobs) or invisible (canceled with zero jobs).
   # Carrying the SHA gives each commit its own slot; PR supersession is
   # unchanged, because pull requests still share a per-ref group.
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}

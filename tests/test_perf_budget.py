@@ -15,7 +15,7 @@ These tests are intentionally NOT marked ``integration``, so they run under
 noise can only make a run slower and the minimum stays a robust lower bound — the budget
 catches an order-of-magnitude regression, never a few percent of jitter.
 
-The ceilings here stay COARSE on purpose. ``scripts/report_perf_profile.py`` characterises
+The ceilings here stay COARSE on purpose. ``scripts/report_perf_profile.py`` characterizes
 these same operations in much finer detail — throughput against streaming bandwidth,
 size-scaling exponents, allocation intensity, contention sensitivity — and it deliberately
 reports rather than gates, because CI runners are shared and noisy and a tight threshold

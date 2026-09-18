@@ -190,7 +190,7 @@ def test_six_tasks_name_effort_and_expected_output() -> None:
 
 
 def test_every_task_link_opens_the_form_with_its_own_task_preselected() -> None:
-    """A task that is repeatable by design cannot be modelled as one issue.
+    """A task that is repeatable by design cannot be modeled as one issue.
 
     The six rows used to link to six fixed issues, and four of those were closed
     by whoever ran the task first -- so the page's front door handed the next

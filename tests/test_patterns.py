@@ -135,7 +135,7 @@ def test_the_question_names_a_category_the_vocabulary_can_actually_store() -> No
         f"--category` will not accept; no supported path can store it"
     )
     assert canonical_category(category) == category, (
-        f"{category!r} is normalised to something else before it is stored, so the "
+        f"{category!r} is normalized to something else before it is stored, so the "
         "cohort filter would never see it"
     )
 
@@ -185,8 +185,8 @@ def test_the_cli_synonym_lands_in_the_same_cell_as_the_member_it_means(
 ) -> None:
     """A household that typed ``--category no_heat`` is counted with the rest.
 
-    #240 lets a tenant use their own word and normalises it to ``heat`` at
-    entry, printing what it did. That normalisation is what makes the word safe
+    #240 lets a tenant use their own word and normalizes it to ``heat`` at
+    entry, printing what it did. That normalization is what makes the word safe
     to accept; this is the other half of the promise -- that using it does not
     quietly cost the household its place in the building's count. One of the
     three households below types the synonym and the cell still reads three.
@@ -332,9 +332,9 @@ def test_consent_to_the_retired_question_is_not_consent_to_this_one(
     once more with a straighter face. The refusal is the safe direction and it
     is loud, so the only cost is that each household is asked again.
 
-    What the refusal must not be is mystifying. An organizer whose neighbours
+    What the refusal must not be is mystifying. An organizer whose neighbors
     all consented last month needs the message to say *why* their export stopped
-    working, or it looks like a bug, or like a neighbour who changed their mind.
+    working, or it looks like a bug, or like a neighbor who changed their mind.
     """
     vault = _heat_case(make_vault, 0)
     retired = SUPERSEDED_QUESTION_IDS[0]

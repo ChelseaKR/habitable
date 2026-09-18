@@ -347,7 +347,7 @@ Packet-integrity claims live here; this work gets the most scrutiny.
   does not show, and what keeps the exit criterion open: habitable itself was not
   packaged (the bundle is a Toga hello-world carrying habitable's `requires`), the
   bundle was never launched, Windows and Linux were not attempted, and there is no
-  signing, notarisation, or reproducible recipe. The product build remains not shipped.
+  signing, notarization, or reproducible recipe. The product build remains not shipped.
 - *Partial:* **Multi-device & key lifecycle UX.** Authenticated case-bound
   pairing, passphrase hardening, DEK rotation, recovery blobs, M-of-N social
   recovery, CLI round trips, and organizer documentation ship. *Remaining exit:*
@@ -563,7 +563,7 @@ habitable will deliberately **never**:
 - Run a central account system or any authority that can read or revoke a union's records.
 - Add analytics, telemetry, or "anonymous" usage reporting to the app, the CLI or the relay.
   (The documentation website is separate: since 2026-09-17, by owner decision, it counts page
-  visits with Google Analytics 4, with GPC, Do Not Track and a footer opt-out honoured and ad
+  visits with Google Analytics 4, with GPC, Do Not Track and a footer opt-out honored and ad
   features off. It never sees anything the tool handles.)
 - Promise admissibility or any court outcome, or become a substitute for legal advice.
 - Weaken tamper-evidence or end-to-end encryption for convenience.

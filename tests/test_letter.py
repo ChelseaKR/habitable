@@ -295,7 +295,7 @@ def _spanish_vault(make_vault: Callable[..., Vault], name: str = "es-vault") -> 
     return vault
 
 
-def test_a_spanish_vault_is_never_given_an_english_letter_labelled_spanish(
+def test_a_spanish_vault_is_never_given_an_english_letter_labeled_spanish(
     make_vault: Callable[..., Vault],
 ) -> None:
     """The absence under test: `lang="es"` must not appear on English prose.
