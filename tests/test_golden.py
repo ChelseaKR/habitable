@@ -38,6 +38,7 @@ from typing import Any
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 
 from habitable.canonical import JSONValue
+from habitable.evidence import CustodyAction
 from habitable.htmlpacket import render_packet_html
 from habitable.pdf import _render_document_item, _render_sensor_item
 from habitable.verify import SUPPORTED_PACKET_VERSION, _check_packet_version, verify_packet
@@ -415,3 +416,51 @@ def test_version_check_unit() -> None:
     assert _check_packet_version({}) is not None  # missing
     assert _check_packet_version({"packet_version": True}) is not None  # bool is not a version
     assert _check_packet_version({"packet_version": SUPPORTED_PACKET_VERSION + 1}) is not None
+
+
+# --- the published JSON Schema ------------------------------------------------
+#
+# `docs/packet-bundle.schema.json` is the machine-readable contract this project
+# hands to strangers: `docs/embedding-the-verifier.md` points a court, a clerk or an
+# opposing party at it, and its `$id` is a public URL. Nothing in the tree validated
+# anything against it, so it drifted from the code it claims to describe -- the same
+# shape as the gap `test_a_fixture_exists_for_every_version_we_have_ever_emitted`
+# above was written to end, one layer further out: the corpus proved old packets keep
+# *verifying*, and two documents said so, while whether they still matched the
+# published *schema* was pinned by nothing.
+#
+# Whether every committed packet matches the schema is now a real JSON Schema run, in
+# `tests/test_packet_schema_conformance.py`. What stays here is the one property a
+# validator over the corpus cannot see: that the schema and the *code* agree on the
+# custody vocabulary, including actions no committed packet happens to carry.
+
+_SCHEMA_PATH = Path(__file__).resolve().parents[1] / "docs" / "packet-bundle.schema.json"
+
+
+def _schema() -> dict[str, Any]:
+    loaded: object = json.loads(_SCHEMA_PATH.read_text("utf-8"))
+    assert isinstance(loaded, dict), "the published schema must be a JSON object"
+    return loaded
+
+
+def test_the_published_schema_lists_every_custody_action_the_code_can_emit() -> None:
+    """The custody enum must equal `CustodyAction`, not merely overlap it.
+
+    Packet v4 added `artifact_added` and `relationship_added` to the chain of custody
+    and the schema's enum was not extended with them, so the committed `packet-v4`
+    fixture -- a valid packet, produced by this code -- failed the project's own
+    published contract on three of its custody entries. A relying party who did what
+    `embedding-the-verifier.md` tells them to do would have concluded that the custody
+    proof, the most trust-critical part of the artifact, was malformed.
+
+    Set equality rather than containment, in both directions on purpose: a value in
+    the code and not the schema rejects real packets, and a value in the schema and
+    not the code advertises a custody event this software cannot produce.
+    """
+    declared = set(_schema()["$defs"]["custodyEntry"]["properties"]["action"]["enum"])
+    emitted = {action.value for action in CustodyAction}
+    assert declared == emitted, (
+        f"schema enum and CustodyAction disagree; "
+        f"in the code only: {sorted(emitted - declared)}; "
+        f"in the schema only: {sorted(declared - emitted)}"
+    )

@@ -200,6 +200,14 @@ schema = json.load(open("packet-bundle.schema.json"))
 jsonschema.validate(json.load(open(packet_dir / "bundle.json")), schema)
 ```
 
+This repository runs the same check on every pull request:
+[`tests/test_packet_schema_conformance.py`](../tests/test_packet_schema_conformance.py) validates
+every golden packet under [`tests/golden/`](../tests/golden/) and the published sample packet
+against this schema, with negative controls confirming that an invalid packet is rejected. Two
+version-dependent rules are worth knowing before you validate old packets: `items[].archive_timestamps`
+is required from `packet_version` 2 onward and absent from v1 packets, and the custody `action`
+enum includes the v4 actions `artifact_added` and `relationship_added`.
+
 ## Reference importer + signed evidence receipt (EXP-10)
 
 If you are a legal-aid case-management system (persona P-23) you usually want two things beyond a

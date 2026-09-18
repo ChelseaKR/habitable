@@ -165,7 +165,7 @@ at the original occurrence or recording time.
 | `stripped` | string | Which metadata was removed from the shared copy (`gps`, `none`, `skipped`, …). |
 | `has_original` | bool | Whether the sealed original is embedded under `originals/`. |
 | `timestamp` | object \| null | RFC 3161/dev token over `content_hash`; `null` while **awaiting timestamp**. |
-| `archive_timestamps` | array | Archive (re-)timestamps chaining back to the primary token. |
+| `archive_timestamps` | array | Archive (re-)timestamps chaining back to the primary token; may be empty. **Required on every item from packet v2 onward**; absent from v1 items, which the schema accepts. |
 | `additional_timestamps` | array | Optional redundant tokens naming other authorities over the same `content_hash` (not a chain). Token presence and authority names are untrusted metadata until the verifier validates each token against recipient-selected roots. Absent in single-authority packets. |
 | `sensor` | object \| null | Present (non-null) only for **instrument data-file** captures (EXP-09, e.g. a temperature-logger or moisture-meter CSV): the readings interpreted from the sealed original for accessible chart + table rendering. `null`/absent for photos and video. The CSV bytes themselves stay the hash-anchored evidence under `content_hash`. |
 | `correspondence` | object \| null | Present (non-null) only for a **sealed RFC 5322 message** artifact (`media_type` `message/rfc822`, issue #304): the header summary and body derived from the sealed original for rendering. `null` for every other item; absent from any packet exported before the field existed. Every value in it is the **sender's claim**. |
@@ -364,8 +364,23 @@ for usage.
   invented occurrence/source facts.
 - **Additive within a major.** New optional fields may appear within a `packet_version`. Consumers
   **must ignore unknown fields** (the JSON Schema sets `additionalProperties: true` at the document
-  and object level for exactly this reason) and must not assume field order — the bytes are sorted,
-  but treat the document as a mapping.
+  level and on most objects for exactly this reason) and must not assume field order — the bytes are
+  sorted, but treat the document as a mapping.
+- **Some objects are closed, and adding a field to one of them is not additive.** These set
+  `additionalProperties: false` (named by their `$defs` path in the schema): `artifact`,
+  `relationship`, `custodyEntry`, `sensorSeries`, `workflowIntegrity`, `correspondenceHeader`,
+  `correspondenceSummary`, `correspondenceSummary.body`, `correspondenceSummary.attachments[]`,
+  and the two objects inside a v3 timeline entry, `timelineEntryV3.links` and
+  `timelineEntryV3.integrity`. A producer that adds a field to any of them emits a bundle its own
+  published schema rejects, so such a change ships as a coordinated schema-and-producer change
+  rather than as a quiet additive one. This paragraph used to say `additionalProperties: true` held
+  at the object level too; it did not, and the promise above cannot be exercised on these.
+  `tests/test_packet_schema_conformance.py` derives the list from the schema and fails if this
+  paragraph stops naming one.
+- **Every committed packet is validated against the published schema.**
+  `tests/test_packet_schema_conformance.py` runs a JSON Schema 2020-12 validator (`jsonschema`,
+  a dev-only dependency) over every golden packet under `tests/golden/` and the sample packet the
+  site serves, on every pull request, with negative controls showing an invalid packet is rejected.
 - **Forward rejection.** A verifier that meets a `packet_version` newer than it supports rejects the
   packet cleanly rather than guessing.
 

@@ -76,10 +76,11 @@ problems — the same verdict every other fixture in this corpus gets. Synthetic
 throughout: there is no real tenant, no real unit, no real managing agent, and both
 `example-landlord.test` and `example.test` are reserved names that cannot resolve.
 
-One thing it does **not** do, and it is inherited rather than introduced: like
-`packet-v4`, this bundle fails the *published* `docs/packet-bundle.schema.json` on
-`custody_proof.entries[].action`, because that enum predates the `artifact_added` and
+It also validates against the *published* `docs/packet-bundle.schema.json`. When this
+fixture was committed it did not: like `packet-v4`, it failed on
+`custody_proof.entries[].action`, because that enum predated the `artifact_added` and
 `relationship_added` custody actions the code has emitted since packet v4. Measured
-with `jsonschema` 4.26.0: 13 such errors here, 3 in `packet-v4`, and **no other
-error** in either. PR #313 is the correction and is a draft on purpose; nothing in
-this fixture re-creates the defect or depends on it.
+with `jsonschema` 4.26.0 at the time: 13 such errors here, 3 in `packet-v4`, and **no
+other error** in either. PR #313 corrected the enum, and
+`tests/test_packet_schema_conformance.py` now validates this bundle with every other
+committed packet; nothing in this fixture re-created the defect or depended on it.

@@ -67,6 +67,9 @@ dev = [
     "pip-audit>=2.7",
     "playwright>=1.62.0",
     "axe-playwright-python>=0.1.8",
+    # Dev-only, never a runtime or `verify`/`kernel` extra: validates every committed
+    # packet against docs/packet-bundle.schema.json in tests/test_packet_schema_conformance.py.
+    "jsonschema>=4.26.0",
 ]
 
 [build-system]
@@ -135,7 +138,7 @@ files = ["src", "tests", "scripts", "fuzz"]
 mypy_path = "contrib"
 
 [[tool.mypy.overrides]]
-module = ["piexif.*", "reportlab.*", "PIL.*", "asn1crypto.*", "axe_playwright_python.*", "atheris.*"]
+module = ["piexif.*", "reportlab.*", "PIL.*", "asn1crypto.*", "axe_playwright_python.*", "atheris.*", "jsonschema.*"]
 ignore_missing_imports = true
 
 # The fuzz harnesses import `atheris` when OSS-Fuzz provides it and fall back to a
