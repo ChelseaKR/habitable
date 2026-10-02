@@ -13,8 +13,8 @@ Every repo classifies each data source/store it touches into exactly one tier. A
 | Tier | Definition | Illustrative examples | Applies |
 |---|---|---|---|
 | **L0 — No data** | Repo processes no external or user data; source code and public docs only | documentation-only or source-only repository | Declares N/A with reason. |
-| **L1 — Public, non-sensitive** | Openly licensed reference data with no personal or identity content | GTFS static feeds, public transit schedules, open civic datasets | §1–2 (data cards, lineage) apply; §3 retention is "keep as long as useful," no forced deletion; §4 backup applies. |
-| **L2 — Aggregated / de-identified** | Derived data with direct identifiers removed but re-identification risk not zero | scored/aggregated ridership metrics, eval-harness benchmark results | Full standard; §5 (PII controls) applies defensively even though direct PII isn't stored. |
+| **L1 — Public, non-sensitive** | Openly licensed reference data with no personal or identity content | GTFS static feeds, public transit schedules, open civic datasets | §1 (data cards, lineage) applies; §2 retention is "keep as long as useful," no forced deletion; §3 backup applies. |
+| **L2 — Aggregated / de-identified** | Derived data with direct identifiers removed but re-identification risk not zero | scored/aggregated ridership metrics, eval-harness benchmark results | Full standard; §4 (PII controls) applies defensively even though direct PII isn't stored. |
 | **L3 — PII / identity-sensitive** | Direct personal data, rider trip/location data, or data whose exposure could out, deanonymize, or endanger a real person | rider trip endpoints, identity-sensitive records, or subject-monitoring data | Full standard, maximum rigor: encryption at rest, minimum retention, DPIA (via `RESPONSIBLE-TECH-FRAMEWORK.md` §C), breach-notification review (§6). |
 
 **N/A is a declaration, not a default**, matching every other standard in this set. A repo declaring L0 states the reason in its README conformance table; silent omission is a defect.
@@ -33,7 +33,7 @@ Every ingested data source — not just AI training/eval data — gets a committ
 | Fetch timestamp | Recorded per ingest run, machine-readable (not just "last updated" prose) |
 | Tier | L0–L3 per §0 |
 | Known limitations | Coverage gaps, known-stale segments, publisher caveats |
-| Retention | Points to §3 for this source's specific retention line |
+| Retention | Points to §2 for this source's specific retention line |
 
 | Metric | Target | Measured by | Gate |
 |---|---|---|---|
@@ -61,7 +61,7 @@ The floor every other document deferred. A retention line is not optional prose 
 | **L1 — Public reference data** [DG-06] | Indefinite (it's the product) unless the publisher revokes/relicenses it, in which case removed within 30 days of notice | manual, tracked | REVIEW-GATE |
 | **L2 — Aggregated/de-identified** [DG-07] | 24 months rolling, unless a repo states a longer research/audit justification in its data card | scheduled deletion job, tested | AUTO-GATE (job presence + test) |
 | **L3 — PII/identity-sensitive** [DG-08] | **Minimum necessary, stated per source** — e.g., a rider query is retained only as long as needed to serve the response and any explicitly-consented history feature; default with no stated feature need is **do not retain past the request** | scheduled deletion job **required**, tested; no `|| true` on the deletion job any more than on a security gate | AUTO-GATE |
-| **Backups of any tier** [DG-09] | Backup retention never exceeds live-data retention by more than one full backup cycle (§4) — a backup is not a loophole around a deletion promise | backup-rotation config asserts a max-age matching the tier | AUTO-GATE |
+| **Backups of any tier** [DG-09] | Backup retention never exceeds live-data retention by more than one full backup cycle (§3) — a backup is not a loophole around a deletion promise | backup-rotation config asserts a max-age matching the tier | AUTO-GATE |
 
 Retention lines are recorded in the repo's data card (§1) and its `docs/RESPONSIBLE-TECH-AUDITS.md` DPIA (methodology owned by `RESPONSIBLE-TECH-FRAMEWORK.md` §C — that document performs the privacy audit; this section is the retention-number floor it audits against). Deletion-on-request (subject-access/deletion path) for L3 data is a `RESPONSIBLE-TECH-FRAMEWORK.md` §C commitment; this standard requires the retention *schedule* that makes "deletion" a bounded, testable operation rather than an open-ended promise.
 
@@ -157,4 +157,4 @@ When an incident (per `INCIDENT-RESPONSE-STANDARD.md`) involves L2/L3 data expos
 
 ---
 
-Last verified: 2026-07-08 · Recheck cadence: on any change to a data source's license/terms, on any L3 field addition, after any data-exposure incident (§6), or quarterly.
+Last verified: 2026-10-02 · Recheck cadence: on any change to a data source's license/terms, on any L3 field addition, after any data-exposure incident (§6), or quarterly.

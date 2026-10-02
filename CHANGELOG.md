@@ -1574,6 +1574,11 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Changed
 
+- Moved the vendored portfolio standards from **v3.0.0** to **v3.0.1**
+  (`docs/standards/`). v3.0.1 is a patch release (re-verified stamps, text
+  corrections, and tooling fixes) with no control, threshold, or gate change.
+  The set was replaced as one versioned set with upstream's `vendor-standards.sh`
+  from the signed `v3.0.1` tag, and every file matches the release archive's bytes.
 - Moved the vendored portfolio standards from **v2.0.0** to **v3.0.0**
   (`docs/standards/`). The set was replaced as one versioned set with upstream's
   `vendor-standards.sh` from the signed `v3.0.0` tag, and every file matches the

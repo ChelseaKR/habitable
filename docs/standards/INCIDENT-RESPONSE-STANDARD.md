@@ -38,7 +38,7 @@ Every incident gets exactly one severity at open, re-assessed as facts emerge. T
 
 ## 2. The `incident` label convention — the DORA feed
 
-`QUALITY-AND-METRICS-STANDARD.md`'s DORA table measures **Change Fail Rate** and **Failed-Deployment Recovery Time** from "incident events" and states plainly that "incidents get labeled and tracked" — this section is the process that makes that true instead of aspirational.
+`QUALITY-AND-METRICS-STANDARD.md`'s DORA table measures **Change Fail Rate** and **Failed-Deployment Recovery Time** from "incident events", and its collector reads `incident`-labeled issues — this section is the process that makes that feed true instead of aspirational.
 
 | Rule | Requirement | Gate |
 |---|---|---|
@@ -166,9 +166,10 @@ portfolio-wide AUTO-GATE:
 ## 6. A pipeline that cannot catch up is watched from outside its platform
 
 Some scheduled pipelines can never make up a missed run. Trout Truck keeps a
-weekly history of CDFW's fish-planting table, and CDFW shows each week for
-one week only, so a missed run is a week
-of history that no rerun can recover. On 2026-09-18 a GitHub Actions billing
+weekly history of CDFW's fish-planting table, and CDFW keeps only a rolling
+window of past weeks (the page states six months; on 2026-10-02 it listed
+plants back to 2025-10-05), so an outage longer than that window loses
+history that no rerun can recover. On 2026-09-18 a GitHub Actions billing
 block stopped every scheduled workflow on the account: the pipeline, and every
 Actions-based monitor with it. A freshness check written as a workflow goes
 quiet at the same moment as the thing it watches, and silence is also what a
@@ -221,4 +222,4 @@ review.
 
 ---
 
-Last verified: 2026-07-08 · Recheck cadence: after any SEV1/SEV2 incident (the postmortem's action items feed back into this standard), or quarterly, whichever is first.
+Last verified: 2026-10-02 · Recheck cadence: after any SEV1/SEV2 incident (the postmortem's action items feed back into this standard), or quarterly, whichever is first.

@@ -75,7 +75,7 @@ A repo whose value is "the state of the world on a date" (a periodically-regener
   and has **no bypass actors** — deliberately unlike the `protect-main` branch ruleset, which always
   carries the maintainer's admin bypass (`CI-CD-STANDARD.md` §5). A wedged branch check blocks all
   work and needs a way through; a shipped tag has no equivalent emergency, because a bad release is
-  corrected by cutting a new tag rather than moving an old one. Never harmonise the two lists. `non_fast_forward` alone is insufficient because it can still permit a
+  corrected by cutting a new tag rather than moving an old one. Never harmonize the two lists. `non_fast_forward` alone is insufficient because it can still permit a
   fast-forward tag move. Before tag creation, the read-only validator compares hosted state with that
   profile; the SSH-signed tag message binds the hosted ruleset ID, `updated_at`, and the accountable
   owner's empty-bypass declaration. The release fails closed if the ruleset is missing, changed, or

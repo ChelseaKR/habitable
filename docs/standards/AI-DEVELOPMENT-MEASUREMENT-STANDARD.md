@@ -1,6 +1,6 @@
 # AI-Development Measurement Standard
 
-Last verified: 2026-07-11 · Recheck cadence: quarterly (with the DORA review)
+Last verified: 2026-10-02 · Recheck cadence: quarterly (with the DORA review)
 >
 > Defines **how to measure portfolio development when AI tools participate** —
 > Claude Code and other agentic tooling — as distinct from measuring the AI *products* themselves
@@ -55,7 +55,9 @@ These are **diagnostic only** — track, never gate, never rank a person by:
 ## 3. Track A metric set (per repo + portfolio rollup)
 Mined automatically by `automation/delivery_metrics.py` and
 `automation/ai_usage_report.py`; emitted to `metrics/PORTFOLIO-METRICS.md` and
-`metrics/AI-USAGE.md` on the weekly launchd cadence.
+`metrics/AI-USAGE.md` on the weekly launchd cadence. Failed-deployment
+recovery time and deployment rework rate come from the quarterly
+`automation/dora_collector.py` report (`automation/dora/DORA-<year>-Q<n>.md`).
 
 ### 3.1 Delivery (DORA five — the implementation of QUALITY-AND-METRICS §DORA)
 | Metric [ADM-01..05] | Measured by | State |
@@ -63,8 +65,8 @@ Mined automatically by `automation/delivery_metrics.py` and
 | Deployment frequency | releases (or merges-to-main fallback) / week | BASELINE → REVIEW quarterly |
 | Change lead time (p50/p90) | PR createdAt → mergedAt | BASELINE → REVIEW quarterly |
 | Change-fail rate | reverts / changes shipped (proxy) | BASELINE → REVIEW quarterly |
-| Failed-deploy recovery time | `incident`-labeled issue open→close | REVIEW quarterly (N/A until labels adopted) |
-| Rework rate | churn-within-14d (below) | BASELINE → REVIEW quarterly |
+| Failed-deploy recovery time | `incident`-labeled issue open→close (`dora_collector.py`) | REVIEW quarterly (N/A until labels adopted) |
+| Rework rate | share of deploys whose fix/hotfix/revert commit lands within 24h of the prior deploy (`dora_collector.py`; heuristic) | BASELINE → REVIEW quarterly |
 
 ### 3.2 Quality-debt leading indicators (the counterweights)
 | Metric [ADM-06..10] | Definition | State |
@@ -89,11 +91,13 @@ time, PR/commit/LOC counts. **All diagnostic — none gate.** Cost is an estimat
   only identifier, toggleable.
 - The enabling `env` block lives in `~/.claude/settings.json` (not committed).
 
-## 5. AI-segmented DORA (closes the DORA 2025 capabilities checklist item 7)
-Claude-Code-authored commits/PRs carry a trailer (`Co-Authored-By: Claude …`);
-`delivery_metrics.py` can segment DORA and quality-debt metrics by
-AI-authored vs human-authored using that trailer, so "AI-generated code
-segmented in DORA metrics" becomes computable rather than aspirational.
+## 5. AI-segmented DORA (a portfolio requirement, not a DORA capability)
+Segmenting DORA and quality-debt metrics by AI-authored vs human-authored work
+is a portfolio requirement added beside the DORA 2025 AI Capabilities Model
+(§6); it is not one of that model's seven capabilities. The intended signal is
+the `Co-Authored-By: Claude …` commit trailer. `delivery_metrics.py` does not
+yet read commit trailers or segment any metric, so this requirement is not yet
+computable, and commits made without the trailer cannot be told apart.
 
 ## 6. DORA AI Capabilities — quarterly self-assessment (REVIEW-GATE, solo-adapted)
 For a qualifying solo-maintained repository or portfolio rollup, team-survey

@@ -51,7 +51,7 @@ silently skipping a stage is a defect.
 
 ## 2. Least-privilege `GITHUB_TOKEN`
 
-**Default is write; this is wrong.** Org-level default is set to read-only (Settings → Actions → General → "Read repository contents and packages permissions"), and **every** workflow declares a top-level `permissions` block. Write is granted **per-job, never top-level**.
+**The default may be write; that is wrong.** GitHub made read-only the default only for enterprises, organizations and personal-account repositories created on or after 2023-02-02; older ones keep the read/write default. The account- or org-level default is set to read-only (Settings → Actions → General → "Read repository contents and packages permissions"), and **every** workflow declares a top-level `permissions` block. Write is granted **per-job, never top-level**.
 
 | Metric | Target | Measured by | Gate |
 |---|---|---|---|
@@ -125,7 +125,7 @@ The full pinning/SBOM/signing posture lives in `SECURITY-AND-SUPPLY-CHAIN-STANDA
 
 Every action reference, including preview and deployment workflows, must be
 pinned. One straggler tag fails the gate. Migrate with `pin-github-action` or
-StepSecurity Action-Advisor:
+StepSecurity Secure-Repo (`step-security/secure-repo`):
 
 ```bash
 # pins every uses: to its current SHA + version comment, repo-wide
@@ -158,7 +158,7 @@ profile with the same deletion, non-fast-forward, signature, linear-history, sta
 floors. The canonical `protect-main` profile intentionally matches only `refs/heads/main`, so its live
 parity check is unambiguous.
 
-The committed ruleset doubles as evidence and feeds SLSA Source Track L2 (`attest-build-provenance` populates `sourceLevels` only when branch protection with required reviews is active — see SECURITY std).
+The committed ruleset doubles as evidence for the branch-protection and review controls that the SLSA v1.2 Source track asks of the source control system. `attest-build-provenance` does not carry it: its predicate is SLSA build provenance (`https://slsa.dev/provenance/v1`), which records the workflow, ref and commit but no source level. A Source level is asserted only in a source verification summary attestation (`verifiedLevels: SLSA_SOURCE_LEVEL_n`) issued by the source control system — see SECURITY std.
 
 The bypass is a break-glass path, not a second merge policy. It may be used only
 when an authorized human explicitly directs the merge and a required external
@@ -189,7 +189,7 @@ three ways: the owner's bypass must be present, no other actor may appear, and a
 empty list fails. What CICD-15 protects is that a bypass is *auditable*, never
 that it is unusable — so tighten the record, not the actor list.
 
-**A branch ruleset and a tag ruleset are different controls; do not harmonise
+**A branch ruleset and a tag ruleset are different controls; do not harmonize
 them.** `protect-main` governs where all work lands, so when one of its required
 checks cannot report, every merge stops and the maintainer must retain a way in.
 `protect-release-tags` (`RELEASE-AND-VERSIONING-STANDARD.md` §3.1) governs
@@ -208,7 +208,8 @@ defect, in whichever direction it is done.
   "conditions": { "ref_name": { "include": ["refs/heads/main"], "exclude": [] } },
   "rules": [
     { "type": "pull_request", "parameters": { "required_approving_review_count": 1,
-      "dismiss_stale_reviews_on_push": true, "require_code_owner_review": true } },
+      "dismiss_stale_reviews_on_push": true, "require_code_owner_review": true,
+      "require_last_push_approval": false, "required_review_thread_resolution": false } },
     { "type": "required_status_checks", "parameters": {
       "strict_required_status_checks_policy": true, "required_status_checks": [
       {"context": "format"}, {"context": "lint"}, {"context": "type"},
@@ -608,8 +609,10 @@ concurrency:
 ```
 (Release/publish/deploy jobs keep `cancel-in-progress: false` per §8b.)
 
-**Why the key carries the SHA.** GitHub holds **exactly one pending run per
-concurrency group**. With a ref-only key every push to `main` shares one group,
+**Why the key carries the SHA.** By default (`queue: single`), GitHub holds
+**exactly one pending run per concurrency group**; the optional `queue: max`
+(2026-05-07) keeps up to 100, and this section does not rely on it. With a
+ref-only key every push to `main` shares one group,
 so a third arriving run *evicts the pending one with zero jobs dispatched*. The
 commit that run belonged to then sits on the default branch with **no CI verdict
 at all** — not a failure anyone can see, an absence. `cancel-in-progress`
@@ -676,4 +679,4 @@ Measured by a `ci-minutes` review-gate row in the ledger; the merge-blocking flo
 
 ---
 
-Last verified: 2026-07-16 · Recheck cadence: per GitHub Actions security-feature release, OpenSSF Scorecard minor (currently v5.5), SLSA spec revision (currently v1.2), and OWASP Top-10 CI/CD update — review at least quarterly given the active supply-chain threat environment. Confirm current action SHAs, Scorecard check weights, and GitHub ruleset schema at build time.
+Last verified: 2026-10-02 · Recheck cadence: per GitHub Actions security-feature release, OpenSSF Scorecard minor (currently v5.5), SLSA spec revision (currently v1.2), and OWASP Top-10 CI/CD update — review at least quarterly given the active supply-chain threat environment. Confirm current action SHAs, Scorecard check weights, and GitHub ruleset schema at build time.

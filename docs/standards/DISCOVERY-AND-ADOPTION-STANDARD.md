@@ -104,4 +104,4 @@ Promotion is one release of this repository. Consumers pinned to an earlier rele
 
 ---
 
-Last verified: 2026-09-02 · Recheck cadence: quarterly, and on any change to how GitHub exposes the About, the social preview, or the Marketplace.
+Last verified: 2026-10-02 · Recheck cadence: quarterly, and on any change to how GitHub exposes the About, the social preview, or the Marketplace.

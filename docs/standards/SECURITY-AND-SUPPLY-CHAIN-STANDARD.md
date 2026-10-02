@@ -14,8 +14,8 @@ Target framework is **OWASP ASVS 5.0.0** (May 2025). Every repo declares its lev
 
 | Repo class | ASVS target | Rationale | Examples |
 |---|---|---|---|
-| Default floor | **L1** | ASVS 5.0 states L1 is achievable with automated tooling alone; that maps exactly to our AUTO-GATE set. | every repo, minimum |
-| Touches PII / identity / location | **L2** | Field-level authz (BOPLA V8.2.1), cross-tenant isolation, breached-password checks, OIDC `acr`/`amr` validation. | public-service applications, privacy-sensitive tools, identity-aware frontends, or local data stores |
+| Default floor | **L1** | ASVS 5.0 states L1 is the minimum, first-layer-of-defense set (about 20% of its requirements). It does not say automated tooling alone achieves L1; this portfolio maps L1 to its AUTO-GATE set. | every repo, minimum |
+| Touches PII / identity / location | **L2** | Field-level authz (BOPLA V8.2.3), cross-tenant isolation, breached-password checks, OIDC `acr`/`amr` validation. | public-service applications, privacy-sensitive tools, identity-aware frontends, or local data stores |
 | Catastrophic-breach surface | **L3** | Hardware phishing-resistant factor, adaptive authz, annual threat-model + leadership justification. Any repository at this blast radius declares L3 and adopts the V6/V8/V10 L3 review-gates. | high-impact identity or authorization systems |
 
 L1 is satisfied entirely by §3–§4 AUTO-GATEs (parameterized queries, output encoding, TLS 1.2+, server-side function- and object-level authz). L2 adds the authz integration tests in §5 and the OAuth/OIDC review-gate. No-outing sentinel tests and AST-level no-identity-inference checks are reference ASVS-V8 abuse-case controls; repositories keep equivalent project-specific guarantees.
@@ -111,7 +111,7 @@ Gate 3 must report **all three** TruffleHog result tiers. `verified` means the c
 |---|---|---|---|
 | 1 pre-commit [SEC-17] | gitleaks `v8.30.1` | zero unredacted matches | AUTO-GATE |
 | 2 CI diff [SEC-18] | gitleaks `--exit-code 1 --redact` (no `\|\| true`) | zero matches | AUTO-GATE |
-| 3 scheduled [SEC-19] | `trufflehog git --object-discovery --results=verified,unknown,unverified --fail` | zero findings in any reported tier | AUTO-GATE (page on hit) |
+| 3 scheduled [SEC-19] | `trufflehog git --results=verified,unknown,unverified --fail` | zero findings in any reported tier | AUTO-GATE (page on hit) |
 
 ```yaml
 # .pre-commit-config.yaml — Gate 1
@@ -127,7 +127,7 @@ This pre-commit configuration is **mandatory** in every repository; the gitleaks
 
 ## 5. Input validation & authz testing (ASVS V8 / L2)
 
-L1 floor (AUTO-GATE, all repos with ingress): parameterized queries only (no string-built SQL — Semgrep rule), output encoding on all user-controlled HTML sinks (XSS), TLS 1.2+ asserted, server-side function-level authz (V8.1.1) and object-level authz (V8.1.2).
+L1 floor (AUTO-GATE, all repos with ingress): parameterized queries only (no string-built SQL — Semgrep rule), output encoding on all user-controlled HTML sinks (XSS), TLS 1.2+ asserted, server-side function-level authz (V8.2.1) and object-level authz (V8.2.2).
 
 L2 (AUTO-GATE, PII repos): an integration suite asserting **every protected endpoint returns 403 to an unauthorized principal** and that object-level (BOLA/IDOR) and field-level (BOPLA) access is denied cross-tenant. Block deploy if any protected route lacks a negative-path test.
 
@@ -177,7 +177,7 @@ Renovate keeps SHAs current and survivable:
 }
 ```
 
-Migration: run StepSecurity Action-Advisor (app.stepsecurity.io) or `pin-github-action` over each workflow to auto-generate SHA-pinned stubs.
+Migration: run StepSecurity Secure-Repo (`step-security/secure-repo`) or `pin-github-action` over each workflow to auto-generate SHA-pinned stubs.
 
 ```bash
 npx pin-github-action .github/workflows/*.yml   # rewrites tags -> SHA + comment
@@ -222,7 +222,7 @@ steps:
   - uses: sigstore/cosign-installer@<40-char-sha> # v3.x
   - run: cosign sign --yes $IMAGE
   - run: cosign attest --yes --predicate sbom.cdx.json --type cyclonedx $IMAGE
-  - uses: actions/attest-build-provenance@<40-char-sha> # v2.x  (SLSA L2 + Source Track)
+  - uses: actions/attest-build-provenance@<40-char-sha> # v2.x  (SLSA build provenance; no Source level, see CI-CD §5)
     with: { subject-path: 'dist/*' }
 ```
 
@@ -233,7 +233,8 @@ Deployment-side: consumers verify before install.
 ```bash
 cosign verify --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
   --certificate-identity-regexp='^https://github.com/<org>/<repo>/' $IMAGE
-slsa-verifier verify-artifact --source-uri github.com/<org>/<repo> dist/<artifact>
+slsa-verifier verify-artifact --provenance-path dist/<artifact>.intoto.jsonl \
+  --source-uri github.com/<org>/<repo> dist/<artifact>
 ```
 
 ### 6.5 OpenSSF Scorecard — required check
@@ -311,11 +312,14 @@ Owned in detail by `CI-CD-STANDARD.md`; the supply-chain-load-bearing minimums r
 | Branch ruleset + CODEOWNERS as committed artifacts [CICD-12] | present | repo files | REVIEW-GATE |
 
 ```yaml
-# zizmor as a required check
-permissions: { contents: read }
+# zizmor as a required check (same trigger as CI-CD §7)
+on:
+  pull_request: { paths: ['.github/workflows/**', '.github/actions/**'] }
+permissions:
+  contents: read
+  security-events: write   # SARIF upload only
 jobs:
   zizmor:
-    if: contains(toJSON(github.event.pull_request.changed_files), '.github/workflows/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@<40-char-sha> # v4.2.2

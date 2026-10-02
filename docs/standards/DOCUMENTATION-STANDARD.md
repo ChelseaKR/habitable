@@ -14,7 +14,7 @@ The portfolio standardizes rigor in one place and references it everywhere. Repo
 |---|----------|------|--------------------|
 | 0 | `RESPONSIBLE-TECH-FRAMEWORK.md` | Ethics/privacy/bias/transparency audit *methodology*, the audit-as-artifact discipline | The portfolio's signature strength; the *how*, not the per-repo findings |
 | 1 | `CODE-QUALITY-STANDARD.md` | ruff/mypy/pytest floors, coverage thresholds, layout, `make verify`/CI parity | Same logical stack must pin to the same versions and rule sets across repos |
-| 2 | `SECURITY-AND-SUPPLY-CHAIN-STANDARD.md` | SAST/SCA/secret-scan/container-CVE, SHA-pinning, SBOM, signing, provenance | tj-actions/trivy-action 2026 compromises made mutable-tag refs an active threat |
+| 2 | `SECURITY-AND-SUPPLY-CHAIN-STANDARD.md` | SAST/SCA/secret-scan/container-CVE, SHA-pinning, SBOM, signing, provenance | The tj-actions (March 2025) and trivy-action (March 2026) compromises made mutable-tag refs an active threat |
 | 3 | `CI-CD-STANDARD.md` | Token permissions, OIDC, branch protection, CODEOWNERS, workflow SAST, concurrency | Default-write tokens and unscanned workflows are systemic risks |
 | 4 | `RELEASE-AND-VERSIONING-STANDARD.md` | SemVer + public-API contract, signed tags, CHANGELOG, trusted-main signed-tag release pipeline, Trusted Publishing, yank/deprecation/security-release policy | Every consumed artifact needs an explicit version and release contract |
 | 5 | `OBSERVABILITY-STANDARD.md` | Structured logging, OTel, SLOs, health probes — tiered by deployment shape | Telemetry needs one portable schema and enforcement model |
@@ -358,8 +358,10 @@ codespell --builtin en-GB_to_en-US \
   this flag a British spelling in an identifier passes.
 - `--uri-ignore-words-list '*'` reads URLs and email addresses as third-party
   identifiers (exception a).
-- `--check-hidden` reads dotfiles and `.github/`, which codespell otherwise skips even
-  when they are named on its command line.
+- `--check-hidden` reads files whose name starts with a dot, such as
+  `.pre-commit-config.yaml`, which codespell otherwise skips even when they are named
+  on its command line. A file inside `.github/` named on the command line is read
+  either way; codespell skips that directory only when it walks a directory.
 
 A run that could not have failed is a failure, never a pass: no codespell, no git work
 tree, no tracked files, a codespell exit other than 0 or 65, or a canary file of
