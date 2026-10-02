@@ -63,7 +63,7 @@ Mined automatically by `automation/delivery_metrics.py` and
 | Deployment frequency | releases (or merges-to-main fallback) / week | BASELINE → REVIEW quarterly |
 | Change lead time (p50/p90) | PR createdAt → mergedAt | BASELINE → REVIEW quarterly |
 | Change-fail rate | reverts / changes shipped (proxy) | BASELINE → REVIEW quarterly |
-| Failed-deploy recovery time | `incident`-labelled issue open→close | REVIEW quarterly (N/A until labels adopted) |
+| Failed-deploy recovery time | `incident`-labeled issue open→close | REVIEW quarterly (N/A until labels adopted) |
 | Rework rate | churn-within-14d (below) | BASELINE → REVIEW quarterly |
 
 ### 3.2 Quality-debt leading indicators (the counterweights)
@@ -126,6 +126,66 @@ quality-debt metrics apply whenever AI tools participate in development; the
 AI-tool cost/usage rollup is portfolio-level rather than a person-ranking
 metric. A repository with no AI-assisted development may declare N/A with dated
 evidence and a re-entry trigger.
+
+## 9. Agent waves run inside a budget
+A wave of parallel agents shares one machine, one disk and one Actions bill.
+Each agent is well-behaved alone; together they saturate all three, and every
+symptom arrives looking like a defect in somebody's code.
+
+**Why this is a rule.** On 2026-09-17/18 an overnight wave of about 30 agents
+drove the load average to about 800 on a 10-core Mac, so gates timed out at
+random and read as flaky tests; filled the disk to 99% (9 GiB free); and ran
+the month's GitHub Actions spend to $55.81, which tripped the account's billing
+block. The block stopped the wave's own CI and, with it, scheduled production
+data jobs in private repositories, some of which cannot recover a missed day.
+
+| Metric | Target | Measured by | Gate |
+|---|---|---|---|
+| Agent waves run inside a preflight budget [ADM-12] | before a wave, and before each further batch, `automation/agent_wave_preflight.py` exits 0; dispatch waits while it exits non-zero | the helper and its tests, run in this repository's CI (`make verify`); the preflight output kept with the wave's notes | AUTO-GATE (the helper) + REVIEW-GATE (the practice) |
+
+The budget (defaults; every line is a flag):
+
+| Budget line | Default | Flag |
+|---|---|---|
+| Full gates running at once (pre-push hooks, `make verify`, test runners), each process tree counted once | ≤ 3 | `--max-gates` |
+| 1-minute load average | ≤ 2.0 per core | `--max-load-per-core` |
+| Free disk on the portfolio's filesystem | ≥ 25 GiB | `--min-free-gib` |
+| Linked worktrees idle for more than a day | ≤ 20, and ≤ 10 GiB in total | `--max-stale-worktrees`, `--max-stale-gib`, `--stale-days` |
+| GitHub Actions net spend this month | < 80% of the budget | `--actions-cap-usd`, `--actions-max-fraction` |
+
+The practice:
+
+1. **Preflight, then dispatch.** Run the helper before the first agent starts
+   and before each further batch. Exit 1 means a budget line is spent: fix it,
+   or wait, before dispatching more. Exit 3 means a reading could not be taken,
+   which is not a pass.
+2. **Size the wave to the gate budget**, not to the task list: no more agents
+   running full gates at once than `--max-gates`; the rest queue.
+3. **Prune as you go.** Each agent removes its worktree when its lane ends
+   (`git worktree remove`), `git worktree prune` clears the ones whose
+   directories are already gone, and an idle worktree that is kept loses its
+   `node_modules`.
+4. **Heavy private-repository work runs on local gates.** Private repositories
+   bill Actions minutes, and a billing block does not stop at the wave: it
+   stops scheduled production jobs too. Agents run `make verify` locally and
+   push a private repository when it passes, never to use CI as the test runner.
+5. **State the Actions budget.** The billing API reports spend but not the
+   budget, so pass the real figure with `--actions-cap-usd`. The default, $50,
+   is below the spend at which the 2026-09-18 block fired.
+
+What the helper reads: `os.getloadavg` per core; running gates from `ps`,
+counting a hook that runs `npm run verify` that runs vitest as one gate; free
+space on the filesystem that holds the portfolio; the linked worktrees of every
+repository under the portfolio root (`git worktree list --porcelain`), idle by
+the newest of their HEAD, index and reflog, sized with `du` inside a time
+budget and reported as a lower bound when the budget runs out; and the month's
+Actions spend from `gh api /users/<user>/settings/billing/usage` (the older
+`/settings/billing/actions` endpoint returns 410 Gone). A reading it cannot
+take is reported as not measured, never as a number.
+
+This is a practice rule, not a per-repository control: no repository is scored
+on it. Its automated half is the helper and its tests, which include injected
+measurements over every threshold as negative controls.
 
 ## What gets committed
 - `metrics/PORTFOLIO-METRICS.md` + `metrics/AI-USAGE.md` (weekly, regenerated).

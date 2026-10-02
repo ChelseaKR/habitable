@@ -107,7 +107,7 @@ Every in-scope repo wires these into `make verify` (Python) or the npm `verify` 
 | G6 | **EN/ES key-parity** (every shipping bilingual repo) [I18N-08] | `keys(en) == keys(es)` exactly | Catalog diff in CI; symmetric-difference must be empty | merge-blocking |
 | G7 | PO compilation [I18N-09] | 0 `msgfmt` errors/warnings | `msgfmt --check --check-format --check-domain *.po` | merge-blocking (Python) |
 | G8 | XLIFF schema validity [I18N-10] | 0 invalid files | Apache Okapi / OASIS 2.2 schema validation on any committed `.xlf` | merge-blocking (if XLIFF present) |
-| G9 | Pseudolocale overflow [I18N-11] | 0 clipped/overlapping nodes under ~40% expansion | `formatjs` pseudo-locale (`en-XA` analogue) + Playwright DOM-overflow assertion on key views | merge-blocking (frontends) |
+| G9 | Pseudolocale overflow [I18N-11] | 0 clipped/overlapping nodes under ~40% expansion | `formatjs` pseudo-locale (`en-XA` analog) + Playwright DOM-overflow assertion on key views | merge-blocking (frontends) |
 | G10 | RTL: no physical-direction CSS [I18N-12] | 0 `margin-left/right`, `padding-left/right`, `left/right` in layout components | stylelint `csstools/use-logical` (require `margin-inline-*`, `padding-inline-*`); `ar`/`he` `dir=rtl` Playwright mirror smoke | merge-blocking (frontends) |
 | G11 | `Vary: Accept-Language` [I18N-13] | 100% localized endpoints set it | curl/Playwright header assertion in integration test; also assert `Content-Language` present on negotiated responses | merge-blocking (servers/Lambdas) |
 | G12 | CLDR/tzdata freshness [I18N-14] | CLDR lag ≤ 1 major, tzdata ≥ 2026a | Assert pinned version in `pyproject.toml`/`package.json` ≥ 48.2 | merge-blocking |

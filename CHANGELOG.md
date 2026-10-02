@@ -1574,6 +1574,13 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Changed
 
+- Moved the vendored portfolio standards from **v2.0.0** to **v3.0.0**
+  (`docs/standards/`). The set was replaced as one versioned set with upstream's
+  `vendor-standards.sh` from the signed `v3.0.0` tag, and every file matches the
+  release archive's bytes. v3.0.0 re-verifies the Code Quality, Quality & Metrics
+  and Responsible-Tech documents, whose v2.0.0 copies were past their quarterly
+  recheck, and adds the advisory `DISCOVERY-AND-ADOPTION-STANDARD.md`, so the set
+  is now 17 documents.
 - **The committed `main` ruleset now records the repository owner's standing
   bypass, because the live one has always had it and must keep it.**
   `.github/rulesets/main-branch.json` declared `"bypass_actors": []` while live
