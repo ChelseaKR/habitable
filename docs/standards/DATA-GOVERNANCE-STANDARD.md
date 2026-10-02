@@ -109,6 +109,23 @@ A local-first tool that stores nothing durable beyond ephemeral session state (a
 
 ---
 
+## 4a. Product analytics and third-party telemetry
+
+Product analytics is **permitted** (decision 2026-09-13; it replaces an unwritten "no analytics
+anywhere" practice that was never a standard). What this section fixes is the shape, because a
+product that cannot see its own funnel cannot be improved, and a product that sees it through a
+third party owes its users an exact account of what left the device. The classification in §4
+still governs what may be sent: an analytics event is L2 at most, never L3.
+
+| Metric | Target | Measured by | Gate |
+|---|---|---|---|
+| Analytics posture declared [DG-20] | a repo that runs product analytics names, in its privacy notice and its DPIA, the provider, the identifier scheme, the retention period, and the opt-out mechanism; "none" is a valid declaration and must also be stated | REVIEW-GATE at DPIA authoring; the privacy-notice claims are held by the repo's claims gate where one exists | REVIEW |
+| Cookieless-and-opt-out floor [DG-21] | analytics sets no cross-site cookie (cookieless or first-party-only persistence); honors Global Privacy Control and Do Not Track as opt-out; keys identity only to an opaque post-authentication id, never an email address; captures no form contents and no session recordings | AUTO where the client configuration is a checkable file (`persistence`, `autocapture`, `session_recording`, GPC/DNT branch); REVIEW for the rest | AUTO-GATE / REVIEW |
+| Synthetic traffic excluded [DG-22] | smoke-test fixtures, seeded demo accounts, uptime probes and health checks are structurally excluded from analytics, and the exclusion is tested — a funnel that counts fixtures is a false figure, not a small error | unit test that a fixture-shaped identity emits nothing; measured share of real vs synthetic sessions reported once at rollout | AUTO-GATE |
+
+Sentry-class error reporting is separate from product analytics and needs its own declaration
+under DG-20; enabling it is not implied by enabling analytics.
+
 ## 5. Dataset versioning — the policy layer over `RELEASE-AND-VERSIONING-STANDARD.md`
 
 `RELEASE-AND-VERSIONING-STANDARD.md` §2 owns the *mechanism*: a `data-vN` tag or `dataset_version` field, versioned independently of code SemVer. This standard owns the *policy* that mechanism serves: **a dataset version is immutable and re-derivable.** Once `data-v3` is tagged, its contents never change; a correction ships as `data-v4` with a changelog line explaining what changed and why (matching the "no re-publish of a version" rule `RELEASE-AND-VERSIONING-STANDARD.md` already applies to code). The data card (§1) for a versioned dataset records the version, not just the source.
@@ -135,7 +152,8 @@ When an incident (per `INCIDENT-RESPONSE-STANDARD.md`) involves L2/L3 data expos
 1. **Data cards** (§1) under `docs/data/` per ingest source, each stating tier, license, retention line, and current dataset version where applicable.
 2. **`ROADMAP.md` Metrics rows** for data-card presence, retention-job status, and backup round-trip test — owner named, gate stated.
 3. **The README conformance table** carries a `Data Governance` row: `Applies`, `Applies — gap tracked in #NN`, or `N/A — <reason>` (L0 repos only).
-4. **DPIA findings** stay in `docs/RESPONSIBLE-TECH-AUDITS.md` (methodology: `RESPONSIBLE-TECH-FRAMEWORK.md` §C) — this standard supplies the retention numbers and classification table that audit checks against, not a second copy of the audit itself.
+4. **The analytics declaration** (§4a) in the privacy notice and the DPIA — provider, identifier scheme, retention, opt-out — or the word "none".
+5. **DPIA findings** stay in `docs/RESPONSIBLE-TECH-AUDITS.md` (methodology: `RESPONSIBLE-TECH-FRAMEWORK.md` §C) — this standard supplies the retention numbers and classification table that audit checks against, not a second copy of the audit itself.
 
 ---
 

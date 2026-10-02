@@ -205,7 +205,7 @@ groups:
 | Alert rules valid [OBS-16] | zero errors | `promtool check rules alerts/*.yml` in CI | AUTO-GATE |
 | Burn-rate tiers complete [OBS-17] | critical (14.4×, 1h+5m) **and** high (6×, 6h+30m) defined per SLO | rule-presence linter | AUTO-GATE |
 
-**A `page`-severity alert that confirms real user impact opens an `incident` issue.** This standard owns detection and routing; what happens once a page is confirmed real (severity assignment, labelling, the postmortem clock) is owned by `INCIDENT-RESPONSE-STANDARD.md` §1–3 — a fired alert is not itself an incident record.
+**A `page`-severity alert that confirms real user impact opens an `incident` issue.** This standard owns detection and routing; what happens once a page is confirmed real (severity assignment, labeling, the postmortem clock) is owned by `INCIDENT-RESPONSE-STANDARD.md` §1–3 — a fired alert is not itself an incident record.
 
 ---
 
