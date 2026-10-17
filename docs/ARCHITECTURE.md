@@ -5,7 +5,7 @@
 
 > **Status:** shipped public alpha / reference implementation. The Python
 > package, local EN/ES browser app, verifier, packets, sync transports, and
-> v0.2.0 distribution exist. APIs and protocols remain pre-1.0 and there is no
+> v0.4.0 distribution exist. APIs and protocols remain pre-1.0 and there is no
 > signed native mobile/desktop package or project-hosted case service. This
 > document describes current code, not a production-readiness or legal-fitness
 > claim.

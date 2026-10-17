@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 # habitable — roadmap
 
-**v0.2.0 (alpha) is shipped and public.** The evidence spine, encryption, offline-first
+**v0.4.0 (alpha) is shipped and public.** The evidence spine, encryption, offline-first
 sync, bilingual app with automated accessibility coverage, export packets, and optional
 relay are implemented and tested (see `CHANGELOG.md`). This document is the path from a working
 reference implementation to something a tenant union can *rely on* — and an honest
