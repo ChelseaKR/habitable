@@ -207,7 +207,7 @@ work, not primitive-level review of Ed25519 / X25519 / ChaCha20-Poly1305 / RFC 3
 
 **Project:** habitable — github.com/ChelseaKR/habitable (public, AGPL-3.0-or-later;
 verification subset additionally Apache-2.0). Maintainer: Chelsea Kelly-Reif.
-Independent, unfunded, single-maintainer (bus factor 1). Currently **v0.2.0, alpha**.
+Independent, unfunded, single-maintainer (bus factor 1). Currently **v0.4.0, alpha**.
 
 **The problem we're asking you to help validate.**
 Tenants documenting habitability problems — mold, no heat, leaks, pests — produce
@@ -293,7 +293,7 @@ tenants and legal-aid orgs the tool can be relied on.
 > Keep this costed and ready so a funder/OSTIF "yes" converts to an award in days.
 > Send to specialist firms (see §6).
 
-1. **About the project.** habitable, v0.2.0, alpha; FOSS (AGPL-3.0-or-later, Apache-2.0
+1. **About the project.** habitable, v0.4.0, alpha; FOSS (AGPL-3.0-or-later, Apache-2.0
    verifier subset); single maintainer; github.com/ChelseaKR/habitable. Security is the
    product; users are at-risk tenants.
 2. **Why now.** Removing the alpha caveat is gated on this review. We have a **frozen,
