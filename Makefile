@@ -132,6 +132,11 @@ i18n-usage: ## Report app i18n keys with no rendering path (reports; never gates
 doc-links: ## Validate local Markdown links and capability-ledger evidence paths
 	uv run python scripts/check_doc_links.py
 
+threat-model-baseline: ## Fail if a frozen threat-model baseline tag no longer matches its pinned hash; report (never fail) drift since the freeze (issue #366)
+	# Not in `verify`: it needs the baseline tags, which a shallow or tagless clone does
+	# not have. CI runs it in its own job with `fetch-tags`. Drift is printed, not gated.
+	python3 scripts/check_threat_model_baseline.py
+
 markers: ## No bare TODO/FIXME/HACK (must reference an issue, e.g. TODO(#142)); no un-issued noqa/type:ignore
 	@bad=$$(grep -rnE '(TODO|FIXME|HACK)' --include='*.py' --include='*.js' src tests app scripts fuzz 2>/dev/null \
 		| grep -vE '\(#[0-9]+\)' || true); \

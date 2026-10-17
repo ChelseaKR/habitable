@@ -100,6 +100,28 @@ jobs:
           # (synthetic RFC 3161 tokens in committed demo/golden packets). Any
           # finding not fingerprinted there still fails this gate.
 
+  threat-model-baseline:
+    name: threat-model baseline (frozen tags must match their pins; drift is report-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Harden Runner (audit mode)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - name: Checkout (full history and tags — the check reads the document at each baseline tag)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      # Fails if docs/threat-model.md at a baseline tag no longer hashes to the value pinned in
+      # docs/audits/threat-model-baseline.md. Drift of the current file from the latest
+      # baseline is printed as a warning annotation and never fails the job (issue #366).
+      # Standard library only; no environment to build.
+      - name: Check the pinned baselines
+        run: python3 scripts/check_threat_model_baseline.py
+
   verifier-portability:
     name: verifier subset compiles on older Pythons
     runs-on: ubuntu-latest

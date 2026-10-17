@@ -9,6 +9,15 @@ follow [Semantic Versioning](https://semver.org/). The **packet format** and the
 
 ### Added
 
+- **A CI check for the pinned threat-model baseline** (#366).
+  `scripts/check_threat_model_baseline.py` reads each baseline in
+  `docs/audits/threat-model-baseline.md` and fails if `docs/threat-model.md` at that
+  baseline's tag no longer hashes to the pinned value, or if the tag cannot be read.
+  It also reports, without failing, when the current document differs from the latest
+  baseline, naming the commits and lines changed since the freeze. It runs as the
+  `threat-model baseline` job in `ci.yml` (and `make threat-model-baseline`), with tests
+  in `tests/test_threat_model_baseline_check.py`. The pinned hash and the baseline
+  document are untouched; cutting B2 still needs a maintainer re-review.
 - **Google Analytics 4 on the documentation website, and only there** (owner decision,
   2026-09-17: GA4 on every public site, with the privacy copy updated to match). The
   app, the CLI and the relay keep the no-telemetry rule unchanged. `site/analytics.js`
