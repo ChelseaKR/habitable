@@ -773,21 +773,22 @@ def test_a_failed_container_write_leaves_the_sealed_original_alone(
     """The ordering argument, exercised: prove the container, then destroy the copy.
 
     A drive that cannot be written to is the cheapest way to reach the failure
-    path. What matters is not the error but what survives it: the bytes are
-    still in the vault, no record claims otherwise, and a later export is a
-    complete one.
+    path (here, a container path that cannot be opened for writing). What
+    matters is not the error but what survives it: the bytes are still in the
+    vault, no record claims otherwise, and a later export is a complete one.
     """
     vault, capture_id = _case(make_vault, make_jpeg)
     content_hash = vault.document.captures()[0].content_hash
     before = vault.read_original(capture_id, content_hash)
-    drive = tmp_path / "readonly-usb"
+    drive = tmp_path / "failing-usb"
     drive.mkdir()
-    drive.chmod(0o500)
-    try:
-        with pytest.raises(OSError):
-            offload_item(vault, capture_id, drive)
-    finally:
-        drive.chmod(0o700)
+    # The container's name is a dangling symlink into a directory that does not
+    # exist, so opening it for writing fails for every user. A read-only drive
+    # (chmod 0o500) would not do: root ignores directory permission bits, so the
+    # write would succeed and the test would fail in containers that run as root.
+    (drive / f"{capture_id}{OFFLOAD_CONTAINER_SUFFIX}").symlink_to(tmp_path / "gone" / "x.bin")
+    with pytest.raises(OSError):
+        offload_item(vault, capture_id, drive)
 
     assert vault.has_original(capture_id)
     assert not vault.is_offloaded(capture_id)
