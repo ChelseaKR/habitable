@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -85,11 +86,16 @@ def repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def _run(root: Path) -> subprocess.CompletedProcess[str]:
+def _run(root: Path, *, actions: bool = False) -> subprocess.CompletedProcess[str]:
+    """Run the script with GITHUB_ACTIONS set deliberately, not inherited from the CI runner."""
+    env = {key: value for key, value in os.environ.items() if key != "GITHUB_ACTIONS"}
+    if actions:
+        env["GITHUB_ACTIONS"] = "true"
     return subprocess.run(
         [sys.executable, str(_SCRIPT), "--root", str(root)],
         capture_output=True,
         check=False,
+        env=env,
         text=True,
     )
 
@@ -181,12 +187,9 @@ def test_uncommitted_edits_count_as_drift(repo: Path) -> None:
     assert "1 lines added, 0 removed" in drift
 
 
-def test_github_actions_gets_a_warning_annotation(
-    repo: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_github_actions_gets_a_warning_annotation(repo: Path) -> None:
     (repo / "docs" / "threat-model.md").write_text(_FROZEN + "more\n")
-    monkeypatch.setenv("GITHUB_ACTIONS", "true")
-    result = _run(repo)
+    result = _run(repo, actions=True)
     assert result.returncode == 0
     assert "::warning title=Threat model drift::" in result.stdout
 
